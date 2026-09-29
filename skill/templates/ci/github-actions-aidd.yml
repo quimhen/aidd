@@ -1,0 +1,183 @@
+# AIDD — GitHub Actions PR gate
+#
+# Opt-in only: nothing installs this automatically. A project adds it by
+# running `python skill/scripts/install_ci.py github <project-root>` (or
+# `aidd ci install github` once cli.py is wired up in a later pass) — see
+# skill/scripts/install_ci.py's docstring for why this is never
+# auto-committed.
+#
+# Assumes `aidd init` has already been run in this project, so
+# .aidd/scripts/check_spec.py and .aidd/scripts/check_charter.py exist at
+# the repo root under `.aidd/`. .aidd/scripts/link_pr_to_task.py is checked
+# for separately and treated as a skipped no-op if missing — as of this
+# writing it is NOT yet part of the `aidd init` bundle (see
+# adapters/dot-aidd/scripts/PENDING-SYNC.md for why, and what a project
+# needs to copy in by hand until that mirror lands).
+#
+# What this does, in order:
+#   1. Checks out the PR head and sets up Python (stdlib only — AIDD ships
+#      zero third-party dependencies, so no install step is needed).
+#   2. Runs .aidd/scripts/link_pr_to_task.py --apply against each
+#      specs/*/tasks.md (it needs --tasks-md; task id and PR url come from
+#      GITHUB_HEAD_REF, set automatically for pull_request events, and
+#      github.event.pull_request.html_url), using the workflow's own
+#      built-in GITHUB_TOKEN for `gh` auth (gh is preinstalled on every
+#      GitHub-hosted runner). A branch with no task id in its name, or a
+#      task id with no synced tracker ref yet, is a soft no-op, not a
+#      failure — the step only fails the job for a real error from the
+#      script (e.g. the provider CLI call itself failing).
+#   3. Runs check_spec.py against every specs/*/ folder, and check_charter.py
+#      once, as gates: any non-zero exit fails the job.
+#   4. On a gate failure, posts the failing check(s)' stdout as a PR comment
+#      via the `gh` CLI — only if `gh`/GITHUB_TOKEN are available; otherwise
+#      this degrades to just failing the job with the output already in the
+#      log (see step 3's `$GITHUB_STEP_SUMMARY` write, which always happens).
+
+name: AIDD checks
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  aidd-checks:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Link PR to task
+        id: link_pr
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+        run: |
+          set +e
+          if [ ! -f ".aidd/scripts/link_pr_to_task.py" ]; then
+            echo "::notice::.aidd/scripts/link_pr_to_task.py not found (run 'aidd init' to add it) — skipping PR<->task linking."
+            exit 0
+          fi
+          shopt -s nullglob
+          tasks_files=(specs/*/tasks.md)
+          if [ ${#tasks_files[@]} -eq 0 ]; then
+            echo "No specs/*/tasks.md found — nothing to link."
+            exit 0
+          fi
+          # GITHUB_HEAD_REF (the PR's source branch, set automatically for
+          # pull_request events) is where the script finds the task id by
+          # default — no --branch needed. Try every spec's tasks.md/
+          # .aidd-issues.json until one actually has this task id synced;
+          # "no task id in the branch" is the same outcome for all of them,
+          # so it only needs checking once.
+          overall=0
+          for tasks_md in "${tasks_files[@]}"; do
+            output="$(python .aidd/scripts/link_pr_to_task.py --tasks-md "$tasks_md" --pr-url "$PR_URL" --apply 2>&1)"
+            status=$?
+            echo "$output"
+            if [ $status -eq 0 ]; then
+              overall=0
+              break
+            fi
+            if echo "$output" | grep -qi "could not determine a task id"; then
+              echo "::notice::No task id found in the PR's branch name — soft no-op, not a failure."
+              overall=0
+              break
+            fi
+            if echo "$output" | grep -qi "no tracker ref found"; then
+              overall=0
+              continue
+            fi
+            overall=1
+          done
+          exit $overall
+
+      - name: Run check_spec.py on every spec folder
+        id: check_spec
+        run: |
+          set +e
+          overall=0
+          summary=""
+          shopt -s nullglob
+          for spec_dir in specs/*/; do
+            spec_dir="${spec_dir%/}"
+            [ -f "$spec_dir/spec.md" ] || continue
+            out="$(python .aidd/scripts/check_spec.py "$spec_dir" 2>&1)"
+            status=$?
+            echo "$out"
+            if [ $status -ne 0 ]; then
+              overall=1
+              summary="${summary}"$'\n\n'"### check_spec.py: ${spec_dir}"$'\n''```'$'\n'"${out}"$'\n''```'
+            fi
+          done
+          {
+            echo "summary<<AIDD_EOF"
+            echo "$summary"
+            echo "AIDD_EOF"
+          } >> "$GITHUB_OUTPUT"
+          exit $overall
+
+      - name: Run check_charter.py
+        id: check_charter
+        if: always()
+        run: |
+          set +e
+          if [ ! -f "charter.md" ]; then
+            echo "No charter.md at repo root — nothing to check."
+            {
+              echo "summary<<AIDD_EOF"
+              echo "AIDD_EOF"
+            } >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          out="$(python .aidd/scripts/check_charter.py . 2>&1)"
+          status=$?
+          echo "$out"
+          summary=""
+          if [ $status -ne 0 ]; then
+            summary=$'\n'"### check_charter.py"$'\n''```'$'\n'"${out}"$'\n''```'
+          fi
+          {
+            echo "summary<<AIDD_EOF"
+            echo "$summary"
+            echo "AIDD_EOF"
+          } >> "$GITHUB_OUTPUT"
+          exit $status
+
+      - name: Post failing check output as a PR comment
+        if: always() && (steps.check_spec.outcome == 'failure' || steps.check_charter.outcome == 'failure')
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          # Passed through env, not interpolated directly into this script,
+          # because this text comes from spec.md/tasks.md/charter.md in the
+          # PR's own branch — untrusted content on a fork PR must never be
+          # spliced into a run: script body via ${{ }} (classic GitHub
+          # Actions script-injection footgun); an env var is just data.
+          SPEC_SUMMARY: ${{ steps.check_spec.outputs.summary }}
+          CHARTER_SUMMARY: ${{ steps.check_charter.outputs.summary }}
+        run: |
+          set +e
+          if ! command -v gh >/dev/null 2>&1 || [ -z "$GITHUB_TOKEN" ]; then
+            echo "::warning::gh CLI or GITHUB_TOKEN unavailable — failing the job with output already in the log above, no PR comment posted."
+            exit 0
+          fi
+          {
+            echo "## AIDD checks failed"
+            echo "$SPEC_SUMMARY"
+            echo "$CHARTER_SUMMARY"
+          } | gh pr comment "$PR_NUMBER" --body-file -
+
+      - name: Fail the job if any gate failed
+        if: steps.check_spec.outcome == 'failure' || steps.check_charter.outcome == 'failure'
+        run: exit 1

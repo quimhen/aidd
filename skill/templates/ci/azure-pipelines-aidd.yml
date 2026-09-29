@@ -1,0 +1,219 @@
+# AIDD — Azure Pipelines PR gate
+#
+# Opt-in only: nothing installs this automatically. A project adds it by
+# running `python skill/scripts/install_ci.py azure-devops <project-root>`
+# (or `aidd ci install azure-devops` once cli.py is wired up in a later
+# pass) — see skill/scripts/install_ci.py's docstring for why this is never
+# auto-committed.
+#
+# Named azure-pipelines-aidd.yml on purpose, NOT azure-pipelines.yml: a
+# project may already have its own azure-pipelines.yml for other build/
+# release purposes, and this file is meant to be wired up as its own,
+# separate pipeline definition (create a pipeline in Azure DevOps pointing
+# at this file specifically) rather than silently overwriting the project's
+# existing top-level pipeline. See install_ci.py --help for the same note.
+#
+# Requires one pipeline secret variable, AZURE_DEVOPS_EXT_PAT — a Personal
+# Access Token with "Work Items (read & write)" and "Code (read)" scope,
+# used both by the `az boards`/`az devops` CLI calls below and by
+# .aidd/scripts/link_pr_to_task.py (which reads it from the environment to
+# call back into Azure DevOps/Boards).
+#
+# Assumes `aidd init` has already been run in this project, so
+# .aidd/scripts/check_spec.py and .aidd/scripts/check_charter.py exist at
+# the repo root under `.aidd/`. .aidd/scripts/link_pr_to_task.py is checked
+# for separately and treated as a skipped no-op if missing — as of this
+# writing it is NOT yet part of the `aidd init` bundle (see
+# adapters/dot-aidd/scripts/PENDING-SYNC.md for why, and what a project
+# needs to copy in by hand until that mirror lands).
+
+pr:
+  branches:
+    include:
+      - '*'
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+steps:
+  - checkout: self
+    fetchDepth: 0
+
+  - task: UsePythonVersion@0
+    inputs:
+      versionSpec: '3.x'
+
+  # link_pr_to_task.py needs --tasks-md (tried against every
+  # specs/*/tasks.md below) and --pr-url. Its own branch-based task-id
+  # detection falls back to BUILD_SOURCEBRANCH, but for a PR-triggered
+  # build that's the merge ref (refs/pull/<id>/merge), not the feature
+  # branch — so --branch is passed explicitly here with
+  # System.PullRequest.SourceBranch instead. --provider azure_devops plus
+  # AZURE_DEVOPS_ORG/AZURE_DEVOPS_PROJECT point it at Azure Boards; the az
+  # CLI itself authenticates from the AZURE_DEVOPS_EXT_PAT env var (the
+  # azure-devops extension reads it directly — no explicit `az login`
+  # needed), same as the "post a comment" step further down.
+  - bash: |
+      set +e
+      if [ ! -f ".aidd/scripts/link_pr_to_task.py" ]; then
+        echo "##[warning].aidd/scripts/link_pr_to_task.py not found (run 'aidd init' to add it) — skipping PR<->task linking."
+        exit 0
+      fi
+      if ! az extension show --name azure-devops >/dev/null 2>&1; then
+        az extension add --name azure-devops -y >/dev/null 2>&1
+      fi
+      shopt -s nullglob
+      tasks_files=(specs/*/tasks.md)
+      if [ ${#tasks_files[@]} -eq 0 ]; then
+        echo "No specs/*/tasks.md found — nothing to link."
+        exit 0
+      fi
+      pr_url="${SYSTEM_COLLECTIONURI}${SYSTEM_TEAMPROJECT}/_git/${BUILD_REPOSITORY_NAME}/pullrequest/${SYSTEM_PULLREQUEST_PULLREQUESTID}"
+      overall=0
+      for tasks_md in "${tasks_files[@]}"; do
+        output="$(python .aidd/scripts/link_pr_to_task.py \
+          --tasks-md "$tasks_md" --branch "$SOURCE_BRANCH" --pr-url "$pr_url" \
+          --provider azure_devops --apply 2>&1)"
+        status=$?
+        echo "$output"
+        if [ $status -eq 0 ]; then
+          overall=0
+          break
+        fi
+        if echo "$output" | grep -qi "could not determine a task id"; then
+          echo "##[warning]No task id found in the PR's source branch — soft no-op, not a failure."
+          overall=0
+          break
+        fi
+        if echo "$output" | grep -qi "no tracker ref found"; then
+          overall=0
+          continue
+        fi
+        overall=1
+      done
+      exit $overall
+    env:
+      AZURE_DEVOPS_EXT_PAT: $(AZURE_DEVOPS_EXT_PAT)
+      AZURE_DEVOPS_ORG: $(System.CollectionUri)
+      AZURE_DEVOPS_PROJECT: $(System.TeamProject)
+      SOURCE_BRANCH: $(System.PullRequest.SourceBranch)
+      SYSTEM_COLLECTIONURI: $(System.CollectionUri)
+      SYSTEM_TEAMPROJECT: $(System.TeamProject)
+      BUILD_REPOSITORY_NAME: $(Build.Repository.Name)
+      SYSTEM_PULLREQUEST_PULLREQUESTID: $(System.PullRequest.PullRequestId)
+    displayName: 'Link PR to task'
+
+  # Gate 1/2. A non-zero exit here fails this step (and the build); the
+  # combined output is also written to a log file so the comment step below
+  # can quote it without relying on Azure Pipelines' fragile multiline
+  # output-variable escaping.
+  - bash: |
+      set +e
+      mkdir -p "$(Agent.TempDirectory)/aidd"
+      log="$(Agent.TempDirectory)/aidd/spec.log"
+      : > "$log"
+      overall=0
+      shopt -s nullglob
+      for spec_dir in specs/*/; do
+        spec_dir="${spec_dir%/}"
+        [ -f "$spec_dir/spec.md" ] || continue
+        out="$(python .aidd/scripts/check_spec.py "$spec_dir" 2>&1)"
+        status=$?
+        echo "$out"
+        if [ $status -ne 0 ]; then
+          overall=1
+          { echo "### check_spec.py: $spec_dir"; echo '```'; echo "$out"; echo '```'; echo; } >> "$log"
+        fi
+      done
+      exit $overall
+    displayName: 'Run check_spec.py on every spec folder'
+
+  # Gate 2/2. condition: always() so this still runs (and still fails the
+  # build) even when the spec gate above already failed — both gates'
+  # output should reach the PR comment, not just the first failure.
+  - bash: |
+      set +e
+      mkdir -p "$(Agent.TempDirectory)/aidd"
+      log="$(Agent.TempDirectory)/aidd/charter.log"
+      : > "$log"
+      if [ ! -f "charter.md" ]; then
+        echo "No charter.md at repo root — nothing to check."
+        exit 0
+      fi
+      out="$(python .aidd/scripts/check_charter.py . 2>&1)"
+      status=$?
+      echo "$out"
+      if [ $status -ne 0 ]; then
+        { echo "### check_charter.py"; echo '```'; echo "$out"; echo '```'; } >> "$log"
+      fi
+      exit $status
+    displayName: 'Run check_charter.py'
+    condition: always()
+
+  # Only reached when a previous step in this job failed (Azure Pipelines'
+  # built-in `failed()` condition) — i.e. exactly the check_spec.py/
+  # check_charter.py gate-failure case, not the link-PR step's soft no-op.
+  - bash: |
+      set +e
+      body="AIDD checks failed on PR $SYSTEM_PULLREQUEST_PULLREQUESTID (branch $SOURCE_BRANCH):"
+      for log in "$(Agent.TempDirectory)/aidd/spec.log" "$(Agent.TempDirectory)/aidd/charter.log"; do
+        [ -s "$log" ] && body="${body}"$'\n\n'"$(cat "$log")"
+      done
+
+      if ! command -v az >/dev/null 2>&1; then
+        echo "##[warning]az CLI unavailable — failing the build with output already in the log above, no PR-visible comment posted."
+        exit 0
+      fi
+      if ! az extension show --name azure-devops >/dev/null 2>&1; then
+        az extension add --name azure-devops -y >/dev/null 2>&1
+      fi
+      echo "$AZURE_DEVOPS_EXT_PAT" | az devops login >/dev/null 2>&1
+
+      # Best-effort: this pipeline gates on check_spec.py/check_charter.py,
+      # not on a work item lookup, so a work item is only found here to
+      # decide WHERE to post the failure. Same task-id shape
+      # link_pr_to_task.py itself searches for ([A-Za-z]+-\d+, e.g. "T-01"),
+      # then the same tasks.md-adjacent .aidd-issues.json sync map it reads
+      # to turn that task id into a tracker ref, then the numeric id out of
+      # that ref (mirrors provider.py's own _work_item_id()). If nothing
+      # more direct than `az boards work-item update --discussion` is
+      # available for posting a PR-visible comment, that's what this uses.
+      branch_name="${SOURCE_BRANCH#refs/heads/}"
+      task_id="$(echo "$branch_name" | grep -oE '[A-Za-z]+-[0-9]+' | head -n1 || true)"
+      work_item_id=""
+      if [ -n "$task_id" ]; then
+        shopt -s nullglob
+        # Reads sync_map/task_id via sys.argv (never interpolated into the
+        # Python source itself), and keeps the whole script on one bash
+        # line via $'...' \n escapes so this stays one physical line in the
+        # pipeline YAML — a literal embedded newline here would prematurely
+        # end the enclosing `bash: |` block.
+        py_src=$'import json, sys, contextlib\nd = {}\nwith contextlib.suppress(Exception):\n    d = json.load(open(sys.argv[1], encoding="utf-8"))\nprint(d.get(sys.argv[2], "") or "")'
+        for sync_map in specs/*/.aidd-issues.json; do
+          [ -f "$sync_map" ] || continue
+          ref="$(python -c "$py_src" "$sync_map" "$task_id")"
+          [ -n "$ref" ] || continue
+          work_item_id="$(echo "$ref" | grep -oE '[0-9]+$' || true)"
+          [ -n "$work_item_id" ] && break
+        done
+      fi
+
+      if [ -n "$work_item_id" ]; then
+        az boards work-item update \
+          --id "$work_item_id" \
+          --discussion "$body" \
+          --org "$SYSTEM_COLLECTIONURI" \
+          --project "$SYSTEM_TEAMPROJECT" \
+          || echo "##[warning]Could not post az boards discussion comment — failing the build with output already in the log above."
+      else
+        echo "##[warning]No linked work item found for this branch (task id: ${task_id:-none}) — failing the build with output already in the log above, no PR-visible comment posted."
+      fi
+      exit 0
+    env:
+      AZURE_DEVOPS_EXT_PAT: $(AZURE_DEVOPS_EXT_PAT)
+      SOURCE_BRANCH: $(System.PullRequest.SourceBranch)
+      SYSTEM_PULLREQUEST_PULLREQUESTID: $(System.PullRequest.PullRequestId)
+      SYSTEM_TEAMPROJECT: $(System.TeamProject)
+      SYSTEM_COLLECTIONURI: $(System.CollectionUri)
+    displayName: 'Post failing check output as a PR-visible comment'
+    condition: failed()
