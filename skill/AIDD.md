@@ -57,6 +57,7 @@ templates/
 scripts/
 ├── check_spec.py              # mechanical gap-checker — run before the Step 6 Auditor reads by hand
 ├── check_constitution.py      # runs constitution.md's checkable rules — see below
+├── research_project.py        # [optional, one-time] proposes candidate spec areas on a brownfield project with no specs/ yet — see "Research mode" below
 └── tasks_to_issues.py         # turns an approved tasks.md into real GitHub issues (dry-run by default)
 ```
 
@@ -78,6 +79,25 @@ python scripts/check_constitution.py [project-root]
 
 Run this alongside `check_spec.py` before Step 6 signs off — the constitution covers project-wide
 invariants, `check_spec.py` covers one spec's own internal consistency; neither replaces the other.
+
+### Research mode — bootstrapping specs when none exist yet
+
+**Run this once, at the same time as copying `templates/constitution.md`, on a brownfield project that has real code but no `specs/` folder yet** (or only one or two). Step -1's `find_spec.py` can only search specs that already exist; a project with none has nothing for the spec graph (below) to index until someone writes the first ones. Research mode is the one-time bridge:
+
+```bash
+python scripts/research_project.py [project-root]
+```
+
+It's a mechanical, stdlib-only directory scan — no LLM, no file content read — that looks for route/page/screen/controller-like directories (`pages/`, `screens/`, `views/`, `routes/`, `controllers/`, `features/`, `modules/`, or a root `app/`) and prints a numbered list of candidate `specs/[###-slug]/` areas, largest first. **It never writes a spec or invents content** — same division of labor as every other script here (`check_spec.py` flags gaps, `find_spec.py` searches; scripts stay mechanical, the agent supplies judgment). Once the list is in hand: drop the noise (a `shared/`/`utils/`-shaped hit is not a feature), then run Step 0 through Step 2 per area kept, same as any other spec — this only replaces "figure out where to start on an unfamiliar codebase," not any actual step of the pipeline.
+
+## Spec graph — and why it stays cheap
+
+`find_spec.py`'s index (`specs/index.toon`) **is** AIDD's knowledge graph — it just isn't built the way a general-purpose code-knowledge-graph tool builds one. Worth being explicit about the difference, since it's the reason AIDD's own graph stays cheap indefinitely instead of degrading into an expensive full-repo re-scan:
+
+- **A file-by-file graph tool** (e.g. a tool like graphify) has no documented structure to start from, so building its graph means reading every file in the corpus and dispatching an LLM extraction pass per chunk — thorough (it can describe code that was never specified anywhere), but the cost is proportional to the size of the whole repo, every time the graph is rebuilt from scratch, and every doc/image/paper in the corpus needs its own semantic-extraction pass through an LLM subagent.
+- **AIDD's graph is derived from specs the project already maintains**, not from re-reading source code: `find_spec.py` parses `mockup-audit.md`'s own tables (Screen/Component/Control inventories) into a `US-nnn → SCREEN-XX → COMP-nnn → CTL-nnn → API-nnn` DAG, using plain regex/markdown-table parsing — stdlib only, zero LLM calls, zero tokens. Rebuilding it costs a `stat()` per spec file (cheap mtime check) and, only for files that actually changed, a re-parse of that one file — not a walk of the whole codebase.
+- **This is a trade, not a strict improvement**: AIDD's graph can only describe what a spec already documents — it has nothing to say about code with no spec behind it. That's exactly what Research mode above exists to bootstrap on a brownfield project, and it's also why a spec-less area of the codebase is invisible to `find_spec.py` until it gets a spec — by design, since the point of the search is "which spec owns this," not "what does this code do."
+- **Net effect**: on a project that actually follows AIDD (every feature specified before it's built), the graph is already there for free as a side effect of Step 1 — no separate build step, no per-query token cost, no file-by-file re-extraction. A file-by-file tool is the right choice for exploring an unfamiliar codebase that has no specs at all; AIDD's own graph is the right choice once specs exist, because at that point re-deriving structure from source is strictly more expensive than reading the structure the team already wrote down.
 
 ## GitHub integration
 
