@@ -11,11 +11,13 @@ import sys
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from unittest.mock import patch
 
 SCRIPTS_DIR = Path(__file__).resolve().parent.parent / "skill" / "scripts"
 sys.path.insert(0, str(SCRIPTS_DIR))
 
 import marketplace as mp  # noqa: E402
+import extension_registry  # noqa: E402
 
 
 def make_catalog(root: Path, packages: list[dict]) -> Path:
@@ -122,18 +124,6 @@ class TestInstallPackage(unittest.TestCase):
             with self.assertRaises(ValueError):
                 mp.install_package("does-not-exist", Path(p), catalog_dir=root)
 
-    def test_provider_kind_is_not_yet_installable(self):
-        with TemporaryDirectory() as d, TemporaryDirectory() as p:
-            root = make_catalog(Path(d), [{"id": "pkg-a", "kind": "provider"}])
-            with self.assertRaises(NotImplementedError):
-                mp.install_package("pkg-a", Path(p), catalog_dir=root)
-
-    def test_hook_kind_is_not_yet_installable(self):
-        with TemporaryDirectory() as d, TemporaryDirectory() as p:
-            root = make_catalog(Path(d), [{"id": "pkg-a", "kind": "hook"}])
-            with self.assertRaises(NotImplementedError):
-                mp.install_package("pkg-a", Path(p), catalog_dir=root)
-
     def test_path_traversal_in_files_map_is_rejected(self):
         with TemporaryDirectory() as d, TemporaryDirectory() as p:
             root = make_catalog(Path(d), [{"id": "pkg-a"}])
@@ -157,6 +147,75 @@ class TestInstallPackage(unittest.TestCase):
             # force overrides the refusal
             written = mp.install_package("pkg-b", project_root, force=True, catalog_dir=root)
             self.assertEqual(len(written), 1)
+
+
+class TestProviderHookInstall(unittest.TestCase):
+    """End-to-end: a kind=provider/hook package installs via marketplace.py's
+    generic file-copy path and is then actually discovered by
+    extension_registry.py — the real proof the two systems are wired
+    together, not just that files got copied."""
+
+    def test_provider_package_installs_and_is_discovered(self):
+        with TemporaryDirectory() as d, TemporaryDirectory() as p:
+            root = Path(d)
+            project_root = Path(p)
+            pkg_dir = root / "packages" / "acme-tracker"
+            (pkg_dir / "files").mkdir(parents=True)
+
+            runtime_manifest = {
+                "id": "acme-tracker",
+                "name": "Acme Tracker",
+                "description": "Acme issue tracker provider.",
+                "version": "1.0.0",
+                "kind": "provider",
+                "entry": "provider.py",
+            }
+            (pkg_dir / "files" / "manifest.json").write_text(
+                json.dumps(runtime_manifest), encoding="utf-8"
+            )
+            (pkg_dir / "files" / "provider.py").write_text(
+                "def add_provider_args(parser): pass\n"
+                "def available(args): return True, None\n"
+                "def create_issue(title, body, args, apply): return None\n",
+                encoding="utf-8",
+            )
+
+            package_manifest = {
+                "id": "acme-tracker",
+                "name": "Acme Tracker",
+                "description": "Acme issue tracker provider package.",
+                "version": "1.0.0",
+                "author": "test",
+                "license": "MIT",
+                "kind": "provider",
+                "files": {
+                    ".aidd/extensions/acme-tracker/manifest.json": "manifest.json",
+                    ".aidd/extensions/acme-tracker/provider.py": "provider.py",
+                },
+            }
+            (pkg_dir / "package.json").write_text(json.dumps(package_manifest), encoding="utf-8")
+
+            (root / "catalog.json").write_text(
+                json.dumps({"packages": [{"id": "acme-tracker"}]}), encoding="utf-8"
+            )
+            (root / "catalog.community.json").write_text(json.dumps({"packages": []}), encoding="utf-8")
+
+            # (a) installs without raising NotImplementedError
+            written = mp.install_package("acme-tracker", project_root, catalog_dir=root)
+            self.assertEqual(len(written), 2)
+
+            # (b) files land under <project>/.aidd/extensions/<id>/
+            ext_dir = project_root / ".aidd" / "extensions" / "acme-tracker"
+            self.assertTrue((ext_dir / "manifest.json").is_file())
+            self.assertTrue((ext_dir / "provider.py").is_file())
+
+            # (c) extension_registry.discover() finds it after install
+            with patch.object(extension_registry, "SKILL_EXTENSIONS_DIR", Path(d) / "no-first-party"):
+                discovered = extension_registry.discover(project_root=project_root)
+            ids = {ext.id for ext in discovered}
+            self.assertIn("acme-tracker", ids)
+            providers = {ext.id: ext for ext in discovered if ext.kind == "provider"}
+            self.assertIn("acme-tracker", providers)
 
 
 class TestRemovePackage(unittest.TestCase):

@@ -37,7 +37,7 @@
     "kind": {
       "type": "string",
       "enum": ["provider", "adapter", "template", "hook"],
-      "description": "provider = tasks_to_issues.py issue tracker; adapter = agent command target; template = a spec/design-system template; hook = a Claude Code enforcement hook. Determines which install-destination convention applies — see catalog/README.md. As of v1, 'marketplace.py install' only actually installs 'adapter' and 'template' kinds (pure file copy, no code wiring needed) — 'provider' and 'hook' validate against this schema so a submission can be reviewed and merged ahead of the dynamic-loading support they need, but installing one prints a clear not-yet-supported message instead of silently doing nothing."
+      "description": "provider = tasks_to_issues.py issue tracker; adapter = agent command target; template = a spec/design-system template; hook = a Claude Code enforcement hook. Determines which install-destination convention applies — see catalog/README.md. All four kinds are installable: 'adapter' and 'template' are a plain file copy into the target project. 'provider' and 'hook' are also a plain file copy, but the package's own 'files' map must land its manifest.json plus its code/script file(s) together under .aidd/extensions/<id>/ in the target project — skill/scripts/extension_registry.py auto-discovers anything under .aidd/extensions/**/manifest.json, so the package is live immediately after install with no further wiring. See skill/scripts/extension_registry.py's own docstring for the manifest.json shape a provider/hook package must ship."
     },
     "homepage": {
       "type": "string",

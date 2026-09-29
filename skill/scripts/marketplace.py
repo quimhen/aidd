@@ -22,13 +22,15 @@ Install manifest: <project-root>/.aidd/marketplace-manifest.json
     {"<package-id>": {"version": "1.0.0",
                        "files": {"<dest-relative-path>": "<sha256>"}}}
 
-Kinds actually installable in v1: "adapter" and "template" — pure file
+All 4 kinds are installable now: "adapter" and "template" are a pure file
 copy into the project, no code wiring needed elsewhere. "provider" and
-"hook" packages validate and can be reviewed/merged, but installing one
-prints a clear not-yet-supported message (see catalog/schema.json's own
-"kind" description) rather than silently doing nothing — AIDD's provider
-dispatch (tasks_to_issues.py) and hook installer (install_hooks.py) are
-still fixed lists, not dynamic loaders.
+"hook" are the same generic copy — the only difference is where the
+package's own "files" map points its destinations: into
+.aidd/extensions/<id>/ (its manifest.json alongside its code/script
+file(s)). skill/scripts/extension_registry.py auto-discovers anything
+under a project's .aidd/extensions/**/manifest.json, so once this module
+copies those files in, the installed provider/hook is live with zero
+further wiring — no fixed dispatch list or install script needed.
 
 Usage:
     python marketplace.py list
@@ -45,7 +47,6 @@ if hasattr(sys.stdout, 'reconfigure'):
     sys.stdout.reconfigure(encoding='utf-8')
 
 CATALOG_DIR = Path(__file__).resolve().parent.parent.parent / "catalog"
-NOT_YET_INSTALLABLE_KINDS = {"provider", "hook"}
 
 
 def _load_json(path: Path) -> dict:
@@ -138,13 +139,6 @@ def install_package(package_id: str, project_root: Path, force: bool = False,
     pkg = load_package_manifest(package_id, catalog_dir)
     if pkg is None:
         raise ValueError(f"Unknown package {package_id!r} — run 'marketplace.py list' to see available packages.")
-
-    if pkg["kind"] in NOT_YET_INSTALLABLE_KINDS:
-        raise NotImplementedError(
-            f"Package {package_id!r} is kind={pkg['kind']!r}, which isn't installable yet — "
-            "AIDD's provider dispatch and hook installer are still fixed lists, not dynamic "
-            "loaders. This package can still be reviewed/merged; see catalog/schema.json."
-        )
 
     installed = _read_project_manifest(project_root)
     conflicts = find_file_conflicts(pkg, project_root, installed)
@@ -255,7 +249,7 @@ def main():
                 for f in skipped:
                     print(f"skip (modified since install): {f}", file=sys.stderr)
                 print(f"\nRemoved {package_id!r}: {len(removed)} file(s), {len(skipped)} skipped.")
-        except (ValueError, NotImplementedError) as e:
+        except ValueError as e:
             print(f"error: {e}", file=sys.stderr)
             sys.exit(1)
         sys.exit(0)

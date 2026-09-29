@@ -14,9 +14,11 @@
    `license`, `kind` (`template`/`adapter`/`provider`/`hook`), `files` (a map of
    *destination path in the installing project* → *source path relative to your
    `files/` folder*).
-   - `provider`/`hook` kinds are accepted (see `catalog/README.md`'s table for why),
-     but won't be installable by `marketplace.py install` yet — say so in your PR
-     description so reviewers aren't surprised.
+   - `provider`/`hook` kinds install like any other: your `files` map must land a
+     runtime `manifest.json` (shaped per `skill/scripts/extension_registry.py`'s
+     docstring) plus your code/script file(s) together under `.aidd/extensions/<id>/`
+     in the installing project, so `extension_registry.py` auto-discovers it after
+     install.
 4. **Add your id to `catalog.community.json`** — do not touch `catalog.json`, that
    one's first-party only:
    ```json

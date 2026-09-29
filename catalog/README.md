@@ -26,13 +26,16 @@ values and what installing each one actually does:
 |---|---|---|
 | `template` | File copy into the target project | Installable now |
 | `adapter` | File copy into the target project (a native command file for an agent tool) | Installable now |
-| `provider` | — | Validates, can be merged, **not yet installable** — `tasks_to_issues.py`'s provider dispatch is a fixed list, not a dynamic loader |
-| `hook` | — | Validates, can be merged, **not yet installable** — `install_hooks.py`'s hook set is a fixed list, same reason |
+| `provider` | File copy into `.aidd/extensions/<id>/` in the target project (manifest.json + code) | Installable now |
+| `hook` | File copy into `.aidd/extensions/<id>/` in the target project (manifest.json + code) | Installable now |
 
-`provider`/`hook` packages are accepted in the catalog schema on purpose, ahead of the
-dynamic-loading support they'd need to actually install — so a submission doesn't have
-to wait for that work to be reviewed and merged. `marketplace.py install` refuses one
-with a clear message instead of silently doing nothing.
+`provider`/`hook` packages install the same generic way as any other kind — the
+package's own `files` map is what points its `manifest.json` and code/script file(s)
+at `.aidd/extensions/<id>/` in the target project. Once those files land,
+[`skill/scripts/extension_registry.py`](../skill/scripts/extension_registry.py)
+auto-discovers anything under `.aidd/extensions/**/manifest.json`, so the extension is
+live with no further wiring. See that module's own docstring for the manifest.json
+shape a `provider`/`hook` package must ship.
 
 ## Using it
 
