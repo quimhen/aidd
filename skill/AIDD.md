@@ -48,13 +48,49 @@ templates/
 ├── tasks.md
 ├── qa-audit.md
 ├── comprehensive-documentation.md
+├── constitution.md            # project-root, not per-feature — see "Project constitution" below
 └── design-system/
     ├── MASTER.md              # global visual source of truth (Step 0, no-mockup case)
     ├── page-override.md       # per-page/per-screen exception to Master
     └── components-index.md   # project-wide COMP-nnn registry — check before minting a new one
 
 scripts/
-└── check_spec.py              # mechanical gap-checker — run before the Step 6 Auditor reads by hand
+├── check_spec.py              # mechanical gap-checker — run before the Step 6 Auditor reads by hand
+├── check_constitution.py      # runs constitution.md's checkable rules — see below
+└── tasks_to_issues.py         # turns an approved tasks.md into real GitHub issues (dry-run by default)
+```
+
+## Project constitution
+
+**One file, project-root, not per-feature.** Copy `templates/constitution.md` once per project —
+it's what every spec inherits without restating it: locked stack decisions, and project-specific
+rules a generic AIDD default wouldn't cover. The difference from a plain principles document: the
+template splits rules into **prose** (judgment calls, not mechanically checkable) and a
+**Checkable rules table** (`Rule | Type (forbidden/required) | Pattern | Applies to (glob)`) that
+`scripts/check_constitution.py` runs for real — `forbidden` fails if the pattern appears anywhere
+under the glob, `required` fails if it appears nowhere. A rule an agent can only promise to follow
+is worth less than one a script actually checks; put a rule in the checkable table whenever it
+*can* be expressed as a pattern, and keep the prose section for genuine judgment calls only.
+
+```bash
+python scripts/check_constitution.py [project-root]
+```
+
+Run this alongside `check_spec.py` before Step 6 signs off — the constitution covers project-wide
+invariants, `check_spec.py` covers one spec's own internal consistency; neither replaces the other.
+
+## GitHub integration
+
+Once Step 4's task list is approved, `scripts/tasks_to_issues.py` turns each task row into a real
+GitHub issue (via the `gh` CLI), carrying over the row's codes/target file/scope note plus its
+Classify/Estimate/Decompose/Assign detail block as the issue body. Defaults to a dry run that only
+prints what it would create; a `.aidd-issues.json` file next to `tasks.md` tracks what's already
+synced, so re-running after adding new tasks never duplicates issues for ones already created —
+the same "write the reference back, never duplicate" discipline the PR/Spec ref columns already
+use elsewhere.
+
+```bash
+python scripts/tasks_to_issues.py specs/[###-feature]/tasks.md --apply
 ```
 
 ## Speed: what actually cuts time-to-correct-result

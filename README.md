@@ -27,18 +27,26 @@ where the tool allows it, followed as a written discipline everywhere else.
   (`hooks/require_independent_audit.py`), not just a rule stated in a doc.
 - **Works the same across tools.** One methodology (`skill/AIDD.md`), thin adapters per tool — no
   relearning the process when the assistant changes.
+- **Has a constitution that's actually checked.** Project-wide rules split into judgment calls
+  (prose) and checkable ones (a pattern + glob table `check_constitution.py` runs for real) — not
+  a principles doc trusted to memory.
+- **Syncs to GitHub, not just markdown.** An approved `tasks.md` becomes real, trackable GitHub
+  issues via `tasks_to_issues.py` — dry-run by default, never duplicates on re-run.
 
 ## What's in this repo
 
-- **`skill/`** — the Claude Code skill: `SKILL.md`, enforcement hooks (`hooks/`), the search/graph
-  tools (`scripts/find_spec.py`, `scripts/check_spec.py`), and every artifact template
-  (`templates/`). `skill/AIDD.md` is the tool-agnostic methodology core every other adapter points
-  back to.
+- **`skill/`** — the Claude Code skill: `SKILL.md`, enforcement hooks (`hooks/`), and every
+  script/template (`scripts/`, `templates/`). `skill/AIDD.md` is the tool-agnostic methodology
+  core every other adapter — including this repo's own CLI — points back to.
+- **`aidd/`** — the CLI (`pip install -e .` → the `aidd` command): a thin dispatcher over
+  `skill/scripts/`, for a human at a terminal or a CI job, no AI agent required.
 - **`commands/`** — the eight `/aidd-*` pipeline-stage commands for Claude Code.
 - **`adapters/`** — drop-in adapters for other agent tools (OpenCode skill + plugin, an
   `AGENTS.md` snippet for Codex and others, a `GEMINI.md` pointer) plus `dot-aidd/`, the portable
   `.aidd/` bundle (methodology + scripts + templates, no Claude-specific pieces) any project
   installs once and every adapter reads from. See `adapters/README.md` for the install steps.
+- **`tests/`** — the stdlib `unittest` suite (zero dependencies, `python -m unittest discover -s
+  tests`), run on every push/PR by `.github/workflows/test.yml`.
 
 ## Install (Claude Code)
 
@@ -46,6 +54,20 @@ where the tool allows it, followed as a written discipline everywhere else.
 cp -r skill ~/.claude/skills/aidd
 python ~/.claude/skills/aidd/scripts/install_hooks.py
 ```
+
+## Install (the CLI — for a terminal or CI, no AI agent needed)
+
+```bash
+git clone https://github.com/quimhen/aidd.git && cd aidd
+pip install -e .
+aidd init /path/to/your/project   # installs the .aidd/ bundle there
+aidd search "login"               # search the spec graph
+aidd check specs/001-login/       # mechanical gap-check
+aidd check-constitution .         # run constitution.md's checkable rules
+aidd tasks-to-issues specs/001-login/tasks.md --apply   # sync tasks to GitHub Issues
+```
+
+Not yet published to PyPI — install from a clone for now.
 
 ## Install (other tools)
 
@@ -63,10 +85,13 @@ See `adapters/README.md`.
 
 ## Status
 
-Early — the core pipeline, the search/graph tools, and the Claude Code hooks (including the
-independent-audit gate) are built and have been run against a real production codebase. The
+Early — the core pipeline, the search/graph tools, the constitution checker, the GitHub-issues
+sync, and the Claude Code hooks (including the independent-audit gate) are built, tested (53
+stdlib `unittest` cases, run in CI), and have been run against a real production codebase. The
 OpenCode, Codex, and Gemini CLI adapters exist and follow the same methodology; only the Claude
-Code hooks currently give it technical teeth.
+Code hooks currently give it technical teeth. Not yet published to PyPI. Deliberately no
+multi-agent plugin marketplace — AIDD's adapters are curated, not a community catalog other
+projects add to without review.
 
 ## License
 

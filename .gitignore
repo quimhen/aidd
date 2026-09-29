@@ -1,3 +1,7 @@
 __pycache__/
 *.pyc
 aidd-skill.zip
+*.egg-info/
+build/
+dist/
+.pytest_cache/
