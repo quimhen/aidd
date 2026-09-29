@@ -1,5 +1,8 @@
 # AIDD — AI-Driven Development
 
+[![PyPI](https://img.shields.io/pypi/v/aidd-cli.svg)](https://pypi.org/project/aidd-cli/)
+[![Sponsor](https://img.shields.io/badge/sponsor-%E2%9D%A4-db61a2)](https://github.com/sponsors/quimhen)
+
 **A methodology for working with AI coding agents**, not another AI coding agent itself. AIDD
 makes an agent search before it creates, plan out loud before it builds, and get reviewed by
 someone other than itself before a change is called done — automatically, on Claude Code, OpenCode,
@@ -93,8 +96,7 @@ python ~/.claude/skills/aidd/scripts/install_hooks.py
 ## Install (the CLI — for a terminal or CI, no AI agent needed)
 
 ```bash
-git clone https://github.com/quimhen/aidd.git && cd aidd
-pip install -e .
+pip install aidd-cli
 aidd init /path/to/your/project   # installs the .aidd/ bundle there
 aidd search "login"               # search the spec graph
 aidd check specs/001-login/       # mechanical gap-check
@@ -110,7 +112,13 @@ aidd tracker link-pr specs/001-login/tasks.md --pr-url ... --branch ... --apply
 aidd ci install github /path/to/your/project       # install the GitHub Actions CI template
 ```
 
-Not yet published to PyPI — install from a clone for now.
+Published on PyPI as [`aidd-cli`](https://pypi.org/project/aidd-cli/). To work on AIDD itself
+instead of just using it, clone and install in editable mode:
+
+```bash
+git clone https://github.com/quimhen/aidd.git && cd aidd
+pip install -e .
+```
 
 ## Install (other tools)
 
@@ -144,10 +152,15 @@ extension registry (`extension_registry.py`, loading provider/adapter/hook exten
 `validate_catalog_entry.py`, one first-party package shipped so far: `hotfix-report`) are built,
 tested (stdlib `unittest`, run in CI), and have been run against a real production
 codebase. OpenCode, Codex, and the five generated adapter targets follow the same methodology;
-only the Claude Code hooks currently give it technical teeth. Not yet published to PyPI. The
-marketplace is intentionally not a fully automated accept path: CI validates structure and
+only the Claude Code hooks currently give it technical teeth. Published on PyPI as `aidd-cli`.
+The marketplace is intentionally not a fully automated accept path: CI validates structure and
 flags anything worth a human's attention, but a maintainer reviews and merges every catalog
 submission by hand — see `catalog/README.md`.
+
+## Support this project
+
+If AIDD saves your agent sessions real time, [sponsor it on GitHub](https://github.com/sponsors/quimhen)
+— it funds the time spent maintaining the pipeline, the hooks, and the multi-agent adapters.
 
 ## License
 
