@@ -1,0 +1,14 @@
+{
+  "id": "cursor",
+  "name": "Cursor",
+  "description": "Multi-agent adapter target: renders AIDD commands as Cursor markdown commands.",
+  "version": "1.0.0",
+  "kind": "adapter",
+  "adapter": {
+    "dir": ".cursor/commands",
+    "format": "markdown",
+    "filename": "aidd-{stem}.md",
+    "arg_placeholder": "$ARGUMENTS",
+    "invoke_phrase": "Read `.aidd/AIDD.md` in full (if you haven't already this session), then run"
+  }
+}

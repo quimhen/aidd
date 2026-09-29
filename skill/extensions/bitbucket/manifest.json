@@ -1,0 +1,9 @@
+{
+  "id": "bitbucket",
+  "name": "Bitbucket",
+  "description": "Bitbucket Cloud issue tracker provider (REST API v2.0).",
+  "version": "1.0.0",
+  "kind": "provider",
+  "entry": "provider.py",
+  "contract": "tracker.v2"
+}

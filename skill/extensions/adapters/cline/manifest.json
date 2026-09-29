@@ -1,0 +1,14 @@
+{
+  "id": "cline",
+  "name": "Cline",
+  "description": "Multi-agent adapter target: renders AIDD commands as Cline markdown workflows.",
+  "version": "1.0.0",
+  "kind": "adapter",
+  "adapter": {
+    "dir": ".clinerules/workflows",
+    "format": "markdown",
+    "filename": "aidd-{stem}.md",
+    "arg_placeholder": "$ARGUMENTS",
+    "invoke_phrase": "Read `.aidd/AIDD.md` in full (if you haven't already this session), then run"
+  }
+}

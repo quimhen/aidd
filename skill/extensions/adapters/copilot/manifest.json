@@ -1,0 +1,15 @@
+{
+  "id": "copilot",
+  "name": "GitHub Copilot",
+  "description": "Multi-agent adapter target: renders AIDD commands as GitHub Copilot markdown prompt files.",
+  "version": "1.0.0",
+  "kind": "adapter",
+  "adapter": {
+    "dir": ".github/prompts",
+    "format": "markdown",
+    "filename": "aidd-{stem}.prompt.md",
+    "arg_placeholder": "${input}",
+    "invoke_phrase": "Read `.aidd/AIDD.md` in full (if you haven't already this session), then run",
+    "frontmatter_extra": {"mode": "agent"}
+  }
+}

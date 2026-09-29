@@ -1,18 +1,29 @@
-"""Tests for scripts/generate_adapters.py + adapter_targets.py — stdlib
-unittest, no dependencies.
+"""Tests for scripts/generate_adapters.py — stdlib unittest, no dependencies.
+
+Adapter targets are no longer a hardcoded dict; they're discovered via
+extension_registry.get_adapter_targets() from skill/extensions/adapters/
+manifest.json folders (first-party) plus any project's own
+.aidd/extensions/ (project-local). Tests that need "every registered
+target" build a small in-repo fixture and patch
+extension_registry.SKILL_EXTENSIONS_DIR at it, same idiom
+test_install_hooks.py uses for SETTINGS_PATH.
 
 Run: python -m unittest discover -s tests -v
 """
+import json
 import sys
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from unittest.mock import patch
 
 SCRIPTS_DIR = Path(__file__).resolve().parent.parent / "skill" / "scripts"
 sys.path.insert(0, str(SCRIPTS_DIR))
 
+import extension_registry  # noqa: E402
 import generate_adapters as ga  # noqa: E402
-from adapter_targets import TARGETS  # noqa: E402
+
+REAL_TARGETS = extension_registry.get_adapter_targets()
 
 SAMPLE_SOURCE = (
     "---\n"
@@ -97,7 +108,7 @@ class TestGenerate(unittest.TestCase):
     def test_writes_one_file_per_source_command(self):
         with TemporaryDirectory() as d:
             root = Path(d)
-            written = ga.generate("cursor", root, force=True)
+            written = ga.generate("cursor", root, REAL_TARGETS, force=True)
             self.assertEqual(len(written), len(ga.list_source_commands()))
             for f in written:
                 self.assertTrue(f.is_file())
@@ -108,24 +119,83 @@ class TestGenerate(unittest.TestCase):
     def test_skips_existing_without_force(self):
         with TemporaryDirectory() as d:
             root = Path(d)
-            first = ga.generate("gemini", root, force=False)
+            first = ga.generate("gemini", root, REAL_TARGETS, force=False)
             self.assertTrue(first)
-            second = ga.generate("gemini", root, force=False)
+            second = ga.generate("gemini", root, REAL_TARGETS, force=False)
             self.assertEqual(second, [])
 
     def test_force_overwrites_existing(self):
         with TemporaryDirectory() as d:
             root = Path(d)
-            ga.generate("gemini", root, force=False)
-            forced = ga.generate("gemini", root, force=True)
+            ga.generate("gemini", root, REAL_TARGETS, force=False)
+            forced = ga.generate("gemini", root, REAL_TARGETS, force=True)
             self.assertEqual(len(forced), len(ga.list_source_commands()))
 
     def test_every_registered_target_generates_without_error(self):
         with TemporaryDirectory() as d:
             root = Path(d)
-            for key in TARGETS:
-                written = ga.generate(key, root, force=True)
+            for key in REAL_TARGETS:
+                written = ga.generate(key, root, REAL_TARGETS, force=True)
                 self.assertEqual(len(written), len(ga.list_source_commands()), key)
+
+
+class TestDiscoveryEndToEnd(unittest.TestCase):
+    """Verifies the NEW discovery path (extension_registry.get_adapter_targets)
+    end-to-end, using a small in-repo fixture instead of the real
+    skill/extensions/adapters/ folder — so this test is independent of
+    whatever first-party adapters happen to exist."""
+
+    def _make_fixture(self, tmp_root: Path):
+        ext_dir = tmp_root / "extensions"
+        for key, dirname, fmt, arg_placeholder in (
+            ("fakeagent-a", ".fakeagent-a/commands", "markdown", "$ARGUMENTS"),
+            ("fakeagent-b", ".fakeagent-b/commands", "toml", "{{args}}"),
+        ):
+            folder = ext_dir / "adapters" / key
+            folder.mkdir(parents=True, exist_ok=True)
+            manifest = {
+                "id": key,
+                "name": f"Fake Agent {key[-1].upper()}",
+                "description": "Test fixture adapter.",
+                "version": "1.0.0",
+                "kind": "adapter",
+                "adapter": {
+                    "dir": dirname,
+                    "format": fmt,
+                    "filename": "aidd-{stem}." + ("md" if fmt == "markdown" else "toml"),
+                    "arg_placeholder": arg_placeholder,
+                    "invoke_phrase": "Read the fixture docs, then run",
+                },
+            }
+            (folder / "manifest.json").write_text(
+                json.dumps(manifest), encoding="utf-8"
+            )
+        return ext_dir
+
+    def test_get_adapter_targets_discovers_fixture(self):
+        with TemporaryDirectory() as d:
+            fixture_ext_dir = self._make_fixture(Path(d))
+            with patch.object(extension_registry, "SKILL_EXTENSIONS_DIR", fixture_ext_dir):
+                targets = extension_registry.get_adapter_targets()
+        self.assertEqual(set(targets), {"fakeagent-a", "fakeagent-b"})
+        self.assertEqual(targets["fakeagent-a"]["format"], "markdown")
+        self.assertEqual(targets["fakeagent-b"]["format"], "toml")
+        self.assertEqual(targets["fakeagent-a"]["name"], "Fake Agent A")
+
+    def test_generate_end_to_end_from_discovered_targets(self):
+        with TemporaryDirectory() as d:
+            fixture_ext_dir = self._make_fixture(Path(d))
+            with patch.object(extension_registry, "SKILL_EXTENSIONS_DIR", fixture_ext_dir):
+                targets = extension_registry.get_adapter_targets()
+            with TemporaryDirectory() as project_dir:
+                root = Path(project_dir)
+                written = ga.generate("fakeagent-a", root, targets, force=True)
+                self.assertEqual(len(written), len(ga.list_source_commands()))
+                for f in written:
+                    self.assertTrue(f.is_file())
+                    self.assertTrue(str(f).replace("\\", "/").endswith(
+                        f".fakeagent-a/commands/{f.name}"
+                    ))
 
 
 if __name__ == "__main__":

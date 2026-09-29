@@ -1,0 +1,14 @@
+{
+  "id": "windsurf",
+  "name": "Windsurf",
+  "description": "Multi-agent adapter target: renders AIDD commands as Windsurf markdown workflows.",
+  "version": "1.0.0",
+  "kind": "adapter",
+  "adapter": {
+    "dir": ".windsurf/workflows",
+    "format": "markdown",
+    "filename": "aidd-{stem}.md",
+    "arg_placeholder": "$ARGUMENTS",
+    "invoke_phrase": "Read `.aidd/AIDD.md` in full (if you haven't already this session), then run"
+  }
+}

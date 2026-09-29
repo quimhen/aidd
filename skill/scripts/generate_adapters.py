@@ -12,8 +12,9 @@ catalogs). AIDD has none of that surface by design (curated adapters, not a
 marketplace — see docs/WHY-AIDD.md), so this keeps only the part of spec-kit's
 mechanism that's actually load-bearing: read the template once, substitute a
 small fixed set of placeholders, write it out in the target's format. One
-function per format, one dict per agent (adapter_targets.py) — no classes,
-no manifest, no per-agent Python file.
+function per format, one manifest.json per agent (skill/extensions/adapters/,
+discovered via extension_registry.get_adapter_targets()) — no classes, no
+install manifest, no per-agent Python file.
 
 Regeneration is idempotent: same source template + same target config always
 produces the same bytes, so there's nothing to hash, diff, or reconcile on
@@ -35,7 +36,7 @@ if hasattr(sys.stdout, 'reconfigure'):
     sys.stdout.reconfigure(encoding='utf-8')
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from adapter_targets import TARGETS  # noqa: E402
+import extension_registry  # noqa: E402
 
 _COMMANDS_DIR = Path(__file__).resolve().parent.parent.parent / "commands"
 _SKILL_PHRASE = "Invoke the `aidd` skill and run"
@@ -134,10 +135,10 @@ _RENDERERS = {
 }
 
 
-def render_command(src: Path, target_key: str) -> tuple[str, str]:
+def render_command(src: Path, target_key: str, targets: dict) -> tuple[str, str]:
     """Return (destination filename, rendered content) for one source
     command file rendered against one target's config."""
-    target = TARGETS[target_key]
+    target = targets[target_key]
     description, raw_body = parse_source(src.read_text(encoding="utf-8"))
     body = substitute(raw_body, target)
     renderer = _RENDERERS[target["format"]]
@@ -147,15 +148,15 @@ def render_command(src: Path, target_key: str) -> tuple[str, str]:
     return filename, content
 
 
-def generate(target_key: str, project_root: Path, force: bool = False) -> list[Path]:
+def generate(target_key: str, project_root: Path, targets: dict, force: bool = False) -> list[Path]:
     """Render every source command for one target into project_root.
     Returns the list of files actually written (skips existing files unless
     force=True, and reports which ones were skipped via stderr)."""
-    target = TARGETS[target_key]
+    target = targets[target_key]
     dest_dir = project_root / target["dir"]
     written: list[Path] = []
     for src in list_source_commands():
-        filename, content = render_command(src, target_key)
+        filename, content = render_command(src, target_key, targets)
         dest = dest_dir / filename
         if dest.exists() and not force:
             print(f"skip (exists): {dest}", file=sys.stderr)
@@ -173,9 +174,13 @@ def main():
         sys.exit(0 if args else 2)
 
     if args[0] == "--list":
+        # --list has no project-root positional arg of its own (it's a pure
+        # info dump), so it discovers against Path.cwd() — the same default
+        # generate() below uses when no project-root is given on the CLI.
+        targets = extension_registry.get_adapter_targets(Path.cwd())
         print(f"{len(list_source_commands())} source command(s) in {_COMMANDS_DIR}")
         print("\nAvailable targets:")
-        for key, cfg in TARGETS.items():
+        for key, cfg in targets.items():
             print(f"  {key:10s} {cfg['name']:20s} -> {cfg['dir']}/ ({cfg['format']})")
         sys.exit(0)
 
@@ -188,18 +193,22 @@ def main():
         print(f"Not a directory: {project_root}", file=sys.stderr)
         sys.exit(2)
 
+    # Discovery must use THIS project's root, not a fixed one — a project
+    # can define its own custom adapter target in its own .aidd/extensions/.
+    targets = extension_registry.get_adapter_targets(project_root)
+
     if target_arg == "all":
-        keys = list(TARGETS)
-    elif target_arg in TARGETS:
+        keys = list(targets)
+    elif target_arg in targets:
         keys = [target_arg]
     else:
-        available = ", ".join(TARGETS)
+        available = ", ".join(targets)
         print(f"Unknown target {target_arg!r}. Available: {available}, or 'all'.", file=sys.stderr)
         sys.exit(2)
 
     total_written = 0
     for key in keys:
-        written = generate(key, project_root, force=force)
+        written = generate(key, project_root, targets, force=force)
         total_written += len(written)
         for f in written:
             print(f"wrote {f}")

@@ -1,0 +1,14 @@
+{
+  "id": "gemini",
+  "name": "Gemini CLI",
+  "description": "Multi-agent adapter target: renders AIDD commands as Gemini CLI TOML custom commands.",
+  "version": "1.0.0",
+  "kind": "adapter",
+  "adapter": {
+    "dir": ".gemini/commands",
+    "format": "toml",
+    "filename": "aidd-{stem}.toml",
+    "arg_placeholder": "{{args}}",
+    "invoke_phrase": "Read `.aidd/AIDD.md` in full (if you haven't already this session), then run"
+  }
+}

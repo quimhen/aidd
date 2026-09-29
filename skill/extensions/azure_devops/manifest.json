@@ -1,0 +1,9 @@
+{
+  "id": "azure_devops",
+  "name": "Azure DevOps",
+  "description": "Azure DevOps work-item provider (az boards CLI).",
+  "version": "1.0.0",
+  "kind": "provider",
+  "entry": "provider.py",
+  "contract": "tracker.v2"
+}
