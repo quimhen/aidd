@@ -69,6 +69,19 @@ def is_qa_audit_file(file_path):
     return Path(file_path).name == 'qa-audit.md'
 
 
+# Files that consume find_spec.py's graph (Step 3's plan.md maps SCREEN-XX/COMP-nnn
+# to code; Step 4's tasks.md is ordered by the same relationships) — gated by
+# require_graph_coherence_audit.py so a rebuilt-but-unverified graph can't be
+# planned/tasked against silently.
+GRAPH_CONSUMER_FILENAMES = {'plan.md', 'tasks.md'}
+
+
+def is_graph_consumer_file(file_path):
+    if not file_path:
+        return False
+    return Path(file_path).name in GRAPH_CONSUMER_FILENAMES
+
+
 def is_code_file(file_path):
     if not file_path:
         return False

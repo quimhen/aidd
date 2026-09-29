@@ -59,17 +59,18 @@ def cmd_check(args):
     return _run("check_spec.py", [args.spec_dir])
 
 
-def cmd_check_constitution(args):
-    return _run("check_constitution.py", [args.root] if args.root else [])
+def cmd_check_charter(args):
+    return _run("check_charter.py", [args.root] if args.root else [])
 
 
 def cmd_tasks_to_issues(args):
-    extra = []
-    if args.repo:
-        extra += ["--repo", args.repo]
-    if args.apply:
-        extra += ["--apply"]
-    return _run("tasks_to_issues.py", [args.tasks_md, *extra])
+    # Every provider-specific flag (--provider, --repo, --org, --project,
+    # --work-item-type, --workspace, --repo-slug) is forwarded verbatim via
+    # `provider_args` (argparse.REMAINDER below) instead of re-declared here
+    # one by one — tasks_to_issues.py's own argparse is the single source of
+    # truth for what a provider accepts; this CLI never re-lists it and so
+    # can't drift out of sync with it the way the old --repo-only version did.
+    return _run("tasks_to_issues.py", [args.tasks_md, *args.provider_args])
 
 
 def cmd_init(args):
@@ -129,14 +130,20 @@ def build_parser():
     p_check.add_argument("spec_dir")
     p_check.set_defaults(func=cmd_check)
 
-    p_cc = sub.add_parser("check-constitution", help="Run constitution.md's checkable rules")
+    p_cc = sub.add_parser("check-charter", help="Run charter.md's checkable rules")
     p_cc.add_argument("root", nargs="?", default=None, help="Project root (default: cwd)")
-    p_cc.set_defaults(func=cmd_check_constitution)
+    p_cc.set_defaults(func=cmd_check_charter)
 
-    p_t2i = sub.add_parser("tasks-to-issues", help="Turn an approved tasks.md into GitHub issues")
+    p_t2i = sub.add_parser(
+        "tasks-to-issues",
+        help="Turn an approved tasks.md into real issues (GitHub, Azure DevOps, or Bitbucket)",
+        description="Provider-specific flags (--provider, --repo, --org, --project, "
+                    "--work-item-type, --workspace, --repo-slug, --apply) are forwarded as-is — "
+                    "run 'python skill/scripts/tasks_to_issues.py --help' for the full list.",
+    )
     p_t2i.add_argument("tasks_md")
-    p_t2i.add_argument("--repo", default=None)
-    p_t2i.add_argument("--apply", action="store_true", help="Actually create issues (default: dry run)")
+    p_t2i.add_argument("provider_args", nargs=argparse.REMAINDER,
+                        help="Forwarded verbatim to tasks_to_issues.py, e.g. --provider azure_devops --org ... --apply")
     p_t2i.set_defaults(func=cmd_tasks_to_issues)
 
     return parser

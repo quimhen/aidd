@@ -116,6 +116,13 @@ answer to "what does this belong to" is a lookup, not a re-read.
 | `find_spec.py --list` | Lists every spec with its title, from the index — no file reads |
 | `find_spec.py --reindex` | Forces a full rebuild — an explicit escape hatch, not a normal step |
 
+Two more things print on every run: a warning if the project has specs but no project-root
+`charter.md` (Step −2 was skipped), and whether this run rebuilt the index or hit cache. A rebuild
+with a non-empty changed set means dispatch a **Graph Coherence Auditor** — scoped to just the
+changed spec(s), never the whole graph — before Step 3/4 build `plan.md`/`tasks.md` on the new
+edges. Enforced by `mark_graph_rebuild.py` + `require_graph_coherence_audit.py` (see "Enforcement
+hooks" below), not left as a step an agent could skip.
+
 ## Two failure patterns it designs against
 
 - **Late-fixed palette** — 3 pilot screens got a palette approved, then 41 more screens were built
@@ -320,7 +327,7 @@ equivalent:
 ## Enforcement hooks — installed once, active every session
 
 AIDD ships hooks so it doesn't rely on remembering to invoke it. Run `python scripts/install_hooks.py`
-once per machine to merge seven entries into `~/.claude/settings.json` (idempotent, never touches
+once per machine to merge nine entries into `~/.claude/settings.json` (idempotent, never touches
 unrelated hooks already there):
 
 | Event | Script | Effect |
@@ -332,6 +339,8 @@ unrelated hooks already there):
 | `PostToolUse` (Write\|Edit) | `mark_code_edit.py` | Timestamps the most recent code-file edit this session. |
 | `PostToolUse` (Task\|Agent) | `mark_agent_dispatch.py` | Timestamps the most recent independent subagent dispatch this session. |
 | `PreToolUse` (Write\|Edit) | `require_independent_audit.py` | Hard-blocks (exit 2) writing/updating any `qa-audit.md` unless a subagent was dispatched *after* the last code edit — makes "the Step 6 Auditor must never be the same agent that implemented the fix" an actual gate. |
+| `PostToolUse` (Bash) | `mark_graph_rebuild.py` | Timestamps the last `find_spec.py` run this session that reported the spec graph was rebuilt. |
+| `PreToolUse` (Write\|Edit) | `require_graph_coherence_audit.py` | Hard-blocks (exit 2) writing `plan.md`/`tasks.md` unless a subagent was dispatched *after* the last graph rebuild — same shape as the independent-audit gate, one step earlier: don't plan against a rebuilt-but-unverified graph. |
 
 > **Why `require_independent_audit.py` exists.** This gate was added after a real session
 > self-audited its own bug fix, wrote `qa-audit.md`, and moved on — nobody independent had
@@ -340,6 +349,14 @@ unrelated hooks already there):
 > on someone asking. It can only verify *some* subagent ran after the last edit, not that it
 > audited the right thing — raises the bar from "trivially skipped" to "requires a deliberate
 > workaround," not a formal proof.
+
+> **Why `require_graph_coherence_audit.py` exists.** Same failure shape, one step earlier: a
+> mechanical parser (`find_spec.py`) can misparse an edited row or carry over a stale
+> relationship without raising an error — it just produces a graph that looks complete and
+> is quietly wrong. Planning against that unverified graph is exactly the "trust the note,
+> don't re-check reality" mistake `check_charter.py` exists to prevent one layer up (see "A
+> rule nobody re-checks is just a claim" in `docs/WHY-AIDD.md`) — same principle, applied to
+> the graph instead of the charter.
 
 > **Language coverage.** The prompt-level nudge covers English, Spanish, Portuguese, and a handful
 > of CJK terms — not every language. Even where it stays silent, AIDD still engages: the skill's
@@ -350,6 +367,14 @@ Scope is global (every session on the machine) by design. Known gap: can't see c
 through raw `Bash` (heredocs, `sed`) — only Write/Edit.
 
 ## Pipeline
+
+### Step −2 — Project setup (one-time, before the first feature — the Charter phase)
+
+Copy `templates/charter.md` to the project root and fill it in (see "Project charter" below).
+On a brownfield project with real code but no `specs/` folder yet, run `scripts/research_project.py`
+in this same phase to propose the first candidate spec areas — see "Research mode" in `SKILL.md`.
+Everything downstream (the spec graph, every later step) depends on this phase happening first,
+not being discovered as missing partway through Step −1.
 
 ### Step −1 — Intake & search before creating
 
@@ -379,11 +404,11 @@ code.
 
 ```mermaid
 flowchart TD
-  A([Enter Sales Rep profile]) --> B[SCREEN-01 Day route]
-  B --> C{CTL-004 Open visit}
-  C -- invalid location --> D[Block: require GPS]
-  C -- valid location --> E[SCREEN-08 Customer 360]
-  E --> F[CTL-060 Order] --> H[SCREEN-09 Order]
+  A([Enter Waiter profile]) --> B[SCREEN-01 Table map]
+  B --> C{CTL-004 Open table}
+  C -- table occupied --> D[Block: table already has an open ticket]
+  C -- table free --> E[SCREEN-08 Order ticket]
+  E --> F[CTL-060 Add item] --> H[SCREEN-09 Kitchen ticket]
 ```
 
 **This diagram is the interaction surface for Step 2** — correct the diagram directly ("move this
@@ -485,42 +510,49 @@ design-system/             project-level, not per-feature
 └── pages/
     └── <page>.md
 
-constitution.md            project-root — see "Project constitution" below
+charter.md            project-root — see "Project charter" below
 ```
 
 If the project already has its own spec-management convention, these files sit inside it as the
 UI-specific layer — never force a folder structure the project doesn't use.
 
-## Project constitution
+## Project charter
 
-One file, project-root, not per-feature. Copy `templates/constitution.md` once per project — it's
+One file, project-root, not per-feature. Copy `templates/charter.md` once per project — it's
 what every spec inherits without restating it: locked stack decisions, and project-specific rules
 a generic AIDD default wouldn't cover.
 
 The difference from a plain principles document: the template splits rules into **prose**
 (judgment calls, not mechanically checkable) and a **Checkable rules table**
-(`Rule | Type (forbidden/required) | Pattern | Applies to (glob)`) that `scripts/check_constitution.py`
+(`Rule | Type (forbidden/required) | Pattern | Applies to (glob)`) that `scripts/check_charter.py`
 runs for real — `forbidden` fails if the pattern appears anywhere under the glob, `required` fails
 if it appears nowhere. A rule an agent can only promise to follow is worth less than one a script
 actually checks.
 
 ```bash
-python scripts/check_constitution.py [project-root]
+python scripts/check_charter.py [project-root]
 ```
 
-Run this alongside `check_spec.py` before Step 6 signs off — the constitution covers project-wide
+Run this alongside `check_spec.py` before Step 6 signs off — the charter covers project-wide
 invariants, `check_spec.py` covers one spec's own internal consistency.
 
-## GitHub integration
+## Issue tracker integration — GitHub, Azure DevOps, Bitbucket
 
 Once Step 4's task list is approved, `scripts/tasks_to_issues.py` turns each task row into a real
-GitHub issue (via the `gh` CLI), carrying over the row's codes/target file/scope note plus its
+tracker issue, carrying over the row's codes/target file/scope note plus its
 Classify/Estimate/Decompose/Assign detail block as the issue body. Defaults to a dry run that only
 prints what it would create; a `.aidd-issues.json` file next to `tasks.md` tracks what's already
 synced, so re-running after adding new tasks never duplicates issues for ones already created.
 
+`--provider {github,azure_devops,bitbucket}` (default `github`) picks the tracker; each is a small
+stdlib-only module under `scripts/providers/` implementing the same two-function contract.
+
 ```bash
-python scripts/tasks_to_issues.py specs/[###-feature]/tasks.md --apply
+python scripts/tasks_to_issues.py specs/[###-feature]/tasks.md --apply                       # github
+python scripts/tasks_to_issues.py specs/[###-feature]/tasks.md --provider azure_devops \
+  --org https://dev.azure.com/myorg --project MyProject --apply
+python scripts/tasks_to_issues.py specs/[###-feature]/tasks.md --provider bitbucket \
+  --workspace myworkspace --repo-slug myrepo --apply
 ```
 
 ## CLI
@@ -531,7 +563,7 @@ Everything above is also reachable without any AI agent, from a terminal or CI j
 pip install -e .   # from a clone of this repo
 aidd search "login"
 aidd check specs/001-login/
-aidd check-constitution .
+aidd check-charter .
 aidd tasks-to-issues specs/001-login/tasks.md --apply
 ```
 

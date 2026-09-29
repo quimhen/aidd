@@ -15,7 +15,7 @@ AIDD ships with hooks that make it hard to skip, instead of relying on rememberi
 python ~/.claude/skills/aidd/scripts/install_hooks.py
 ```
 
-This merges seven hook entries into `~/.claude/settings.json` (idempotent — safe to re-run, never duplicates or touches unrelated hooks already configured there):
+This merges nine hook entries into `~/.claude/settings.json` (idempotent — safe to re-run, never duplicates or touches unrelated hooks already configured there):
 
 | Event | Matcher | Script | Effect |
 |---|---|---|---|
@@ -26,10 +26,12 @@ This merges seven hook entries into `~/.claude/settings.json` (idempotent — sa
 | `PostToolUse` | `Write\|Edit` | `hooks/mark_code_edit.py` | Timestamps the most recent code-file edit this session. |
 | `PostToolUse` | `Task\|Agent` | `hooks/mark_agent_dispatch.py` | Timestamps the most recent independent subagent dispatch this session. |
 | `PreToolUse` | `Write\|Edit` | `hooks/require_independent_audit.py` | Blocks (exit 2) writing/updating any `qa-audit.md` unless a subagent was dispatched **after** the last code edit — makes Step 6's "the Auditor must never be the same agent that implemented the fix" rule a hard stop instead of prose that depends on someone remembering to check it. Fails closed if the dispatch-tracking hook's matcher name doesn't fire in a given setup (see that hook's own docstring for the caveat). |
+| `PostToolUse` | `Bash` | `hooks/mark_graph_rebuild.py` | Timestamps the last `find_spec.py` run this session whose own output said `Graph index: rebuilt` (a cache hit doesn't count — nothing new to verify). |
+| `PreToolUse` | `Write\|Edit` | `hooks/require_graph_coherence_audit.py` | Blocks (exit 2) writing/updating `plan.md` or `tasks.md` unless a subagent was dispatched **after** the last graph rebuild — makes "Graph coherence — multiagent verification" (below) a hard stop instead of prose, the same enforcement shape as the independent-audit gate above, one step earlier in the pipeline. Fails closed under the same conditions. |
 
 **Scope: global, every Claude Code session on this machine** — this was a deliberate choice (not scoped to "projects that already use AIDD"), so it also fires in unrelated projects. Loosen it by editing `hooks/require_aidd.py`'s `is_code_file` check or `hooks/prompt_trigger.py`'s keyword list if that turns out to be too broad in practice.
 
-**Known limitations:** the Write/Edit gate can't see code written through `Bash` (heredocs, `sed`, etc.) — it covers the primary authoring path, not every possible one. The independent-audit gate can only verify that *some* subagent was dispatched after the last code edit, not that it actually audited the right thing — it raises the bar from "trivially skipped" to "requires a deliberate workaround," not a formal proof.
+**Known limitations:** the Write/Edit gate can't see code written through `Bash` (heredocs, `sed`, etc.) — it covers the primary authoring path, not every possible one. The independent-audit and graph-coherence gates can only verify that *some* subagent was dispatched after the relevant event, not that it actually checked the right thing — they raise the bar from "trivially skipped" to "requires a deliberate workaround," not a formal proof. **This is the general shape of AIDD's enforcement design: every step that a prior version only described in prose and that turned out to be silently skippable gets its own hook pair (a `mark_*` timestamp + a `require_*` gate comparing two timestamps), not a rewritten paragraph asking harder.** If a future step turns out to have the same leak, extend it the same way rather than adding another sentence to SKILL.md that depends on being remembered.
 
 **Uninstall:** remove the hook entries (or the whole `"hooks"` key, if AIDD's installer was the only thing that ever wrote to it) from `~/.claude/settings.json` by hand.
 
@@ -79,7 +81,7 @@ Every artifact below has a real starting skeleton in this skill's own `templates
 ├── tasks.md
 ├── qa-audit.md
 ├── comprehensive-documentation.md
-├── constitution.md            # project-root, not per-feature — see "Project constitution" below
+├── charter.md            # project-root, not per-feature — see "Project charter" below
 └── design-system/
     ├── MASTER.md              # global visual source of truth (Step 0, no-mockup case)
     ├── page-override.md       # per-page/per-screen exception to Master
@@ -87,33 +89,34 @@ Every artifact below has a real starting skeleton in this skill's own `templates
 
 ~/.claude/skills/aidd/scripts/
 ├── check_spec.py              # mechanical gap-checker — run before the Step 6 Auditor reads by hand
-├── check_constitution.py      # runs constitution.md's checkable rules — see below
+├── check_charter.py      # runs charter.md's checkable rules — see below
 ├── research_project.py        # [optional, one-time] proposes candidate spec areas on a brownfield project with no specs/ yet — see "Research mode" below
-└── tasks_to_issues.py         # turns an approved tasks.md into real GitHub issues (dry-run by default)
+├── tasks_to_issues.py         # turns an approved tasks.md into real tracker issues (dry-run by default)
+└── providers/                 # github_provider.py / azure_devops_provider.py / bitbucket_provider.py — see "Issue tracker integration" below
 ```
 
-## Project constitution
+## Project charter
 
-**One file, project-root, not per-feature.** Copy `templates/constitution.md` once per project —
+**One file, project-root, not per-feature.** Copy `templates/charter.md` once per project —
 it's what every spec inherits without restating it: locked stack decisions, and project-specific
 rules a generic AIDD default wouldn't cover. The difference from a plain principles document: the
 template splits rules into **prose** (judgment calls, not mechanically checkable) and a
 **Checkable rules table** (`Rule | Type (forbidden/required) | Pattern | Applies to (glob)`) that
-`scripts/check_constitution.py` runs for real — `forbidden` fails if the pattern appears anywhere
+`scripts/check_charter.py` runs for real — `forbidden` fails if the pattern appears anywhere
 under the glob, `required` fails if it appears nowhere. A rule an agent can only promise to follow
 is worth less than one a script actually checks; put a rule in the checkable table whenever it
 *can* be expressed as a pattern, and keep the prose section for genuine judgment calls only.
 
 ```bash
-python ~/.claude/skills/aidd/scripts/check_constitution.py [project-root]
+python ~/.claude/skills/aidd/scripts/check_charter.py [project-root]
 ```
 
-Run this alongside `check_spec.py` before Step 6 signs off — the constitution covers project-wide
+Run this alongside `check_spec.py` before Step 6 signs off — the charter covers project-wide
 invariants, `check_spec.py` covers one spec's own internal consistency; neither replaces the other.
 
 ### Research mode — bootstrapping specs when none exist yet
 
-**Run this once, at the same time as copying `templates/constitution.md`, on a brownfield project that has real code but no `specs/` folder yet** (or only one or two). Step -1's `find_spec.py` can only search specs that already exist; a project with none has nothing for the spec graph (below) to index until someone writes the first ones. Research mode is the one-time bridge:
+**Run this once, at the same time as copying `templates/charter.md`, on a brownfield project that has real code but no `specs/` folder yet** (or only one or two). Step -1's `find_spec.py` can only search specs that already exist; a project with none has nothing for the spec graph (below) to index until someone writes the first ones. Research mode is the one-time bridge:
 
 ```bash
 python ~/.claude/skills/aidd/scripts/research_project.py [project-root]
@@ -130,19 +133,58 @@ It's a mechanical, stdlib-only directory scan — no LLM, no file content read �
 - **This is a trade, not a strict improvement**: AIDD's graph can only describe what a spec already documents — it has nothing to say about code with no spec behind it. That's exactly what Research mode above exists to bootstrap on a brownfield project, and it's also why a spec-less area of the codebase is invisible to `find_spec.py` until it gets a spec — by design, since the point of the search is "which spec owns this," not "what does this code do."
 - **Net effect**: on a project that actually follows AIDD (every feature specified before it's built), the graph is already there for free as a side effect of Step 1 — no separate build step, no per-query token cost, no file-by-file re-extraction. A file-by-file tool is the right choice for exploring an unfamiliar codebase that has no specs at all; AIDD's own graph is the right choice once specs exist, because at that point re-deriving structure from source is strictly more expensive than reading the structure the team already wrote down.
 
-## GitHub integration
+## Graph coherence — multiagent verification
+
+**Cheap and mechanical is not the same as correct.** `find_spec.py` parses `mockup-audit.md`'s tables with regex — it can misread a malformed row, silently drop an edge when a code gets renamed without updating every reference, or carry over a relationship a manual edit meant to remove. None of that raises an exception; it just produces a graph that *looks* complete and is quietly wrong. A mechanical parser can never catch its own semantic mistakes — that needs judgment, which means an LLM pass, which means it belongs to one of the specialized agents (see "Specialized agents & workflow" below), not to `find_spec.py` itself.
+
+**When it runs, and who runs it:** every time `find_spec.py` reports `Graph index: rebuilt` with a non-empty changed set (a spec's `mockup-audit.md`/`plan.md`/etc. actually changed since the last index), dispatch a **Graph Coherence Auditor** — a fork or fresh agent, scoped to just the spec(s) `find_spec.py` named as changed, never the whole graph — before Step 3 (`plan.md`) or Step 4 (`tasks.md`) build on the new relationships. Its checklist:
+- Every `SCREEN-XX` cites a `COMP-nnn`/`CTL-nnn` that actually exists in that spec's own inventories — no edge to a code that was renamed or deleted.
+- Every `CTL-nnn` that calls an `API-nnn` has that `API-nnn` actually defined in `contracts.md` (or explicitly flagged `[Not Verified]`), not just referenced.
+- No two specs silently claim the same `COMP-nnn`/`CTL-nnn` number for different things (a collision `check_spec.py` and the mechanical parse both miss, since each only reads its own spec folder).
+- The tree `find_spec.py --tree <spec-id>` prints actually matches the use case the spec's `spec.md` describes — a US-nnn rooting the wrong screens is a semantic error no regex catches.
+
+**Why this stays cheap instead of becoming a second graphify-style full-repo pass:** the Auditor reads only the spec(s) named in `changed`, not the whole `specs/` tree — the same "scope is exactly what changed" discipline the rest of AIDD already applies to Builders and Auditors elsewhere. A project with 40 specs where one changed dispatches one Auditor over one spec, not 40.
+
+**This is enforced by hooks, not left as a step someone might skip under time pressure** — see `hooks/mark_graph_rebuild.py` / `hooks/require_graph_coherence_audit.py` in the Installation table above: writing `plan.md` or `tasks.md` is blocked (exit 2) if the graph was rebuilt this session and no independent subagent has run since. The gate is the same shape as Step 6's independent-audit gate, one step earlier — a rebuilt-but-unverified graph is exactly as dangerous to plan against as an unaudited implementation is to call done.
+
+## Issue tracker integration — GitHub, Azure DevOps, Bitbucket
 
 Once Step 4's task list is approved, `scripts/tasks_to_issues.py` turns each task row into a real
-GitHub issue (via the `gh` CLI), carrying over the row's codes/target file/scope note plus its
+tracker issue, carrying over the row's codes/target file/scope note plus its
 Classify/Estimate/Decompose/Assign detail block as the issue body. Defaults to a dry run that only
 prints what it would create; a `.aidd-issues.json` file next to `tasks.md` tracks what's already
 synced, so re-running after adding new tasks never duplicates issues for ones already created —
 the same "write the reference back, never duplicate" discipline the PR/Spec ref columns already
 use elsewhere.
 
+**Three trackers, one script, one flag** — `--provider {github,azure_devops,bitbucket}` (default
+`github`, preserving this script's original behavior exactly). Each provider is a small stdlib-only
+module under `scripts/providers/` (`github_provider.py`, `azure_devops_provider.py`,
+`bitbucket_provider.py`) implementing the same two-function contract (`available()`,
+`create_issue()`) — see `providers/__init__.py`'s docstring. This is a fixed set AIDD ships with,
+not an installable plugin system: adding a fourth tracker means adding a fourth module to that
+same contract, not registering a package from a catalog. (This is where spec-kit's precedent is
+worth following — it also ships more than one tracker, not just GitHub — without adopting its
+bundle/extension/catalog machinery, which solves a different problem: distributing third-party
+add-ons across ~20 agent tools, not "which tracker does this one team use.")
+
 ```bash
+# GitHub (default) — gh CLI must be installed and authenticated (gh auth login)
 python ~/.claude/skills/aidd/scripts/tasks_to_issues.py specs/[###-feature]/tasks.md --apply
+
+# Azure DevOps — az CLI + azure-devops extension, az login done ahead of time
+python ~/.claude/skills/aidd/scripts/tasks_to_issues.py specs/[###-feature]/tasks.md \
+  --provider azure_devops --org https://dev.azure.com/myorg --project MyProject --apply
+
+# Bitbucket Cloud — REST API v2.0 directly (urllib, no extra dependency); credentials
+# via BITBUCKET_USERNAME / BITBUCKET_APP_PASSWORD env vars, never a CLI flag
+python ~/.claude/skills/aidd/scripts/tasks_to_issues.py specs/[###-feature]/tasks.md \
+  --provider bitbucket --workspace myworkspace --repo-slug myrepo --apply
 ```
+
+`--org`/`--project` (Azure DevOps) and `--workspace`/`--repo-slug` (Bitbucket) also read from
+`AZURE_DEVOPS_ORG`/`AZURE_DEVOPS_PROJECT`/`BITBUCKET_WORKSPACE`/`BITBUCKET_REPO_SLUG` env vars, so
+a project can pin its tracker config once instead of repeating it on every invocation.
 
 ## Speed: what actually cuts time-to-correct-result
 
@@ -225,6 +267,7 @@ This auditor exists because "it works" and "it's fast enough / won't degrade und
 
 - **In scope, explicitly:** the codes this task satisfies (from `tasks.md`'s approved row) and the exact target file(s) from `plan.md`. Nothing else.
 - **Out of scope, explicitly:** everything not named above. Noticing an unrelated bug, an inconsistent style elsewhere, or "a better way to do the neighboring code" is a note to report back — never a fix bundled into this PR. An agent that touches a file not listed as its target has gone out of scope, even if the change is objectively good; that's a separate task, proposed and approved on its own.
+- **Self-serve missing context from the spec graph, don't read the whole project to find it.** A dispatched agent has none of the dispatching conversation's context by design — but it doesn't need it, because the codes it was given (`SCREEN-XX`/`COMP-nnn`/`API-nnn`/…) are search keys into a graph that already exists. Its prompt states the spec id; if it needs more than what the prompt gave it, its first move is `python scripts/find_spec.py --tree <spec-id>` (the use-case → screen → component → control → API tree, one lookup) or `grep -n "<code>" specs/<spec-id>/*.md` for one code's row — never opening files across the project to reconstruct background that's already sitting in one indexed place. Reading the whole codebase "just in case" is the graphify-style expensive path (see "Spec graph — and why it stays cheap" above); a dispatched agent staying inside the spec graph is what keeps its context cheap too, not just the main conversation's.
 - **If the approved task doesn't contain enough information to proceed** — a missing schema, a code that doesn't resolve to anything in `mockup-audit.md`/`contracts.md`, two codes whose behavior conflicts, an ambiguous target when the naming contract doesn't cover a case — **the agent stops and reports exactly what's unclear, and does not implement its best guess in the meantime.** This is the same weight as the Step 4 approval gate: an assumption made here is indistinguishable, later, from a requirement — and costs the same rewritten PR the rest of this skill exists to avoid.
 - This applies to the Auditor too: it audits only the codes and files named in what it's checking, and reports (never silently "fixes") anything it finds outside that scope.
 
@@ -286,6 +329,19 @@ These platforms replace "app server holds a connection pool, calls stored proced
 ## Pipeline
 
 **Before Step -1: read the project's `STATE.md` first, in full, if one exists** (copy `templates/STATE.md` to the project root if it doesn't). It tells you the active spec, the current step, and the next action in one small read — don't re-derive that by opening every spec folder from scratch.
+
+### Step -2 — Project setup (one-time, before the first feature — this is the Charter phase)
+
+**Runs once per project, not once per feature.** Two things happen here, together, and both belong to this phase specifically because everything downstream (Step -1's `find_spec.py`, the spec graph, every later step) depends on them existing first:
+
+1. Copy `templates/charter.md` to the project root and fill it in — see "Project charter" above.
+2. **On a brownfield project with real code but no `specs/` folder yet (or only one or two): run Research mode now**, in this same phase, not later and not ad hoc when Step -1 happens to notice specs are missing:
+   ```bash
+   python ~/.claude/skills/aidd/scripts/research_project.py [project-root]
+   ```
+   This is the one-time, mechanical (stdlib-only, zero LLM, zero file-content read) directory scan that proposes candidate `specs/[###-slug]/` areas from the folder shape alone — see "Research mode" above for exactly what it does and doesn't do. Once its list is in hand, run Step 0 through Step 2 per area kept, same as any other spec.
+
+**Why this matters for cost, not just sequencing:** a general file-by-file knowledge-graph tool (e.g. a tool like graphify) has no documented structure to start from, so *every* query pays the cost of reading the whole repo and running an LLM extraction pass per file/chunk — that cost doesn't go away once a project has grown, it scales with it. AIDD is only cheap because it never does that: `find_spec.py`'s graph (see "Spec graph — and why it stays cheap" above) is parsed straight out of the specs Step 1 already wrote, at near-zero token cost, forever — but that only works once specs exist. Research mode is what gets a spec-less brownfield project onto that cheap path in one bounded, one-time pass, instead of either (a) never having specs and paying graphify-style full-repo cost on every future query, or (b) writing the first specs by hand with no starting map of where the features even are. Running it here, at Charter time, is what makes every feature afterward searchable and gated the fast way from day one.
 
 ### Step -1 — Intake: classify the request, then search before creating
 
@@ -369,14 +425,14 @@ Keep it mechanical — tables and codes, not prose about how a screen "feels."
 
 ```mermaid
 flowchart TD
-  A([Enter Sales Rep profile]) --> B[SCREEN-01 Day route]
-  B --> C{CTL-004 Open visit}
-  C -- invalid location --> D[Block: require GPS]
-  C -- valid location --> E[SCREEN-08 Customer 360 record]
-  E --> F[CTL-060 Order]
-  E --> G[CTL-061 Charge]
-  F --> H[SCREEN-09 Order]
-  H --> I{CTL-077 Save / CTL-078 Send}
+  A([Enter Waiter profile]) --> B[SCREEN-01 Table map]
+  B --> C{CTL-004 Open table}
+  C -- table occupied --> D[Block: table already has an open ticket]
+  C -- table free --> E[SCREEN-08 Order ticket]
+  E --> F[CTL-060 Add item]
+  E --> G[CTL-061 Apply discount]
+  F --> H[SCREEN-09 Kitchen ticket]
+  H --> I{CTL-077 Send to kitchen / CTL-078 Cancel ticket}
 ```
 
 **This diagram is the interaction surface for Step 2**, not a diagram to review passively: present it, and have the user correct the *diagram* directly (redraw a branch, mark a node wrong, add a missing decision) instead of describing the flow in words. A round of "move this node" or "this branch is missing" is one small diff to the flowchart; the same correction attempted in prose is where a spec's back-and-forth usually stalls. Keep one flowchart per `US-nnn` (not one giant diagram for the whole feature) so a correction stays local and reviewable.
@@ -458,6 +514,7 @@ Keep this as a plain markdown file (`specs/[###-feature]/comprehensive-documenta
 
 ```
 STATE.md                       # project root, not per-feature — read first, every session, before Step -1
+charter.md                     # project root, not per-feature — Step -2, copied once, filled before the first feature
 
 specs/[###-feature-name]/
 ├── mockup-audit.md            # Step 1 — screen/component/control/behavior inventory, hash, provenance

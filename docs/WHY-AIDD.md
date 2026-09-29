@@ -90,6 +90,23 @@ password check is now real — fixed the same day it was found. The first re-che
 done by the same AI that wrote it, which is exactly the mistake this methodology exists to prevent
 — caught, and turned into the technical lock described above, the same day, on the same project.
 
+## A rule nobody re-checks is just a claim, not a fact
+
+A written principles doc ("we don't use X", "every screen has Y") is only as good as someone
+remembering to re-verify it against the actual code. Nobody does that by hand, every time — so it
+quietly goes stale, and the next AI session inherits the stale claim as fact instead of checking
+for itself.
+
+**Real example.** A production project's own hand-written architecture notes claimed two things
+were *not* in use in the codebase, and rated a third issue as low-severity. Running AIDD's charter
+check — the same rules, but as a script instead of a memory — against the real code found: both
+"not in use" claims were false (both were genuinely in use, verified in seconds), and the
+"low-severity" issue was actually 340 real occurrences across dozens of files, confirmed by
+opening one of them. Nobody had lied on purpose — the notes were just never re-run against
+reality after they were written, and an AI session reading them as ground truth would have
+carried the same wrong assumption forward. AIDD's checker doesn't get to be wrong that way,
+because it doesn't trust the note — it re-derives the fact from the code, every time it's run.
+
 ## It remembers your project, so it doesn't re-learn it every time
 
 Close the laptop, come back tomorrow — or hand it to a teammate. Without a map, the AI has to
@@ -120,6 +137,7 @@ If two or more of these sound like your week, it is:
   actually exist.
 - Your team uses more than one AI coding tool, and each one seems to "know" different things about
   the project.
+- Your architecture rules live in a doc nobody's re-checked against the actual code in months.
 
 If any of that felt familiar, AIDD is built for exactly this problem — not a new tool to learn, a
 set of habits your existing AI assistant follows for you.

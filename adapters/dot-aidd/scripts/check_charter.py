@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """
-aidd constitution checker — runs a project's constitution.md "Checkable
+aidd charter checker — runs a project's charter.md "Checkable
 rules" table for real, mechanically, instead of trusting an agent to
 remember and follow prose. Own design — this is the part that makes AIDD's
-constitution concept a genuine step past a plain principles document: the
+charter concept a genuine step past a plain principles document: the
 rules that CAN be checked, are.
 
-Two rule types, from constitution.md's Checkable rules table:
+Two rule types, from charter.md's Checkable rules table:
   forbidden — the pattern must not appear anywhere under the glob. Any match
               is a violation (file:line reported).
   required  — the pattern must appear at least once somewhere under the
@@ -17,11 +17,11 @@ Two rule types, from constitution.md's Checkable rules table:
               limitation rather than silently under- or over-reporting.)
 
 Usage:
-    python check_constitution.py [project-root]   # defaults to cwd
+    python check_charter.py [project-root]   # defaults to cwd
 
 Exit code 0 = no violations (or no checkable rules — an empty table is valid).
 Exit code 1 = violations found.
-Exit code 2 = usage error, or no constitution.md found.
+Exit code 2 = usage error, or no charter.md found.
 """
 import fnmatch
 import re
@@ -93,7 +93,7 @@ def parse_checkable_rules(text):
 
 def expand_glob(root: Path, glob_pattern: str):
     """Supports a brace list at one path segment (e.g. src/**/*.{ts,tsx}),
-    which Path.glob alone doesn't — constitution.md's own example uses one."""
+    which Path.glob alone doesn't — charter.md's own example uses one."""
     brace_match = re.search(r'\{([^{}]+)\}', glob_pattern)
     if not brace_match:
         return sorted(p for p in root.glob(glob_pattern) if p.is_file())
@@ -160,15 +160,15 @@ def main():
         print(f"Not a directory: {root}")
         sys.exit(2)
 
-    constitution_path = root / 'constitution.md'
-    if not constitution_path.exists():
-        print(f"No constitution.md found at {root} — nothing to check.")
+    charter_path = root / 'charter.md'
+    if not charter_path.exists():
+        print(f"No charter.md found at {root} — nothing to check.")
         sys.exit(2)
 
-    text = constitution_path.read_text(encoding='utf-8')
+    text = charter_path.read_text(encoding='utf-8')
     rules = parse_checkable_rules(text)
 
-    print(f"aidd constitution check — {constitution_path}")
+    print(f"aidd charter check — {charter_path}")
     print("=" * 60)
 
     if not rules:

@@ -410,38 +410,99 @@ def load_index(specs_root: Path):
     return data
 
 
-def is_stale(index: dict, spec_dirs):
+def stale_spec_names(index: dict, spec_dirs):
     """Cheap staleness check: stat() every searched file that exists, compare
-    mtimes against what's recorded — no content reads unless this returns True."""
+    mtimes against what's recorded — no content reads unless a name shows up
+    here. Returns the set of spec directory names that are new, removed, or
+    content-changed (empty set = fully cached, nothing to rebuild). Callers
+    that only care about "changed at all" can check `bool(result)`; the
+    multiagent Graph Coherence Auditor (see SKILL.md) uses the names
+    themselves to scope its re-check to just the specs that actually moved,
+    instead of re-validating the whole graph on every rebuild."""
     indexed_names = set(index.get('specs', {}).keys())
     actual_names = {d.name for d in spec_dirs}
-    if indexed_names != actual_names:
-        return True
+    changed = indexed_names ^ actual_names  # added or removed specs
     for d in spec_dirs:
+        if d.name in changed:
+            continue
         entry = index['specs'][d.name]
         recorded = entry.get('files', {})
         current_files = {}
+        broke = False
         for fname in SEARCHED_FILES:
             fpath = d / fname
             if fpath.exists():
                 try:
                     current_files[fname] = fpath.stat().st_mtime
                 except OSError:
-                    return True
+                    changed.add(d.name)
+                    broke = True
+                    break
+        if broke:
+            continue
         if set(current_files.keys()) != set(recorded.keys()):
-            return True
+            changed.add(d.name)
+            continue
         for fname, mtime in current_files.items():
             if abs(mtime - recorded.get(fname, -1)) > 0.5:
-                return True
-    return False
+                changed.add(d.name)
+                break
+    return changed
 
 
 def get_index(specs_root: Path, spec_dirs, force_reindex=False):
+    """Returns (index, rebuilt, changed_names). `changed_names` is the set of
+    specs whose SEARCHED_FILES content actually differs from what was last
+    indexed — empty on a pure cache hit. `force_reindex` has no cheap way to
+    know which subset changed, so it reports every spec name currently on
+    disk rather than an understated empty set."""
     index = None if force_reindex else load_index(specs_root)
-    if index is None or is_stale(index, spec_dirs):
+    if index is None or force_reindex:
+        changed = {d.name for d in spec_dirs}
         index = build_index(specs_root, spec_dirs)
         save_index(specs_root, index)
-    return index
+        return index, True, changed
+    changed = stale_spec_names(index, spec_dirs)
+    if changed:
+        index = build_index(specs_root, spec_dirs)
+        save_index(specs_root, index)
+        return index, True, changed
+    return index, False, set()
+
+
+def charter_warning(specs_root: Path, spec_dirs):
+    """A project that already has specs but no project-root charter.md
+    skipped Step -2 (see SKILL.md) — the spec graph still works (it only
+    depends on mockup-audit.md's own tables), but naming/DB/checkable-rules
+    consistency across those specs was never established. Returns None when
+    there's nothing to warn about (no specs yet, or charter.md exists)."""
+    if not spec_dirs:
+        return None
+    charter_path = specs_root.parent / 'charter.md'
+    if charter_path.exists():
+        return None
+    return (
+        f"WARNING: {len(spec_dirs)} spec(s) exist under {specs_root}, but no "
+        f"charter.md at {specs_root.parent} — Step -2 was skipped. The graph below "
+        f"still builds (it only reads mockup-audit.md's own tables), but run Step -2 "
+        f"(copy templates/charter.md, and scripts/research_project.py if this "
+        f"project has more unspecced code than specced) before trusting cross-spec "
+        f"consistency."
+    )
+
+
+def report_index_status(rebuilt, changed):
+    """One printed line, always — tells the calling agent whether to dispatch
+    a Graph Coherence Auditor (see SKILL.md 'Graph coherence — multiagent
+    verification') before trusting the tree/relationships just loaded."""
+    if not rebuilt:
+        print("Graph index: unchanged (cache hit) — no coherence re-check needed.")
+        return
+    changed_str = ', '.join(sorted(changed)) if changed else '(full rebuild)'
+    print(f"Graph index: rebuilt — changed: {changed_str}. If this touched "
+          f"US-nnn/SCREEN-XX/COMP-nnn/CTL-nnn/API-nnn relationships, dispatch a Graph "
+          f"Coherence Auditor scoped to just these specs before trusting new edges (see "
+          f"SKILL.md 'Graph coherence — multiagent verification').")
 
 
 def score_from_index(entry, codes, words):
@@ -517,10 +578,18 @@ def main():
         index = build_index(specs_root, spec_dirs)
         save_index(specs_root, index)
         print(f"Rebuilt {specs_root / INDEX_FILENAME} — {len(index['specs'])} spec(s) indexed.")
+        warning = charter_warning(specs_root, spec_dirs)
+        if warning:
+            print(warning)
+        report_index_status(True, {d.name for d in spec_dirs})
         sys.exit(0)
 
     if len(args) == 2 and args[0] == '--tree':
-        index = get_index(specs_root, spec_dirs)
+        index, rebuilt, changed = get_index(specs_root, spec_dirs)
+        warning = charter_warning(specs_root, spec_dirs)
+        if warning:
+            print(warning)
+        report_index_status(rebuilt, changed)
         spec_id = args[1]
         entry = index['specs'].get(spec_id)
         if entry is None:
@@ -533,7 +602,11 @@ def main():
         if not spec_dirs:
             print(f"{specs_root}: no spec folders yet.")
             sys.exit(1)
-        index = get_index(specs_root, spec_dirs)
+        index, rebuilt, changed = get_index(specs_root, spec_dirs)
+        warning = charter_warning(specs_root, spec_dirs)
+        if warning:
+            print(warning)
+        report_index_status(rebuilt, changed)
         print(f"Existing specs under {specs_root} (from index, generated {index['generated']}):")
         for name in sorted(index['specs']):
             entry = index['specs'][name]
@@ -551,7 +624,11 @@ def main():
         print(f"{specs_root}: no spec folders yet. Safe to create the first one.")
         sys.exit(1)
 
-    index = get_index(specs_root, spec_dirs)
+    index, rebuilt, changed = get_index(specs_root, spec_dirs)
+    warning = charter_warning(specs_root, spec_dirs)
+    if warning:
+        print(warning)
+    report_index_status(rebuilt, changed)
 
     results = []
     for name, entry in index['specs'].items():

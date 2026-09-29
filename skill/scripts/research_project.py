@@ -4,7 +4,7 @@ aidd research mode — bootstraps candidate spec folders on a brownfield
 project that has code but no specs/ yet (or only a few), so the spec graph
 (find_spec.py's index.toon) has something to index from day one.
 
-Where this fits: alongside copying templates/constitution.md, once per
+Where this fits: alongside copying templates/charter.md, once per
 project, BEFORE Step -1 has any specs to search. It is mechanical, stdlib
 only — it never invents spec content. It only detects candidate feature
 boundaries (route/page/screen/view-like files, grouped by directory) and

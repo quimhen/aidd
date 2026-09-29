@@ -282,14 +282,14 @@ Keep it mechanical — tables and codes, not prose about how a screen "feels."
 
 ```mermaid
 flowchart TD
-  A([Enter Sales Rep profile]) --> B[SCREEN-01 Day route]
-  B --> C{CTL-004 Open visit}
-  C -- invalid location --> D[Block: require GPS]
-  C -- valid location --> E[SCREEN-08 Customer 360 record]
-  E --> F[CTL-060 Order]
-  E --> G[CTL-061 Charge]
-  F --> H[SCREEN-09 Order]
-  H --> I{CTL-077 Save / CTL-078 Send}
+  A([Enter Waiter profile]) --> B[SCREEN-01 Table map]
+  B --> C{CTL-004 Open table}
+  C -- table occupied --> D[Block: table already has an open ticket]
+  C -- table free --> E[SCREEN-08 Order ticket]
+  E --> F[CTL-060 Add item]
+  E --> G[CTL-061 Apply discount]
+  F --> H[SCREEN-09 Kitchen ticket]
+  H --> I{CTL-077 Send to kitchen / CTL-078 Cancel ticket}
 ```
 
 **This diagram is the interaction surface for Step 2**, not a diagram to review passively: present it, and have the user correct the *diagram* directly (redraw a branch, mark a node wrong, add a missing decision) instead of describing the flow in words. A round of "move this node" or "this branch is missing" is one small diff to the flowchart; the same correction attempted in prose is where a spec's back-and-forth usually stalls. Keep one flowchart per `US-nnn` (not one giant diagram for the whole feature) so a correction stays local and reviewable.

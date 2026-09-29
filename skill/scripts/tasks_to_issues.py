@@ -1,15 +1,19 @@
 #!/usr/bin/env python3
 """
-aidd tasks → GitHub Issues — turns a spec's tasks.md into real, trackable GitHub
-issues, one per approved task, via the `gh` CLI. Own design (not a port of any
-other tool's version) — the piece the "integrate with GitHub" ask was for.
+aidd tasks -> issue tracker — turns a spec's tasks.md into real, trackable
+issues, one per approved task, in whichever tracker the project actually
+uses: GitHub (default), Azure DevOps, or Bitbucket. Own design (not a port of
+any other tool's version) — the "integrate with the issue tracker" piece,
+generalized past GitHub-only after this script's original version, following
+spec-kit's own precedent of shipping more than one tracker (its git/github
+extensions) — not its extension/catalog machinery, which AIDD doesn't have.
 
 Why this exists: tasks.md's approval gate (Step 4) makes the task list a
 dry-run the user signs off on before Step 5 starts — but once approved, the
 work of actually tracking each task (who's doing it, is it done, link the PR)
 has nowhere to live except that same markdown file. This script promotes each
-approved row to a real GitHub issue, so a team's existing GitHub workflow
-(assignees, project boards, closing via commit message) applies to it.
+approved row to a real tracker issue, so a team's existing workflow
+(assignees, boards, closing via commit message) applies to it.
 
 Safety: creating issues is external, visible state — this defaults to a dry
 run that only PRINTS what it would create. Nothing is created until --apply
@@ -22,19 +26,31 @@ tasks doesn't duplicate issues for ones already synced — the same
 PR/Spec ref columns elsewhere, applied to this new integration point.
 
 Usage:
-    python tasks_to_issues.py <path-to-tasks.md> [--repo owner/name] [--apply]
+    python tasks_to_issues.py <path-to-tasks.md> [--provider github|azure_devops|bitbucket] [--apply]
+    python tasks_to_issues.py <path-to-tasks.md> --repo owner/name --apply                    # github (default)
+    python tasks_to_issues.py <path-to-tasks.md> --provider azure_devops --org https://dev.azure.com/x --project P --apply
+    python tasks_to_issues.py <path-to-tasks.md> --provider bitbucket --workspace w --repo-slug r --apply
 
-Requires the `gh` CLI to be installed and authenticated (`gh auth status`) —
-this script only shells out to it, it does not talk to the GitHub API itself.
+Each provider is a small stdlib-only module under providers/ (see
+providers/__init__.py for the two-function contract) — this script only
+dispatches to the chosen one; it never talks to any tracker's API itself.
 
 Exit code 0 = ran successfully (dry run or apply). Exit code 2 = usage/setup error.
 """
 import argparse
 import json
 import re
-import subprocess
 import sys
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent))
+from providers import github_provider, azure_devops_provider, bitbucket_provider  # noqa: E402
+
+PROVIDERS = {
+    'github': github_provider,
+    'azure_devops': azure_devops_provider,
+    'bitbucket': bitbucket_provider,
+}
 
 if hasattr(sys.stdout, 'reconfigure'):
     sys.stdout.reconfigure(encoding='utf-8')
@@ -125,41 +141,31 @@ def save_sync_map(path: Path, data: dict):
     path.write_text(json.dumps(data, indent=2, ensure_ascii=False) + '\n', encoding='utf-8')
 
 
-def gh_available():
-    try:
-        subprocess.run(['gh', '--version'], capture_output=True, timeout=5)
-        return True
-    except (FileNotFoundError, subprocess.TimeoutExpired):
-        return False
-
-
-def create_issue(repo, title, body, apply: bool):
-    if not apply:
-        return None
-    cmd = ['gh', 'issue', 'create', '--title', title, '--body', body]
-    if repo:
-        cmd += ['--repo', repo]
-    result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
-    if result.returncode != 0:
-        print(f"  ! gh issue create failed: {result.stderr.strip()}", file=sys.stderr)
-        return None
-    return result.stdout.strip()  # gh prints the created issue's URL
-
-
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('tasks_md', type=Path, help='Path to a spec\'s tasks.md')
-    parser.add_argument('--repo', default=None, help='owner/name — defaults to gh\'s own repo detection')
+    parser.add_argument('--provider', choices=sorted(PROVIDERS), default='github',
+                         help='Issue tracker to create issues in (default: github)')
     parser.add_argument('--apply', action='store_true', help='Actually create issues. Default is a dry run.')
+    # Each provider registers its own extra args (--repo for github; --org/--project
+    # for azure_devops; --workspace/--repo-slug for bitbucket) on the same parser —
+    # only the one selected by --provider is actually consulted, but registering all
+    # three up front means --help shows every option without a two-pass parse.
+    for mod in PROVIDERS.values():
+        mod.add_provider_args(parser)
     args = parser.parse_args()
+
+    provider = PROVIDERS[args.provider]
 
     if not args.tasks_md.exists():
         print(f"Not found: {args.tasks_md}", file=sys.stderr)
         sys.exit(2)
 
-    if args.apply and not gh_available():
-        print("gh CLI not found — install it and run `gh auth login` first, or omit --apply for a dry run.", file=sys.stderr)
-        sys.exit(2)
+    if args.apply:
+        ok, reason = provider.available(args)
+        if not ok:
+            print(reason, file=sys.stderr)
+            sys.exit(2)
 
     text = args.tasks_md.read_text(encoding='utf-8')
     tasks = parse_tasks(text)
@@ -170,7 +176,7 @@ def main():
     sync_path = args.tasks_md.parent / '.aidd-issues.json'
     synced = load_sync_map(sync_path)
 
-    print(f"{'Would create' if not args.apply else 'Creating'} GitHub issues for {args.tasks_md}:")
+    print(f"{'Would create' if not args.apply else 'Creating'} {args.provider} issues for {args.tasks_md}:")
     print("=" * 60)
 
     created_any = False
@@ -194,7 +200,7 @@ def main():
         if not args.apply:
             continue
 
-        url = create_issue(args.repo, title, body, apply=True)
+        url = provider.create_issue(title, body, args, apply=True)
         if url:
             synced[task['id']] = url
             created_any = True

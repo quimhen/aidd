@@ -1,4 +1,4 @@
-"""Tests for scripts/check_constitution.py — stdlib unittest, no dependencies."""
+"""Tests for scripts/check_charter.py — stdlib unittest, no dependencies."""
 import subprocess
 import sys
 import unittest
@@ -8,7 +8,7 @@ from tempfile import TemporaryDirectory
 SCRIPTS_DIR = Path(__file__).resolve().parent.parent / "skill" / "scripts"
 sys.path.insert(0, str(SCRIPTS_DIR))
 
-import check_constitution as cc  # noqa: E402
+import check_charter as cc  # noqa: E402
 
 
 class TestParseCheckableRules(unittest.TestCase):
@@ -112,11 +112,11 @@ class TestCheckRule(unittest.TestCase):
 class TestEndToEnd(unittest.TestCase):
     def _run(self, cwd):
         return subprocess.run(
-            [sys.executable, str(SCRIPTS_DIR / "check_constitution.py"), str(cwd)],
+            [sys.executable, str(SCRIPTS_DIR / "check_charter.py"), str(cwd)],
             capture_output=True, text=True, timeout=10,
         )
 
-    def test_no_constitution_file_is_a_usage_error(self):
+    def test_no_charter_file_is_a_usage_error(self):
         with TemporaryDirectory() as d:
             result = self._run(d)
             self.assertEqual(result.returncode, 2)
@@ -124,7 +124,7 @@ class TestEndToEnd(unittest.TestCase):
     def test_clean_project_exits_zero(self):
         with TemporaryDirectory() as d:
             root = Path(d)
-            (root / "constitution.md").write_text(
+            (root / "charter.md").write_text(
                 "## Checkable rules\n| Rule | Type | Pattern | Applies to (glob) |\n|---|---|---|---|\n",
                 encoding="utf-8",
             )
@@ -134,7 +134,7 @@ class TestEndToEnd(unittest.TestCase):
     def test_violation_exits_one(self):
         with TemporaryDirectory() as d:
             root = Path(d)
-            (root / "constitution.md").write_text(
+            (root / "charter.md").write_text(
                 "## Checkable rules\n"
                 "| Rule | Type | Pattern | Applies to (glob) |\n"
                 "|---|---|---|---|\n"

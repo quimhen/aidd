@@ -1,4 +1,4 @@
-# Constitution — [project name]
+# Charter — [project name]
 
 **One file, project-root, not per-feature.** This is what every spec inherits without restating
 it — the point is that an agent reads this once and then never has to re-derive "what stack are we
@@ -6,9 +6,9 @@ on" or "are we allowed to do X" from scratch on every single task. Fill it in be
 spec, keep it current as decisions change, and cite it instead of copying it into `plan.md`.
 
 **Why this is split into two sections, not one list of principles:** a rule an agent can only
-promise to follow is worth less than one a script actually checks. Spec-kit's own constitution
+promise to follow is worth less than one a script actually checks. Spec-kit's own charter
 concept is prose the agent reads and is trusted to remember — this one is prose **plus** a table
-`scripts/check_constitution.py` runs mechanically, the same "don't trust memory, run the check"
+`scripts/check_charter.py` runs mechanically, the same "don't trust memory, run the check"
 discipline AIDD already applies everywhere else. Put a rule in the checkable table whenever it
 *can* be expressed as a pattern; the non-checkable section is for real judgment calls only, not a
 dumping ground for rules someone didn't bother to make checkable.
@@ -32,7 +32,7 @@ trade-off, a reason a normal rule doesn't apply here, a deliberate exception).
 
 - [ ] [Rule] — [why it exists, so a future agent doesn't "fix" it back]
 
-## Checkable rules (enforced — `scripts/check_constitution.py` runs these)
+## Checkable rules (enforced — `scripts/check_charter.py` runs these)
 
 | Rule | Type | Pattern | Applies to (glob) |
 |---|---|---|---|
@@ -45,16 +45,16 @@ trade-off, a reason a normal rule doesn't apply here, a deliberate exception).
   across every file the glob resolves to is a violation. (Per-file requiredness — "every page must
   have X" — isn't checked yet; see the script's own docstring.)
 - Delete the two example rows above before filling this in for real. An empty table is valid — it
-  means this project has no mechanically-checkable constitution rules yet, not that the table was
+  means this project has no mechanically-checkable charter rules yet, not that the table was
   forgotten.
 
 ## Run it
 
 ```bash
-python scripts/check_constitution.py [path-to-project-root]
+python scripts/check_charter.py [path-to-project-root]
 ```
 
 Exit code 0 = no violations. Exit code 1 = violations found (usable as a CI/pre-commit gate, the
 same way `check_spec.py` gates Step 6). Run this alongside `check_spec.py`, not instead of it — the
-constitution covers project-wide invariants, `check_spec.py` covers one spec's own internal
+charter covers project-wide invariants, `check_spec.py` covers one spec's own internal
 consistency.

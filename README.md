@@ -27,11 +27,19 @@ where the tool allows it, followed as a written discipline everywhere else.
   (`hooks/require_independent_audit.py`), not just a rule stated in a doc.
 - **Works the same across tools.** One methodology (`skill/AIDD.md`), thin adapters per tool — no
   relearning the process when the assistant changes.
-- **Has a constitution that's actually checked.** Project-wide rules split into judgment calls
-  (prose) and checkable ones (a pattern + glob table `check_constitution.py` runs for real) — not
-  a principles doc trusted to memory.
-- **Syncs to GitHub, not just markdown.** An approved `tasks.md` becomes real, trackable GitHub
-  issues via `tasks_to_issues.py` — dry-run by default, never duplicates on re-run.
+- **Has a charter that's actually checked.** Project-wide rules split into judgment calls
+  (prose) and checkable ones (a pattern + glob table `check_charter.py` runs for real) — not
+  a principles doc trusted to memory. Run against a real production project, it caught two
+  stale claims in that project's own hand-written notes about specific libraries being unused
+  (both false, verified in seconds) and a third that turned out far worse than self-rated
+  (340 real violations of a rule logged as low-severity).
+- **Verifies its own map before planning against it.** The spec graph is parsed mechanically
+  (fast, cheap), which also means it can misparse a renamed code or a stale relationship — so a
+  rebuild dispatches an independent Graph Coherence Auditor before `plan.md`/`tasks.md` build on
+  the new edges. Enforced by a hook pair, not a step an agent could skip under time pressure.
+- **Syncs to GitHub, Azure DevOps, or Bitbucket — not just markdown.** An approved `tasks.md`
+  becomes real, trackable issues via `tasks_to_issues.py --provider {github,azure_devops,
+  bitbucket}` — dry-run by default, never duplicates on re-run.
 
 ## What's in this repo
 
@@ -63,8 +71,9 @@ pip install -e .
 aidd init /path/to/your/project   # installs the .aidd/ bundle there
 aidd search "login"               # search the spec graph
 aidd check specs/001-login/       # mechanical gap-check
-aidd check-constitution .         # run constitution.md's checkable rules
-aidd tasks-to-issues specs/001-login/tasks.md --apply   # sync tasks to GitHub Issues
+aidd check-charter .         # run charter.md's checkable rules
+aidd tasks-to-issues specs/001-login/tasks.md --apply   # sync tasks (github by default)
+aidd tasks-to-issues specs/001-login/tasks.md --provider azure_devops --org ... --project ... --apply
 ```
 
 Not yet published to PyPI — install from a clone for now.
@@ -85,9 +94,10 @@ See `adapters/README.md`.
 
 ## Status
 
-Early — the core pipeline, the search/graph tools, the constitution checker, the GitHub-issues
-sync, and the Claude Code hooks (including the independent-audit gate) are built, tested (53
-stdlib `unittest` cases, run in CI), and have been run against a real production codebase. The
+Early — the core pipeline, the search/graph tools, the charter checker, the graph-coherence
+gate, the issue-tracker sync (GitHub/Azure DevOps/Bitbucket), and the Claude Code hooks (nine of
+them, including the independent-audit and graph-coherence gates) are built, tested (64 stdlib
+`unittest` cases, run in CI), and have been run against a real production codebase. The
 OpenCode, Codex, and Gemini CLI adapters exist and follow the same methodology; only the Claude
 Code hooks currently give it technical teeth. Not yet published to PyPI. Deliberately no
 multi-agent plugin marketplace — AIDD's adapters are curated, not a community catalog other

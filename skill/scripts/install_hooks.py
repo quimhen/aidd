@@ -21,6 +21,14 @@ session on this machine, not just projects that already use aidd):
                        blocks writing qa-audit.md unless a subagent was
                        dispatched after the last code edit — Step 6's Auditor
                        must never be the same agent that wrote the fix
+  - PostToolUse    -> hooks/mark_graph_rebuild.py (matcher: Bash) timestamps
+                       the last find_spec.py run that reported "Graph index:
+                       rebuilt" this session
+  - PreToolUse     -> hooks/require_graph_coherence_audit.py (matcher:
+                       Write|Edit) blocks writing plan.md/tasks.md unless a
+                       subagent was dispatched after the last graph rebuild —
+                       Step 3/4 must never plan/task against a rebuilt-but-
+                       unverified graph
 
 Idempotent: safe to run more than once. It only appends an entry if a hook with
 the same command isn't already present, and it never touches hooks belonging to
@@ -45,6 +53,8 @@ HOOK_DEFS = [
     ('PostToolUse', 'Write|Edit', SKILL_DIR / 'hooks' / 'mark_code_edit.py'),
     ('PostToolUse', 'Task|Agent', SKILL_DIR / 'hooks' / 'mark_agent_dispatch.py'),
     ('PreToolUse', 'Write|Edit', SKILL_DIR / 'hooks' / 'require_independent_audit.py'),
+    ('PostToolUse', 'Bash', SKILL_DIR / 'hooks' / 'mark_graph_rebuild.py'),
+    ('PreToolUse', 'Write|Edit', SKILL_DIR / 'hooks' / 'require_graph_coherence_audit.py'),
 ]
 
 

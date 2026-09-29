@@ -48,7 +48,7 @@ templates/
 ├── tasks.md
 ├── qa-audit.md
 ├── comprehensive-documentation.md
-├── constitution.md            # project-root, not per-feature — see "Project constitution" below
+├── charter.md            # project-root, not per-feature — see "Project charter" below
 └── design-system/
     ├── MASTER.md              # global visual source of truth (Step 0, no-mockup case)
     ├── page-override.md       # per-page/per-screen exception to Master
@@ -56,33 +56,33 @@ templates/
 
 scripts/
 ├── check_spec.py              # mechanical gap-checker — run before the Step 6 Auditor reads by hand
-├── check_constitution.py      # runs constitution.md's checkable rules — see below
+├── check_charter.py      # runs charter.md's checkable rules — see below
 ├── research_project.py        # [optional, one-time] proposes candidate spec areas on a brownfield project with no specs/ yet — see "Research mode" below
 └── tasks_to_issues.py         # turns an approved tasks.md into real GitHub issues (dry-run by default)
 ```
 
-## Project constitution
+## Project charter
 
-**One file, project-root, not per-feature.** Copy `templates/constitution.md` once per project —
+**One file, project-root, not per-feature.** Copy `templates/charter.md` once per project —
 it's what every spec inherits without restating it: locked stack decisions, and project-specific
 rules a generic AIDD default wouldn't cover. The difference from a plain principles document: the
 template splits rules into **prose** (judgment calls, not mechanically checkable) and a
 **Checkable rules table** (`Rule | Type (forbidden/required) | Pattern | Applies to (glob)`) that
-`scripts/check_constitution.py` runs for real — `forbidden` fails if the pattern appears anywhere
+`scripts/check_charter.py` runs for real — `forbidden` fails if the pattern appears anywhere
 under the glob, `required` fails if it appears nowhere. A rule an agent can only promise to follow
 is worth less than one a script actually checks; put a rule in the checkable table whenever it
 *can* be expressed as a pattern, and keep the prose section for genuine judgment calls only.
 
 ```bash
-python scripts/check_constitution.py [project-root]
+python scripts/check_charter.py [project-root]
 ```
 
-Run this alongside `check_spec.py` before Step 6 signs off — the constitution covers project-wide
+Run this alongside `check_spec.py` before Step 6 signs off — the charter covers project-wide
 invariants, `check_spec.py` covers one spec's own internal consistency; neither replaces the other.
 
 ### Research mode — bootstrapping specs when none exist yet
 
-**Run this once, at the same time as copying `templates/constitution.md`, on a brownfield project that has real code but no `specs/` folder yet** (or only one or two). Step -1's `find_spec.py` can only search specs that already exist; a project with none has nothing for the spec graph (below) to index until someone writes the first ones. Research mode is the one-time bridge:
+**Run this once, at the same time as copying `templates/charter.md`, on a brownfield project that has real code but no `specs/` folder yet** (or only one or two). Step -1's `find_spec.py` can only search specs that already exist; a project with none has nothing for the spec graph (below) to index until someone writes the first ones. Research mode is the one-time bridge:
 
 ```bash
 python scripts/research_project.py [project-root]
@@ -338,14 +338,14 @@ Keep it mechanical — tables and codes, not prose about how a screen "feels."
 
 ```mermaid
 flowchart TD
-  A([Enter Sales Rep profile]) --> B[SCREEN-01 Day route]
-  B --> C{CTL-004 Open visit}
-  C -- invalid location --> D[Block: require GPS]
-  C -- valid location --> E[SCREEN-08 Customer 360 record]
-  E --> F[CTL-060 Order]
-  E --> G[CTL-061 Charge]
-  F --> H[SCREEN-09 Order]
-  H --> I{CTL-077 Save / CTL-078 Send}
+  A([Enter Waiter profile]) --> B[SCREEN-01 Table map]
+  B --> C{CTL-004 Open table}
+  C -- table occupied --> D[Block: table already has an open ticket]
+  C -- table free --> E[SCREEN-08 Order ticket]
+  E --> F[CTL-060 Add item]
+  E --> G[CTL-061 Apply discount]
+  F --> H[SCREEN-09 Kitchen ticket]
+  H --> I{CTL-077 Send to kitchen / CTL-078 Cancel ticket}
 ```
 
 **This diagram is the interaction surface for Step 2**, not a diagram to review passively: present it, and have the user correct the *diagram* directly (redraw a branch, mark a node wrong, add a missing decision) instead of describing the flow in words. A round of "move this node" or "this branch is missing" is one small diff to the flowchart; the same correction attempted in prose is where a spec's back-and-forth usually stalls. Keep one flowchart per `US-nnn` (not one giant diagram for the whole feature) so a correction stays local and reviewable.
