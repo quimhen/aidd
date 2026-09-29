@@ -32,6 +32,30 @@ if hasattr(sys.stdout, 'reconfigure'):
     sys.stdout.reconfigure(encoding='utf-8')
 
 TABLE_ROW_RE = re.compile(r'^\|(.+)\|\s*$')
+UNESCAPED_PIPE_RE = re.compile(r'(?<!\\)\|')
+
+
+def split_cells(inner: str):
+    """Split one table row's inner text on '|', but not on a backslash-
+    escaped '\\|' — a regex alternation like `A\\|B\\|C` is a normal, expected
+    thing to want in a Pattern cell (check_charter.py's own Checkable rules
+    table), and a naive `.split('|')` would silently shred it into extra,
+    garbage columns instead of erroring loudly. Each cell then has its own
+    `\\|` unescaped back to a literal `|` — the escaping only exists to
+    survive this split, not to appear in the value itself."""
+    return [c.strip().replace('\\|', '|') for c in UNESCAPED_PIPE_RE.split(inner)]
+
+
+def unbacktick(cell: str) -> str:
+    """Charter.md's own template wraps Pattern/glob cells in backticks for
+    markdown readability (`` `console\\.log\\(` ``) — strip exactly one
+    leading+trailing backtick pair if both are present, so the compiled regex
+    is the pattern itself, not the pattern plus two literal backticks that
+    will never appear in real source and would make a `forbidden` rule
+    silently never match anything (false "no violations")."""
+    if len(cell) >= 2 and cell.startswith('`') and cell.endswith('`'):
+        return cell[1:-1]
+    return cell
 
 
 def table_rows(text, header_hint):
@@ -63,7 +87,7 @@ def table_rows(text, header_hint):
                 in_table = False
                 found_hint = False
             continue
-        cells = [c.strip() for c in m.group(1).split('|')]
+        cells = split_cells(m.group(1))
         if not header_seen:
             header_seen = True
             continue
@@ -82,7 +106,7 @@ def parse_checkable_rules(text):
     for r in rows:
         if len(r) < 4:
             continue
-        rule, rule_type, pattern, glob = r[0], r[1].strip().lower(), r[2], r[3]
+        rule, rule_type, pattern, glob = r[0], r[1].strip().lower(), unbacktick(r[2]), unbacktick(r[3])
         if rule_type not in ('forbidden', 'required'):
             continue
         if not pattern or pattern in ('-', ''):
