@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=61.0"]
+requires = ["setuptools>=77.0.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -7,12 +7,28 @@ name = "aidd-cli"
 version = "0.1.0"
 description = "AIDD — a methodology for working with AI coding agents (CLI distribution)"
 readme = "README.md"
-license = { file = "LICENSE" }
+license = "MIT"
+license-files = ["LICENSE"]
 requires-python = ">=3.10"
 dependencies = []
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development",
+    "Topic :: Software Development :: Build Tools",
+]
 
 [project.urls]
 Homepage = "https://github.com/quimhen/aidd"
+Repository = "https://github.com/quimhen/aidd"
+Issues = "https://github.com/quimhen/aidd/issues"
 Documentation = "https://github.com/quimhen/aidd/blob/master/docs/PIPELINE.md"
 
 [project.scripts]

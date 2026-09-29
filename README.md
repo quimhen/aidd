@@ -49,13 +49,16 @@ where the tool allows it, followed as a written discipline everywhere else.
   tracker status, and `aidd tracker link-pr` attaches an opened PR's URL back to its task's
   tracker issue and `tasks.md` row. CI templates for both trackers ship under
   `skill/templates/ci/`, installed with `aidd ci install {github,azure-devops}`.
-- **Has a marketplace, kept to the load-bearing parts.** `catalog/` — third-party packages
-  (templates, agent adapters, issue-tracker providers, hooks) install into *your* project with
-  `aidd marketplace install <id>`, content-hashed so `remove` never discards a file you
-  hand-edited since. A `provider`/`adapter`/`hook` package lands under
-  `.aidd/extensions/<id>/` and is auto-discovered from there — no code change to this repo
-  needed to use it. Structural validation runs in CI on every submission; a maintainer still
-  reviews and merges each one by hand — see `catalog/README.md`. Manage what's discovered
+- **Has a package-install mechanism, kept to the load-bearing parts — not yet a third-party
+  ecosystem.** `catalog/` is the marketplace *mechanism*: packages (templates, agent adapters,
+  issue-tracker providers, hooks) install into *your* project with `aidd marketplace install
+  <id>`, content-hashed so `remove` never discards a file you hand-edited since. A
+  `provider`/`adapter`/`hook` package lands under `.aidd/extensions/<id>/` and is
+  auto-discovered from there — no code change to this repo needed to use it. Structural
+  validation runs in CI on every submission; a maintainer still reviews and merges each one by
+  hand — see `catalog/README.md`. Today that catalog holds exactly one package, first-party
+  (`hotfix-report`); zero third-party submissions have been merged yet — the mechanism is built
+  and tested, the ecosystem it's built for doesn't exist yet. Manage what's discovered
   (first-party or project-local) with `aidd extensions list|info <id>|enable <id>|disable <id>`
   — see [`docs/EXTENDING.md`](docs/EXTENDING.md).
 
@@ -71,10 +74,11 @@ where the tool allows it, followed as a written discipline everywhere else.
   `AGENTS.md` snippet for Codex and others, a `GEMINI.md` pointer) plus `dot-aidd/`, the portable
   `.aidd/` bundle (methodology + scripts + templates, no Claude-specific pieces) any project
   installs once and every adapter reads from. See `adapters/README.md` for the install steps.
-- **`catalog/`** — the marketplace: `schema.json`, two registries (`catalog.json` first-party,
-  `catalog.community.json` third-party), and `packages/<id>/` folders. Installed/searched via
-  `skill/scripts/marketplace.py` (or `aidd marketplace ...`), validated in CI by
-  `skill/scripts/validate_catalog_entry.py`. See `catalog/README.md` and `catalog/CONTRIBUTING.md`.
+- **`catalog/`** — the marketplace mechanism: `schema.json`, two registries (`catalog.json`
+  first-party, currently one package; `catalog.community.json` third-party, currently empty),
+  and `packages/<id>/` folders. Installed/searched via `skill/scripts/marketplace.py` (or `aidd
+  marketplace ...`), validated in CI by `skill/scripts/validate_catalog_entry.py`. See
+  `catalog/README.md` and `catalog/CONTRIBUTING.md`.
 - **`tests/`** — the stdlib `unittest` suite (zero dependencies, `python -m unittest discover -s
   tests`), run on every push/PR by `.github/workflows/test.yml` (and `catalog-validate.yml` for
   anything touching `catalog/`).

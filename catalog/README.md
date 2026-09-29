@@ -59,9 +59,12 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
 ## Two catalogs, one merged list
 
-- `catalog.json` — first-party, maintained by this repo's own maintainers.
+- `catalog.json` — first-party, maintained by this repo's own maintainers. Currently holds
+  one package: `hotfix-report`.
 - `catalog.community.json` — third-party submissions, reviewed the same way any other
-  PR to this repo is (see CONTRIBUTING.md) before being merged into it.
+  PR to this repo is (see CONTRIBUTING.md) before being merged into it. Currently empty —
+  no third-party package has been submitted and merged yet. The mechanism below is built,
+  tested, and ready to accept one; it just hasn't happened yet.
 
 A package id must be unique across both — `validate_catalog_entry.py` enforces this,
 and CI runs it on every PR touching `catalog/`.
