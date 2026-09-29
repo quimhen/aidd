@@ -1,0 +1,23 @@
+## AIDD
+
+This project uses AIDD (AI-Driven Development) as its default pipeline for **any** change —
+UI or backend-only, a new feature or a one-line fix, regardless of size. Full methodology:
+`.aidd/AIDD.md`. Read it in full before planning or implementing a requirement, change,
+modification, update, fix, or improvement — not only when a mockup is mentioned.
+
+**Before creating anything new, search first — this is not optional:**
+```
+python .aidd/scripts/find_spec.py <a few keywords describing the request, or a SCREEN-XX/CTL-nnn/COMP-nnn/API-nnn code>
+```
+- Exit code 0 (match found) → this is an **amendment** to the top-ranked spec under `specs/`, not a new feature. Reopen it; never open a new `specs/[###-feature]/` folder for a follow-up, a fix, or a "phase 2" of something already specified.
+- Exit code 1 (no match) → safe to create a new spec, following `.aidd/AIDD.md`'s Step 0 onward.
+- `python .aidd/scripts/find_spec.py --tree <spec-id>` prints that spec's real use-case → screen → component → control → API graph.
+- `python .aidd/scripts/check_spec.py specs/[###-feature]/` is a mechanical gap-checker — run it before a manual audit pass (Step 6).
+
+State classification out loud before proceeding (`AIDD intake: NEW SPEC | AMENDMENT | AMENDMENT — Fast Lane — <reason>`), per `.aidd/AIDD.md`'s Step -1.
+
+Rules:
+- Never skip straight to writing code for a requirement/change — go through `.aidd/AIDD.md`'s pipeline (search → align → plan → tasks → build → converge), using its Fast Lane for a genuinely small, contained change.
+- A change with no visual surface (backend, API, DB, infra) skips the visual-only steps (0/1/1.5) but still goes through the rest — AIDD is not UI-only.
+- Templates for every artifact live in `.aidd/templates/`; copy the matching one for whatever step you're on instead of hand-writing table headers from scratch.
+- `specs/index.toon` is an auto-built, auto-invalidated search index — never hand-edit it; `find_spec.py` rebuilds it itself when a spec's files change.
