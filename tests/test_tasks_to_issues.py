@@ -55,6 +55,64 @@ class TestParseTasks(unittest.TestCase):
         self.assertEqual(t2i.parse_tasks("# Just a title\n\nNo table here.\n"), [])
 
 
+NEW_SHAPE_TASKS_MD = """# Tasks — example (new template shape, with Tracker ref/Status)
+
+| Task | Codes satisfied (SCREEN/COMP/CTL/API) | Target file | New view vs. reuse | Tracker ref | Status | Explicitly out of scope |
+|---|---|---|---|---|---|---|
+| T-01 | CTL-004 | session_provider.dart | reuse logic only | | | any other file |
+| T-02 | CTL-007 | session_provider.dart | reuse logic only | https://github.com/x/y/issues/2 | open | any other file |
+"""
+
+
+class TestParseTasksNewTemplateShape(unittest.TestCase):
+    """templates/tasks.md now inserts Tracker ref/Status before the last
+    column — parse_tasks() must keep reading codes/target_file/scope_note
+    correctly against this wider table."""
+
+    def test_extracts_every_task_row(self):
+        tasks = t2i.parse_tasks(NEW_SHAPE_TASKS_MD)
+        self.assertEqual([t["id"] for t in tasks], ["T-01", "T-02"])
+
+    def test_scope_note_is_still_the_last_column_not_tracker_ref_or_status(self):
+        tasks = t2i.parse_tasks(NEW_SHAPE_TASKS_MD)
+        for t in tasks:
+            self.assertEqual(t["scope_note"], "any other file")
+
+    def test_codes_and_target_file_unaffected_by_the_new_columns(self):
+        tasks = t2i.parse_tasks(NEW_SHAPE_TASKS_MD)
+        self.assertEqual(tasks[0]["codes"], "CTL-004")
+        self.assertEqual(tasks[0]["target_file"], "session_provider.dart")
+
+
+class TestFindHeaderIndex(unittest.TestCase):
+    def test_finds_header_cells_of_new_shape_table(self):
+        header = t2i.find_header_index(NEW_SHAPE_TASKS_MD, "Codes satisfied")
+        self.assertIn("Tracker ref", header)
+        self.assertIn("Status", header)
+        self.assertEqual(header[-1], "Explicitly out of scope")
+
+
+class TestUpdateTaskColumn(unittest.TestCase):
+    def test_writes_only_the_named_column_for_the_matching_row(self):
+        updated = t2i.update_task_column(NEW_SHAPE_TASKS_MD, "T-01", "Status", "open")
+        tasks = t2i.parse_tasks(updated)
+        self.assertEqual(tasks[0]["scope_note"], "any other file")  # untouched
+        self.assertIn("| T-01 | CTL-004 | session_provider.dart | reuse logic only |  | open | any other file |",
+                      updated)
+
+    def test_never_touches_a_different_row(self):
+        updated = t2i.update_task_column(NEW_SHAPE_TASKS_MD, "T-01", "Status", "open")
+        self.assertIn(
+            "| T-02 | CTL-007 | session_provider.dart | reuse logic only | "
+            "https://github.com/x/y/issues/2 | open | any other file |",
+            updated,
+        )
+
+    def test_unknown_column_leaves_text_unchanged(self):
+        updated = t2i.update_task_column(NEW_SHAPE_TASKS_MD, "T-01", "Nonexistent Column", "x")
+        self.assertEqual(updated, NEW_SHAPE_TASKS_MD)
+
+
 class TestFindDetailSection(unittest.TestCase):
     def test_captures_only_that_tasks_own_block(self):
         detail = t2i.find_detail_section(TASKS_MD, "T-01")
