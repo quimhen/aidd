@@ -484,10 +484,59 @@ design-system/             project-level, not per-feature
 ├── MASTER.md
 └── pages/
     └── <page>.md
+
+constitution.md            project-root — see "Project constitution" below
 ```
 
 If the project already has its own spec-management convention, these files sit inside it as the
 UI-specific layer — never force a folder structure the project doesn't use.
+
+## Project constitution
+
+One file, project-root, not per-feature. Copy `templates/constitution.md` once per project — it's
+what every spec inherits without restating it: locked stack decisions, and project-specific rules
+a generic AIDD default wouldn't cover.
+
+The difference from a plain principles document: the template splits rules into **prose**
+(judgment calls, not mechanically checkable) and a **Checkable rules table**
+(`Rule | Type (forbidden/required) | Pattern | Applies to (glob)`) that `scripts/check_constitution.py`
+runs for real — `forbidden` fails if the pattern appears anywhere under the glob, `required` fails
+if it appears nowhere. A rule an agent can only promise to follow is worth less than one a script
+actually checks.
+
+```bash
+python scripts/check_constitution.py [project-root]
+```
+
+Run this alongside `check_spec.py` before Step 6 signs off — the constitution covers project-wide
+invariants, `check_spec.py` covers one spec's own internal consistency.
+
+## GitHub integration
+
+Once Step 4's task list is approved, `scripts/tasks_to_issues.py` turns each task row into a real
+GitHub issue (via the `gh` CLI), carrying over the row's codes/target file/scope note plus its
+Classify/Estimate/Decompose/Assign detail block as the issue body. Defaults to a dry run that only
+prints what it would create; a `.aidd-issues.json` file next to `tasks.md` tracks what's already
+synced, so re-running after adding new tasks never duplicates issues for ones already created.
+
+```bash
+python scripts/tasks_to_issues.py specs/[###-feature]/tasks.md --apply
+```
+
+## CLI
+
+Everything above is also reachable without any AI agent, from a terminal or CI job:
+
+```bash
+pip install -e .   # from a clone of this repo
+aidd search "login"
+aidd check specs/001-login/
+aidd check-constitution .
+aidd tasks-to-issues specs/001-login/tasks.md --apply
+```
+
+`aidd` is a thin dispatcher over the same scripts an AI agent's hooks call — one implementation,
+two ways to run it.
 
 ## When to reach for it
 
