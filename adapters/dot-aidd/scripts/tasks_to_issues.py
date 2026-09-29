@@ -1,15 +1,19 @@
 #!/usr/bin/env python3
 """
-aidd tasks → GitHub Issues — turns a spec's tasks.md into real, trackable GitHub
-issues, one per approved task, via the `gh` CLI. Own design (not a port of any
-other tool's version) — the piece the "integrate with GitHub" ask was for.
+aidd tasks -> issue tracker — turns a spec's tasks.md into real, trackable
+issues, one per approved task, in whichever tracker the project actually
+uses: GitHub (default), Azure DevOps, or Bitbucket. Own design (not a port of
+any other tool's version) — the "integrate with the issue tracker" piece,
+generalized past GitHub-only after this script's original version, following
+spec-kit's own precedent of shipping more than one tracker (its git/github
+extensions) — not its extension/catalog machinery, which AIDD doesn't have.
 
 Why this exists: tasks.md's approval gate (Step 4) makes the task list a
 dry-run the user signs off on before Step 5 starts — but once approved, the
 work of actually tracking each task (who's doing it, is it done, link the PR)
 has nowhere to live except that same markdown file. This script promotes each
-approved row to a real GitHub issue, so a team's existing GitHub workflow
-(assignees, project boards, closing via commit message) applies to it.
+approved row to a real tracker issue, so a team's existing workflow
+(assignees, boards, closing via commit message) applies to it.
 
 Safety: creating issues is external, visible state — this defaults to a dry
 run that only PRINTS what it would create. Nothing is created until --apply
@@ -22,19 +26,27 @@ tasks doesn't duplicate issues for ones already synced — the same
 PR/Spec ref columns elsewhere, applied to this new integration point.
 
 Usage:
-    python tasks_to_issues.py <path-to-tasks.md> [--repo owner/name] [--apply]
+    python tasks_to_issues.py <path-to-tasks.md> [--provider github|azure_devops|bitbucket] [--apply]
+    python tasks_to_issues.py <path-to-tasks.md> --repo owner/name --apply                    # github (default)
+    python tasks_to_issues.py <path-to-tasks.md> --provider azure_devops --org https://dev.azure.com/x --project P --apply
+    python tasks_to_issues.py <path-to-tasks.md> --provider bitbucket --workspace w --repo-slug r --apply
 
-Requires the `gh` CLI to be installed and authenticated (`gh auth status`) —
-this script only shells out to it, it does not talk to the GitHub API itself.
+Each provider is a small stdlib-only module discovered at runtime via
+extension_registry.get_providers() from skill/extensions/<id>/provider.py
+(first-party) or <project_root>/.aidd/extensions/<id>/provider.py
+(project-local/marketplace-installed) — this script only dispatches to the
+chosen one; it never talks to any tracker's API itself.
 
 Exit code 0 = ran successfully (dry run or apply). Exit code 2 = usage/setup error.
 """
 import argparse
 import json
 import re
-import subprocess
 import sys
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent))
+import extension_registry  # noqa: E402
 
 if hasattr(sys.stdout, 'reconfigure'):
     sys.stdout.reconfigure(encoding='utf-8')
@@ -82,11 +94,77 @@ def table_rows(text, header_hint):
     return rows
 
 
+def find_header_index(text, header_hint):
+    """The raw header cells (as printed) of the first table found following a
+    line containing `header_hint` — same table-location rule as table_rows(),
+    but returning the header row itself instead of the data rows, so a caller
+    can look up a column's position by name (e.g. 'Tracker ref', 'Status')
+    instead of a hardcoded index."""
+    lines = text.splitlines()
+    found_hint = False
+    for line in lines:
+        stripped = line.strip()
+        if not found_hint:
+            if header_hint in line:
+                found_hint = True
+                # The hint often sits inside the header row itself (e.g. the
+                # "Codes satisfied" cell text) rather than in a preceding
+                # '## Section' heading — if so, this line already IS the
+                # header row, so return it immediately instead of skipping
+                # to the next '|' line (which would be the separator row).
+                if stripped.startswith('|'):
+                    m = TABLE_ROW_RE.match(stripped)
+                    if m:
+                        return [c.strip() for c in m.group(1).split('|')]
+            continue
+        if stripped.startswith('|'):
+            m = TABLE_ROW_RE.match(stripped)
+            if m:
+                return [c.strip() for c in m.group(1).split('|')]
+        elif stripped.startswith('#'):
+            found_hint = False
+    return []
+
+
+def update_task_column(text, task_id, column_name, new_value):
+    """Write `new_value` into the `column_name` cell of the row whose first
+    column equals `task_id`, in tasks.md's main task table. Used by
+    sync_issues.py (Status) and link_pr_to_task.py (Tracker ref) to write
+    back into columns that are populated only by these scripts, never by
+    hand. Returns the text unchanged (with a stderr warning) if the column
+    or the row isn't found — never raises, never touches any other row."""
+    header = find_header_index(text, 'Codes satisfied')
+    if column_name not in header:
+        print(f"warning: tasks.md has no {column_name!r} column — skipped", file=sys.stderr)
+        return text
+    col_idx = header.index(column_name)
+
+    lines = text.splitlines(keepends=True)
+    out = []
+    for line in lines:
+        stripped = line.rstrip('\r\n')
+        m = TABLE_ROW_RE.match(stripped.strip())
+        if m and stripped.strip().startswith('|'):
+            cells = [c.strip() for c in m.group(1).split('|')]
+            if cells and cells[0] == task_id and col_idx < len(cells):
+                cells[col_idx] = new_value
+                eol = line[len(stripped):]
+                out.append('| ' + ' | '.join(cells) + ' |' + eol)
+                continue
+        out.append(line)
+    return ''.join(out)
+
+
 def parse_tasks(text):
-    """Task | Codes satisfied | Target file | New view vs. reuse | Explicitly
-    out of scope — the exact shape templates/tasks.md ships. Extra/missing
-    trailing columns are tolerated (padded/ignored) so a project that adjusted
-    the template slightly doesn't just silently get zero tasks."""
+    """Task | Codes satisfied | Target file | New view vs. reuse | [Tracker
+    ref | Status |] Explicitly out of scope — templates/tasks.md's shape
+    (the two tracker columns were added later, immediately before the last
+    one). `codes`/`target_file` are read by fixed early index since those
+    never move; `scope_note` is always r[-1] since "Explicitly out of scope"
+    stays the last column regardless of how many tracker columns sit before
+    it. Extra/missing trailing columns are otherwise tolerated
+    (padded/ignored) so a project that adjusted the template slightly
+    doesn't just silently get zero tasks."""
     rows = table_rows(text, 'Codes satisfied')
     tasks = []
     for r in rows:
@@ -125,41 +203,33 @@ def save_sync_map(path: Path, data: dict):
     path.write_text(json.dumps(data, indent=2, ensure_ascii=False) + '\n', encoding='utf-8')
 
 
-def gh_available():
-    try:
-        subprocess.run(['gh', '--version'], capture_output=True, timeout=5)
-        return True
-    except (FileNotFoundError, subprocess.TimeoutExpired):
-        return False
-
-
-def create_issue(repo, title, body, apply: bool):
-    if not apply:
-        return None
-    cmd = ['gh', 'issue', 'create', '--title', title, '--body', body]
-    if repo:
-        cmd += ['--repo', repo]
-    result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
-    if result.returncode != 0:
-        print(f"  ! gh issue create failed: {result.stderr.strip()}", file=sys.stderr)
-        return None
-    return result.stdout.strip()  # gh prints the created issue's URL
-
-
 def main():
+    providers_map = extension_registry.get_providers(Path.cwd())
+
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('tasks_md', type=Path, help='Path to a spec\'s tasks.md')
-    parser.add_argument('--repo', default=None, help='owner/name — defaults to gh\'s own repo detection')
+    parser.add_argument('--provider', choices=sorted(providers_map), default='github',
+                         help='Issue tracker to create issues in (default: github)')
     parser.add_argument('--apply', action='store_true', help='Actually create issues. Default is a dry run.')
+    # Each provider registers its own extra args (--repo for github; --org/--project
+    # for azure_devops; --workspace/--repo-slug for bitbucket) on the same parser —
+    # only the one selected by --provider is actually consulted, but registering all
+    # up front means --help shows every option without a two-pass parse.
+    for mod in providers_map.values():
+        mod.add_provider_args(parser)
     args = parser.parse_args()
+
+    provider = providers_map[args.provider]
 
     if not args.tasks_md.exists():
         print(f"Not found: {args.tasks_md}", file=sys.stderr)
         sys.exit(2)
 
-    if args.apply and not gh_available():
-        print("gh CLI not found — install it and run `gh auth login` first, or omit --apply for a dry run.", file=sys.stderr)
-        sys.exit(2)
+    if args.apply:
+        ok, reason = provider.available(args)
+        if not ok:
+            print(reason, file=sys.stderr)
+            sys.exit(2)
 
     text = args.tasks_md.read_text(encoding='utf-8')
     tasks = parse_tasks(text)
@@ -170,7 +240,7 @@ def main():
     sync_path = args.tasks_md.parent / '.aidd-issues.json'
     synced = load_sync_map(sync_path)
 
-    print(f"{'Would create' if not args.apply else 'Creating'} GitHub issues for {args.tasks_md}:")
+    print(f"{'Would create' if not args.apply else 'Creating'} {args.provider} issues for {args.tasks_md}:")
     print("=" * 60)
 
     created_any = False
@@ -194,7 +264,7 @@ def main():
         if not args.apply:
             continue
 
-        url = create_issue(args.repo, title, body, apply=True)
+        url = provider.create_issue(title, body, args, apply=True)
         if url:
             synced[task['id']] = url
             created_any = True

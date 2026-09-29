@@ -1,0 +1,9 @@
+{
+  "id": "github",
+  "name": "GitHub",
+  "description": "GitHub issue tracker provider (gh CLI).",
+  "version": "1.0.0",
+  "kind": "provider",
+  "entry": "provider.py",
+  "contract": "tracker.v2"
+}
