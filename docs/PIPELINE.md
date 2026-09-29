@@ -545,7 +545,13 @@ prints what it would create; a `.aidd-issues.json` file next to `tasks.md` track
 synced, so re-running after adding new tasks never duplicates issues for ones already created.
 
 `--provider {github,azure_devops,bitbucket}` (default `github`) picks the tracker; each is a small
-stdlib-only module under `scripts/providers/` implementing the same two-function contract.
+stdlib-only module auto-discovered from `skill/extensions/<id>/manifest.json` (see
+`docs/EXTENDING.md`), implementing the same provider contract.
+
+Beyond one-shot creation, `scripts/sync_issues.py` (`aidd tracker sync`) diffs (or writes, with
+`--apply`) `tasks.md`'s Status column against live tracker status, and
+`scripts/link_pr_to_task.py` (`aidd tracker link-pr`) attaches an opened PR's URL back to its
+task's tracker issue and `tasks.md` row.
 
 ```bash
 python scripts/tasks_to_issues.py specs/[###-feature]/tasks.md --apply                       # github

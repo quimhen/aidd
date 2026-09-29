@@ -106,6 +106,52 @@ def cmd_adapters_generate(args):
     return _run("generate_adapters.py", generate_args)
 
 
+def cmd_extensions_list(args):
+    return _run("extension_registry.py", ["list"])
+
+
+def cmd_extensions_info(args):
+    return _run("extension_registry.py", ["info", args.id])
+
+
+def cmd_extensions_enable(args):
+    return _run("extension_registry.py", ["enable", args.id])
+
+
+def cmd_extensions_disable(args):
+    return _run("extension_registry.py", ["disable", args.id])
+
+
+def cmd_tracker_sync(args):
+    # Same forwarding discipline as cmd_tasks_to_issues: only the positional
+    # tasks_md is declared here, every provider-specific flag (--provider,
+    # --repo, --org, --project, --work-item-type, --workspace, --repo-slug,
+    # --apply) is forwarded verbatim via provider_args (argparse.REMAINDER).
+    return _run("sync_issues.py", [args.tasks_md, *args.provider_args])
+
+
+def cmd_tracker_link_pr(args):
+    # tasks_md is a positional here (unlike link_pr_to_task.py's own
+    # --tasks-md flag) so it anchors argparse.REMAINDER the same way
+    # cmd_tasks_to_issues/cmd_tracker_sync's leading positional does.
+    # argparse.REMAINDER only swallows a trailing run of flag-looking
+    # tokens (--pr-url, --branch, --task-id, --provider, --apply, ...)
+    # when a bare positional value precedes them; a REMAINDER-only
+    # subparser with --tasks-md declared as its own leading flag breaks
+    # (the first "--task-id"-shaped token after --tasks-md's value gets
+    # eaten as an unrecognized optional instead of forwarded — verified
+    # empirically). Translating back to --tasks-md here keeps
+    # link_pr_to_task.py's own CLI untouched.
+    return _run("link_pr_to_task.py", ["--tasks-md", args.tasks_md, *args.link_args])
+
+
+def cmd_ci_install(args):
+    ci_args = [args.target, args.project_root]
+    if args.force:
+        ci_args.append("--force")
+    return _run("install_ci.py", ci_args)
+
+
 def cmd_init(args):
     """Copy the tool-agnostic .aidd/ bundle (methodology + templates +
     scripts, no Claude-specific pieces) into a target project. This is
@@ -204,9 +250,10 @@ def build_parser():
     p_marketplace = sub.add_parser(
         "marketplace",
         help="Browse and install third-party packages from catalog/ (providers/adapters/templates/hooks)",
-        description="See catalog/README.md for what a package is and how to submit one. "
-                    "'provider' and 'hook' packages can be listed/searched but not installed yet "
-                    "(dynamic loading isn't wired up) — see catalog/schema.json.",
+        description="See catalog/README.md for what a package is and how to submit one. All 4 "
+                    "kinds (adapter/template/provider/hook) can be listed, searched, and installed — "
+                    "an installed provider/hook is auto-discovered from .aidd/extensions/, see "
+                    "skill/scripts/extension_registry.py.",
     )
     marketplace_sub = p_marketplace.add_subparsers(dest="marketplace_command", required=True)
 
@@ -228,6 +275,76 @@ def build_parser():
     p_mp_remove.add_argument("project_root", nargs="?", default=".")
     p_mp_remove.add_argument("--force", action="store_true", help="Remove even files modified since install")
     p_mp_remove.set_defaults(func=cmd_marketplace_remove)
+
+    p_extensions = sub.add_parser(
+        "extensions",
+        help="List, inspect, enable, or disable auto-discovered provider/adapter/hook extensions",
+        description="Extensions are discovered from skill/extensions/**/manifest.json (first-party) "
+                    "and <project>/.aidd/extensions/**/manifest.json (project-local, including anything "
+                    "'aidd marketplace install' put there) — see skill/scripts/extension_registry.py.",
+    )
+    extensions_sub = p_extensions.add_subparsers(dest="extensions_command", required=True)
+
+    p_ext_list = extensions_sub.add_parser("list", help="List every discovered extension")
+    p_ext_list.set_defaults(func=cmd_extensions_list)
+
+    p_ext_info = extensions_sub.add_parser("info", help="Show one extension's manifest")
+    p_ext_info.add_argument("id")
+    p_ext_info.set_defaults(func=cmd_extensions_info)
+
+    p_ext_enable = extensions_sub.add_parser("enable", help="Enable an extension")
+    p_ext_enable.add_argument("id")
+    p_ext_enable.set_defaults(func=cmd_extensions_enable)
+
+    p_ext_disable = extensions_sub.add_parser("disable", help="Disable an extension")
+    p_ext_disable.add_argument("id")
+    p_ext_disable.set_defaults(func=cmd_extensions_disable)
+
+    p_tracker = sub.add_parser(
+        "tracker",
+        help="Sync tasks.md status from the tracker and link opened PRs to their task's issue",
+        description="See skill/scripts/sync_issues.py and skill/scripts/link_pr_to_task.py.",
+    )
+    tracker_sub = p_tracker.add_subparsers(dest="tracker_command", required=True)
+
+    p_tracker_sync = tracker_sub.add_parser(
+        "sync",
+        help="Diff (or write, with --apply) tasks.md's Status column against live tracker status",
+        description="Provider-specific flags (--provider, --repo, --org, --project, "
+                    "--work-item-type, --workspace, --repo-slug, --apply) are forwarded as-is — "
+                    "run 'python skill/scripts/sync_issues.py --help' for the full list.",
+    )
+    p_tracker_sync.add_argument("tasks_md")
+    p_tracker_sync.add_argument("provider_args", nargs=argparse.REMAINDER,
+                                 help="Forwarded verbatim to sync_issues.py, e.g. --provider azure_devops --org ... --apply")
+    p_tracker_sync.set_defaults(func=cmd_tracker_sync)
+
+    p_tracker_link = tracker_sub.add_parser(
+        "link-pr",
+        help="Attach an opened PR's URL to its task's tracker issue and tasks.md row",
+        description="tasks_md is positional here (translated back to link_pr_to_task.py's own "
+                    "--tasks-md flag). Every other flag (--pr-url, --branch, --task-id, --provider, "
+                    "--apply, and provider-specific flags) is forwarded as-is — run "
+                    "'python skill/scripts/link_pr_to_task.py --help' for the full list.",
+    )
+    p_tracker_link.add_argument("tasks_md", help="Path to a spec's tasks.md")
+    p_tracker_link.add_argument("link_args", nargs=argparse.REMAINDER,
+                                 help="Forwarded verbatim to link_pr_to_task.py, e.g. --pr-url ... --branch ... --apply")
+    p_tracker_link.set_defaults(func=cmd_tracker_link_pr)
+
+    p_ci = sub.add_parser(
+        "ci",
+        help="Install a CI workflow file (GitHub Actions or Azure Pipelines) for this project",
+        description="See skill/scripts/install_ci.py and skill/templates/ci/*.yml. Opt-in and "
+                    "explicit, on purpose — nothing else in AIDD writes this file for you.",
+    )
+    ci_sub = p_ci.add_subparsers(dest="ci_command", required=True)
+
+    p_ci_install = ci_sub.add_parser("install", help="Copy a CI template into this project's conventional CI path")
+    p_ci_install.add_argument("target", help="github | azure-devops")
+    p_ci_install.add_argument("project_root", nargs="?", default=".", help="Target project directory (default: cwd)")
+    p_ci_install.add_argument("--force", action="store_true", help="Overwrite an existing CI file")
+    p_ci_install.set_defaults(func=cmd_ci_install)
 
     return parser
 
