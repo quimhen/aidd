@@ -51,6 +51,16 @@ python ~/.claude/skills/aidd/scripts/install_hooks.py
 
 See `adapters/README.md`.
 
+## Documentation
+
+- [**Why AIDD**](docs/WHY-AIDD.md) — what changes for you, in plain language, with the measured
+  numbers.
+- [**Pipeline reference**](docs/PIPELINE.md) — the full technical breakdown: the code system, the
+  spec graph, every step, the enforcement hooks.
+- [**FAQ**](docs/FAQ.md) — common questions. Have one that's not there? Open an
+  [issue](../../issues) or a [discussion](../../discussions).
+- [**Consulting**](docs/CONSULTING.md) — if your team wants help adopting AIDD.
+
 ## Status
 
 Early — the core pipeline, the search/graph tools, and the Claude Code hooks (including the
