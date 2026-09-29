@@ -1,0 +1,36 @@
+name: Catalog validate
+
+on:
+  pull_request:
+    paths:
+      - "catalog/**"
+  push:
+    branches: [master, main]
+    paths:
+      - "catalog/**"
+
+jobs:
+  validate:
+    name: Validate catalog structure
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Validate every package (push) or only changed ones (PR)
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            python skill/scripts/validate_catalog_entry.py --changed origin/${{ github.base_ref }}
+          else
+            python skill/scripts/validate_catalog_entry.py --all
+          fi
+      - name: Note for reviewers
+        if: github.event_name == 'pull_request'
+        run: |
+          echo "This job only checks structure/safety-relevant shape (schema conformance," \
+               "no path traversal, unique ids) and prints any content flagged for manual" \
+               "security review. It does NOT approve the submission's code — a maintainer" \
+               "still reviews and merges by hand. See catalog/CONTRIBUTING.md."

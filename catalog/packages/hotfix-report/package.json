@@ -1,0 +1,12 @@
+{
+  "id": "hotfix-report",
+  "name": "Hotfix Report",
+  "description": "A one-page incident/hotfix note template for Fast Lane fixes that need a paper trail without the full comprehensive-documentation.md.",
+  "version": "1.0.0",
+  "author": "AIDD core",
+  "license": "MIT",
+  "kind": "template",
+  "files": {
+    ".aidd/templates/hotfix-report.md": "hotfix-report.md"
+  }
+}

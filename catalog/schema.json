@@ -1,0 +1,53 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "AIDD marketplace package manifest",
+  "description": "One catalog/packages/<id>/package.json per installable package. Validated by skill/scripts/validate_catalog_entry.py before a submission is accepted.",
+  "type": "object",
+  "required": ["id", "name", "description", "version", "author", "license", "kind", "files"],
+  "additionalProperties": false,
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]{1,63}$",
+      "description": "Must match the containing folder name exactly (catalog/packages/<id>/)."
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 80
+    },
+    "description": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 280
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$",
+      "description": "Semver, no leading 'v'."
+    },
+    "author": {
+      "type": "string",
+      "minLength": 1
+    },
+    "license": {
+      "type": "string",
+      "minLength": 1
+    },
+    "kind": {
+      "type": "string",
+      "enum": ["provider", "adapter", "template", "hook"],
+      "description": "provider = tasks_to_issues.py issue tracker; adapter = agent command target; template = a spec/design-system template; hook = a Claude Code enforcement hook. Determines which install-destination convention applies — see catalog/README.md. As of v1, 'marketplace.py install' only actually installs 'adapter' and 'template' kinds (pure file copy, no code wiring needed) — 'provider' and 'hook' validate against this schema so a submission can be reviewed and merged ahead of the dynamic-loading support they need, but installing one prints a clear not-yet-supported message instead of silently doing nothing."
+    },
+    "homepage": {
+      "type": "string",
+      "format": "uri"
+    },
+    "files": {
+      "type": "object",
+      "description": "Maps a destination path (relative to the installing project root) to a source path relative to this package's own files/ folder. Every source path is validated to resolve inside files/ — no '..', no absolute paths.",
+      "minProperties": 1,
+      "additionalProperties": { "type": "string", "minLength": 1 }
+    }
+  }
+}

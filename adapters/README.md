@@ -1,8 +1,9 @@
 # AIDD — cross-agent adapters
 
 Everything here makes AIDD's methodology work identically across Claude Code, OpenCode, Codex,
-Gemini CLI/Antigravity, and any other agent tool that can run a shell command — without
-duplicating the pipeline per tool. One core, several thin pointers.
+Gemini CLI, Cursor, Windsurf, Cline, GitHub Copilot, and any other agent tool that can run a shell
+command — without duplicating the pipeline per tool. One core, several thin pointers, plus one
+generator for the tools whose native mechanism is "a command file in a fixed folder."
 
 ## Layers
 
@@ -21,7 +22,10 @@ and is a reasonable fallback for any tool with no more specific adapter below.
 **Tier 2b — `GEMINI.md`:** Gemini CLI / Antigravity's own project-instructions convention.
 Copy `GEMINI.md` as-is to the project root — it just points at `AGENTS.md`. **Not independently
 verified this session** — Antigravity's exact plugin/hook system wasn't available to inspect, so
-only the instructional layer (which is the important part) is covered here, not a hard gate.
+only the instructional layer (which is the important part) is covered here, not a hard gate. This
+is the always-read context layer; Tier 5 below additionally gives Gemini CLI real per-step native
+slash commands (`.gemini/commands/aidd-*.toml`) — the two are complementary, not a replacement of
+one by the other.
 
 **Tier 3 — OpenCode:** OpenCode has its own native skill format (confirmed identical in shape to
 Claude Code's: YAML frontmatter + markdown body) and a plugin system with at least one confirmed
@@ -47,6 +51,37 @@ Whichever agent CLI is configured to run against an Ollama-served model (OpenCod
 already picks up that tool's own adapter above; the adapter operates at the agent-tool layer,
 independent of which model is behind it.
 
+**Tier 5 — generated native commands (Gemini CLI, Cursor, Windsurf, Cline, GitHub Copilot):**
+these five agents all support the same real, documented mechanism — drop a command file with a
+description + prompt body into a fixed per-agent folder, and the tool exposes it as a native
+slash command. Rather than hand-maintain five near-identical copies of the eight
+`commands/aidd-*.md` pipeline-stage commands, `skill/scripts/generate_adapters.py` renders all
+five from that one source of truth. This is AIDD's optimized take on the mechanism spec-kit uses
+for its ~35 agent integrations: spec-kit gets there through a 3-level class hierarchy per agent
+plus an install manifest with content hashing and an upgrade/teardown lifecycle — machinery sized
+for a package-manager-scale surface (extensions/presets/bundles, community catalogs) this project
+deliberately doesn't have. AIDD keeps only the load-bearing part of that mechanism: one small
+config dict per agent (`skill/scripts/adapter_targets.py` — install dir, file format, argument
+placeholder, invocation phrasing), two renderer functions (Markdown, TOML), and idempotent
+regeneration instead of a manifest to reconcile — same source template always produces the same
+bytes, so there is nothing to hash or diff.
+
+```bash
+python skill/scripts/generate_adapters.py --list                     # see every available target
+python skill/scripts/generate_adapters.py all <project-root>          # generate every target at once
+python skill/scripts/generate_adapters.py cursor <project-root>       # or just one
+python skill/scripts/generate_adapters.py all <project-root> --force  # overwrite files that already exist
+```
+
+Or, once `pip install -e .` is done, the same thing via the CLI: `aidd adapters list` /
+`aidd adapters generate <target|all> [project-root] [--force]`.
+
+Claude Code, OpenCode, and Codex are **not** in this generator, on purpose: Claude Code's skill
+format and OpenCode's SKILL.md auto-trigger on matching request language, which is a stronger
+mechanism than an explicit per-command slash file has to offer, and Codex has no verified native
+command-file surface — see their own tiers above. Adding a sixth or seventh target later (Trae,
+Kilocode, Qwen, ...) is one new entry in `adapter_targets.py`, not a new integration module.
+
 ## Install into a new project
 
 ```bash
@@ -57,6 +92,7 @@ mkdir -p "<project>/.opencode/skills/aidd" "<project>/.opencode/plugins"
 cp opencode/skills/aidd/SKILL.md "<project>/.opencode/skills/aidd/SKILL.md"
 cp opencode/plugins/aidd.js "<project>/.opencode/plugins/aidd.js"
 # then add ".opencode/plugins/aidd.js" to .opencode/opencode.json's "plugin" array by hand
+python ../skill/scripts/generate_adapters.py all "<project>"   # Gemini CLI, Cursor, Windsurf, Cline, Copilot commands
 ```
 
 Keep `.aidd/AIDD.md` as the single edited copy of the methodology across every project and tool —

@@ -73,6 +73,39 @@ def cmd_tasks_to_issues(args):
     return _run("tasks_to_issues.py", [args.tasks_md, *args.provider_args])
 
 
+def cmd_marketplace_list(args):
+    return _run("marketplace.py", ["list"])
+
+
+def cmd_marketplace_search(args):
+    return _run("marketplace.py", ["search", args.query])
+
+
+def cmd_marketplace_install(args):
+    mp_args = ["install", args.package_id, args.project_root]
+    if args.force:
+        mp_args.append("--force")
+    return _run("marketplace.py", mp_args)
+
+
+def cmd_marketplace_remove(args):
+    mp_args = ["remove", args.package_id, args.project_root]
+    if args.force:
+        mp_args.append("--force")
+    return _run("marketplace.py", mp_args)
+
+
+def cmd_adapters_list(args):
+    return _run("generate_adapters.py", ["--list"])
+
+
+def cmd_adapters_generate(args):
+    generate_args = [args.target, args.project_root]
+    if args.force:
+        generate_args.append("--force")
+    return _run("generate_adapters.py", generate_args)
+
+
 def cmd_init(args):
     """Copy the tool-agnostic .aidd/ bundle (methodology + templates +
     scripts, no Claude-specific pieces) into a target project. This is
@@ -97,6 +130,8 @@ def cmd_init(args):
     print(f"Installed AIDD's methodology + scripts to {target}")
     print("Next: add AGENTS.md's AIDD section (see adapters/AGENTS.md.snippet) so your")
     print("agent tool actually reads it — `aidd init` alone doesn't wire that up.")
+    print("For Gemini CLI, Cursor, Windsurf, Cline, or GitHub Copilot, also run:")
+    print(f"  aidd adapters generate all {args.target}")
     return 0
 
 
@@ -145,6 +180,54 @@ def build_parser():
     p_t2i.add_argument("provider_args", nargs=argparse.REMAINDER,
                         help="Forwarded verbatim to tasks_to_issues.py, e.g. --provider azure_devops --org ... --apply")
     p_t2i.set_defaults(func=cmd_tasks_to_issues)
+
+    p_adapters = sub.add_parser(
+        "adapters",
+        help="Generate native command files for other agent tools (Gemini CLI, Cursor, Windsurf, Cline, Copilot)",
+        description="Renders commands/aidd-*.md into each agent tool's own native command "
+                    "format and directory. Claude Code, OpenCode, and Codex are not covered here — "
+                    "see adapters/README.md, they already have a richer native mechanism.",
+    )
+    adapters_sub = p_adapters.add_subparsers(dest="adapters_command", required=True)
+
+    p_adapters_list = adapters_sub.add_parser("list", help="List available adapter targets")
+    p_adapters_list.set_defaults(func=cmd_adapters_list)
+
+    p_adapters_generate = adapters_sub.add_parser(
+        "generate", help="Write native command files for one target (or 'all') into a project"
+    )
+    p_adapters_generate.add_argument("target", help="gemini | cursor | windsurf | cline | copilot | all")
+    p_adapters_generate.add_argument("project_root", nargs="?", default=".", help="Target project directory (default: cwd)")
+    p_adapters_generate.add_argument("--force", action="store_true", help="Overwrite files that already exist")
+    p_adapters_generate.set_defaults(func=cmd_adapters_generate)
+
+    p_marketplace = sub.add_parser(
+        "marketplace",
+        help="Browse and install third-party packages from catalog/ (providers/adapters/templates/hooks)",
+        description="See catalog/README.md for what a package is and how to submit one. "
+                    "'provider' and 'hook' packages can be listed/searched but not installed yet "
+                    "(dynamic loading isn't wired up) — see catalog/schema.json.",
+    )
+    marketplace_sub = p_marketplace.add_subparsers(dest="marketplace_command", required=True)
+
+    p_mp_list = marketplace_sub.add_parser("list", help="List every package in the catalog")
+    p_mp_list.set_defaults(func=cmd_marketplace_list)
+
+    p_mp_search = marketplace_sub.add_parser("search", help="Search the catalog by id/name/description")
+    p_mp_search.add_argument("query")
+    p_mp_search.set_defaults(func=cmd_marketplace_search)
+
+    p_mp_install = marketplace_sub.add_parser("install", help="Install a package into a project")
+    p_mp_install.add_argument("package_id")
+    p_mp_install.add_argument("project_root", nargs="?", default=".")
+    p_mp_install.add_argument("--force", action="store_true", help="Override a file-conflict refusal")
+    p_mp_install.set_defaults(func=cmd_marketplace_install)
+
+    p_mp_remove = marketplace_sub.add_parser("remove", help="Remove an installed package from a project")
+    p_mp_remove.add_argument("package_id")
+    p_mp_remove.add_argument("project_root", nargs="?", default=".")
+    p_mp_remove.add_argument("--force", action="store_true", help="Remove even files modified since install")
+    p_mp_remove.set_defaults(func=cmd_marketplace_remove)
 
     return parser
 

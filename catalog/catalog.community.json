@@ -1,0 +1,4 @@
+{
+  "$comment": "Third-party submissions. Add your package under catalog/packages/<id>/ (package.json + files/), then add {\"id\": \"<id>\"} here in a PR. See catalog/CONTRIBUTING.md.",
+  "packages": []
+}

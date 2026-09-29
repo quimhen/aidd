@@ -26,7 +26,10 @@ where the tool allows it, followed as a written discipline everywhere else.
   agent dispatch. On Claude Code this is an actual technical gate
   (`hooks/require_independent_audit.py`), not just a rule stated in a doc.
 - **Works the same across tools.** One methodology (`skill/AIDD.md`), thin adapters per tool — no
-  relearning the process when the assistant changes.
+  relearning the process when the assistant changes. For Claude Code, OpenCode, and Codex, that's
+  a native skill/AGENTS.md pointer; for Gemini CLI, Cursor, Windsurf, Cline, and GitHub Copilot,
+  `generate_adapters.py` renders each one's own native command-file format straight from
+  `commands/aidd-*.md` — one source, no per-agent copy to keep in sync.
 - **Has a charter that's actually checked.** Project-wide rules split into judgment calls
   (prose) and checkable ones (a pattern + glob table `check_charter.py` runs for real) — not
   a principles doc trusted to memory. Run against a real production project, it caught two
@@ -40,6 +43,11 @@ where the tool allows it, followed as a written discipline everywhere else.
 - **Syncs to GitHub, Azure DevOps, or Bitbucket — not just markdown.** An approved `tasks.md`
   becomes real, trackable issues via `tasks_to_issues.py --provider {github,azure_devops,
   bitbucket}` — dry-run by default, never duplicates on re-run.
+- **Has a marketplace, kept to the load-bearing parts.** `catalog/` — third-party packages
+  (templates, agent adapters) install into *your* project with `aidd marketplace install
+  <id>`, content-hashed so `remove` never discards a file you hand-edited since. Structural
+  validation runs in CI on every submission; a maintainer still reviews and merges each one by
+  hand — see `catalog/README.md`.
 
 ## What's in this repo
 
@@ -53,8 +61,13 @@ where the tool allows it, followed as a written discipline everywhere else.
   `AGENTS.md` snippet for Codex and others, a `GEMINI.md` pointer) plus `dot-aidd/`, the portable
   `.aidd/` bundle (methodology + scripts + templates, no Claude-specific pieces) any project
   installs once and every adapter reads from. See `adapters/README.md` for the install steps.
+- **`catalog/`** — the marketplace: `schema.json`, two registries (`catalog.json` first-party,
+  `catalog.community.json` third-party), and `packages/<id>/` folders. Installed/searched via
+  `skill/scripts/marketplace.py` (or `aidd marketplace ...`), validated in CI by
+  `skill/scripts/validate_catalog_entry.py`. See `catalog/README.md` and `catalog/CONTRIBUTING.md`.
 - **`tests/`** — the stdlib `unittest` suite (zero dependencies, `python -m unittest discover -s
-  tests`), run on every push/PR by `.github/workflows/test.yml`.
+  tests`), run on every push/PR by `.github/workflows/test.yml` (and `catalog-validate.yml` for
+  anything touching `catalog/`).
 
 ## Install (Claude Code)
 
@@ -74,6 +87,9 @@ aidd check specs/001-login/       # mechanical gap-check
 aidd check-charter .         # run charter.md's checkable rules
 aidd tasks-to-issues specs/001-login/tasks.md --apply   # sync tasks (github by default)
 aidd tasks-to-issues specs/001-login/tasks.md --provider azure_devops --org ... --project ... --apply
+aidd adapters generate all /path/to/your/project   # native commands for Gemini CLI, Cursor, Windsurf, Cline, Copilot
+aidd marketplace list                              # browse installable third-party packages
+aidd marketplace install hotfix-report /path/to/your/project
 ```
 
 Not yet published to PyPI — install from a clone for now.
@@ -90,18 +106,25 @@ See `adapters/README.md`.
   spec graph, every step, the enforcement hooks.
 - [**FAQ**](docs/FAQ.md) — common questions. Have one that's not there? Open an
   [issue](../../issues) or a [discussion](../../discussions).
+- [**Extending AIDD**](docs/EXTENDING.md) — the three internal extension seams (issue
+  tracker providers, multi-agent adapter targets, charter checkable rules), and how
+  they differ from the marketplace (`catalog/`).
 - [**Consulting**](docs/CONSULTING.md) — if your team wants help adopting AIDD.
 
 ## Status
 
 Early — the core pipeline, the search/graph tools, the charter checker, the graph-coherence
-gate, the issue-tracker sync (GitHub/Azure DevOps/Bitbucket), and the Claude Code hooks (nine of
-them, including the independent-audit and graph-coherence gates) are built, tested (64 stdlib
-`unittest` cases, run in CI), and have been run against a real production codebase. The
-OpenCode, Codex, and Gemini CLI adapters exist and follow the same methodology; only the Claude
-Code hooks currently give it technical teeth. Not yet published to PyPI. Deliberately no
-multi-agent plugin marketplace — AIDD's adapters are curated, not a community catalog other
-projects add to without review.
+gate, the issue-tracker sync (GitHub/Azure DevOps/Bitbucket), the Claude Code hooks (nine of
+them, including the independent-audit and graph-coherence gates), the multi-agent adapter
+generator (`generate_adapters.py` + `adapter_targets.py`, rendering Gemini CLI/Cursor/Windsurf/
+Cline/Copilot commands from one source), and the marketplace (`catalog/` + `marketplace.py` +
+`validate_catalog_entry.py`, one first-party package shipped so far: `hotfix-report`) are built,
+tested (178 stdlib `unittest` cases, run in CI), and have been run against a real production
+codebase. OpenCode, Codex, and the five generated adapter targets follow the same methodology;
+only the Claude Code hooks currently give it technical teeth. Not yet published to PyPI. The
+marketplace is intentionally not a fully automated accept path: CI validates structure and
+flags anything worth a human's attention, but a maintainer reviews and merges every catalog
+submission by hand — see `catalog/README.md`.
 
 ## License
 

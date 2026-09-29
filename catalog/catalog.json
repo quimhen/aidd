@@ -1,0 +1,6 @@
+{
+  "$comment": "First-party packages, maintained in this repo. Each entry's id must have a matching catalog/packages/<id>/package.json. Do not add community submissions here — those go in catalog.community.json.",
+  "packages": [
+    { "id": "hotfix-report" }
+  ]
+}
