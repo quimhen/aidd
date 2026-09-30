@@ -1,12 +1,60 @@
-# AIDD — AI-Driven Development
+<div align="center">
 
-[![PyPI](https://img.shields.io/pypi/v/aidd-cli.svg)](https://pypi.org/project/aidd-cli/)
+# ⚡ AIDD — AI-Driven Development
+### Stop AI coding agents from grading their own homework.
+
+[![PyPI version](https://img.shields.io/pypi/v/aidd-cli.svg?color=blue)](https://pypi.org/project/aidd-cli/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/)
+[![Tested on Claude Code](https://img.shields.io/badge/Enforced_on-Claude_Code-purple.svg)](https://claude.ai)
 [![Sponsor](https://img.shields.io/badge/sponsor-%E2%9D%A4-db61a2)](https://github.com/sponsors/quimhen)
 
-**A methodology for working with AI coding agents**, not another AI coding agent itself. AIDD
-makes an agent search before it creates, plan out loud before it builds, and get reviewed by
-someone other than itself before a change is called done — automatically, on Claude Code, OpenCode,
-Codex, Gemini CLI, and any other tool that can read a markdown file and run a shell command.
+**A methodology with technical teeth for AI coding agents (Claude Code, OpenCode, Codex, Gemini CLI).**
+It forces agents to search before creating, plan out loud before coding, and blocks self-approval
+via automated hooks — not another AI coding agent itself, a set of habits your existing one follows.
+
+[Explore Landing](https://aidd-landing.vercel.app/) · [Why AIDD](docs/WHY-AIDD.md) · [Pipeline Docs](docs/PIPELINE.md) · [Report Bug](https://github.com/quimhen/aidd/issues)
+
+</div>
+
+---
+
+### 🚀 10-Second Quick Start
+
+Get started in any existing repository without modifying your code:
+
+```bash
+# 1. Install the CLI
+pip install aidd-cli
+
+# 2. Initialize in your project
+aidd init .
+
+# 3. Check for architectural violations & spec gaps
+aidd check-charter .
+aidd search "auth flow"
+```
+
+> **Using Claude Code?** Install the technical enforcement gates with one command:
+> ```bash
+> cp -r skill ~/.claude/skills/aidd && python ~/.claude/skills/aidd/scripts/install_hooks.py
+> ```
+
+<div align="center">
+  <img src="docs/assets/demo-terminal.svg" alt="AIDD hook blocking a self-approved PR, then dispatching an independent QA subagent" width="760" />
+</div>
+
+---
+
+### ⚖️ Why AIDD vs. traditional prompts / spec files
+
+| Feature | Traditional rules (`CLAUDE.md`, `.cursorrules`) | AIDD methodology |
+| :--- | :--- | :--- |
+| **Compliance** | Optional (LLMs tend to skip long instructions) | **Strict / blocking** (real system hooks) |
+| **Code review** | The same agent grades its own code | **Independent subagent audit, mandatory** |
+| **UI mapping** | Duplicated, per-screen prose | **Unified codes** (`COMP-nnn`, `CTL-nnn`) |
+| **Task tracking** | Disconnected markdown nobody re-checks | **Bidirectional sync** with GitHub / Azure DevOps / Bitbucket |
+| **Context cost** | Dumps thousands of tokens into every prompt | **Indexed local lookup** (`find_spec.py`) |
 
 ## The problem
 

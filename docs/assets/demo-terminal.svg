@@ -1,0 +1,34 @@
+<svg width="760" height="430" viewBox="0 0 760 430" xmlns="http://www.w3.org/2000/svg" font-family="'SF Mono', 'Cascadia Code', 'Fira Code', Consolas, monospace" role="img" aria-label="Terminal demo: AIDD blocking a self-approved PR and dispatching an independent QA subagent">
+  <title>AIDD hook enforcement demo</title>
+  <rect width="760" height="430" rx="12" fill="#0d1117"/>
+  <rect x="0" y="0" width="760" height="36" rx="12" fill="#161b22"/>
+  <rect x="0" y="24" width="760" height="12" fill="#161b22"/>
+  <circle cx="22" cy="18" r="6" fill="#ff5f56"/>
+  <circle cx="42" cy="18" r="6" fill="#ffbd2e"/>
+  <circle cx="62" cy="18" r="6" fill="#27c93f"/>
+  <text x="380" y="23" fill="#8b949e" font-size="13" text-anchor="middle">zsh — aidd</text>
+
+  <g font-size="14.5" fill="#c9d1d9">
+    <text x="24" y="66"><tspan fill="#58a6ff">$</tspan> aidd check specs/001-auth/</text>
+
+    <text x="24" y="94" fill="#f85149">[!] ERROR: Step 6 bypassed.</text>
+    <text x="24" y="118" fill="#f85149">[!] require_independent_audit.py: Subagent audit missing.</text>
+    <text x="24" y="142" fill="#f85149">[!] The implementer cannot grade its own homework.</text>
+
+    <text x="24" y="176" fill="#7ee787">--&gt; Dispatched QA Subagent (UI &amp; Security)...</text>
+    <text x="24" y="200" fill="#7ee787">--&gt; Found 1 missing error handler in CTL-004.</text>
+
+    <text x="24" y="238"><tspan fill="#58a6ff">$</tspan> <tspan fill="#c9d1d9">aidd check-charter .</tspan></text>
+    <text x="24" y="262" fill="#e3b341">340 violation(s) across 6 rule(s) — relative imports (Art. 3.3)</text>
+
+    <text x="24" y="300"><tspan fill="#58a6ff">$</tspan> <tspan fill="#c9d1d9">aidd search "auth flow"</tspan></text>
+    <text x="24" y="324" fill="#a5a5ff">-&gt; AMEND F02-Auth-Shell: reopen its spec — do NOT create a new folder.</text>
+
+    <text x="24" y="362" fill="#8b949e">Never the same agent that wrote it. Never a guessed requirement.</text>
+    <text x="24" y="386" fill="#8b949e">Search first. Ask first. Review independently. Every time.</text>
+  </g>
+
+  <rect x="20" y="404" width="9" height="16" fill="#c9d1d9">
+    <animate attributeName="opacity" values="1;0;1" dur="1s" repeatCount="indefinite"/>
+  </rect>
+</svg>
