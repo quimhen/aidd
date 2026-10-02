@@ -215,7 +215,7 @@ The approval is the user's and is tamper-evident: ask them (AskUserQuestion) to 
 `aidd rules approve <spec_dir>`, which replaces the line below with `Approved: <YYYY-MM-DD> hash:<12 hex>`.
 Any later edit to this file voids it. Do not write that line by hand.
 
-Approved: PENDING
+Approved: 2026-10-02 hash:525425c0a770
 
 ## Definition of Done (applies to every task above)
 1. The change implements exactly the FRs cited, in exactly the files named, following the contracts in `plan.md`; hooks and checks never raise to the model.
