@@ -125,6 +125,44 @@ def query_terms_from_prompt(prompt: str, limit=8):
     return words
 
 
+_HINT_FULL = (
+    "[aidd] This looks like a requirement, change or fix. AIDD applies to ANY change (UI or not): before "
+    "responding, invoke the aidd skill (Skill tool, skill: \"aidd\") and follow its pipeline (Step -1 find existing "
+    "spec -> Step 0 visual source only if there is a mockup -> Align -> Plan -> Tasks -> Build -> Converge) "
+    "instead of improvising. Do not ask the user to run anything; the pipeline runs in this response."
+)
+_HINT_SHORT = '[aidd] Requirement/change detected: follow the aidd skill pipeline (already explained this session).'
+
+
+def _hint(sid):
+    """Full instruction once per session; a one-liner afterwards. Never raises."""
+    try:
+        if not sid:
+            return _HINT_FULL
+        import tempfile
+        marker = Path(tempfile.gettempdir()) / ('aidd_hint_' + re.sub(r'[^A-Za-z0-9_-]', '_', sid)[:64])
+        if marker.exists():
+            return _HINT_SHORT
+        marker.write_text('1', encoding='ascii')
+    except Exception:
+        pass
+    return _HINT_FULL
+
+
+_DROP_PREFIXES = ('====', '[kw]', 'Graph index: unchanged', '(index had no match', 'aidd spec search')
+
+
+def _compact_find_spec(out, cap=240):
+    """Keep only the verdict lines of find_spec output (warnings, matches, action); drop evidence/noise."""
+    keep = []
+    for line in out.splitlines():
+        t = line.strip()
+        if not t or t.startswith(_DROP_PREFIXES):
+            continue
+        keep.append(t if len(t) <= cap else t[:cap - 3] + '...')
+    return '\n'.join(keep)
+
+
 def run_find_spec(cwd: Path, terms):
     """Best-effort: run find_spec.py so Claude gets the Step -1 verdict inline.
     Never raises — a failure here just means the reminder ships without it,
@@ -166,10 +204,9 @@ except Exception as _e:
 
 if _secret_labels:  # credential hygiene warning — independent of the planning-keyword match
     try:
-        print("[aidd] Credential hygiene: this message contains a secret (" + ', '.join(_secret_labels)
-              + "). It was redacted from the evidence log. NEVER copy it into files, specs, memory, "
-              "commands or logs; use an environment variable or a connection profile outside the chat. "
-              "Next action: reference the secret by variable name only (e.g. $env:DB_PASSWORD).")
+        print("[aidd] Credential hygiene: secret in this message (" + ', '.join(_secret_labels)
+              + ") redacted from the evidence log. Never copy it into files, specs, memory, commands or logs; "
+              "reference it by variable name only (e.g. $env:DB_PASSWORD).")
     except Exception:
         pass
 
@@ -195,22 +232,11 @@ if PATTERN.search(prompt):
             except Exception:
                 pass
 
-    message = [
-        "[aidd] This message looks like a requirement, change, improvement, or fix. AIDD "
-        "applies to ANY change (UI or not, small or large) — before responding, invoke "
-        "the aidd skill (Skill tool, skill: \"aidd\") and follow its pipeline (Step -1 "
-        "intake/search for an existing spec -> Step 0 visual source ONLY if there's a "
-        "mockup, otherwise skip straight to Step 2 Align -> Plan -> Tasks -> Build -> "
-        "Converge) instead of improvising the analysis or the plan directly in the "
-        "conversation. Don't ask the user to run anything manually — the whole pipeline "
-        "runs inside this same response.",
-    ]
+    message = [_hint(_sid)]
     if find_spec_output:
-        message.append(
-            "\n[aidd] Step -1 already ran automatically against this message "
-            "(find_spec.py) — use this result as the intake's starting point, "
-            "don't re-run it with the same terms:\n" + find_spec_output
-        )
+        compact = _compact_find_spec(find_spec_output)
+        if compact:
+            message.append("[aidd] Step -1 (find_spec) already ran; start from this, do not re-run it:\n" + compact)
     print('\n'.join(message))
 
 sys.exit(0)

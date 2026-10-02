@@ -54,6 +54,47 @@ MAX_PROMPT_CHARS = 4000
 
 
 # ---------------------------------------------------------------------------
+# Credential redaction (spec 003 T-05, plan Contract 8)
+# ---------------------------------------------------------------------------
+
+MAX_REDACT_INPUT = 20000
+_SECRET_KEY = (r'password|passwd|pwd|clave|contrase[ñn]a|secret|token|api[_ -]?key')
+# keyword, bounded suffix (e.g. db_password, token_value), `=` or `:` (optionally `es`/`is`), then the
+# value: quoted (<=200 chars) or a bare run (<=200 chars). Bounded quantifiers only, no nesting.
+_SECRET_RE = re.compile(
+    r'(' + _SECRET_KEY + r')[\w-]{0,40}[ ]{0,3}(?:(?:es|is)[ ]{1,3})?[=:][ ]{0,3}'
+    r'(?:"[^"]{1,200}"|\'[^\']{1,200}\'|[^\s"\',;]{1,200})',
+    re.I)
+_BEARER_RE = re.compile(r'(bearer)[ ]{1,3}[A-Za-z0-9._~+/=-]{8,500}', re.I)
+
+
+def _secret_label(raw):
+    k = re.sub(r'[ _-]', '', raw.lower())
+    return 'apikey' if k == 'apikey' else k
+
+
+def redact_secrets(text, limit=None):
+    """(redacted_text, labels). Order: cap input at 20,000 chars, collapse whitespace, redact
+    `<keyword>=<value>` pairs (and `Bearer <token>`) to `label=[redacted]`, THEN truncate to
+    MAX_PROMPT_CHARS (or `limit`) so a secret cut by the limit is never left half-exposed.
+    Linear time (bounded quantifiers). Never raises: on error returns ('', [])."""
+    try:
+        s = re.sub(r'\s+', ' ', str('' if text is None else text)[:MAX_REDACT_INPUT]).strip()
+        labels = []
+
+        def _sub(m):
+            lab = _secret_label(m.group(1))
+            if lab not in labels:
+                labels.append(lab)
+            return lab + '=[redacted]'
+        s = _SECRET_RE.sub(_sub, s)
+        s = _BEARER_RE.sub(_sub, s)
+        return s[:(limit or MAX_PROMPT_CHARS)], labels
+    except Exception:
+        return '', []
+
+
+# ---------------------------------------------------------------------------
 # Roots and locations
 # ---------------------------------------------------------------------------
 

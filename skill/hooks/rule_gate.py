@@ -129,7 +129,7 @@ def _fmt(rule, header, viols):
         lines.append(f"  - [{v['rule']}] {v['message']}\n    Next action: {v['fix']}")
     if len(viols) > MAX_LISTED:
         lines.append(f'  ... and {len(viols) - MAX_LISTED} more.')
-    lines.append('(Owner-only override: AIDD_RULES=warn|off in settings.json env.)')
+    lines.append('(Owner override: AIDD_RULES=warn|off)')
     return '\n'.join(lines)
 
 

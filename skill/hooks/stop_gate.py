@@ -120,11 +120,10 @@ def evaluate(event, mode='enforce'):
                 ev.append_stop_block_exhausted(root, session, spec, key)
             continue
         blocking.append((root, spec, key, used))
-        parts.append(f'aidd R8: spec {spec} has approved tasks and {len(edits)} code edit(s) but it is not closed '
-                     f'(block {used + 1} of {MAX_BLOCKS}). Do not stop yet. Missing:\n' +
+        parts.append(f'aidd R8: spec {spec} not closed ({len(edits)} code edit(s); block {used + 1} of {MAX_BLOCKS}). '
+                     'Do not stop yet. Missing:\n' +
                      '\n'.join('  ' + m for m in missing) +
-                     f'\nWhen done and the user agrees, `aidd rules close {spec}` closes it; if the spec was dropped, '
-                     f'the user can `aidd rules abandon {spec}`.')
+                     f'\nThen `aidd rules close {spec}` (user agrees) or `aidd rules abandon {spec}` if dropped.')
     if not blocking:
         return False, ''
     if mode == 'enforce':

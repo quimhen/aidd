@@ -11,9 +11,11 @@ right.
 
 Usage:
     python check_spec.py <path-to-spec-folder>
+    python check_spec.py <path-to-spec-folder> --stamp-contract   # write the Contract hash line
 
-Exit code 0 = no gaps found. Exit code 1 = gaps found (usable as a gate).
+Exit code 0 = no gaps found. Exit code 1 = gaps found (usable as a gate). 2 = usage error.
 """
+import hashlib
 import re
 import sys
 from pathlib import Path
@@ -74,15 +76,259 @@ def table_rows(text, header_hint):
     return rows
 
 
+_CELL_SPLIT_RE = re.compile(r'(?<!\\)\|')
+_NA_REASON_RE = re.compile(r'^n/a\s*[—–-]+\s*\S')
+_HASH_LINE_RE = re.compile(r'^[ \t>*_`]*Contract hash:[ \t*_`]*([^\s*_`]*)[^\r\n]*', re.M | re.I)
+
+
+def _split_cells(line):
+    """Split a markdown table row on unescaped pipes (`\\|` stays inside its cell)."""
+    s = line.strip()
+    if not s.startswith('|'):
+        return None
+    s = s[1:]
+    if s.endswith('|') and not s.endswith('\\|'):
+        s = s[:-1]
+    return [c.strip() for c in _CELL_SPLIT_RE.split(s)]
+
+
+def _find_table(text, header_pred):
+    """Return (header_cells, data_rows) of the first table whose header row satisfies
+    header_pred(cells); (None, []) when there is none. Separator rows are dropped."""
+    header, rows, in_table = None, [], False
+    for line in text.splitlines():
+        cells = _split_cells(line)
+        if cells is None:
+            if in_table:
+                break
+            continue
+        if not in_table:
+            if header_pred(cells):
+                header, in_table = cells, True
+            continue
+        if set(''.join(cells)) <= set('-: '):
+            continue
+        rows.append(cells)
+    return header, rows
+
+
+def _col(header, name):
+    """Index of the first header cell equal to / starting with `name` (case-insensitive)."""
+    low = name.lower()
+    for i, h in enumerate(header or []):
+        if h.strip().lower().startswith(low):
+            return i
+    return -1
+
+
+def _cell(row, i):
+    return row[i].strip() if 0 <= i < len(row) else ''
+
+
+def _blank(v):
+    return v.strip() in ('', '-')
+
+
+def check_g1_controls(mockup_audit):
+    """G1: a CTL with an Action needs Destination, Data source (or `n/a — reason`) and States.
+    Only when the control table has both the Destination and Data source columns."""
+    header, rows = _find_table(
+        mockup_audit, lambda c: _col(c, 'CTL-') == 0 and _col(c, 'Action') > 0)
+    if header is None or _col(header, 'Destination') < 0 or _col(header, 'Data source') < 0:
+        return []
+    ia, idest, idata = _col(header, 'Action'), _col(header, 'Destination'), _col(header, 'Data source')
+    ist = _col(header, 'States')
+    gaps = []
+    for r in rows:
+        code = _cell(r, 0)
+        if not re.match(r'^CTL-\d+', code) or _blank(_cell(r, ia)):
+            continue
+        missing = []
+        for label, idx in (('Destination', idest), ('Data source', idata)):
+            v = _cell(r, idx)
+            if _blank(v) or (v.lower().startswith('n/a') and not _NA_REASON_RE.match(v.lower())):
+                missing.append(label)
+        if ist >= 0 and _blank(_cell(r, ist)):
+            missing.append('States')
+        elif ist < 0:
+            missing.append('States (column absent)')
+        if missing:
+            gaps.append(f"G1 mockup-audit.md {code}: has an Action but no {', '.join(missing)} — "
+                        f"fill where it leads, where its data comes from and what it shows when "
+                        f"empty/loading/error, or write `n/a — <reason>`.")
+    return gaps
+
+
+def check_g2_acceptance(spec_text):
+    """G2: spec.md needs `## Acceptance cases` with >= 1 filled row and >= 1 `edge`."""
+    header, rows = _find_table(
+        spec_text, lambda c: _col(c, 'Case') == 0 and _col(c, 'Edge') > 0)
+    if header is None:
+        return ["G2 spec.md: no `## Acceptance cases` table (| Case | Real data (id) | Expected | Edge? |) — "
+                "write the real-data cases, including edge ones, before building."]
+    ireal, iexp, iedge = _col(header, 'Real data'), _col(header, 'Expected'), _col(header, 'Edge')
+    filled = [r for r in rows if not _blank(_cell(r, 0)) and not _blank(_cell(r, ireal))
+              and not _blank(_cell(r, iexp))]
+    if not filled:
+        return ["G2 spec.md: `## Acceptance cases` has no filled row (Case, Real data (id), Expected) — "
+                "add at least one real-data case."]
+    if not any(re.match(r'^\W*(edge|yes|y|s[ií])\b', _cell(r, iedge).lower()) for r in filled):
+        return ["G2 spec.md: `## Acceptance cases` has no `edge` row — add at least one edge case "
+                "(empty, extreme, boundary, legacy or odd data) and mark it `edge`."]
+    return []
+
+
+def check_g3_traceability(trace_text):
+    """G3: every traceability.md row has Mockup field, Room/store, DTO, API, SP and Filled-by."""
+    header, rows = _find_table(
+        trace_text, lambda c: _col(c, 'Mockup field') == 0 and _col(c, 'Filled-by') > 0)
+    if header is None:
+        return ["G3 traceability.md: no table with header `Mockup field | Room/store | DTO | API | SP | "
+                "Filled-by` — use templates/traceability.md."]
+    gaps = []
+    for r in rows:
+        empty = [h for i, h in enumerate(header) if _blank(_cell(r, i))]
+        if empty:
+            gaps.append(f"G3 traceability.md row '{_cell(r, 0) or '?'}': empty "
+                        f"{', '.join(empty)} — complete the chain or write `n/a — <reason>`.")
+    return gaps
+
+
+def contract_table(contracts_text):
+    """(header, rows) of the contracts table whose header starts with `API-nnn`."""
+    return _find_table(contracts_text, lambda c: bool(c) and c[0].strip().lower().startswith('api-nnn'))
+
+
+def compute_contract_hash(contracts_text):
+    """Plan Contract 7: sha1 of the contract table's data rows joined by newline; each row =
+    cells stripped, whitespace collapsed, `PR/Spec ref` column removed, joined by `|`;
+    first 12 hex. Returns '' when there is no table."""
+    header, rows = contract_table(contracts_text)
+    if header is None:
+        return ''
+    skip = _col(header, 'PR/Spec ref')
+    lines = []
+    for r in rows:
+        cells = [re.sub(r'\s+', ' ', c).strip() for i, c in enumerate(r) if i != skip]
+        lines.append('|'.join(cells))
+    return hashlib.sha1('\n'.join(lines).encode('utf-8')).hexdigest()[:12]
+
+
+def _stored_hash(contracts_text):
+    m = _HASH_LINE_RE.search(contracts_text)
+    return None if not m else m.group(1).strip()
+
+
+def _api_tasks(tasks_text):
+    """T-nn ids (table rows and `### T-nn` blocks) that cite an API-nnn."""
+    found = set()
+    blocks = re.split(r'(?m)^(?=#{2,3}\s*T-\d+)', tasks_text)
+    for b in blocks:
+        m = re.match(r'#{2,3}\s*(T-\d+)', b)
+        if m and re.search(r'\bAPI-\d+\b', b):
+            found.add(m.group(1))
+    for line in tasks_text.splitlines():
+        cells = _split_cells(line)
+        if cells and re.match(r'^T-\d+$', cells[0]) and re.search(r'\bAPI-\d+\b', line):
+            found.add(cells[0])
+    return sorted(found)
+
+
+def check_g4_contract_hash(contracts_text, tasks_text=''):
+    """G4: `Contract hash:` present, stamped and equal to the recomputed hash."""
+    header, rows = contract_table(contracts_text)
+    if header is None or not rows:
+        return []
+    stored = _stored_hash(contracts_text)
+    if stored is None or stored.upper() == 'PENDING' or stored == '':
+        return ["G4 contracts.md: `Contract hash:` is missing or PENDING — run "
+                "`python check_spec.py <spec_dir> --stamp-contract` once the contract is settled."]
+    current = compute_contract_hash(contracts_text)
+    if stored.lower() == current:
+        return []
+    stale = _api_tasks(tasks_text)
+    tail = (f" Stale tasks (cite an API- code, built on the old contract): {', '.join(stale)}."
+            if stale else " No tasks cite an API- code.")
+    return [f"G4 contracts.md: Contract hash {stored} does not match the table ({current}) — the "
+            f"contract changed after it was stamped.{tail} Re-check them, bump `Contract version`, "
+            f"then run `--stamp-contract`."]
+
+
+def stamp_contract(spec_dir):
+    """Write the recomputed hash into contracts.md. Returns (ok, message)."""
+    p = spec_dir / 'contracts.md'
+    if not p.exists():
+        return False, f"{p} not found"
+    raw = p.read_bytes().decode('utf-8')
+    h = compute_contract_hash(raw)
+    if not h:
+        return False, "contracts.md has no table whose header starts with `API-nnn`"
+    line = f"Contract hash: {h}"
+    if _HASH_LINE_RE.search(raw):
+        new = _HASH_LINE_RE.sub(lambda m: line, raw, count=1)
+    else:
+        nl = '\r\n' if '\r\n' in raw else '\n'
+        mv = re.search(r'(?m)^Contract version:[^\r\n]*', raw)
+        if mv:
+            new = raw[:mv.end()] + nl + line + raw[mv.end():]
+        else:
+            new = line + nl + nl + raw
+    if new != raw:
+        p.write_bytes(new.encode('utf-8'))
+    return True, f"Contract hash: {h} written to {p}"
+
+
+def check_g5_consumers(index_text):
+    """G5: a COMP with a screen in `Used in` needs a `Consumers` cell."""
+    header, rows = _find_table(
+        index_text, lambda c: _col(c, 'COMP-') == 0 and _col(c, 'Used in') > 0)
+    if header is None:
+        return []
+    iused, icons = _col(header, 'Used in'), _col(header, 'Consumers')
+    if icons < 0:
+        return []  # index predates the column: nothing to compare
+    gaps = []
+    for r in rows:
+        code = _cell(r, 0)
+        if re.match(r'^COMP-\d+', code) and re.search(r'SCREEN-\d+', _cell(r, iused)) \
+                and _blank(_cell(r, icons)):
+            gaps.append(f"G5 components-index.md {code}: used in a screen but no `Consumers` — list the "
+                        f"files that import it so a change reaches every consumer.")
+    return gaps
+
+
+def _component_index_paths(spec_dir):
+    seen, out = set(), []
+    for base in (spec_dir, spec_dir / 'design-system', spec_dir.parent / 'design-system',
+                 spec_dir.parent.parent / 'design-system'):
+        p = base / 'components-index.md'
+        try:
+            key = p.resolve()
+        except OSError:
+            key = p
+        if key not in seen and p.exists():
+            seen.add(key)
+            out.append(p)
+    return out
+
+
 def main():
-    if len(sys.argv) != 2:
+    args = sys.argv[1:]
+    stamp = '--stamp-contract' in args
+    args = [a for a in args if a != '--stamp-contract']
+    if len(args) != 1:
         print(__doc__)
         sys.exit(2)
 
-    spec_dir = Path(sys.argv[1])
+    spec_dir = Path(args[0])
     if not spec_dir.is_dir():
         print(f"Not a directory: {spec_dir}")
         sys.exit(2)
+
+    if stamp:
+        ok, msg = stamp_contract(spec_dir)
+        print(msg)
+        sys.exit(0 if ok else 2)
 
     gaps = []
 
@@ -226,6 +472,21 @@ def main():
                              f"condition/role — a table with no explicit policy is either fully "
                              f"open or fully locked depending on the platform default; never "
                              f"leave that implicit.")
+
+    # 10b. G1-G5 (interaction-evidence gaps; each only applies to artifacts that exist)
+    try:
+        if mockup_audit:
+            gaps += check_g1_controls(mockup_audit)
+        if (spec_dir / 'spec.md').exists():
+            gaps += check_g2_acceptance(spec_text)
+        if (spec_dir / 'traceability.md').exists():
+            gaps += check_g3_traceability(read(spec_dir / 'traceability.md'))
+        if contracts:
+            gaps += check_g4_contract_hash(contracts, tasks)
+        for ip in _component_index_paths(spec_dir):
+            gaps += [g.replace('components-index.md', str(ip.name), 1) for g in check_g5_consumers(read(ip))]
+    except Exception as e:
+        gaps.append(f"(warning) G1-G5 checks skipped: {e}")
 
     # 11. AIDD hard rules (R1 agent-time estimates, R2 route, R3 provenance, R4 visual debt,
     #     R6 approval) — static checks only; the evidence-based rules are enforced by the hooks.

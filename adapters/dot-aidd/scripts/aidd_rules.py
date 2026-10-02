@@ -6,6 +6,7 @@ and check_spec.py. Contract: specs/002-aidd-hard-rules/spec.md (incl. the Rev 1 
 Rules: R1 estimates (agent time) · R2 pipeline route · R3 alignment provenance ·
 R4 visual debt · R5 chain order · R6 tasks approval · R7 closing-audit domains ·
 R9 protected paths. (R8 is the Stop hook, not a library concern.)
+Spec 003 adds R10 execution evidence at close · R11 root cause on repeat · R12 view-vs-logic tag.
 
 Every public function is total: malformed input yields a Violation, never an
 exception. A Violation is ``{'rule', 'message', 'fix'}`` where ``fix`` is the exact
@@ -21,7 +22,7 @@ import sys
 import unicodedata
 from pathlib import Path
 
-RULE_IDS = ('R1', 'R2', 'R3', 'R4', 'R5', 'R6', 'R7', 'R9')
+RULE_IDS = ('R1', 'R2', 'R3', 'R4', 'R5', 'R6', 'R7', 'R9', 'R10', 'R11', 'R12')
 
 ROUTE_STEPS = ('-1', '0', '1', '1.5', '2', '3', '4')
 VISUAL_STEPS = ('0', '1', '1.5')
@@ -248,6 +249,71 @@ def _neutral_cell_violations(t):
     return out
 
 
+_UI_CODE_RE = re.compile(r'\b(?:SCREEN|COMP)-\d+', re.I)
+_REUSE_RE = re.compile(r'reutiliza\w*|remapea\w*|envuelve\w*|wrap\w*|reus\w*|rewir\w*', re.I)
+_KIND_RE = re.compile(r'\bKind\s*:\s*(.*)$', re.I)
+_TASK_CELL_RE = re.compile(r'T-\d+$')
+
+
+def _kind_values(segments):
+    """Remainders (after the first colon) of every `Kind:` found in the given short segments."""
+    vals = []
+    for seg in segments:
+        s = seg.replace('*', '').replace('`', '')
+        if len(s) > 4000:
+            continue
+        m = _KIND_RE.search(s)
+        if m:
+            vals.append(m.group(1).strip())
+    return vals
+
+
+def _kind_state(vals):
+    """'ok' | 'bare' (VIEW-legacy without justification) | 'missing'."""
+    bare = False
+    for v in vals:
+        low = v.lower()
+        if low.startswith('view-new') or low.startswith('logic'):
+            return 'ok'
+        m = re.match(r'view-legacy\s*:\s*(.*)$', v, re.I)
+        if m and len(m.group(1).strip()) >= 5:
+            return 'ok'
+        if low.startswith('view-legacy'):
+            bare = True
+    return 'bare' if bare else 'missing'
+
+
+def _check_kind(t, blocks):
+    """R12: a task row citing SCREEN-/COMP- with a reuse word needs `Kind: VIEW-new | LOGIC |
+    VIEW-legacy: <justification 5+ chars>` (in the row or in its '### T-nn' block)."""
+    out = []
+    for line in t.split('\n'):
+        st = line.strip()
+        if not st.startswith('|'):
+            continue
+        cells = _split_row(st)
+        tid = _plain(cells[0]) if cells else ''
+        if not _TASK_CELL_RE.match(tid):
+            continue
+        blk = blocks.get(tid, '')
+        joined = st + '\n' + blk
+        if not (_UI_CODE_RE.search(joined) and _REUSE_RE.search(joined)):
+            continue
+        state = _kind_state(_kind_values(cells + blk.split('\n')))
+        if state == 'ok':
+            continue
+        if state == 'bare':
+            out.append(_v('R12', f'{tid}: "Kind: VIEW-legacy" has no justification.',
+                          f'In {tid} write "Kind: VIEW-legacy: <why the legacy view stays, 5+ chars>", or switch to '
+                          '"Kind: VIEW-new" (new faithful view) / "Kind: LOGIC" (data/logic only).'))
+        else:
+            out.append(_v('R12', f'{tid} cites a SCREEN/COMP code and a reuse word (reutiliza/remapea/envuelve/wrap/reuse/rewire) '
+                                 'but has no "Kind:" tag.',
+                          f'In the {tid} row or block add "Kind: VIEW-new" (new view, reused logic/data), "Kind: LOGIC", '
+                          'or "Kind: VIEW-legacy: <justification 5+ chars>". Default for a redesign is VIEW-new + LOGIC.'))
+    return out
+
+
 def _check_tasks(text):
     out = []
     t = _clean(text)
@@ -273,6 +339,7 @@ def _check_tasks(text):
 
     out += _neutral_cell_violations(t)
     blocks = _task_blocks(t)
+    out += _check_kind(t, blocks)
     if not blocks:
         out.append(_v('R1', 'tasks.md has no "### T-nn" per-task blocks.',
                       'Add one "### T-nn" block per task with "Agent min:" and "Human ref hours:" lines.'))
@@ -840,7 +907,204 @@ def open_debt_blocking(root):
 
 # ----------------------------------------------------------------- public API
 
-def check_content(kind, text):
+_EVID_KINDS = ('screenshot', 'command-output', 'query-result', 'log', 'manual-test', 'not-verified')
+_FILE_KINDS = ('screenshot', 'command-output', 'query-result', 'log')
+_IMG_EXT = ('.png', '.jpg', '.jpeg', '.webp')
+_URL_RE = re.compile(r'https?://\S+$', re.I)
+_DRIVE_RE = re.compile(r'[A-Za-z]:')
+_CODE_TOKEN_RE = re.compile(r'[A-Z]+-\d+(?:-F\d+)?')
+_REDESIGN_REF_RE = re.compile(r'\bT-\d+\b|\b\d{3}-[a-z][\w-]*|\bspec[\s-]*\d{2,3}\b', re.I)
+
+
+def _needs_evidence(code):
+    c = (code or '').upper()
+    return bool(re.match(r'SCREEN-\d+', c) or re.match(r'API-\d+', c) or re.search(r'-F\d+$', c))
+
+
+def _evidence_path(spec_dir, root, rel):
+    """(status, path): status 'ok' | 'missing' | 'unchecked' (no base dir given) | 'bad' (escape/absolute).
+    Drive letters, UNC, absolute paths and any `..` segment are never evidence."""
+    r = (rel or '').strip().strip('`').strip()
+    if (not r or len(r) > 1000 or _DRIVE_RE.match(r) or r.startswith(('\\', '/'))
+            or '..' in re.split(r'[\\/]+', r)):
+        return 'bad', None
+    bases = [b for b in (spec_dir, root) if b is not None]
+    if not bases:
+        return 'unchecked', None
+    for b in bases:
+        if _inside_exists(b, r, want_file=True):
+            try:
+                return 'ok', (Path(b).resolve() / r.replace('\\', '/')).resolve()
+            except Exception:
+                return 'ok', None
+    return 'missing', None
+
+
+def _check_evidence_row(code, kind, evid, who, ledger_ok, spec_dir, root, last_edit_ts):
+    out = []
+    fix_row = 'Fix the row in "## Execution evidence": | Code | Kind | Evidence | Verified by |.'
+    if kind not in _EVID_KINDS:
+        return [_v('R10', f'Execution evidence {code}: Kind "{kind}" is not one of {" | ".join(_EVID_KINDS)}.',
+                   f'Set Kind of {code} to one of: {" | ".join(_EVID_KINDS)}.')]
+    if who not in ('agent', 'user'):
+        out.append(_v('R10', f'Execution evidence {code}: "Verified by" must be agent or user, got "{who[:30]}".',
+                      f'Set "Verified by" of {code} to agent or user.'))
+    ev_plain = evid.strip().strip('`').strip()
+
+    def check_file(rel):
+        st, p = _evidence_path(spec_dir, root, rel)
+        if st == 'bad':
+            return [_v('R10', f'Execution evidence {code}: "{rel[:60]}" is not a path inside the spec dir or project root '
+                              '(drive letters, UNC, absolute paths and ".." are not evidence).',
+                       f'Point {code} Evidence to a file saved under the spec dir or the project (relative path).')]
+        if st == 'missing':
+            return [_v('R10', f'Execution evidence {code}: file "{rel[:60]}" does not exist.',
+                       f'Run it for real, save the output/screenshot at that path (relative to the spec dir or '
+                       f'project root), then rewrite qa-audit.md.')]
+        if st == 'ok' and last_edit_ts is not None and p is not None:
+            m = _mtime(p)
+            if m is not None and m < last_edit_ts:
+                return [_v('R10', f'Execution evidence {code}: "{rel[:60]}" is older than the last code edit (stale).',
+                           f'Re-run after the last code change and save fresh evidence for {code}, then rewrite qa-audit.md.')]
+        return []
+
+    if kind in _FILE_KINDS:
+        if _URL_RE.match(ev_plain):
+            return out
+        if kind == 'screenshot' and not ev_plain.lower().endswith(_IMG_EXT):
+            out.append(_v('R10', f'Execution evidence {code}: a screenshot must be .png/.jpg/.jpeg/.webp, got "{ev_plain[:60]}".',
+                          f'Save a real screenshot as .png/.jpg/.jpeg/.webp for {code}, or use another Kind.'))
+            return out
+        return out + check_file(ev_plain)
+    if kind == 'manual-test':
+        q = _user_quote(ev_plain)
+        if q is not None:
+            if _words(q) >= 3:
+                return out
+            out.append(_v('R10', f'Execution evidence {code}: the user quote needs 3+ words.',
+                          f'Quote the user\'s own words (3+): user — "<what the user said after testing {code}>".'))
+            return out
+        return out + check_file(ev_plain) if ev_plain else out + [
+            _v('R10', f'Execution evidence {code}: manual-test has no evidence.',
+               f'Write user — "<quote 3+ words>" or a path for {code}.')]
+    # not-verified
+    if ledger_ok:
+        out.append(_v('R10', f'{code} is "not-verified" but its Mapping ledger Status is still ✅.',
+                      f'Change the Status of {code} to ⚠️ PARTIAL until the user runs the human test script.'))
+    st, _p = _evidence_path(spec_dir, root, ev_plain)
+    if st in ('bad', 'missing'):
+        out.append(_v('R10', f'Execution evidence {code}: not-verified needs the path of an existing human test script '
+                             f'("{ev_plain[:60]}" is not).',
+                      f'Write the test script the user must run (e.g. specs/<id>/human-test-{code}.md) and cite its path.'))
+    return out
+
+
+def _check_bug_reports(t):
+    out = []
+    tb = _table(t, r'bug reports\b')
+    if tb is None:
+        return out
+    header, rows = tb
+    hn = [_hdr(header, i) for i in range(len(header))]
+
+    def col(name):
+        return next((i for i, h in enumerate(hn) if h.startswith(name)), None)
+    ci, cr, cf, cs = col('code'), col('root cause'), col('fix'), col('pattern sweep')
+    if None in (ci, cr, cf, cs):
+        if rows:
+            out.append(_v('R11', 'Bug reports table header must be | # | Code | Symptom | Root cause | Fix | Pattern sweep |.',
+                          'Rewrite the Bug reports header with those columns, in that order.'))
+        return out
+    seen = {}
+    for r in rows:
+        r = r + [''] * (len(header) - len(r))
+        code = _plain(r[ci]).upper()
+        if not code:
+            continue
+        n = seen[code] = seen.get(code, 0) + 1
+        if n >= 2:
+            if _blank_answer(r[cr]):
+                out.append(_v('R11', f'Bug report #{n} for {code} has no Root cause (repeat report).',
+                              f'Analyse why {code} failed again and write the Root cause (not the symptom) in that row.'))
+            if _blank_answer(r[cs]):
+                out.append(_v('R11', f'Bug report #{n} for {code} has no Pattern sweep (repeat report).',
+                              'Write what you searched and where, e.g. `grep -rn "fmt(" forms/` → 4 hits fixed.'))
+        if n >= 3:
+            fx = _plain(r[cf])
+            if 'redesign' not in fx.lower() or not _REDESIGN_REF_RE.search(fx):
+                out.append(_v('R11', f'Bug report #{n} for {code}: from the 3rd report the Fix must state "redesign" '
+                                     'with a spec id or task reference.',
+                              f'Open a redesign for {code} and write Fix: "redesign — spec <id>" or "redesign — T-nn".'))
+    return out
+
+
+def check_qa(text, spec_dir=None, root=None, last_edit_ts=None):
+    """R10 (execution evidence) and R11 (root cause on repeat) over qa-audit.md. Never raises.
+    Freshness runs only when `last_edit_ts` is given (hook path). Without spec_dir/root the
+    existence of evidence files cannot be verified and is skipped."""
+    try:
+        if _too_large(text):
+            return [_v('R10', 'qa-audit.md file too large (> 2 MB): it is not scanned.', 'Shrink qa-audit.md below 2 MB.')]
+        t = _clean(text)
+        out = []
+        sd = Path(spec_dir) if spec_dir is not None else None
+        rt = Path(root) if root is not None else None
+
+        # ledger
+        status = {}
+        lt = _table(t, r'mapping ledger\b')
+        if lt is not None:
+            header, rows = lt
+            si = next((i for i in range(len(header)) if _hdr(header, i).startswith('status')), 1)
+            for r in rows:
+                if not r or not _plain(r[0]):
+                    continue
+                code = _plain(r[0]).upper()
+                stt = _plain(r[si]) if si < len(r) else ''
+                status[code] = status.get(code, False) or stt.startswith('✅')
+        exempt = set()
+        for r in (_table(t, r'open exceptions\b') or ([], []))[1]:
+            if r:
+                exempt.update(_CODE_TOKEN_RE.findall(_plain(r[0]).upper()))
+        required = [c for c, g in status.items() if g and _needs_evidence(c) and c not in exempt]
+
+        et = _table(t, r'execution evidence\b')
+        ev_rows = {}
+        idx = [0, 1, 2, 3]
+        if et is not None:
+            header, rows = et
+            hn = [_hdr(header, i) for i in range(len(header))]
+            idx = [hn.index(n) if n in hn else None for n in ('code', 'kind', 'evidence', 'verified by')]
+            if None in idx:
+                if required or rows:
+                    out.append(_v('R10', 'Execution evidence table header must be | Code | Kind | Evidence | Verified by |.',
+                                  'Rewrite the header of "## Execution evidence" with exactly those columns.'))
+            else:
+                for r in rows:
+                    r = r + [''] * (len(header) - len(r))
+                    code = _plain(r[idx[0]]).upper()
+                    if code:
+                        ev_rows.setdefault(code, []).append(
+                            (_plain(r[idx[1]]).lower(), r[idx[2]], _plain(r[idx[3]]).lower()))
+        if None not in idx:
+            for code in required:
+                if code not in ev_rows:
+                    out.append(_v('R10', f'{code} is ✅ in the Mapping ledger but has no row in "Execution evidence"'
+                                         + ('' if et is not None else ' (the section does not exist)') + '.',
+                                  f'Add "## Execution evidence" with | Code | Kind | Evidence | Verified by | if missing. '
+                                  f'Run {code} for real and add | {code} | <kind> | <path or user quote> | agent/user |; '
+                                  'if you cannot run it, use Kind not-verified with a human test script and set its Status to ⚠️ PARTIAL.'))
+            for code, lst in ev_rows.items():
+                if code in exempt:
+                    continue
+                for kind, evid, who in lst:
+                    out += _check_evidence_row(code, kind, evid, who, status.get(code, False), sd, rt, last_edit_ts)
+        return out + _check_bug_reports(t)
+    except Exception as e:  # pragma: no cover - defensive
+        return [_v('R10', f'Could not parse qa-audit.md ({e}).', 'Fix the markdown tables so they parse, then retry.')]
+
+
+def check_content(kind, text, spec_dir=None, root=None):
     """Structural validity of ONE artifact. kind: spec | tasks | plan | qa. Never raises."""
     try:
         kind = (kind or '').strip().lower()
@@ -852,6 +1116,8 @@ def check_content(kind, text):
             return _check_spec(text)
         if kind == 'tasks':
             return _check_tasks(text)
+        if kind == 'qa':
+            return check_qa(text, spec_dir, root)
         return []
     except Exception as e:  # pragma: no cover - defensive
         return [_v('R1' if kind == 'tasks' else 'R2', f'Could not parse the {kind} artifact ({e}).',
@@ -1083,6 +1349,11 @@ def check_spec_dir(spec_dir, root=None, session=None, static_only=False):
                 elif valid[0][1] != approval_hash(tasks_t):
                     out.append(_v('R6', 'tasks.md changed after approval (hash mismatch) — approval is void.',
                                   'Re-present the changed tasks to the user, then run `aidd rules approve <spec_dir>`.'))
+        if qa_p.exists():
+            if _big(qa_p):
+                out.append(_v('R10', 'qa-audit.md file too large (> 2 MB): it is not scanned.', 'Shrink qa-audit.md below 2 MB.'))
+            else:
+                out += check_qa(_read(qa_p), d, proj)
         if static_only:
             return _dedup(out)
 
