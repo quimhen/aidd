@@ -227,6 +227,27 @@ def main():
                              f"open or fully locked depending on the platform default; never "
                              f"leave that implicit.")
 
+    # 11. AIDD hard rules (R1 agent-time estimates, R2 route, R3 provenance, R4 visual debt,
+    #     R6 approval) — static checks only; the evidence-based rules are enforced by the hooks.
+    #     Applied only to artifacts that exist, and to tasks.md only once it has the per-task
+    #     blocks / Waves table the rules describe (older table-only tasks.md files stay untouched).
+    try:
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        import aidd_rules
+        rule_violations = []
+        tasks_structured = bool(re.search(r'^#{2,3}\s*(T-\d+|Waves)(?!\w)', tasks, re.M))
+        if (spec_dir / 'spec.md').exists() and (not tasks or tasks_structured):
+            rule_violations = aidd_rules.check_spec_dir(spec_dir, static_only=True)
+        else:
+            if (spec_dir / 'spec.md').exists():
+                rule_violations += aidd_rules.check_content('spec', spec_text)
+            if tasks_structured:
+                rule_violations += aidd_rules.check_content('tasks', tasks)
+        for v in rule_violations:
+            gaps.append(f"{v['rule']} {v['message']} → {v['fix']}")
+    except Exception as e:  # never let the rules library break the mechanical checker
+        gaps.append(f"(warning) hard-rules check skipped: {e}")
+
     print(f"aidd spec check — {spec_dir}")
     print("=" * 60)
     if not gaps:

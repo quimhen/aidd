@@ -24,6 +24,11 @@ step that changes what's true; append/edit, don't let it grow into a second spec
 | Component Index | design-system/components-index.md |
 | Open exceptions | specs/007-checkout/qa-audit.md — "Open exceptions" section |
 
+## Rules ledger
+Read-only — never hand-edit and never copy its output here (it goes stale). Run `aidd status` for the mechanical
+ledger of the hard rules: route, alignment provenance, Mapper/graph evidence, tasks approval, waves/critical path,
+code edits and which closing auditors ran.
+
 ## Memory pointers
 Decisions, rejected options, bug root causes and constraints live in `.aidd/memory/` — not here.
 Before touching a code: `aidd mem search <code>`, then `aidd mem show <id>` for the full entry.

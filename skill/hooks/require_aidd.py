@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-PreToolUse hook (matcher: "Write|Edit") — blocks writing/editing an application
+PreToolUse hook (legacy standalone; rule_gate.py runs it in-process) — blocks writing/editing an application
 source file until the aidd skill has been invoked at least once in this session.
 
 Scope, by design:
@@ -15,32 +15,52 @@ Scope, by design:
 Exit code 2 blocks the tool call and returns this hook's stderr to Claude as the
 reason, so Claude sees exactly what to do next (invoke the Skill tool with
 skill: "aidd") instead of just failing silently.
+
+`evaluate(event)` holds the decision logic (used in-process by rule_gate.py);
+`main()` is the standalone wrapper Claude Code can still invoke directly.
 """
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-from _common import read_event, marker_path, is_code_file  # noqa: E402
+from _common import read_event, marker_path, is_code_file, event_dict, tool_input_of, str_field, session_of  # noqa: E402
 
-event = read_event()
-tool_input = event.get('tool_input') or {}
-file_path = tool_input.get('file_path')
-
-if not is_code_file(file_path):
-    sys.exit(0)
-
-marker = marker_path(event.get('session_id'))
-if marker.exists():
-    sys.exit(0)
-
-print(
+MESSAGE = (
     "aidd has not been invoked yet this session. AIDD is the default pipeline "
     "for ANY code change, whether or not it has a visual surface. Before writing "
     "or editing code, invoke the aidd skill (Skill tool, skill: \"aidd\") and "
     "follow its flow (search -> visual audit ONLY if there's a mockup, otherwise "
     "skip to align -> plan -> tasks -> build -> converge). If this change "
     "genuinely doesn't need the full flow, use aidd's 'fast lane' explicitly "
-    "instead of skipping the skill.",
-    file=sys.stderr,
+    "instead of skipping the skill."
 )
-sys.exit(2)
+
+
+def evaluate(event):
+    """Return (blocked, message)."""
+    event = event_dict(event)
+    file_path = str_field(tool_input_of(event), 'file_path')
+
+    if not is_code_file(file_path):
+        return False, ''
+
+    sid = event.get('session_id')
+    if marker_path(sid if isinstance(sid, str) else None).exists():
+        return False, ''
+
+    return True, MESSAGE
+
+
+def main():
+    try:
+        blocked, message = evaluate(read_event())
+    except Exception:
+        sys.exit(0)  # a crashing hook must never wedge a session (m-c)
+    if blocked:
+        print(message, file=sys.stderr)
+        sys.exit(2)
+    sys.exit(0)
+
+
+if __name__ == '__main__':
+    main()

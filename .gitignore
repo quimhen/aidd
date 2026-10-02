@@ -5,3 +5,7 @@ aidd-skill.zip
 build/
 dist/
 .pytest_cache/
+
+# AIDD generated caches / evidence (rebuilt automatically)
+specs/index.toon
+.aidd/evidence/

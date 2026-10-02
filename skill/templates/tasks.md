@@ -30,7 +30,8 @@ Order `COMP-nnn` tasks before any `SCREEN-XX` task that uses them — building a
 
 **Estimate**
 - Effort: High / Medium / Low
-- Estimated hours: [number — guide: Low 4-8h, Medium 8-20h, High 20-40h; adjust to actual scope]
+- Agent min: [whole minutes an AI agent needs to do it — this is what the plan is scheduled on]
+- Human ref hours: [hours a human would need — reference only, never the schedule; guide: Low 4-8h, Medium 8-20h, High 20-40h]
 
 **Decompose**
 - Objective: [1 sentence — what it achieves]
@@ -45,11 +46,38 @@ Order `COMP-nnn` tasks before any `SCREEN-XX` task that uses them — building a
 
 A field you can't substantiate → leave it blank, don't invent it.
 
+### T-02
+**Estimate**
+- Effort: High / Medium / Low
+- Agent min: [whole minutes]
+- Human ref hours: [hours]
+
+[Same Classify / Decompose / Assign sections as T-01.]
+
+## Waves
+
+Estimates are **agent time**, not human hours. Waves run one after another; tasks inside a wave run in
+parallel, so a wave takes as long as its longest task (`max` of its tasks' `Agent min`) and the critical path is the
+sum of the waves. A task that depends on another goes in a later wave.
+
+| Wave | Tasks | Agent time (min) | Human ref (h) |
+|---|---|---|---|
+| 1 | T-01 | [max Agent min of the wave] | [hours] |
+| 2 | T-02 | [max Agent min of the wave] | [hours] |
+
+Total agent time (critical path): [sum of wave Agent times] min
+
 ## Approval gate
 
 **Present the table above as a dry-run and wait for explicit approval before Step 5 starts on any row.**
 Any mismatch caught here costs one edit to this file; the same mismatch caught after implementation
 costs a rewritten PR. Never start implementing a task that wasn't approved.
+
+The approval is the user's and is tamper-evident: ask them (AskUserQuestion) to approve the tasks, then run
+`aidd rules approve <spec_dir>`, which replaces the line below with `Approved: <YYYY-MM-DD> hash:<12 hex>`.
+Any later edit to this file voids it, and code edits stay blocked until it is re-approved. Do not write that line by hand.
+
+Approved: PENDING
 
 ## Definition of Done (applies to every task above)
 1. Code implements exactly the codes cited, in exactly the target file, one class per file, following the plan's Naming & File Contract, SOLID, and the Antifragile standard above (timeouts, retry/backoff, graceful degradation, recoverable trace for anything crossing a boundary).

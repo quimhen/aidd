@@ -1,5 +1,6 @@
 """Shared helpers for aidd's enforcement hooks. Stdlib only."""
 import json
+import os
 import sys
 import time
 import tempfile
@@ -17,6 +18,72 @@ CODE_EXTENSIONS = {
 }
 
 
+# --- spec 002 (hard rules) additions. The legacy CODE_EXTENSIONS / is_code_file / require_aidd
+# behaviour above is intentionally UNCHANGED (no extra friction on non-AIDD repos); R6 uses the
+# wider list below.
+# D11 (Rev 2): R6 is a DENY-LIST of non-code. Every file is "code" EXCEPT these extensions...
+R6_NON_CODE_EXTENSIONS = {'.md', '.markdown', '.txt', '.rst', '.csv', '.tsv', '.log', '.lock', '.png', '.jpg',
+                          '.jpeg', '.gif', '.svg', '.ico', '.webp', '.bmp', '.pdf', '.docx', '.xlsx', '.pptx',
+                          '.zip'}
+# ...and files under these locations (canonical path relative to the OUTERMOST project root).
+# Build files that happen to carry a prose extension are still code.
+R6_CODE_BASENAMES = {'cmakelists.txt', 'requirements.txt', 'pyproject.toml'}
+R6_EXEMPT_PREFIXES = ('specs/', 'design-system/', '.aidd/memory/', '.claude/skills/', '.git/', 'node_modules/',
+                      '__pycache__/', '.venv/')
+SPEC_ARTIFACT_NAMES = {'spec.md', 'plan.md', 'tasks.md', 'contracts.md', 'data-model.md',
+                       'mockup-audit.md', 'qa-audit.md'}
+RULES_OFF_VALUES = ('off', '0', 'false', 'no')
+
+
+def rules_mode():
+    """AIDD_RULES (m-b): off|0|false|no => 'off'; warn => 'warn'; anything else => 'enforce'."""
+    v = os.environ.get('AIDD_RULES', '').strip().lower()
+    if v in RULES_OFF_VALUES:
+        return 'off'
+    return 'warn' if v == 'warn' else 'enforce'
+
+
+def norm_name(name):
+    """Cheap, filesystem-free normal form of ONE path component: strip an NTFS stream suffix
+    (`::$DATA`, `:x`), trailing dots/spaces, lowercase. `PLAN.md.` / `plan.md::$DATA` -> `plan.md`."""
+    if not isinstance(name, str):
+        return ''
+    return name.split(':', 1)[0].rstrip('. ').lower() if ':' in name or name != name.rstrip('. ') \
+        else name.lower()
+
+
+def canon_basename(file_path):
+    """Canonical lowercase basename of `file_path` (B3). Cheap string normalisation first; only when
+    the name looks like a Windows 8.3 alias (`~`) is the filesystem consulted (aidd_evidence.canon_path)."""
+    if not isinstance(file_path, str) or not file_path:
+        return ''
+    base = norm_name(file_path.replace('\\', '/').rstrip('/').split('/')[-1])
+    if '~' in base:
+        try:
+            sys.path.insert(0, str(Path(__file__).resolve().parent.parent / 'scripts'))
+            import aidd_evidence
+            base = aidd_evidence.canon_path(file_path).rsplit('/', 1)[-1]
+        except Exception:
+            pass
+    return base
+
+
+def is_r6_gated(canon_abs, rel_outermost):
+    """Should a write to this CANONICAL path be blocked while an open spec lacks a valid approval (R6)?
+    `canon_abs` = aidd_evidence.canon_path(...) (lowercase, forward slashes); `rel_outermost` = the
+    canonical path relative to the OUTERMOST project root (None if unknown). Deny-list semantics (D11):
+    everything is code except R6_NON_CODE_EXTENSIONS and R6_EXEMPT_PREFIXES (relative to that root, so
+    `src/specs/a.py` and `test/specs/x.spec.ts` stay gated)."""
+    if not isinstance(canon_abs, str) or not canon_abs:
+        return False
+    base = canon_abs.rsplit('/', 1)[-1]
+    if os.path.splitext(base)[1] in R6_NON_CODE_EXTENSIONS and base not in R6_CODE_BASENAMES:
+        return False
+    if rel_outermost and any((rel_outermost + '/').startswith(p) for p in R6_EXEMPT_PREFIXES):
+        return False
+    return True
+
+
 def read_event():
     """Read the hook event JSON Claude Code sends on stdin. Returns {} on any parse failure
     so a hook never crashes the calling session over a malformed/absent payload."""
@@ -24,6 +91,27 @@ def read_event():
         return json.load(sys.stdin)
     except Exception:
         return {}
+
+
+def event_dict(event):
+    """`event` if it is a dict, else {} (m-c: payload may be any JSON)."""
+    return event if isinstance(event, dict) else {}
+
+
+def tool_input_of(event):
+    ti = event_dict(event).get('tool_input')
+    return ti if isinstance(ti, dict) else {}
+
+
+def str_field(d, key):
+    v = d.get(key) if isinstance(d, dict) else None
+    return v if isinstance(v, str) else ''
+
+
+def session_of(event):
+    """Session id as a safe string ('unknown-session' when absent / not a string)."""
+    s = event_dict(event).get('session_id')
+    return s if isinstance(s, str) and s else 'unknown-session'
 
 
 def marker_path(session_id):
@@ -64,9 +152,7 @@ def write_timestamp(session_id, key):
 
 
 def is_qa_audit_file(file_path):
-    if not file_path:
-        return False
-    return Path(file_path).name == 'qa-audit.md'
+    return canon_basename(file_path) == 'qa-audit.md'
 
 
 # Files that consume find_spec.py's graph (Step 3's plan.md maps SCREEN-XX/COMP-nnn
@@ -77,13 +163,11 @@ GRAPH_CONSUMER_FILENAMES = {'plan.md', 'tasks.md'}
 
 
 def is_graph_consumer_file(file_path):
-    if not file_path:
-        return False
-    return Path(file_path).name in GRAPH_CONSUMER_FILENAMES
+    return canon_basename(file_path) in GRAPH_CONSUMER_FILENAMES
 
 
 def is_code_file(file_path):
-    if not file_path:
+    if not file_path or not isinstance(file_path, str):
         return False
     p = Path(file_path)
     if p.suffix.lower() not in CODE_EXTENSIONS:

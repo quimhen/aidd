@@ -298,7 +298,22 @@ def _atomic_write(path, text):
     tmp = path.with_name(path.name + '.tmp')
     with open(tmp, 'w', encoding='utf-8', newline='\n') as f:
         f.write(text)
-    os.replace(tmp, path)
+    _replace_with_retry(tmp, path)
+
+
+def _replace_with_retry(src, dst, attempts=12):
+    """os.replace that survives the transient 'Access is denied' Windows gives when
+    another process (a concurrent reader, antivirus, the indexer) has the target
+    open at that instant. Retries briefly; a persistent failure still raises."""
+    import time
+    for i in range(attempts):
+        try:
+            os.replace(src, dst)
+            return
+        except PermissionError:
+            if i == attempts - 1:
+                raise
+            time.sleep(0.01 * (i + 1))
 
 
 def _append_rows(path, scope_label, fields, entries):

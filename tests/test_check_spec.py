@@ -125,5 +125,44 @@ class TestMainGapDetection(unittest.TestCase):
         self.assertEqual(result.returncode, 2)
 
 
+class TestHardRulesIntegration(unittest.TestCase):
+    """check_spec.py reports the static aidd_rules violations as gaps (R1 ... -> fix)."""
+
+    def _run(self, spec_dir):
+        return subprocess.run(
+            [sys.executable, str(SCRIPTS_DIR / "check_spec.py"), str(spec_dir)],
+            capture_output=True, text=True, encoding="utf-8", timeout=20,
+        )
+
+    def test_spec_without_route_is_a_gap(self):
+        with tempfile.TemporaryDirectory() as d:
+            (Path(d) / "spec.md").write_text("# spec\n\nNo route here.\n", encoding="utf-8")
+            r = self._run(d)
+            self.assertEqual(r.returncode, 1, r.stdout)
+            self.assertIn("R2 ", r.stdout)
+            self.assertIn("\u2192", r.stdout)
+
+    def test_legacy_estimated_hours_tasks_is_a_gap(self):
+        with tempfile.TemporaryDirectory() as d:
+            (Path(d) / "tasks.md").write_text(
+                "# Tasks\n\n### T-01\n- Estimated hours: 4\n", encoding="utf-8")
+            r = self._run(d)
+            self.assertEqual(r.returncode, 1, r.stdout)
+            self.assertIn("R1 ", r.stdout)
+
+    def test_missing_approval_reported_for_structured_tasks(self):
+        with tempfile.TemporaryDirectory() as d:
+            (Path(d) / "spec.md").write_text("# spec\n", encoding="utf-8")
+            (Path(d) / "tasks.md").write_text("# Tasks\n\n## Waves\n", encoding="utf-8")
+            r = self._run(d)
+            self.assertIn("R6 ", r.stdout)
+
+    def test_artifacts_that_do_not_exist_add_no_rule_gaps(self):
+        with tempfile.TemporaryDirectory() as d:
+            r = self._run(d)
+            self.assertEqual(r.returncode, 0, r.stdout)
+            self.assertNotIn("R2 ", r.stdout)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -20,6 +20,35 @@ sys.path.insert(0, str(Path(__file__).parent))
 from _common import read_event, write_timestamp  # noqa: E402
 
 event = read_event()
-write_timestamp(event.get('session_id'), 'last_agent_dispatch_ts')
+if not isinstance(event, dict):
+    event = {}
+_sid = event.get('session_id') if isinstance(event.get('session_id'), str) else None
+_cwd = event.get('cwd') if isinstance(event.get('cwd'), str) and event.get('cwd') else None
+
+
+def _s(v):
+    return v if isinstance(v, str) else ''
+
+
+try:
+    write_timestamp(_sid, 'last_agent_dispatch_ts')
+except Exception:
+    pass
+
+try:  # evidence recorder
+    sys.path.insert(0, str(Path(__file__).parent.parent / 'scripts'))
+    import aidd_evidence as _ev
+    _ti = event.get('tool_input')
+    if not isinstance(_ti, dict):
+        _ti = {}
+    _ev.append(_ev.find_root(_cwd or Path.cwd()), _sid, 'subagent',
+               type=_s(_ti.get('subagent_type')),
+               desc=_s(_ti.get('description'))[:200],
+               head=_s(_ti.get('prompt'))[:400])
+except Exception as _e:
+    try:
+        _ev.record_hook_error(_cwd, _sid, 'mark_agent_dispatch', _e)
+    except Exception:
+        pass
 
 sys.exit(0)

@@ -78,13 +78,32 @@ where the tool allows it, followed as a written discipline everywhere else.
 - **Ships in small, reviewable pieces.** One code, one file, one PR — a wrong pass costs one edit,
   not a rewrite.
 - **Never lets the implementer grade its own work.** Step 6's review must come from a separate
-  agent dispatch. On Claude Code this is an actual technical gate
-  (`hooks/require_independent_audit.py`), not just a rule stated in a doc.
+  agent dispatch, one per domain the change touched. On Claude Code this is an actual technical
+  gate (`hooks/rule_gate.py` + `stop_gate.py`), not just a rule stated in a doc.
+- **Enforces the rules instead of asking nicely.** Hard rules R1–R9: estimates are agent
+  minutes per wave (human hours only as a reference), skipping a step needs the user's quoted
+  confirmation (verified against what the user typed or answered), the agent can't answer its own
+  Align questions (blank answers block planning, `repo —` sources must exist and cite a line),
+  plan/tasks can't be written out of order, `tasks.md` approval is the user's recorded "Approve"
+  answer plus a tamper-evident hash, a spec stays open until `aidd rules close`/`abandon` (touching
+  another spec can't switch the gates off), code edits are blocked for every open spec without a
+  recorded approval, every required domain needs its own distinct auditor, and a session can't
+  end on built code without its closing audits (R8 relaxes after 3 blocks). Hooks write an
+  append-only evidence log (guarded against the agent by R9: the Write/Edit tools and a lexical shell guard, not a sandbox) (per-session in the temp dir, plus a project log only where
+  a `specs/` or `.aidd/` root exists) that the gates read; `aidd status` lists every open spec with the
+  ledger and **WHY blocked**, and `aidd rules check` prints `PASS|FAIL Rn … → fix`.
+  Honest limits: Claude Code only; **Bash and PowerShell can still edit code** and, through the CLI or
+  libraries, try to forge evidence (the guard is lexical, not a sandbox); the gates check that a
+  subagent ran and a question was answered, not that they were good; the user's click cannot be
+  proven; hooks fail open on a crash, launch failure or timeout (recorded as `hook_error` when
+  possible); session ids/resume behaviour are not verified. The rules stop accidental and
+  self-justified skipping, not a determined agent. `AIDD_RULES=off|0|false|no|warn` is the
+  owner's escape hatch.
 - **Remembers the why.** Decisions, rejected options, bug root causes and constraints go into
   `.aidd/memory/` as curated, code-anchored AIDD-TOON entries, committed with the code — no
   daemon, no LLM observer, no vectors, stdlib only. Search is progressive: `aidd mem search`
-  returns one line per hit, `aidd mem show <id>` the full row. On Claude Code two hooks surface
-  the relevant entries at session start and on the first touch of a file. `STATE.md` stays
+  returns one line per hit, `aidd mem show <id>` the full row. On Claude Code `memory_context.py` surfaces
+  the relevant entries at session start (installed by default; the per-file `memory_file_context.py` is opt-in). `STATE.md` stays
   "where am I", `specs/index.toon` stays "what exists"; memory is "why". A one-off, read-only
   importer can seed it from a claude-mem database (secrets and IPs scrubbed). Memory is committed content that gets injected into sessions: review it like code.
 - **Works the same across tools.** One methodology (`skill/AIDD.md`), thin adapters per tool — no
@@ -126,7 +145,7 @@ where the tool allows it, followed as a written discipline everywhere else.
 
 ## What's in this repo
 
-- **`skill/`** — the Claude Code skill: `SKILL.md`, enforcement hooks (`hooks/`), and every
+- **`skill/`** — the Claude Code skill: `SKILL.md`, enforcement hooks (`hooks/`: ten by default, centred on the single `rule_gate.py`), and every
   script/template (`scripts/`, `templates/`). `skill/AIDD.md` is the tool-agnostic methodology
   core every other adapter — including this repo's own CLI — points back to. Includes AIDD Memory
   (`scripts/aidd_memory.py`, `aidd_memory_import.py`; hooks `memory_context.py`,
@@ -162,6 +181,11 @@ aidd init /path/to/your/project   # installs the .aidd/ bundle there
 aidd search "login"               # search the spec graph
 aidd check specs/001-login/       # mechanical gap-check
 aidd check-charter .         # run charter.md's checkable rules
+aidd status                       # hard-rules ledger of all open specs + WHY blocked (--json; exit 0 always)
+aidd rules check specs/001-login/ # PASS|FAIL Rn message -> fix (exit 1 on a violation)
+aidd rules approve specs/001-login/   # write the tasks.md Approved: line (needs the user's recorded "Approve" answer)
+aidd rules close 001-login        # complete the spec (needs approval + qa-audit + auditors + the user's "Yes, close" answer)
+aidd rules abandon 001-login      # drop it (needs the user's recorded "Abandon" answer)
 aidd flow specs/001-login/visual-flow.toon --open   # Flowmap: interactive flow + pseudocode
 aidd mem add --type decision --title "Login uses magic links" --why "No password storage" --codes US-001,API-003 --scope 001-login
 aidd mem search login                              # one line per hit: id, date, type, codes, title
@@ -215,8 +239,8 @@ See `adapters/README.md`.
 Early — the core pipeline, the search/graph tools, the charter checker, the graph-coherence
 gate, the issue-tracker sync (GitHub/Azure DevOps/Bitbucket, plus bidirectional status sync
 via `aidd tracker sync` and PR<->task linking via `aidd tracker link-pr`), CI templates and
-`aidd ci install`, the Claude Code hooks (ten by default, plus an opt-in per-file memory hook, including the independent-audit and
-graph-coherence gates), the multi-agent adapter generator (`generate_adapters.py`, rendering
+`aidd ci install`, the Claude Code hooks (ten by default, plus an opt-in per-file memory hook; one `rule_gate.py` enforcing hard rules R1–R9
+including the independent-audit and graph-coherence gates, and a `stop_gate.py`), the evidence log, `aidd status`/`aidd rules`, the multi-agent adapter generator (`generate_adapters.py`, rendering
 Gemini CLI/Cursor/Windsurf/Cline/Copilot commands from one source), the real auto-discovery
 extension registry (`extension_registry.py`, loading provider/adapter/hook extensions from
 `skill/extensions/**/manifest.json` and `.aidd/extensions/**/manifest.json` — see

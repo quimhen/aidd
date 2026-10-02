@@ -78,6 +78,16 @@ def cmd_mem(args):
     return _run("aidd_memory.py", args.mem_args)
 
 
+def cmd_status(args):
+    # Pure passthrough to aidd_status.py (`status [spec_dir] [--json]`).
+    return _run("aidd_status.py", ["status", *args.status_args])
+
+
+def cmd_rules(args):
+    # Pure passthrough to aidd_status.py (`rules check|approve|close|abandon <spec>`).
+    return _run("aidd_status.py", ["rules", *args.rules_args])
+
+
 def cmd_check_charter(args):
     return _run("check_charter.py", [args.root] if args.root else [])
 
@@ -246,6 +256,18 @@ def build_parser():
     p_mem.add_argument("mem_args", nargs=argparse.REMAINDER, help="forwarded to aidd_memory.py (try: aidd mem search <words>)")
     p_mem.set_defaults(func=cmd_mem)
 
+    p_status = sub.add_parser(
+        "status", help="Hard-rules ledger of ALL open specs from the evidence log (route, alignment, approval, waves, auditors); --json",
+        add_help=False)
+    p_status.add_argument("status_args", nargs=argparse.REMAINDER, help="forwarded to aidd_status.py (try: aidd status [spec_dir] --json)")
+    p_status.set_defaults(func=cmd_status)
+
+    p_rules = sub.add_parser(
+        "rules", help="Hard rules: check <spec_dir> | approve <spec_dir> | close <spec_id> | abandon <spec_id> [--reason TEXT]",
+        add_help=False)
+    p_rules.add_argument("rules_args", nargs=argparse.REMAINDER, help="forwarded to aidd_status.py (try: aidd rules check specs/001-x)")
+    p_rules.set_defaults(func=cmd_rules)
+
     p_cc = sub.add_parser("check-charter", help="Run charter.md's checkable rules")
     p_cc.add_argument("root", nargs="?", default=None, help="Project root (default: cwd)")
     p_cc.set_defaults(func=cmd_check_charter)
@@ -391,6 +413,9 @@ def main(argv=None):
         # come before the subcommand (--root X, --help) work too — argparse's
         # REMAINDER would otherwise choke on a leading option.
         sys.exit(_run("aidd_memory.py", argv[1:]))
+    if argv and argv[0] in ("status", "rules"):
+        # Same passthrough for the hard-rules commands (aidd_status.py owns the parsing).
+        sys.exit(_run("aidd_status.py", argv))
     parser = build_parser()
     args = parser.parse_args(argv)
     sys.exit(args.func(args))

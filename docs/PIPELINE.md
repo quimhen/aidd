@@ -122,7 +122,7 @@ Two more things print on every run: a warning if the project has specs but no pr
 `charter.md` (Step −2 was skipped), and whether this run rebuilt the index or hit cache. A rebuild
 with a non-empty changed set means dispatch a **Graph Coherence Auditor** — scoped to just the
 changed spec(s), never the whole graph — before Step 3/4 build `plan.md`/`tasks.md` on the new
-edges. Enforced by `mark_graph_rebuild.py` + `require_graph_coherence_audit.py` (see "Enforcement
+edges. Enforced by `mark_graph_rebuild.py` + `rule_gate.py` (see "Enforcement
 hooks" below), not left as a step an agent could skip.
 
 ## Two failure patterns it designs against
@@ -209,7 +209,7 @@ Every artifact has a real starting skeleton — nothing is reconstructed from me
 Each step has a natural agent boundary. One rule matters more than the rest: **the Step 6 Auditor
 must never be the same agent that did the implementing** — an agent that just wrote code is
 structurally bad at spotting its own gaps. On Claude Code this is a real gate
-(`require_independent_audit.py`, see [Enforcement hooks](#enforcement-hooks-installed-once-active-every-session)
+(`rule_gate.py`, see [Enforcement hooks](#enforcement-hooks-installed-once-active-every-session)
 below), not only a rule stated here.
 
 | Step | Role | Run as | Independence |
@@ -334,19 +334,19 @@ unrelated hooks already there):
 
 | Event | Script | Effect |
 |---|---|---|
-| `UserPromptSubmit` | `prompt_trigger.py` | Detects change language in EN/ES/PT + literal CJK terms, runs `find_spec.py` against the message itself, and injects the Step −1 verdict inline. |
-| `PreToolUse` (Write\|Edit) | `require_aidd.py` | Hard-blocks (exit 2) writing/editing source code until AIDD ran this session — exempts markdown, AIDD's own specs/design-system files. |
+| `UserPromptSubmit` | `prompt_trigger.py` | Detects change language in EN/ES/PT + literal CJK terms, runs `find_spec.py` against the message itself, and injects the Step −1 verdict inline; also records the prompt in the evidence log (to verify user quotes). |
+| `PreToolUse` (`Write\|Edit\|MultiEdit\|NotebookEdit\|PowerShell\|Bash`) | `rule_gate.py` | Blocks (exit 2): writes to the evidence logs (R9); source code before AIDD ran this session; `qa-audit.md` without an independent subagent after the last code edit **and** one distinct auditor per required domain (R7); `plan.md`/`tasks.md` out of chain order, graph check fail-closed (R5); structurally invalid `spec.md`/`tasks.md` (R1–R3); the `Approved:` line unless the user's recorded answer is "Approve" and nothing else changed (R6); writes to code files (deny-list: everything except docs/images/lockfiles and `specs/`, `.git/`, `node_modules/`, …) while ANY open spec lacks a valid, recorded approval or its `tasks.md` (R6), or while visual debt is open (R4); and Bash/PowerShell commands that write into protected paths or touch the evidence libraries/env overrides (R9; a lexical guard, not a sandbox). Timeout 15 s. `AIDD_RULES=off\|0\|false\|no\|warn` is honoured. |
 | `PostToolUse` (Skill) | `mark_invoked.py` | Marks AIDD invoked for this session. |
-| `SessionStart` | `session_start.py` | Resets that marker for each new session. |
-| `PostToolUse` (Write\|Edit) | `mark_code_edit.py` | Timestamps the most recent code-file edit this session. |
-| `PostToolUse` (Task\|Agent) | `mark_agent_dispatch.py` | Timestamps the most recent independent subagent dispatch this session. |
-| `PreToolUse` (Write\|Edit) | `require_independent_audit.py` | Hard-blocks (exit 2) writing/updating any `qa-audit.md` unless a subagent was dispatched *after* the last code edit — makes "the Step 6 Auditor must never be the same agent that implemented the fix" an actual gate. |
-| `PostToolUse` (Bash) | `mark_graph_rebuild.py` | Timestamps the last `find_spec.py` run this session that reported the spec graph was rebuilt. |
-| `PreToolUse` (Write\|Edit) | `require_graph_coherence_audit.py` | Hard-blocks (exit 2) writing `plan.md`/`tasks.md` unless a subagent was dispatched *after* the last graph rebuild — same shape as the independent-audit gate, one step earlier: don't plan against a rebuilt-but-unverified graph. |
+| `SessionStart` | `session_start.py` | Resets that marker for each new session; records `session_start` in the evidence log. |
+| `PostToolUse` (`Write\|Edit\|MultiEdit\|NotebookEdit\|PowerShell`) | `mark_code_edit.py` | Appends `code_edit` / `spec_edit` events — to every project root above the file — and the informational active-spec pointer when a `specs/<id>/{spec,plan,tasks,mockup-audit,contracts,data-model}.md` file is written; records `approved{spec,hash}` when `tasks.md` is written with a hash-valid `Approved:` line. Timeout 10 s. |
+| `PostToolUse` (Task\|Agent) | `mark_agent_dispatch.py` | Timestamps the most recent independent subagent dispatch this session; appends a `subagent` event. |
+| `PostToolUse` (`Bash\|PowerShell`) | `mark_graph_rebuild.py` | Records a `find_spec` event (`rebuilt`, `ok`, `source`) only when the command really RUNS `find_spec.py` (`python`/`py`/`& python`, `-X utf8`, `time`/`timeout` prefixes, `powershell -c "python …"`); `ok` only when the output carries the authentic `aidd spec search` header or a known no-spec message. Timeout 10 s. |
+| `PostToolUse` (`AskUserQuestion`) | `mark_user_question.py` | Appends a `question` event (text + offered option labels) **and an `answer` event** with the pairs anchored on the known questions — approvals, closes and abandons are accepted only from a recorded answer that picked the required option ("Approve", "Yes, close", "Abandon"); short user quotes (≥ 2 words) are verified against answers. Timeout 10 s. |
+| `Stop` | `stop_gate.py` | Rule R8: refuses (exit 2) to end the session while any OPEN spec (all sessions) has a valid approval, code edits after its `approved` event, and `qa-audit.md` missing or a required domain uncovered. Blocks at most 3 times per (spec, approval hash) (`stop_block` events), then allows and records `stop_block_exhausted`. Silent when no spec is open. Timeout 15 s. |
 | `SessionStart` | `memory_context.py` | Prints a short AIDD Memory digest (entry count + the 5 most recent non-superseded decision/constraint/risk entries). Silent without `.aidd/memory/`; always exits 0. |
 | `PreToolUse` (Read\|Edit\|Write) | `memory_file_context.py` | **Opt-in** (`install_hooks.py --with-memory-file-hook`; costs a process per Read/Edit/Write). First time a file is touched in a session, injects up to 3 memory entries that mention it. Silent without `.aidd/memory/`; always exits 0, never blocks. |
 
-> **Why `require_independent_audit.py` exists.** This gate was added after a real session
+> **Why the independent-audit gate (`require_independent_audit.py`, run by `rule_gate.py`) exists.** This gate was added after a real session
 > self-audited its own bug fix, wrote `qa-audit.md`, and moved on — nobody independent had
 > actually checked it. It took a direct question ("did we really use a second agent?") to catch it
 > after the fact. This hook makes that failure mode a hard stop instead of something that depends
@@ -354,7 +354,7 @@ unrelated hooks already there):
 > audited the right thing — raises the bar from "trivially skipped" to "requires a deliberate
 > workaround," not a formal proof.
 
-> **Why `require_graph_coherence_audit.py` exists.** Same failure shape, one step earlier: a
+> **Why the graph-coherence gate (`require_graph_coherence_audit.py`, run by `rule_gate.py`) exists.** Same failure shape, one step earlier: a
 > mechanical parser (`find_spec.py`) can misparse an edited row or carry over a stale
 > relationship without raising an error — it just produces a graph that looks complete and
 > is quietly wrong. Planning against that unverified graph is exactly the "trust the note,
@@ -367,8 +367,35 @@ unrelated hooks already there):
 > own description is matched semantically by the model in any language, and the hard Write/Edit
 > gate never reads the prompt at all.
 
-Scope is global (every session on the machine) by design. Known gap: can't see code written
-through raw `Bash` (heredocs, `sed`) — only Write/Edit.
+Scope is global (every session on the machine) by design. Known gap: Bash and PowerShell can still edit code (heredocs, `sed`, `Set-Content`) — only Write/Edit/MultiEdit/NotebookEdit are gated; the shell tools are only checked for writes into protected paths (a lexical guard, not a sandbox).
+
+### Hard rules — enforced by hooks
+
+Rules R1–R9 turn the pipeline's prose requirements into gates. Contract: `specs/002-aidd-hard-rules/spec.md`.
+
+| Rule | What it blocks | The exact fix |
+|---|---|---|
+| **R1** estimates are agent time | Writing `tasks.md` with no `## Waves` table, a task lacking `Agent min:` / `Human ref hours:` (a bare `Estimated hours:` counts as missing), a wave time that is not the max of its tasks, a total that is not the sum of the waves, or a `Status` / `Tracker ref` / `PR/Spec ref` cell longer than 60 chars or 8 words (those cells are hash-neutral, so they must stay short) | Add `Agent min:` + `Human ref hours:` per task, the Waves table `\| Wave \| Tasks \| Agent time (min) \| Human ref (h) \|`, and `Total agent time (critical path): N min` |
+| **R2** route is declared | Writing `spec.md` with no `## Pipeline route` table, a duplicate step row, or a step `waived` without a Reason and `user — "<quote ≥ 3 words>"` (the quote is verified under R5) | Add the route table (one row each for `-1, 0, 1, 1.5, 2, 3, 4`); ask the user (AskUserQuestion) before waiving and quote their words, or set the step back to `run` |
+| **R3** alignment provenance | The Minimum Requirements Checklist missing any question of the shipped template (extra rows are fine) or with a blank / `-` Answer; an answer with no valid `Source`; a `repo — <path>` that does not exist under the project root, has no `:LINE` (or a LINE beyond the file) and no `"quote ≥ 3 words found in that file"` (a bare directory, `.` or `README.md` is rejected); a Proposed marker in ANY column (unconfirmed whatever the Source says) | `user — "<quote>"`, `repo — <existing path>:<LINE>` (or `repo — <path> "<quote from the file>"`), or `[Proposed — unconfirmed]` if the agent chose it |
+| **R4** visual debt | Waived Steps 0/1/1.5 with `SCREEN-nn` codes (any case, also inside HTML comments; in `spec.md`, `plan.md`, `contracts.md` or another spec) and no `## Visual debt` row; a `Blocks spec` that is not an existing spec id; a `resolved` row without a real Mockup source (existing file, `http(s)://` or `figma:`) and a `mockup-audit.md` row for its codes; while a row is `open`, writes under the blocked spec and code edits for it (evaluated on the would-be content of the write) | List the codes in `## Visual debt`, ask the user for the mockup source, run Steps 0/1/1.5, mark the row `resolved` with the source |
+| **R5** chain order | Writing `plan.md` without a `find_spec` run this session, an independent subagent after the last `spec.md` edit, **no blank checklist Answer**, zero `[Proposed` rows, every `user — "quote"` verified (≥ 5 words found in a recorded prompt, or ≥ 2 words found in a recorded answer to an AskUserQuestion — both recorded AFTER the spec's first edit) and no open debt; writing `tasks.md` without `plan.md`, a subagent after the last `plan.md` edit, and (fail-closed) a `find_spec` run, plus a subagent after any graph rebuild | Run `find_spec.py`; dispatch the Mapper/Alignment agent over `spec.md`; ask the user every open question (AskUserQuestion) and quote their answer; dispatch an auditor over `plan.md`; then retry |
+| **R6** tasks approval | Writing the `Approved:` line (or running `aidd rules approve`) unless the user's recorded answer is the option **"Approve"** of an AskUserQuestion about approving the tasks (topic `approv|aprob`; asked in this session, newer than the last change of `tasks.md`; the question must OFFER that option and contain the tag `[tasks:<hash8>]` of the current `tasks.md`) and `tasks.md` is R1-valid; the gate allows the edit only if it changes nothing else (`approval_hash` before = after) and the written hash is that hash. **Every write to a code file** — EVERY file except `md markdown txt rst csv tsv log lock png jpg jpeg gif svg ico webp bmp pdf docx xlsx pptx zip` and except `specs/`, `design-system/`, `.aidd/memory/`, `.claude/skills/`, `.git/`, `node_modules/`, `__pycache__/`, `.venv/` (canonical path relative to the outermost project root) — **is blocked while ANY open spec has no valid approval, no hook-recorded `approved{spec,hash}` event for the current hash, or no `tasks.md` at all ("Step 4 missing")**. The hash ignores the `Status`, `Tracker ref` and `PR/Spec ref` columns/lines, so sync/link tools do not void it; any other edit does | Present the tasks, ask with AskUserQuestion (question text with the `[tasks:<hash8>]` tag, option "Approve"), then `aidd rules approve specs/<id>` |
+| **R7** closing audit per domain | Writing `qa-audit.md` while any required domain (`performance` always, `ui`, `backend`, `database` by what the tasks touch) lacks its OWN subagent after the last code edit (any code edit — code edits carry no spec attribution) whose description or the first 400 chars of its prompt name it (word-boundary match; one subagent counts for ONE domain only) | Dispatch one auditor per missing domain, name the domain in its prompt, rewrite `qa-audit.md` |
+| **R8** stop gate | Ending the session (Stop hook, exit 2) while ANY open spec (across all sessions) has a valid approval, code edits after its `approved` event, and `qa-audit.md` missing or a required domain uncovered. Blocks at most 3 times per (spec, approval hash), then allows and records `stop_block_exhausted` — it is a nudge, not a lock; `stop_hook_active` is not a free pass | Run the missing auditors and write `qa-audit.md`, then `aidd rules close <id>` |
+| **R9** protected paths | The agent writing anything under `.aidd/` EXCEPT `.aidd/memory/**`, or the per-session evidence directory (`<tempdir>/aidd-hooks/`), via Write/Edit/MultiEdit/NotebookEdit; and Bash/PowerShell commands that write, delete, move or redirect into those paths, that import or `-m`-run `aidd_evidence|aidd_rules|aidd_status`, that contain `AIDD_TESTING`, `AIDD_EVIDENCE_DIR` or `AIDD_SESSION_ID` anywhere, or assign `AIDD_RULES=`, that write/remove/move under `specs/` (e.g. deleting `tasks.md`), that mention `tasks.md` together with `Approved`, or that use the obfuscation forms the audit found (`xargs rm`, `curl -o`, `tar -C`, `unzip -d`, `Expand-Archive`, `iwr`/`Invoke-WebRequest -OutFile`, `Tee-Object`, `[IO.File]::`, `[IO.Directory]::`, `Export-Csv`, `git apply`, `eval`, glob characters in a `.aidd` path). Paths are canonicalised first (case, `..`, trailing dots/spaces, `::$DATA`, 8.3 names, junctions/symlinks). The Bash/PowerShell guard is a cheap lexical pre-check, not a sandbox | None — those files are written by hooks only |
+
+**Evidence, not trust.** Hooks append what they observed (the agent is not supposed to write it). The evidence is split by scope so a session started in a parent folder, or in a project without AIDD, still works and creates nothing in the project: SESSION kinds (`prompt`, `subagent`, `question`, `answer`, `find_spec{rebuilt,ok,source}`, `session_start`, `hook_error`) go to a per-session log under `<tempdir>/aidd-hooks/evidence/<session-id>.toon`, never inside a project; PROJECT kinds (`spec_edit`, `code_edit`, `approved{spec,hash}`, `spec_closed{spec,reason,hash}`, `stop_block`, `stop_block_exhausted`) go to `<project>/.aidd/evidence/events.toon` (git-ignored, append-only), written only where a project root (a folder with `specs/` or `.aidd/`) is found — `spec_edit`/`code_edit` are written to EVERY root above the edited file, and a project with no root gets no file. The gates read both transparently. R9 blocks the Write/Edit tools and a lexical shell guard from touching them — nothing more; it is not a sandbox. Rules fail **closed on missing evidence** and **open on a hook crash**. `AIDD_EVIDENCE_DIR` relocates the logs only when `AIDD_TESTING=1` is also set (tests); the hooks and the CLI ignore both otherwise.
+
+**Answers are anchored, not guessed.** `mark_user_question` records the question with its offered option labels and the answer pairs, built ONLY by matching the harness response against the known question strings in order; if the count does not match, the answer is stored as unusable. Approval, close and abandon are accepted only from a recorded answer whose chosen label is one of the options the question OFFERED and matches the required label — **the agent must offer exactly "Approve" (tasks), "Yes, close" (close) or "Abandon" (abandon)**; "Yes", "OK" or free text do not count. The approval question must also contain the tag `[tasks:<hash8>]` — the first 8 hex chars of the current `approval_hash` of `tasks.md` (`aidd rules approve` prints the exact tag when it refuses) — so an answer given for an older version of the tasks is void, e.g. `Approve these tasks? [tasks:1a2b3c4d]` with the option `Approve`. User quotes in `spec.md` are verified the same way: ≥ 5 words in a recorded prompt, or ≥ 2 words in a recorded answer, both recorded after the spec's first edit.
+
+**Open specs, not "the active spec".** A spec is *open* from the first recorded edit of its `plan.md` or `tasks.md` (editing `spec.md` alone does not open it) until a `spec_closed` event. R6/R7/R8 and the code gate apply to EVERY open spec in every project root above the file being written (nested roots included); a code edit applies to all of them. An open spec with no `tasks.md` blocks code edits ("Step 4 missing: write tasks.md, then get approval"). Touching or creating another spec cannot switch the gates off. `.aidd/active_spec` is an informational pointer only and no gate reads it. A spec stops being open only via `aidd rules close <id>` (completed: valid, recorded approval + `qa-audit.md` + every required domain audited + the user's recorded "Yes, close") or `aidd rules abandon <id>` (the user's recorded "Abandon"; no `qa-audit.md` needed); a later `tasks.md` edit re-opens it unless the approval hash is unchanged (a Status-only edit).
+
+**Escape hatch (owner only):** set `AIDD_RULES` in the `env` block of `~/.claude/settings.json`: `off`, `0`, `false` or `no` disables the gates; `warn` prints messages to stderr and never blocks; anything else (or unset) enforces (value is trimmed, case-insensitive). The Bash/PowerShell guard also blocks commands that assign `AIDD_RULES=`.
+
+**Commands (also usable from a terminal or CI):** `aidd status [spec_dir] [--json]` lists ALL open specs with their approval state ("Step 4 missing" for an open spec without `tasks.md`) and, per spec, the ledger (route steps and whether each waiver is confirmed, proposed/unanswered/unverified alignment answers, Mapper and graph evidence, approval validity and whether the `approved` event is recorded, waves and critical-path minutes, code edits, per-domain auditor coverage, open visual debt) plus **WHY blocked** lines (rule, message, exact fix); globally: how many AskUserQuestion answers were recorded, `stop_block` counts and hook errors; exit 0 always, even for a pathological `tasks.md`. `aidd rules check <spec_dir>` prints `PASS|FAIL Rn message → fix` and exits 1 on any violation. `aidd rules approve <spec_dir>` writes the `Approved:` line and records the `approved` event only with the user's recorded answer "Approve" (same session, newer than `tasks.md`) and an R1-valid `tasks.md`; otherwise it refuses and prints the exact `[tasks:<hash8>]` tag the question text must contain; the question must also OFFER the option "Approve". `aidd rules close <id>` needs an open spec, a valid recorded approval, `qa-audit.md`, every required domain audited and the recorded answer "Yes, close" (asked after `qa-audit.md`); it records `spec_closed(completed)`. `aidd rules abandon <id> [--reason TEXT]` needs the recorded answer "Abandon" and records `spec_closed(abandoned)`. The CLI cannot see its own session id: it uses the session of the newest recorded user prompt, and ignores `AIDD_SESSION_ID`/`AIDD_EVIDENCE_DIR` unless `AIDD_TESTING=1`. `check_spec.py` also reports the static rules (R1–R4, R6) as gaps.
+
+**Limitations — read this before trusting the rules.** (1) **Bash and PowerShell can still edit code**: heredocs, `sed`, `Set-Content`, scripts — the code gate covers Write/Edit/MultiEdit/NotebookEdit; the shell tools are only checked for writes into protected paths. (2) Through Bash/PowerShell an agent can also **try to forge evidence** by calling the CLI or the libraries; the guard that blocks this is lexical (pattern matching on the command text), not a sandbox, and a determined agent can evade it. (3) The gates verify that a subagent ran and a question was answered, **not that they were any good** — an auditor that rubber-stamps still satisfies R5/R7. (4) The user's click cannot be cryptographically proven: an answer is accepted when the hook recorded the user's response to an anchored question that offered the required option, which is evidence, not proof. (5) Hooks **fail open** on a crash, a launch failure or a timeout (15 s gates, 10 s recorders) and record a `hook_error` only when they can run at all — `aidd status` shows the count. (6) **R8 relaxes after 3 blocks per approval hash**, then lets the session end. (7) Session ids and resume/compact behaviour are not verified: events without a session id are `unknown-session`, and the CLI infers its session from the newest prompt. (8) A user quote is checked against what was recorded as typed or answered, not for whether it means what the agent claims. (9) A spec stopped at `spec.md` (no `plan.md`/`tasks.md` yet) is not open, so it opens no gates. (10) Code can be planted under exempt locations (`.git/hooks`, `node_modules/`, `specs/`) because R6 does not gate them. (11) `repo —` sources only prove that the file (and line) exists, not that it is relevant. (12) The shell guard has false positives (`cp … specs/…`, `git mv specs/…`, `echo x > specs/a.md`): use the Write tool for those. (13) With several concurrent windows the CLI can infer the wrong session; it then fails closed (refuses). (14) A stray legacy marker file may appear in `%TEMP%\aidd-hooks` during tests. (15) `AIDD_TESTING` cannot be detected as "started by the test suite": the CLI honours it as set, and the shell guard blocks any command that contains `AIDD_TESTING`, `AIDD_EVIDENCE_DIR` or `AIDD_SESSION_ID`. **In short: the rules stop accidental and self-justified skipping; they do not stop a determined agent.**
 
 ## Memory — the WHY, anchored to codes
 
@@ -425,6 +452,10 @@ aidd mem add --type decision --title "Flows use TOON not JSON" \
 | `.aidd/memory/` | Why is it this way — decisions, bugs, constraints | Appended at the capture points above | Searched, not read in full: `search` → `show` |
 
 ## Pipeline
+
+### Pipeline route and visual debt — declared, never silently skipped (hard rules R2 / R4)
+
+`spec.md` carries a `## Pipeline route` table `| Step | Status | Reason | Confirmation |` with one row for each of `-1, 0, 1, 1.5, 2, 3, 4`; `Status` is `run` or `waived`. A waived step needs a `Reason` and a `Confirmation` of the form `user — "<exact quote, 3+ words>"` — **ask the user before waiving anything**; the quote must be something they really typed. Steps 0/1/1.5 may be waived only for a change with no visual surface. If they are waived and `SCREEN-nn` codes still appear in the spec's files (or in another spec without a `mockup-audit.md` row), `spec.md` also carries a `## Visual debt` table `| Codes | Blocks spec | Status | Mockup source |` (`open` | `resolved`; `resolved` needs a mockup source). While a debt row is `open`, writing under that spec — and, on Claude Code, editing code while that spec is open — is blocked (the `active_spec` pointer is informational only).
 
 ### Step −2 — Project setup (one-time, before the first feature — the Charter phase)
 
@@ -491,6 +522,8 @@ needed. Only then does the main conversation ask the user.
 
 > **Gate.** Step 3 does not start while any Minimum Requirements row is blank.
 
+**Alignment provenance (hard rule R3).** Every answered row of the Minimum Requirements Checklist carries a `Source`: `user — "<exact quote, 3+ words>"`, `repo — <path[:line]>`, or `[Proposed — unconfirmed]`. An answer the agent chose itself is **always** `[Proposed — unconfirmed]` — the agent never self-answers an Align question and writes it up as if the user had said it. Drafting `spec.md` with Proposed rows is fine; **planning is not**: Step 3 does not start while any `[Proposed` row is left, and every `user — "..."` quote must be a literal substring of something the user actually typed. Ask the user (AskUserQuestion), then replace the Source with their own words.
+
 → `specs/[###]/spec.md`
 
 ### Step 3 — Plan: the Screen → Code map (Mapper)
@@ -509,8 +542,12 @@ Copy `templates/tasks.md`. One `SCREEN-XX`, `COMP-nnn`, or `SCREEN-XX-Fnn`, one 
 — never batched. Each task detailed with a four-dimension rubric: **Classify**, **Estimate**,
 **Decompose**, **Assign**.
 
+**Estimates are agent time, not human hours (hard rule R1).** Each task states `Agent min:` (whole minutes an agent needs) and `Human ref hours:` (what a human would need, for reference only). `tasks.md` carries a `## Waves` table `| Wave | Tasks | Agent time (min) | Human ref (h) |`: waves run sequentially, tasks inside a wave in parallel, so a wave's agent time is the **maximum** `Agent min` of its tasks and the line `Total agent time (critical path): N min` is the **sum** of the wave times. A bare `Estimated hours:` is not accepted — it is how human effort ends up quoted as if it were agent time.
+
 > **Approval gate.** Present the task list as a dry-run and wait for approval before writing any
 > code.
+
+**Approval is the user's, and it is tamper-evident (hard rule R6).** After presenting the dry-run, ask the user with AskUserQuestion (the question must mention approving the tasks AND offer an option labelled exactly "Approve"), wait for the answer, then run `aidd rules approve specs/[###-feature]` — it writes `Approved: <date> hash:<hash>` into `tasks.md` and refuses unless the user's answer "Approve" to an AskUserQuestion about approving the tasks was recorded in this session, newer than `tasks.md`, and `tasks.md` is R1-valid (a question alone, another option such as "Yes", a "No", or another session's answer does not count); it also records the `approved` event the code gate requires. Any later edit to `tasks.md` changes the hash and voids the approval; re-present and re-approve. On Claude Code, writes to code files (everything except docs/images/lockfiles and `specs/`, `.git/`, `node_modules/`, …) are blocked while ANY open spec's approval is missing, void or unrecorded, or its `tasks.md` is missing.
 
 → `specs/[###]/tasks.md`
 
@@ -523,6 +560,8 @@ See the [Definition of Done](#definition-of-done--every-ui-pr) below — all fou
 Not one generic "review everything" pass. Dispatch a fresh agent per domain: **UI/Mockup**,
 **Backend/API**, **Database**, **Performance & Best Practices**. Copy `templates/qa-audit.md` on
 the first pass; every later pass appends.
+
+**One independent auditor per required domain (hard rule R7).** Required domains: `performance` always; `ui` if the tasks cite `SCREEN-`/`CTL-`/`COMP-`; `backend` if they cite `API-`; `database` if `data-model.md` exists or the tasks mention stored procedures, migrations, `.sql` or a schema. Each is a separate subagent dispatched **after the last code edit** whose description or first 400 chars of prompt name its domain (ui/mockup/screen, backend/api/contract, database/sql/schema, performance/best practice — word-boundary match, and one subagent counts for ONE domain only). On Claude Code, writing `qa-audit.md` is blocked until every required domain has one, and the Stop hook refuses to end a session that built code without them (R8). When all of it is done, `aidd rules close <spec-id>` records `spec_closed(completed)` (refused while an R6/R7 gap remains or without the user's recorded "Yes, close" answer); `aidd rules abandon <spec-id>` drops a spec on the user's recorded "Abandon".
 
 → `specs/[###]/qa-audit.md` updated
 
@@ -642,6 +681,11 @@ pip install -e .   # from a clone of this repo
 aidd search "login"
 aidd check specs/001-login/
 aidd check-charter .
+aidd status                                  # hard-rules ledger of all open specs + WHY blocked (--json; exit 0 always)
+aidd rules check specs/001-login/            # PASS|FAIL Rn message -> fix; exit 1 on a violation
+aidd rules approve specs/001-login/          # writes the tasks.md Approved: line; needs the user's recorded "Approve" answer + R1-valid tasks
+aidd rules close 001-login                   # records spec_closed(completed): needs approval + qa-audit.md + auditors + the user's "Yes, close" answer
+aidd rules abandon 001-login --reason "dropped" # records spec_closed(abandoned): needs the user's recorded "Abandon"
 aidd tasks-to-issues specs/001-login/tasks.md --apply
 aidd mem add --type decision --title "Flows use TOON not JSON" --codes US-001 --scope 001-login
 aidd mem search login                       # one line per hit, never the why

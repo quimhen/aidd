@@ -146,15 +146,44 @@ def run_find_spec(cwd: Path, terms):
 
 
 event = read_event()
-prompt = event.get('prompt') or ''
+if not isinstance(event, dict):
+    event = {}
+prompt = event.get('prompt') if isinstance(event.get('prompt'), str) else ''
+_sid = event.get('session_id') if isinstance(event.get('session_id'), str) else None
+_cwd = event.get('cwd') if isinstance(event.get('cwd'), str) and event.get('cwd') else None
+
+try:  # evidence recorder — additive, must never affect output or exit code
+    sys.path.insert(0, str(Path(__file__).parent.parent / 'scripts'))
+    import aidd_evidence as _ev
+    _ev.append(_ev.find_root(_cwd or Path.cwd()), _sid,
+               'prompt', text=re.sub(r'\s+', ' ', prompt).strip()[:_ev.MAX_PROMPT_CHARS])
+except Exception as _e:
+    try:
+        _ev.record_hook_error(_cwd, _sid, 'prompt_trigger', _e)
+    except Exception:
+        pass
 
 if PATTERN.search(prompt):
-    cwd = Path(event.get('cwd') or Path.cwd())
-    specs_root = find_specs_root(cwd)
+    try:
+        cwd = Path(_cwd or Path.cwd())
+        specs_root = find_specs_root(cwd)
+    except Exception:
+        specs_root = None
     find_spec_output = None
     if specs_root is not None:
         terms = query_terms_from_prompt(prompt)
         find_spec_output = run_find_spec(specs_root.parent, terms)
+        try:  # this hook itself ran find_spec: record it as evidence (source=hook)
+            if find_spec_output is not None:
+                import aidd_evidence as _ev
+                _ev.append_find_spec(_ev.find_root(specs_root.parent), _sid,
+                                     rebuilt=_ev.find_spec_rebuilt(find_spec_output),
+                                     ok=_ev.find_spec_ok(find_spec_output), source='hook')
+        except Exception as _e:
+            try:
+                _ev.record_hook_error(_cwd, _sid, 'prompt_trigger', _e)
+            except Exception:
+                pass
 
     message = [
         "[aidd] This message looks like a requirement, change, improvement, or fix. AIDD "
