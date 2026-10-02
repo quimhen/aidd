@@ -80,6 +80,13 @@ where the tool allows it, followed as a written discipline everywhere else.
 - **Never lets the implementer grade its own work.** Step 6's review must come from a separate
   agent dispatch. On Claude Code this is an actual technical gate
   (`hooks/require_independent_audit.py`), not just a rule stated in a doc.
+- **Remembers the why.** Decisions, rejected options, bug root causes and constraints go into
+  `.aidd/memory/` as curated, code-anchored AIDD-TOON entries, committed with the code — no
+  daemon, no LLM observer, no vectors, stdlib only. Search is progressive: `aidd mem search`
+  returns one line per hit, `aidd mem show <id>` the full row. On Claude Code two hooks surface
+  the relevant entries at session start and on the first touch of a file. `STATE.md` stays
+  "where am I", `specs/index.toon` stays "what exists"; memory is "why". A one-off, read-only
+  importer can seed it from a claude-mem database (secrets and IPs scrubbed). Memory is committed content that gets injected into sessions: review it like code.
 - **Works the same across tools.** One methodology (`skill/AIDD.md`), thin adapters per tool — no
   relearning the process when the assistant changes. For Claude Code, OpenCode, and Codex, that's
   a native skill/AGENTS.md pointer; for Gemini CLI, Cursor, Windsurf, Cline, and GitHub Copilot,
@@ -121,7 +128,9 @@ where the tool allows it, followed as a written discipline everywhere else.
 
 - **`skill/`** — the Claude Code skill: `SKILL.md`, enforcement hooks (`hooks/`), and every
   script/template (`scripts/`, `templates/`). `skill/AIDD.md` is the tool-agnostic methodology
-  core every other adapter — including this repo's own CLI — points back to.
+  core every other adapter — including this repo's own CLI — points back to. Includes AIDD Memory
+  (`scripts/aidd_memory.py`, `aidd_memory_import.py`; hooks `memory_context.py`,
+  `memory_file_context.py`).
 - **`aidd/`** — the CLI (`pip install -e .` → the `aidd` command): a thin dispatcher over
   `skill/scripts/`, for a human at a terminal or a CI job, no AI agent required.
 - **`commands/`** — the eight `/aidd-*` pipeline-stage commands for Claude Code.
@@ -154,6 +163,16 @@ aidd search "login"               # search the spec graph
 aidd check specs/001-login/       # mechanical gap-check
 aidd check-charter .         # run charter.md's checkable rules
 aidd flow specs/001-login/visual-flow.toon --open   # Flowmap: interactive flow + pseudocode
+aidd mem add --type decision --title "Login uses magic links" --why "No password storage" --codes US-001,API-003 --scope 001-login
+aidd mem search login                              # one line per hit: id, date, type, codes, title
+aidd mem show m-3fa91c02                           # full entry (why, files, supersedes)
+aidd mem timeline m-3fa91c02                       # neighbouring entries of the same scope, by date
+aidd mem file skill/scripts/flowmap.py             # entries that mention a file
+aidd mem inject                                    # the digest the SessionStart hook injects (also: inject --file PATH)
+aidd mem stats                                     # counts by type/scope, bytes
+aidd mem compact --before 2026-07-01 --apply       # archive superseded/old entries (dry run without --apply)
+aidd mem import-claude-mem <claude-mem.db> --project myproj --since 2026-01-01 --dry-run   # one-off, read-only import (also --scope, --include, --no-summaries)
+# AIDD_MEMORY_DIR overrides .aidd/memory/; `aidd mem --root X <cmd>` works before or after the command; `add --date` backdates
 aidd tasks-to-issues specs/001-login/tasks.md --apply   # sync tasks (github by default)
 aidd tasks-to-issues specs/001-login/tasks.md --provider azure_devops --org ... --project ... --apply
 aidd adapters generate all /path/to/your/project   # native commands for Gemini CLI, Cursor, Windsurf, Cline, Copilot
@@ -196,7 +215,7 @@ See `adapters/README.md`.
 Early — the core pipeline, the search/graph tools, the charter checker, the graph-coherence
 gate, the issue-tracker sync (GitHub/Azure DevOps/Bitbucket, plus bidirectional status sync
 via `aidd tracker sync` and PR<->task linking via `aidd tracker link-pr`), CI templates and
-`aidd ci install`, the Claude Code hooks (nine of them, including the independent-audit and
+`aidd ci install`, the Claude Code hooks (eleven of them, including the independent-audit and
 graph-coherence gates), the multi-agent adapter generator (`generate_adapters.py`, rendering
 Gemini CLI/Cursor/Windsurf/Cline/Copilot commands from one source), the real auto-discovery
 extension registry (`extension_registry.py`, loading provider/adapter/hook extensions from

@@ -234,6 +234,151 @@ class TestEndToEnd(unittest.TestCase):
             self.assertIn("US-001", result.stdout)
             self.assertIn("SCREEN-01", result.stdout)
 
+class TestIndexOptimization(unittest.TestCase):
+    def _mk(self, root: Path, name: str, body: str):
+        d = root / "specs" / name
+        d.mkdir(parents=True)
+        (d / "spec.md").write_text(body, encoding="utf-8")
+        return d
+
+    def _run(self, cwd, *args):
+        return subprocess.run(
+            [sys.executable, str(SCRIPTS_DIR / "find_spec.py"), *args],
+            cwd=str(cwd), capture_output=True, text=True, timeout=15,
+        )
+
+    def test_version_is_3(self):
+        self.assertEqual(find_spec.INDEX_VERSION, 3)
+
+    def test_old_version_index_is_rebuilt(self):
+        with TemporaryDirectory() as d:
+            root = Path(d)
+            self._mk(root, "001-a", "# A\nfacturacion electronica\n")
+            self._run(root, "--reindex")
+            idx = root / "specs" / "index.toon"
+            idx.write_text(idx.read_text(encoding="utf-8").replace("version: 3", "version: 2"), encoding="utf-8")
+            self.assertIsNone(find_spec.load_index(root / "specs"))
+            result = self._run(root, "facturacion")
+            self.assertEqual(result.returncode, 0)
+            self.assertIn("rebuilt", result.stdout)
+            self.assertIn("version: 3", idx.read_text(encoding="utf-8"))
+
+    def test_words_capped_at_25(self):
+        with TemporaryDirectory() as d:
+            root = Path(d)
+            body = "# Big\n" + " ".join(f"termino{chr(97 + i % 26)}{chr(97 + i // 26)}x" for i in range(200))
+            self._mk(root, "001-big", body)
+            specs = root / "specs"
+            idx = find_spec.build_index(specs, [specs / "001-big"])
+            self.assertEqual(len(idx["specs"]["001-big"]["words"]), find_spec.MAX_WORDS_PER_SPEC)
+            self.assertEqual(find_spec.MAX_WORDS_PER_SPEC, 25)
+
+    def test_stopword_noise_absent(self):
+        with TemporaryDirectory() as d:
+            root = Path(d)
+            noise = "como cada entre desde hasta sobre cuando donde tambien puede deben "
+            self._mk(root, "001-a", "# A\n" + noise * 5 + "inventario\n")
+            specs = root / "specs"
+            words = find_spec.build_index(specs, [specs / "001-a"])["specs"]["001-a"]["words"]
+            for w in noise.split():
+                self.assertNotIn(w, words)
+            self.assertIn("inventario", words)
+
+    def test_numbers_hex_and_short_dropped_accents_folded(self):
+        terms = find_spec.index_terms("2026 deadbeef12 abc Opción 12345 cafe")
+        self.assertNotIn("2026", terms)
+        self.assertNotIn("deadbeef12", terms)
+        self.assertNotIn("abc", terms)
+        self.assertIn("opcion", terms)
+
+    def test_tfidf_prefers_distinctive_terms(self):
+        tfs = {
+            "a": find_spec.index_terms("login login login sistema sistema"),
+            "b": find_spec.index_terms("pagos pagos sistema"),
+        }
+        ranked = find_spec.rank_tfidf(tfs, limit=1)
+        self.assertEqual(ranked["a"], ["login"])
+        self.assertEqual(ranked["b"], ["pagos"])
+
+    def test_accent_insensitive_query_finds_spec(self):
+        with TemporaryDirectory() as d:
+            root = Path(d)
+            self._mk(root, "001-a", "# A\nGestión de facturación electrónica\n")
+            self._mk(root, "002-b", "# B\nreportes de inventario\n")
+            for q in ("facturacion", "facturación", "FACTURACIÓN"):
+                result = self._run(root, q)
+                self.assertEqual(result.returncode, 0, q)
+                self.assertIn("Top match: 001-a", result.stdout)
+
+    def test_memory_hits_for_degrades_to_empty(self):
+        self.assertEqual(find_spec.memory_hits_for({"SCREEN-01"}), [])
+        self.assertEqual(find_spec.memory_hits_for(set(), Path(".")), [])
+
+    def test_memory_hits_for_reads_memory(self):
+        import aidd_memory
+        with TemporaryDirectory() as d:
+            root = Path(d)
+            aidd_memory.add_entry(root, type="decision", title="Block save when empty", codes=["SCREEN-08"])
+            lines = find_spec.memory_hits_for({"SCREEN-08"}, root)
+            self.assertEqual(len(lines), 1)
+            self.assertIn("decision", lines[0])
+            self.assertIn("Block save when empty", lines[0])
+
+
+class TestAuditRev1(unittest.TestCase):
+    """End-to-end regressions from the independent audit (Rev 1): the CLI output,
+    not just the helpers."""
+
+    def _project(self, d, spec_text):
+        spec = Path(d) / "specs" / "001-login"
+        spec.mkdir(parents=True)
+        (spec / "spec.md").write_text(spec_text, encoding="utf-8")
+        return Path(d)
+
+    def _search(self, root, *terms):
+        return subprocess.run([sys.executable, str(SCRIPTS_DIR / "find_spec.py"), *terms],
+                              cwd=str(root), capture_output=True, text=True, encoding="utf-8")
+
+    def test_memory_lines_are_printed_by_the_cli(self):
+        import aidd_memory
+        with TemporaryDirectory() as d:
+            root = self._project(d, "# Login\nSCREEN-08 shows the order ticket\n")
+            aidd_memory.add_entry(root, type="decision", title="Block save when empty", codes=["SCREEN-08"])
+            r = self._search(root, "SCREEN-08")
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+            self.assertIn("Memory", r.stdout)
+            self.assertIn("Block save when empty", r.stdout)
+
+    def test_search_without_memory_is_unchanged(self):
+        with TemporaryDirectory() as d:
+            root = self._project(d, "# Login\nSCREEN-08 shows the order ticket\n")
+            r = self._search(root, "SCREEN-08")
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+            self.assertNotIn("Memory", r.stdout)
+
+    def test_fulltext_fallback_when_index_misses_a_real_word(self):
+        filler = " ".join("alfa" + chr(97 + i) for i in range(26))
+        with TemporaryDirectory() as d:
+            root = self._project(d, f"# Login\n{filler}\nla zanahoria es el requisito raro\n")
+            r = self._search(root, "zanahoria")
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+            self.assertIn("001-login", r.stdout)
+            self.assertIn("full-text", r.stdout)
+
+    def test_fallback_does_not_invent_matches(self):
+        with TemporaryDirectory() as d:
+            root = self._project(d, "# Login\nSCREEN-08 shows the order ticket\n")
+            r = self._search(root, "xylophone")
+            self.assertEqual(r.returncode, 1)
+            self.assertIn("No match", r.stdout)
+
+    def test_short_query_words_match_through_the_fallback(self):
+        with TemporaryDirectory() as d:
+            root = self._project(d, "# Login\nthe pdf export uses the sap bridge\n")
+            r = self._search(root, "pdf")
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+            self.assertIn("001-login", r.stdout)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -93,6 +93,8 @@ something actually changed). It holds two things per spec: a searchable set of c
 the spec's real dependency graph, parsed straight from `mockup-audit.md`'s own tables — nothing
 re-derived or guessed.
 
+`specs/index.toon` is version 3: each spec's `words` column holds its top 25 terms by TF-IDF across all specs (about 80% smaller than the old full word list). When the index finds nothing, `find_spec.py` falls back to a full-text scan of the spec files (accent-folded) before concluding "no match"; query words shorter than the index minimum are matched only by that fallback.
+
 ```
 $ python scripts/find_spec.py --tree 001-login
 001-login — Login & session
@@ -327,7 +329,7 @@ equivalent:
 ## Enforcement hooks — installed once, active every session
 
 AIDD ships hooks so it doesn't rely on remembering to invoke it. Run `python scripts/install_hooks.py`
-once per machine to merge nine entries into `~/.claude/settings.json` (idempotent, never touches
+once per machine to merge eleven entries into `~/.claude/settings.json` (idempotent, never touches
 unrelated hooks already there):
 
 | Event | Script | Effect |
@@ -341,6 +343,8 @@ unrelated hooks already there):
 | `PreToolUse` (Write\|Edit) | `require_independent_audit.py` | Hard-blocks (exit 2) writing/updating any `qa-audit.md` unless a subagent was dispatched *after* the last code edit — makes "the Step 6 Auditor must never be the same agent that implemented the fix" an actual gate. |
 | `PostToolUse` (Bash) | `mark_graph_rebuild.py` | Timestamps the last `find_spec.py` run this session that reported the spec graph was rebuilt. |
 | `PreToolUse` (Write\|Edit) | `require_graph_coherence_audit.py` | Hard-blocks (exit 2) writing `plan.md`/`tasks.md` unless a subagent was dispatched *after* the last graph rebuild — same shape as the independent-audit gate, one step earlier: don't plan against a rebuilt-but-unverified graph. |
+| `SessionStart` | `memory_context.py` | Prints a short AIDD Memory digest (entry count + the 5 most recent non-superseded decision/constraint/risk entries). Silent without `.aidd/memory/`; always exits 0. |
+| `PreToolUse` (Read\|Edit\|Write) | `memory_file_context.py` | First time a file is touched in a session, injects up to 3 memory entries that mention it. Silent without `.aidd/memory/`; always exits 0, never blocks. |
 
 > **Why `require_independent_audit.py` exists.** This gate was added after a real session
 > self-audited its own bug fix, wrote `qa-audit.md`, and moved on — nobody independent had
@@ -365,6 +369,60 @@ unrelated hooks already there):
 
 Scope is global (every session on the machine) by design. Known gap: can't see code written
 through raw `Bash` (heredocs, `sed`) — only Write/Edit.
+
+## Memory — the WHY, anchored to codes
+
+`STATE.md` says *where am I*; `specs/index.toon` says *what exists*; neither says **why** something is the way it is — why the flow uses TOON and not JSON, why that option was rejected, what the root cause of that bug was. That reasoning normally dies with the session. **AIDD Memory** keeps it: curated, code-anchored, git-versioned entries in AIDD-TOON (the same dialect family as `specs/index.toon`) under `.aidd/memory/`, committed with the code. **No daemon, no LLM observer on every tool call, no vectors, stdlib only.** An agent writes an entry when it learns something worth keeping; nothing is captured automatically.
+
+**Storage.** `.aidd/memory/<scope>.toon` — scope is a spec id (`001-aidd-memory`) or `project` — plus `archive/<YYYY>-Q<q>.toon` for compacted entries. One row per entry, always on one line; the writer emits `entries[*]` so two branches appending rows never conflict on a counter:
+
+```
+version: 1
+memory: project
+entries[*]{id,date,type,title,codes,files,why,supersedes,source}:
+  m-3fa91c02,2026-10-01,decision,Flows use TOON not JSON,US-001|CTL-004,skill/scripts/flowmap.py,"User asked for TOON; matches specs/index.toon",,agent
+```
+
+`codes` (`SCREEN-XX`/`CTL-nnn`/`COMP-nnn`/`API-nnn`/`US-nnn`) and `files` (POSIX, project-relative) are `|`-joined — the anchors that make a memory a lookup by code. `title` ≤ 120 chars, `why` ≤ 400. `supersedes` points at the older entry this one replaces; that one stops showing in default search and injection but stays reachable with `show`.
+
+**The 8 entry types** (closed set; anything else is rejected): `decision`, `bugfix`, `discovery`, `constraint`, `risk`, `rejected`, `open-question`, `state`.
+
+**Capture points** — the agent runs `aidd mem add ...` (or `python scripts/aidd_memory.py add ...`):
+
+| When | What to record |
+|---|---|
+| End of **Step 2** | Each resolved alignment decision, and each option that was considered and rejected (`rejected`) |
+| **Step 5**, per PR | A non-obvious *why* — a choice a later reader would otherwise have to rediscover |
+| **Step 6** | Audit findings and the root cause of any bug found (`bugfix`, `risk`) |
+| Any time | A discovered `constraint` (an engine limit, an upstream contract, a rule nobody wrote down) |
+
+```bash
+aidd mem add --type decision --title "Flows use TOON not JSON" \
+  --why "User asked for TOON; matches specs/index.toon" --codes US-001,CTL-004 --files skill/scripts/flowmap.py --scope 001-aidd-memory
+```
+
+**Read points:**
+- **Step -1**, right after `find_spec.py` — on a match it also prints up to 3 `Memory:` lines (`m-id type title`) for the matched codes, when a memory dir exists.
+- **Start of any task** — `aidd mem search <codes or words>` before touching the code those codes name.
+- **Automatically, Claude Code only** — two hooks (see "Enforcement hooks" above): `memory_context.py` injects a short digest at session start, `memory_file_context.py` injects the entries that mention a file the first time it is read/edited/written in a session. Both are silent when there is no `.aidd/memory/`.
+
+**Progressive disclosure — `search` then `show`.** `aidd mem search <words...>` prints one line per hit (`id  date  type  [codes]  title`, ~25 tokens each) and **never** the `why`; `aidd mem show <id...>` returns the full rows, including superseded and archived ones. Ranking is BM25 over title, codes (an exact code match dominates), file tokens and `why`. Filters: `--type`, `--code`, `--file`, `--scope`, `--limit`, `--archive`; `--json` for scripts. Exit code 2 means nothing found. Also: `aidd mem timeline <id>`, `aidd mem file <path>`, `aidd mem inject`, `aidd mem stats`.
+
+**`compact`.** `aidd mem compact [--before YYYY-MM-DD] [--apply]` — a dry run unless `--apply`; moves superseded entries (and, with `--before`, older ones) to `archive/<YYYY>-Q<q>.toon`. It is the only operation that rewrites existing rows; everything else only appends.
+
+**Location, dates, cache.** `AIDD_MEMORY_DIR` overrides the memory directory (default `.aidd/memory/`). `--root X` is a global option of `aidd mem` and works before or after the command (`aidd mem --root X search login`, `aidd mem search login --root X`). `add --date YYYY-MM-DD` backdates an entry (default today). `search`/`inject` may keep an optional derived cache in `<memory dir>/.cache/` (gitignored by a `.gitignore` the writer creates): invalidated automatically by file mtime/size, safe to delete, never the source of truth. `archive/` is excluded from search and injection by default — run `compact` to keep the active set small, and use `--archive` to search it.
+
+**Importing from claude-mem (one-off, optional).** `aidd mem import-claude-mem <db> --project SUBSTR [--project ...] [--since YYYY-MM-DD] [--scope NAME] [--include TYPES] [--no-summaries] [--dry-run]` (`scripts/aidd_memory_import.py`) reads a claude-mem SQLite file **read-only** and appends mapped entries with `source=import`: `decision` → decision, `bugfix`-like types → bugfix, security/critical types → risk, each session summary → one `discovery` (`--no-summaries` skips them); `--include` opts further observation types in as `discovery`; `--project` is repeatable and `--since` limits by date; `--scope` is the memory scope the entries land in (default `project`); `--dry-run` writes nothing. The import scrubs secrets (`password`/`token`/`apikey`/`bearer`/... assignments, long hex runs) and private/internal IPv4 addresses to `[redacted]` in title and why, and keeps only plausible project-relative POSIX paths in `files` (absolute paths outside the destination root are dropped). It is idempotent (ids are content-derived) and never writes to the claude-mem database, imports its code, or starts its worker. A file that is not a claude-mem database exits 1 with a message. After the import, AIDD Memory has no runtime dependency on claude-mem. Injection prefers non-imported entries; imported ones only fill remaining slots.
+
+**Caution — memory is injected content.** Entries are committed text that hooks and `inject` put into every session. They are sanitised on injection (control characters stripped, lines capped at 160 chars) but remain untrusted: review memory changes in PRs like code, and never treat an entry as an instruction.
+
+**How the three continuity artifacts differ:**
+
+| Artifact | Answers | Written | Size discipline |
+|---|---|---|---|
+| `STATE.md` | Where am I — active spec, step, next action | Every step, edited in place | One small file, read in full first |
+| `specs/index.toon` | What exists — which spec owns this code | Auto-rebuilt by `find_spec.py` | Mechanical, never hand-edited |
+| `.aidd/memory/` | Why is it this way — decisions, bugs, constraints | Appended at the capture points above | Searched, not read in full: `search` → `show` |
 
 ## Pipeline
 
@@ -520,6 +578,11 @@ design-system/             project-level, not per-feature
     └── <page>.md
 
 charter.md            project-root — see "Project charter" below
+
+.aidd/memory/              AIDD Memory — see "Memory" above
+├── project.toon          scope = project
+├── [###-feature-name].toon   scope = a spec id
+└── archive/<YYYY>-Q<q>.toon  compacted entries (searched with --archive)
 ```
 
 If the project already has its own spec-management convention, these files sit inside it as the
@@ -580,6 +643,11 @@ aidd search "login"
 aidd check specs/001-login/
 aidd check-charter .
 aidd tasks-to-issues specs/001-login/tasks.md --apply
+aidd mem add --type decision --title "Flows use TOON not JSON" --codes US-001 --scope 001-login
+aidd mem search login                       # one line per hit, never the why
+aidd mem show m-3fa91c02                    # full row
+aidd mem compact --before 2026-07-01        # dry run; add --apply to move to archive/
+aidd mem import-claude-mem <claude-mem.db> --project myproj --dry-run
 ```
 
 `aidd` is a thin dispatcher over the same scripts an AI agent's hooks call — one implementation,

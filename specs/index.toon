@@ -1,0 +1,4 @@
+version: 3
+generated: 2026-10-02T03:19:11+00:00
+specs[1]{id,title,codes,words,tree,files}:
+  001-aidd-memory,001 — AIDD Memory,CTL-004|US-001,root|file|aidd|scope|files|memory|title|type|search|codes|entries|index|never|project|hooks|none|toon|claude|source|chars|date|dict|text|code|decision,,spec.md=1790910045.887

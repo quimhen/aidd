@@ -62,6 +62,8 @@ VERBATIM_SCRIPTS = [
     "check_spec.py",
     "check_charter.py",
     "flowmap.py",
+    "aidd_memory.py",
+    "aidd_memory_import.py",
     "find_spec.py",
     "tasks_to_issues.py",
     "link_pr_to_task.py",

@@ -19,9 +19,10 @@ top-ranked match. Everything else is served from memory.
 
 TOON here is a minimal, self-contained tabular encoding (this script is both
 its only writer and only reader — not a general-purpose TOON library):
-    version: 2
+    version: 3
     generated: <iso timestamp>
     specs[<N>]{id,title,codes,words,tree,files}:
+      (words = top MAX_WORDS_PER_SPEC accent-folded terms by TF-IDF across all specs)
       <csv row per spec — codes/words pipe-joined, files as name=mtime;...>
 
 The `tree` field captures the spec's real structure, parsed from
@@ -49,8 +50,11 @@ Exit code 2 = usage error.
 """
 import csv
 import io
+import math
 import re
 import sys
+import unicodedata
+from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -72,8 +76,38 @@ STOPWORDS = {
     'pantalla', 'screen', 'fix', 'bug', 'change', 'cambio',
 }
 
+# Extra filler dropped from the INDEX only (ES + EN). Entries are accent-folded.
+INDEX_STOPWORDS = {
+    # code/log noise that leaks into specs and crowds out real vocabulary
+    'fixed', 'still', 'doesn', 'const', 'null', 'pass', 'verified', 'checked', 'completed', 'failed',
+    'true', 'false', 'return', 'class', 'import', 'string', 'dart',
+    # Spanish filler
+    'como', 'cada', 'entre', 'desde', 'hasta', 'sobre', 'cuando', 'donde',
+    'tambien', 'puede', 'pueden', 'deben', 'debe', 'deber', 'debera', 'deberan',
+    'esta', 'estan', 'este', 'estos', 'estas', 'esto', 'esos', 'esas', 'ese',
+    'pero', 'porque', 'aunque', 'segun', 'sino', 'solo', 'todo', 'todos', 'toda',
+    'todas', 'otro', 'otra', 'otros', 'otras', 'mismo', 'misma', 'mismos',
+    'cual', 'cuales', 'quien', 'tiene', 'tienen', 'tener', 'hacer', 'hace',
+    'hacen', 'ser', 'sera', 'seran', 'son', 'fue', 'sido', 'siendo', 'estar',
+    'esta', 'muy', 'mas', 'menos', 'otro', 'cada', 'sin', 'ante', 'bajo',
+    'tras', 'durante', 'mediante', 'cual', 'asi', 'aqui', 'alli', 'ahora',
+    'luego', 'antes', 'despues', 'entonces', 'siempre', 'nunca', 'ademas',
+    'incluye', 'incluyen', 'cuyo', 'cuya', 'dicho', 'dicha', 'unos', 'unas',
+    'hay', 'haya', 'sean', 'cuenta', 'parte', 'forma', 'caso', 'casos',
+    # English filler
+    'from', 'have', 'been', 'will', 'must', 'should', 'would', 'could', 'also',
+    'when', 'where', 'which', 'while', 'their', 'there', 'then', 'than', 'them',
+    'they', 'these', 'those', 'what', 'such', 'each', 'into', 'over', 'only',
+    'some', 'does', 'done', 'were', 'your', 'ours', 'about', 'after', 'before',
+    'being', 'both', 'other', 'more', 'most', 'make', 'made', 'uses', 'used',
+    'using', 'with', 'without', 'within', 'any', 'all', 'not', 'are', 'was',
+    'can', 'may', 'its', 'has', 'had', 'but', 'via',
+}
+MAX_WORDS_PER_SPEC = 25
+MIN_WORD_LEN = 4
+
 INDEX_FILENAME = 'index.toon'
-INDEX_VERSION = 2
+INDEX_VERSION = 3
 TABLE_FIELDS = ['id', 'title', 'codes', 'words', 'tree', 'files']
 TABLE_HEADER_RE = re.compile(r'^specs\[(\d+)\]\{([^}]*)\}:\s*$')
 TABLE_ROW_RE = re.compile(r'^\|(.+)\|\s*$')
@@ -187,6 +221,73 @@ def find_specs_root(start: Path):
             return candidate
         cur = cur.parent
     return None
+
+
+def fold(text: str) -> str:
+    """Lowercase + strip accents (NFKD, drop combining marks): 'Opción' -> 'opcion'."""
+    return ''.join(
+        c for c in unicodedata.normalize('NFKD', text.lower())
+        if not unicodedata.combining(c)
+    )
+
+
+_FOLDED_STOP = {fold(w) for w in STOPWORDS} | {fold(w) for w in INDEX_STOPWORDS}
+_HEX_RE = re.compile(r'[0-9a-f]+')
+
+
+def index_terms(text: str) -> Counter:
+    """Accent-folded term counts for the index: len >= MIN_WORD_LEN, no
+    stopwords, no pure numbers, no hex-like tokens (hashes, ids)."""
+    out = Counter()
+    for raw in re.findall(r'\w+', text, re.UNICODE):
+        w = fold(raw).strip('_')
+        if len(w) < MIN_WORD_LEN or w in _FOLDED_STOP:
+            continue
+        if w.isdigit() or (_HEX_RE.fullmatch(w) and (any(c.isdigit() for c in w) or len(w) >= 8)):
+            continue
+        if CODE_RE.fullmatch(raw):
+            continue
+        out[w] += 1
+    return out
+
+
+def rank_tfidf(tfs: dict, limit: int = MAX_WORDS_PER_SPEC) -> dict:
+    """tfs: {spec_id: Counter}. Returns {spec_id: top-`limit` terms by TF-IDF
+    across all specs} (ties broken alphabetically, so output is deterministic)."""
+    n = len(tfs)
+    df = Counter()
+    for tf in tfs.values():
+        df.update(tf.keys())
+    ranked = {}
+    for spec_id, tf in tfs.items():
+        total = sum(tf.values()) or 1
+        scored = [
+            (-(c / total) * (math.log((1 + n) / (1 + df[t])) + 1.0), t)
+            for t, c in tf.items()
+        ]
+        scored.sort()
+        ranked[spec_id] = [t for _, t in scored[:limit]]
+    return ranked
+
+
+def memory_hits_for(codes, root=None, limit=3):
+    """Best-effort `m-id type title` lines from AIDD Memory for the matched
+    codes. Never raises and never fails the search: returns [] when there is
+    no root, no memory dir, or aidd_memory is not importable."""
+    if not codes or root is None:
+        return []
+    try:
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        import aidd_memory
+        seen, lines = set(), []
+        for code in sorted(codes):
+            for e in aidd_memory.search(root, '', code=code, limit=limit):
+                if e['id'] not in seen:
+                    seen.add(e['id'])
+                    lines.append(f"{e['id']}  {e['type']}  {e['title']}")
+        return lines[:limit]
+    except Exception:
+        return []
 
 
 def tokenize_query(query_terms):
@@ -351,7 +452,7 @@ def spec_title(spec_dir: Path):
 
 def build_spec_entry(spec_dir: Path):
     codes = set()
-    words = set()
+    tf = Counter()
     files_mtime = {}
     mockup_audit_text = ''
     for fname in SEARCHED_FILES:
@@ -365,7 +466,7 @@ def build_spec_entry(spec_dir: Path):
             continue
         files_mtime[fname] = stat.st_mtime
         codes.update(m.upper() for m in CODE_RE.findall(text))
-        words |= tokenize_text(text)
+        tf.update(index_terms(text))
         if fname == 'mockup-audit.md':
             mockup_audit_text = text
 
@@ -375,7 +476,8 @@ def build_spec_entry(spec_dir: Path):
         'path': spec_dir.name,
         'title': spec_title(spec_dir),
         'codes': sorted(codes),
-        'words': sorted(words),
+        'words': [],  # filled by build_index (TF-IDF needs all specs)
+        '_tf': tf,
         'tree': tree,
         'files': files_mtime,
     }
@@ -383,6 +485,9 @@ def build_spec_entry(spec_dir: Path):
 
 def build_index(specs_root: Path, spec_dirs):
     specs = {d.name: build_spec_entry(d) for d in spec_dirs}
+    ranked = rank_tfidf({name: e.pop('_tf') for name, e in specs.items()})
+    for name, e in specs.items():
+        e['words'] = ranked[name]
     return {
         'version': INDEX_VERSION,
         'generated': datetime.now(timezone.utc).isoformat(timespec='seconds'),
@@ -509,7 +614,7 @@ def score_from_index(entry, codes, words):
     entry_codes = set(entry.get('codes', []))
     entry_words = set(entry.get('words', []))
     matched_codes = codes & entry_codes
-    matched_words = [w for w in words if w in entry_words]
+    matched_words = [w for w in (fold(w) for w in words) if w in entry_words]
     return 10 * len(matched_codes) + len(matched_words)
 
 
@@ -528,7 +633,8 @@ def evidence_lines(spec_dir: Path, codes, words, limit=8):
         for lineno, line in enumerate(lines, 1):
             line_codes = {c.upper() for c in CODE_RE.findall(line)}
             matched_codes = line_codes & codes
-            matched_words = [w for w in words if w in line.lower()]
+            folded_line = fold(line)
+            matched_words = [w for w in words if fold(w) in folded_line]
             if matched_codes:
                 hits.append((fname, lineno, line.strip(), 'code'))
             elif matched_words:
@@ -536,6 +642,32 @@ def evidence_lines(spec_dir: Path, codes, words, limit=8):
             if len(hits) >= limit:
                 return hits
     return hits
+
+
+def fulltext_fallback(specs_root: Path, spec_dirs, codes, words):
+    """Index-miss fallback: score every spec by scanning its searchable files.
+    Whole-word, accent-insensitive match; a code hit weighs more than a word."""
+    word_res = [re.compile(r'\b' + re.escape(fold(w)) + r'\b') for w in set(words)]
+    results = []
+    for d in spec_dirs:
+        parts = []
+        for fname in SEARCHED_FILES:
+            fpath = d / fname
+            if fpath.exists():
+                try:
+                    parts.append(fpath.read_text(encoding='utf-8'))
+                except OSError:
+                    continue
+        if not parts:
+            continue
+        text = '\n'.join(parts)
+        folded = fold(text)
+        found_codes = {c.upper() for c in CODE_RE.findall(text)} & codes
+        score = 3 * len(found_codes) + sum(1 for rx in word_res if rx.search(folded))
+        if score > 0:
+            results.append((score, d.name))
+    results.sort(key=lambda r: r[0], reverse=True)
+    return results
 
 
 def print_tree(entry):
@@ -637,8 +769,18 @@ def main():
             results.append((score, name))
     results.sort(key=lambda r: r[0], reverse=True)
 
+    used_fallback = False
+    if not results:
+        # The index only keeps each spec's top-25 terms, so a real word that is in
+        # the spec text can miss it. Before declaring "no match" (which invites a
+        # duplicate spec), scan the spec files themselves.
+        results = fulltext_fallback(specs_root, spec_dirs, codes, words)
+        used_fallback = bool(results)
+
     print(f"aidd spec search — query: {' '.join(args)}")
     print("=" * 60)
+    if used_fallback:
+        print("(index had no match — results below come from a full-text scan of the spec files)")
 
     if not results:
         print("No match found in any existing spec.")
@@ -655,12 +797,18 @@ def main():
         print(f"  [{marker}] {fname}:{lineno}: {text[:120]}")
 
     matched_codes = codes & set(top_entry.get('codes', []))
+    mem_lines = memory_hits_for(codes, specs_root.parent)
     if matched_codes:
         relevant_paths = [p for p in top_entry.get('tree', []) if any(c in matched_codes for c in p)]
         if relevant_paths:
             print("\nGraph context (use case -> screen -> component -> control -> API):")
             for p in relevant_paths[:5]:
                 print("  " + ' > '.join(p))
+
+    if mem_lines:
+        print("\nMemory (aidd mem show <id> for the why):")
+        for ln in mem_lines:
+            print("  " + ln)
 
     if len(results) > 1:
         print("\nOther candidates:")

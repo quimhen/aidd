@@ -29,6 +29,12 @@ session on this machine, not just projects that already use aidd):
                        subagent was dispatched after the last graph rebuild —
                        Step 3/4 must never plan/task against a rebuilt-but-
                        unverified graph
+  - SessionStart   -> hooks/memory_context.py (matcher: startup|resume|clear|
+                       compact) injects the AIDD memory digest (silent when the
+                       project has no .aidd/memory/)
+  - PreToolUse     -> hooks/memory_file_context.py (matcher: Read|Edit|Write)
+                       once per (session, file), adds the memory entries that
+                       mention that file; never blocks
 
 Idempotent: safe to run more than once. It only appends an entry if a hook with
 the same command isn't already present, and it never touches hooks belonging to
@@ -55,6 +61,8 @@ HOOK_DEFS = [
     ('PreToolUse', 'Write|Edit', SKILL_DIR / 'hooks' / 'require_independent_audit.py'),
     ('PostToolUse', 'Bash', SKILL_DIR / 'hooks' / 'mark_graph_rebuild.py'),
     ('PreToolUse', 'Write|Edit', SKILL_DIR / 'hooks' / 'require_graph_coherence_audit.py'),
+    ('SessionStart', 'startup|resume|clear|compact', SKILL_DIR / 'hooks' / 'memory_context.py'),
+    ('PreToolUse', 'Read|Edit|Write', SKILL_DIR / 'hooks' / 'memory_file_context.py'),
 ]
 
 

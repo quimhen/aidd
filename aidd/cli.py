@@ -71,6 +71,13 @@ def cmd_flow(args):
     return _run("flowmap.py", extra)
 
 
+def cmd_mem(args):
+    # Everything after `aidd mem` is forwarded verbatim to aidd_memory.py
+    # (add / search / show / timeline / file / inject / compact / stats /
+    # import-claude-mem), so the CLI and the skill share one implementation.
+    return _run("aidd_memory.py", args.mem_args)
+
+
 def cmd_check_charter(args):
     return _run("check_charter.py", [args.root] if args.root else [])
 
@@ -233,6 +240,12 @@ def build_parser():
     p_flow.add_argument("--open", action="store_true")
     p_flow.set_defaults(func=cmd_flow)
 
+    p_mem = sub.add_parser(
+        "mem", help="AIDD Memory: curated, code-anchored decisions/bugfixes/constraints (add, search, show, compact, import-claude-mem)",
+        add_help=False)
+    p_mem.add_argument("mem_args", nargs=argparse.REMAINDER, help="forwarded to aidd_memory.py (try: aidd mem search <words>)")
+    p_mem.set_defaults(func=cmd_mem)
+
     p_cc = sub.add_parser("check-charter", help="Run charter.md's checkable rules")
     p_cc.add_argument("root", nargs="?", default=None, help="Project root (default: cwd)")
     p_cc.set_defaults(func=cmd_check_charter)
@@ -372,6 +385,12 @@ def build_parser():
 
 
 def main(argv=None):
+    argv = list(sys.argv[1:] if argv is None else argv)
+    if argv and argv[0] == "mem":
+        # `aidd mem ...` is a pure passthrough to aidd_memory.py, so options that
+        # come before the subcommand (--root X, --help) work too — argparse's
+        # REMAINDER would otherwise choke on a leading option.
+        sys.exit(_run("aidd_memory.py", argv[1:]))
     parser = build_parser()
     args = parser.parse_args(argv)
     sys.exit(args.func(args))
