@@ -71,25 +71,46 @@ class TestInstallHooks(unittest.TestCase):
             self.assertEqual(cm.exception.code, 1)
             self.assertEqual(settings_path.read_text(encoding="utf-8"), "{not valid json")
 
-    def test_registers_eleven_hooks_including_memory(self):
-        self.assertEqual(len(install_hooks.HOOK_DEFS), 11)
+    def test_registers_ten_hooks_with_session_memory_only_by_default(self):
+        self.assertEqual(len(install_hooks.HOOK_DEFS), 10)
         with TemporaryDirectory() as d:
             settings_path = Path(d) / "settings.json"
             with patch.object(install_hooks, "SETTINGS_PATH", settings_path):
-                install_hooks.main()
-                install_hooks.main()
+                install_hooks.main([])
+                install_hooks.main([])
             hooks = json.loads(settings_path.read_text(encoding="utf-8"))["hooks"]
-            self.assertEqual(sum(len(v) for v in hooks.values()), 11)
-
-            def find(event, script):
-                return [e for e in hooks[event]
-                        if any(script in h["command"] for h in e["hooks"])]
-            ss = find("SessionStart", "memory_context.py")
-            pt = find("PreToolUse", "memory_file_context.py")
+            self.assertEqual(sum(len(v) for v in hooks.values()), 10)
+            commands = [h["command"] for v in hooks.values() for e in v for h in e["hooks"]]
+            self.assertFalse(any("memory_file_context.py" in c for c in commands))
+            ss = [e for e in hooks["SessionStart"]
+                  if any("memory_context.py" in h["command"] for h in e["hooks"])]
             self.assertEqual(len(ss), 1)
             self.assertEqual(ss[0]["matcher"], "startup|resume|clear|compact")
+
+    def test_file_context_hook_is_opt_in_and_idempotent(self):
+        with TemporaryDirectory() as d:
+            settings_path = Path(d) / "settings.json"
+            with patch.object(install_hooks, "SETTINGS_PATH", settings_path):
+                install_hooks.main([])
+                install_hooks.main(["--with-memory-file-hook"])
+                first = settings_path.read_text(encoding="utf-8")
+                install_hooks.main(["--with-memory-file-hook"])
+                second = settings_path.read_text(encoding="utf-8")
+            self.assertEqual(first, second)
+            hooks = json.loads(first)["hooks"]
+            pt = [e for e in hooks["PreToolUse"]
+                  if any("memory_file_context.py" in h["command"] for h in e["hooks"])]
             self.assertEqual(len(pt), 1)
             self.assertEqual(pt[0]["matcher"], "Read|Edit|Write")
+
+    def test_default_run_does_not_remove_an_already_installed_file_hook(self):
+        with TemporaryDirectory() as d:
+            settings_path = Path(d) / "settings.json"
+            with patch.object(install_hooks, "SETTINGS_PATH", settings_path):
+                install_hooks.main(["--with-memory-file-hook"])
+                install_hooks.main([])
+            hooks = json.loads(settings_path.read_text(encoding="utf-8"))["hooks"]
+            self.assertEqual(sum(len(v) for v in hooks.values()), 11)
 
     def test_command_for_quotes_the_path(self):
         result = install_hooks.command_for(Path("/some/dir/hook.py"))

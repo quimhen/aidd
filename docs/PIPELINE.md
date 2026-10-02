@@ -329,7 +329,7 @@ equivalent:
 ## Enforcement hooks — installed once, active every session
 
 AIDD ships hooks so it doesn't rely on remembering to invoke it. Run `python scripts/install_hooks.py`
-once per machine to merge eleven entries into `~/.claude/settings.json` (idempotent, never touches
+once per machine to merge ten entries into `~/.claude/settings.json` (idempotent, never touches
 unrelated hooks already there):
 
 | Event | Script | Effect |
@@ -344,7 +344,7 @@ unrelated hooks already there):
 | `PostToolUse` (Bash) | `mark_graph_rebuild.py` | Timestamps the last `find_spec.py` run this session that reported the spec graph was rebuilt. |
 | `PreToolUse` (Write\|Edit) | `require_graph_coherence_audit.py` | Hard-blocks (exit 2) writing `plan.md`/`tasks.md` unless a subagent was dispatched *after* the last graph rebuild — same shape as the independent-audit gate, one step earlier: don't plan against a rebuilt-but-unverified graph. |
 | `SessionStart` | `memory_context.py` | Prints a short AIDD Memory digest (entry count + the 5 most recent non-superseded decision/constraint/risk entries). Silent without `.aidd/memory/`; always exits 0. |
-| `PreToolUse` (Read\|Edit\|Write) | `memory_file_context.py` | First time a file is touched in a session, injects up to 3 memory entries that mention it. Silent without `.aidd/memory/`; always exits 0, never blocks. |
+| `PreToolUse` (Read\|Edit\|Write) | `memory_file_context.py` | **Opt-in** (`install_hooks.py --with-memory-file-hook`; costs a process per Read/Edit/Write). First time a file is touched in a session, injects up to 3 memory entries that mention it. Silent without `.aidd/memory/`; always exits 0, never blocks. |
 
 > **Why `require_independent_audit.py` exists.** This gate was added after a real session
 > self-audited its own bug fix, wrote `qa-audit.md`, and moved on — nobody independent had
@@ -404,7 +404,7 @@ aidd mem add --type decision --title "Flows use TOON not JSON" \
 **Read points:**
 - **Step -1**, right after `find_spec.py` — on a match it also prints up to 3 `Memory:` lines (`m-id type title`) for the matched codes, when a memory dir exists.
 - **Start of any task** — `aidd mem search <codes or words>` before touching the code those codes name.
-- **Automatically, Claude Code only** — two hooks (see "Enforcement hooks" above): `memory_context.py` injects a short digest at session start, `memory_file_context.py` injects the entries that mention a file the first time it is read/edited/written in a session. Both are silent when there is no `.aidd/memory/`.
+- **Automatically, Claude Code only** — `memory_context.py` injects a short digest at session start (installed by default). `memory_file_context.py` injects the entries that mention a file the first time it is touched in a session, but it costs a process per Read/Edit/Write, so it is **opt-in** (`python scripts/install_hooks.py --with-memory-file-hook`); `aidd mem file <path>` is the on-demand equivalent. Both are silent when there is no `.aidd/memory/`.
 
 **Progressive disclosure — `search` then `show`.** `aidd mem search <words...>` prints one line per hit (`id  date  type  [codes]  title`, ~25 tokens each) and **never** the `why`; `aidd mem show <id...>` returns the full rows, including superseded and archived ones. Ranking is BM25 over title, codes (an exact code match dominates), file tokens and `why`. Filters: `--type`, `--code`, `--file`, `--scope`, `--limit`, `--archive`; `--json` for scripts. Exit code 2 means nothing found. Also: `aidd mem timeline <id>`, `aidd mem file <path>`, `aidd mem inject`, `aidd mem stats`.
 

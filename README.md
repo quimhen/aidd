@@ -130,7 +130,7 @@ where the tool allows it, followed as a written discipline everywhere else.
   script/template (`scripts/`, `templates/`). `skill/AIDD.md` is the tool-agnostic methodology
   core every other adapter — including this repo's own CLI — points back to. Includes AIDD Memory
   (`scripts/aidd_memory.py`, `aidd_memory_import.py`; hooks `memory_context.py`,
-  `memory_file_context.py`).
+  `memory_file_context.py`, opt-in via `install_hooks.py --with-memory-file-hook`).
 - **`aidd/`** — the CLI (`pip install -e .` → the `aidd` command): a thin dispatcher over
   `skill/scripts/`, for a human at a terminal or a CI job, no AI agent required.
 - **`commands/`** — the eight `/aidd-*` pipeline-stage commands for Claude Code.
@@ -215,7 +215,7 @@ See `adapters/README.md`.
 Early — the core pipeline, the search/graph tools, the charter checker, the graph-coherence
 gate, the issue-tracker sync (GitHub/Azure DevOps/Bitbucket, plus bidirectional status sync
 via `aidd tracker sync` and PR<->task linking via `aidd tracker link-pr`), CI templates and
-`aidd ci install`, the Claude Code hooks (eleven of them, including the independent-audit and
+`aidd ci install`, the Claude Code hooks (ten by default, plus an opt-in per-file memory hook, including the independent-audit and
 graph-coherence gates), the multi-agent adapter generator (`generate_adapters.py`, rendering
 Gemini CLI/Cursor/Windsurf/Cline/Copilot commands from one source), the real auto-discovery
 extension registry (`extension_registry.py`, loading provider/adapter/hook extensions from

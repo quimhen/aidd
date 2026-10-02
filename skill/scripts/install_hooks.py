@@ -32,9 +32,14 @@ session on this machine, not just projects that already use aidd):
   - SessionStart   -> hooks/memory_context.py (matcher: startup|resume|clear|
                        compact) injects the AIDD memory digest (silent when the
                        project has no .aidd/memory/)
+
+OPT-IN (not installed by default — it spawns one extra process on EVERY Read/
+Edit/Write, which is not worth it on machines where hook startup is flaky):
+  python install_hooks.py --with-memory-file-hook
   - PreToolUse     -> hooks/memory_file_context.py (matcher: Read|Edit|Write)
                        once per (session, file), adds the memory entries that
-                       mention that file; never blocks
+                       mention that file; never blocks. Without it, the same
+                       lookup is available on demand: `aidd mem file <path>`.
 
 Idempotent: safe to run more than once. It only appends an entry if a hook with
 the same command isn't already present, and it never touches hooks belonging to
@@ -62,6 +67,10 @@ HOOK_DEFS = [
     ('PostToolUse', 'Bash', SKILL_DIR / 'hooks' / 'mark_graph_rebuild.py'),
     ('PreToolUse', 'Write|Edit', SKILL_DIR / 'hooks' / 'require_graph_coherence_audit.py'),
     ('SessionStart', 'startup|resume|clear|compact', SKILL_DIR / 'hooks' / 'memory_context.py'),
+]
+
+# Installed only with `--with-memory-file-hook` (see the module docstring).
+OPTIONAL_HOOK_DEFS = [
     ('PreToolUse', 'Read|Edit|Write', SKILL_DIR / 'hooks' / 'memory_file_context.py'),
 ]
 
@@ -89,12 +98,19 @@ def already_installed(event_entries, command):
     return False
 
 
-def main():
+def main(argv=None):
+    # Not argparse on purpose: callers (and tests) invoke main() with no args while
+    # sys.argv belongs to someone else (e.g. unittest's own flags).
+    argv = sys.argv[1:] if argv is None else argv
+    defs = list(HOOK_DEFS)
+    if '--with-memory-file-hook' in argv:
+        defs += OPTIONAL_HOOK_DEFS
+
     settings = load_settings()
     settings.setdefault('hooks', {})
 
     added = []
-    for event_name, matcher, script_path in HOOK_DEFS:
+    for event_name, matcher, script_path in defs:
         command = command_for(script_path)
         settings['hooks'].setdefault(event_name, [])
         entries = settings['hooks'][event_name]

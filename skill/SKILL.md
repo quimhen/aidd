@@ -15,7 +15,7 @@ AIDD ships with hooks that make it hard to skip, instead of relying on rememberi
 python ~/.claude/skills/aidd/scripts/install_hooks.py
 ```
 
-This merges eleven hook entries into `~/.claude/settings.json` (idempotent — safe to re-run, never duplicates or touches unrelated hooks already configured there):
+This merges ten hook entries into `~/.claude/settings.json` (idempotent — safe to re-run, never duplicates or touches unrelated hooks already configured there):
 
 | Event | Matcher | Script | Effect |
 |---|---|---|---|
@@ -29,7 +29,7 @@ This merges eleven hook entries into `~/.claude/settings.json` (idempotent — s
 | `PostToolUse` | `Bash` | `hooks/mark_graph_rebuild.py` | Timestamps the last `find_spec.py` run this session whose own output said `Graph index: rebuilt` (a cache hit doesn't count — nothing new to verify). |
 | `PreToolUse` | `Write\|Edit` | `hooks/require_graph_coherence_audit.py` | Blocks (exit 2) writing/updating `plan.md` or `tasks.md` unless a subagent was dispatched **after** the last graph rebuild — makes "Graph coherence — multiagent verification" (below) a hard stop instead of prose, the same enforcement shape as the independent-audit gate above, one step earlier in the pipeline. Fails closed under the same conditions. |
 | `SessionStart` | `startup\|resume\|clear\|compact` | `hooks/memory_context.py` | Prints a short AIDD Memory digest (`aidd_memory.inject_text`: entry count + the 5 most recent non-superseded decision/constraint/risk entries). Silent when there is no `.aidd/memory/`; always exits 0. Claude Code only. |
-| `PreToolUse` | `Read\|Edit\|Write` | `hooks/memory_file_context.py` | The first time a given file is touched in a session, injects up to 3 memory entries that mention it (`additionalContext`); once per (session, file); nothing if no hits. Silent without `.aidd/memory/`; always exits 0, never blocks. Claude Code only. |
+| `PreToolUse` | `Read\|Edit\|Write` | `hooks/memory_file_context.py` | **Opt-in** (`install_hooks.py --with-memory-file-hook`; not among the ten defaults — it spawns a process on every Read/Edit/Write). The first time a given file is touched in a session, injects up to 3 memory entries that mention it (`additionalContext`); once per (session, file); nothing if no hits. Silent without `.aidd/memory/`; always exits 0, never blocks. Claude Code only. |
 
 **Scope: global, every Claude Code session on this machine** — this was a deliberate choice (not scoped to "projects that already use AIDD"), so it also fires in unrelated projects. Loosen it by editing `hooks/require_aidd.py`'s `is_code_file` check or `hooks/prompt_trigger.py`'s keyword list if that turns out to be too broad in practice.
 
@@ -365,7 +365,7 @@ aidd mem add --type decision --title "Flows use TOON not JSON" \
 **Read points:**
 - **Step -1**, right after `find_spec.py` — on a match it also prints up to 3 `Memory:` lines (`m-id type title`) for the matched codes, when a memory dir exists.
 - **Start of any task** — `aidd mem search <codes or words>` before touching the code those codes name.
-- **Automatically, Claude Code only** — two hooks (see the Installation table): `memory_context.py` injects a short digest at session start, `memory_file_context.py` injects the entries that mention a file the first time it is read/edited/written in a session. Both are silent when there is no `.aidd/memory/`.
+- **Automatically, Claude Code only** — `memory_context.py` injects a short digest at session start (installed by default). `memory_file_context.py` injects the entries that mention a file the first time it is touched in a session, but it costs a process per Read/Edit/Write, so it is **opt-in** (`python scripts/install_hooks.py --with-memory-file-hook`); `aidd mem file <path>` is the on-demand equivalent. Both are silent when there is no `.aidd/memory/`.
 
 **Progressive disclosure — `search` then `show`.** `aidd mem search <words...>` prints one line per hit (`id  date  type  [codes]  title`, ~25 tokens each) and **never** the `why`; `aidd mem show <id...>` returns the full rows, including superseded and archived ones. Ranking is BM25 over title, codes (an exact code match dominates), file tokens and `why`. Filters: `--type`, `--code`, `--file`, `--scope`, `--limit`, `--archive`; `--json` for scripts. Exit code 2 means nothing found. Also: `aidd mem timeline <id>`, `aidd mem file <path>`, `aidd mem inject`, `aidd mem stats`.
 
