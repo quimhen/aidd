@@ -38,6 +38,20 @@ Never let a component get re-implemented inline inside a page file just because 
 |---|---|---|---|
 | COMP-001 | | | |
 
+## Entry route
+How the user reaches each screen from the app's start (a screen nothing leads to is not delivered). Fill one row per SCREEN-XX; a shared standard (header, back, logo) lists its consumers in `design-system/components-index.md`.
+
+| SCREEN-XX | Reached from (screen/menu/deep link) | Action that leads here | Condition |
+|---|---|---|---|
+| SCREEN-01 | | | |
+
+## Device targets
+| Item | Value |
+|---|---|
+| Target devices (phone / tablet / desktop) | |
+| Orientation / minimum size | |
+| Device preflight command (e.g. `adb devices`) | |
+
 ## Design system source (Step 0)
 | Item | Value |
 |---|---|

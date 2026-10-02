@@ -285,6 +285,76 @@ class TestLedger(EvBase):
             self.assertTrue(any(w.startswith("R4") for w in st["why_blocked"]))
 
 
+QA_LEDGER = "## Mapping ledger\n\n| Code | Status |\n|---|---|\n| SCREEN-01 | ✅ DONE |\n"
+QA_EVID = ("## Execution evidence\n\n| Code | Kind | Evidence | Verified by |\n|---|---|---|---|\n"
+           "| SCREEN-01 | screenshot | evidence/login.png | agent |\n")
+QA_BUGS = ("## Bug reports\n\n| # | Code | Symptom | Root cause | Fix | Pattern sweep |\n|---|---|---|---|---|---|\n"
+           "| 1 | SCREEN-01 | a | | x | |\n| 2 | SCREEN-01 | b | | y | |\n")
+
+
+class TestQaEvidenceStatus(EvBase):
+    def _qa(self, d, text):
+        (d / "qa-audit.md").write_text(text, encoding="utf-8", newline="\n")
+
+    def test_no_qa_audit_is_unchecked(self):
+        tmp, root, d = make_project()
+        with tmp:
+            st = aidd_status.build_status(d)
+            self.assertEqual(st["qa_evidence"], {"checked": False, "r10": 0, "r11": 0})
+            self.assertNotIn("evidence", aidd_status.format_status(st).split("qa-audit.md:")[1])
+
+    def test_missing_evidence_counts_r10_and_shows_in_why_blocked(self):
+        tmp, root, d = make_project()
+        with tmp:
+            self._qa(d, "# qa\n\n" + QA_LEDGER)
+            st = aidd_status.build_status(d)
+            self.assertTrue(st["qa_evidence"]["checked"])
+            self.assertGreaterEqual(st["qa_evidence"]["r10"], 1)
+            self.assertTrue(any(w.startswith("R10") for w in st["why_blocked"]), st["why_blocked"])
+            self.assertIn("evidence ✘", aidd_status.format_status(st))
+
+    def test_repeat_bug_report_counts_r11(self):
+        tmp, root, d = make_project()
+        with tmp:
+            self._qa(d, "# qa\n\n" + QA_BUGS)
+            st = aidd_status.build_status(d)
+            self.assertGreaterEqual(st["qa_evidence"]["r11"], 1)
+            self.assertTrue(any(w.startswith("R11") for w in st["why_blocked"]), st["why_blocked"])
+
+    def test_valid_evidence_is_ok(self):
+        tmp, root, d = make_project()
+        with tmp:
+            p = root / "specs" / "001-x" / "evidence" / "login.png"
+            p.parent.mkdir()
+            p.write_bytes(b"png")
+            self._qa(d, "# qa\n\n" + QA_LEDGER + "\n" + QA_EVID)
+            st = aidd_status.build_status(d)
+            self.assertEqual((st["qa_evidence"]["r10"], st["qa_evidence"]["r11"]), (0, 0))
+            self.assertIn("evidence ✔", aidd_status.format_status(st))
+
+    def test_stale_evidence_after_code_edit(self):
+        tmp, root, d = make_project()
+        with tmp:
+            p = d / "evidence" / "login.png"
+            p.parent.mkdir()
+            p.write_bytes(b"png")
+            backdate(p, 100)
+            self._qa(d, "# qa\n\n" + QA_LEDGER + "\n" + QA_EVID)
+            tick()
+            ev.append(root, "s1", "code_edit", path="src/a.py", spec="001-x")
+            st = aidd_status.build_status(d)
+            self.assertGreaterEqual(st["qa_evidence"]["r10"], 1)
+
+    def test_degraded_dict_has_qa_evidence(self):
+        from unittest import mock
+        tmp, root, d = make_project()
+        with tmp, mock.patch.object(aidd_status, "_build_status", side_effect=RuntimeError("x")):
+            st = aidd_status.build_status(d)
+            self.assertTrue(st["unparseable"])
+            self.assertEqual(st["qa_evidence"], {"checked": False, "r10": 0, "r11": 0})
+            aidd_status.format_status(st)  # must not raise on the degraded dict
+
+
 class TestStatusCommand(EvBase):
     def test_json_and_text_exit_zero(self):
         tmp, root, d = make_project()

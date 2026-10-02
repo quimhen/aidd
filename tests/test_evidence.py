@@ -702,6 +702,69 @@ class TestFindSpecDetection(unittest.TestCase):
         self.assertFalse(ev.find_spec_rebuilt("Graph index: unchanged"))
 
 
+class TestRedactSecrets(EvidenceCase):
+    def test_each_keyword_is_redacted(self):
+        cases = {
+            "password": "password=Hunter2xyz", "pwd": "pwd: Hunter2xyz", "clave": "clave=Hunter2xyz",
+            "contrasena": "contrasena: Hunter2xyz", "contraseña": "contraseña=Hunter2xyz",
+            "token": "token=Hunter2xyz", "apikey": "api key: Hunter2xyz", "apikey2": "API_KEY=Hunter2xyz",
+            "secret": "secret=Hunter2xyz", "bearer": "Authorization: Bearer Hunter2xyz12345",
+        }
+        for name, raw in cases.items():
+            with self.subTest(name):
+                out, labels = ev.redact_secrets("usa esto " + raw + " ahora")
+                self.assertNotIn("Hunter2xyz", out)
+                self.assertIn("[redacted]", out)
+                self.assertTrue(labels)
+                self.assertIn("ahora", out)
+
+    def test_quoted_value_with_spaces_and_url_password(self):
+        out, labels = ev.redact_secrets('db password="my secret pass" y fin')
+        self.assertNotIn("secret pass", out)
+        self.assertIn("y fin", out)
+        out, _ = ev.redact_secrets("conexion Server=x;Pwd=Hunter2xyz;Db=y")
+        self.assertNotIn("Hunter2xyz", out)
+
+    def test_ordinary_text_unchanged_and_quote_still_verifies(self):
+        text = "necesito modificar el login: agregar un campo de token de sesion en la pantalla"
+        out, labels = ev.redact_secrets(text)
+        self.assertEqual(labels, [])
+        self.assertEqual(out, text)
+        ev.append(self.root, "s1", "prompt", text=out)
+        self.assertTrue(ev.quote_in_prompts(self.root, "agregar un campo de token", session="s1"))
+
+    def test_secret_prompt_still_verifies_ordinary_quote(self):
+        out, _ = ev.redact_secrets("Confirmar tal cual, la clave=Zz9secretvalue va por env")
+        ev.append(self.root, "s1", "prompt", text=out)
+        self.assertTrue(ev.quote_in_prompts(self.root, "Confirmar tal cual", session="s1"))
+        self.assertNotIn("Zz9secretvalue", out)
+
+    def test_whitespace_collapsed_and_limit_applied(self):
+        out, _ = ev.redact_secrets("a   b\n\nc")
+        self.assertEqual(out, "a b c")
+        self.assertLessEqual(len(ev.redact_secrets("hola " * 5000)[0]), ev.MAX_PROMPT_CHARS)
+
+    def test_secret_straddling_the_limit_is_not_exposed(self):
+        for pad in range(ev.MAX_PROMPT_CHARS - 40, ev.MAX_PROMPT_CHARS + 1, 3):
+            raw = "x" * pad + " password=SuperSecret123456 tail"
+            out, labels = ev.redact_secrets(raw)
+            self.assertNotIn("Super", out, pad)
+            self.assertNotIn("SuperSecret", out, pad)
+            self.assertLessEqual(len(out), ev.MAX_PROMPT_CHARS)
+
+    def test_one_megabyte_prompt_is_fast(self):
+        for raw in ("password= " * 120000, "token" * 200000, ("a" * 50 + " ") * 20000,
+                    "pwd" + "-" * 1000000, "api key " * 130000):
+            t0 = time.monotonic()
+            out, _ = ev.redact_secrets(raw)
+            self.assertLess(time.monotonic() - t0, 2.0)
+            self.assertLessEqual(len(out), ev.MAX_PROMPT_CHARS)
+
+    def test_never_raises_on_non_string(self):
+        self.assertEqual(ev.redact_secrets(None), ("", []))
+        self.assertEqual(ev.redact_secrets(12345)[0], "12345")
+
+
 class TestCanonPath(unittest.TestCase):
     @classmethod
     def setUpClass(cls):

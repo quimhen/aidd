@@ -5,10 +5,36 @@
 ## Mapping ledger
 | Code | Status | Evidence (file/class/resource id) | PR/Spec ref | Screenshot diff done? |
 |---|---|---|---|---|
-| SCREEN-01 | ✅ IMPLEMENTED \| ⚠️ PARTIAL \| ❌ MISSING \| 🔄 DIFFERENT | | | ☐ |
+<!-- Status values: ✅ IMPLEMENTED | ⚠️ PARTIAL | ❌ MISSING | 🔄 DIFFERENT. A ✅ on a SCREEN-nn, API-nnn or -Fnn code needs a row in "Execution evidence" below.
+| SCREEN-01 | ✅ IMPLEMENTED | | | ☐ |
 | COMP-001 | | | | ☐ (check on every screen it's used in) |
 | CTL-001 | | | | ☐ |
 | SCREEN-01-F01 | | | | ☐ |
+-->
+| SCREEN-01 | | | | ☐ |
+| COMP-001 | | | | ☐ (check on every screen it's used in) |
+| CTL-001 | | | | ☐ |
+| SCREEN-01-F01 | | | | ☐ |
+
+## Device preflight
+Before claiming any device/tablet/phone code done: run `adb devices` (or the platform's equivalent) and record the result here. No device listed = the codes that need it stay ⚠️ PARTIAL with a `not-verified` row below.
+
+Preflight: [command run + its output line, or "no device available"]
+
+## Execution evidence
+Run, don't read: every ✅ code above of kind SCREEN-nn, API-nnn or -Fnn needs a row here proving it was EXECUTED (not only that the code exists).
+`Kind` = `screenshot | command-output | query-result | log | manual-test | not-verified`. `Evidence` = a path to an existing file (a screenshot must be .png/.jpg/.jpeg/.webp) or an http(s) URL; `manual-test` = `user — "<their words, 3+ words>"`; `not-verified` = the path of a human test script, and that code's Status above must then be ⚠️ PARTIAL, not ✅. `Verified by` = `agent | user`.
+
+| Code | Kind | Evidence | Verified by |
+|---|---|---|---|
+
+<!-- Example row (delete): | SCREEN-01 | screenshot | evidence/screen-01.png | agent | -->
+
+## Bug reports
+One row per bug found after something was declared done. From the 2nd report of the same Code, `Root cause` and `Pattern sweep` (what you searched, where, and what you found, e.g. `grep -rn "fmt(" forms/` → 4 hits fixed) must be filled. From the 3rd, `Fix` must say `redesign` plus a reference (spec id or task).
+
+| # | Code | Symptom | Root cause | Fix | Pattern sweep |
+|---|---|---|---|---|---|
 
 ## Resilience check (per code that crosses a boundary — network, DB, disk, external API, hardware)
 | Code | Timeout set? | Retry/backoff? | Graceful degradation? | Recoverable trace on failure (where)? |

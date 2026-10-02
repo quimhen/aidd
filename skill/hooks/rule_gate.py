@@ -506,8 +506,23 @@ def _decide_path(event, ti, fp):
 
     # (4) content rules on spec.md / tasks.md (+ R4 on the would-be spec/plan/contracts)
     new_text = cur_text = None
-    if fname in ('spec.md', 'tasks.md', 'plan.md', 'contracts.md'):
+    if fname in ('spec.md', 'tasks.md', 'plan.md', 'contracts.md', 'qa-audit.md'):
         new_text, whole, cur_text, too_big = _would_be(ti, rp, rules.MAX_CHARS)
+        if too_big and fname == 'qa-audit.md':
+            return True, _fmt('content', 'blocking this write to qa-audit.md: file too large.',
+                              [_v('R10', 'qa-audit.md would exceed 2 MB, so it cannot be scanned.',
+                                  'Shrink qa-audit.md below 2 MB.')])
+        if new_text is not None and fname == 'qa-audit.md':
+            # R10/R11 (contract 10): independent of _qa_gate's no-code_edit early return; only freshness needs edits
+            edits = ev.events(root, session, 'code_edit')   # session-scoped, no spec attribution
+            last_ts = max([e['ts'] for e in edits]) if edits else None
+            vs = rules.check_qa(new_text, d, root, last_ts)
+            if vs and not whole:
+                before = {(v['rule'], v['message']) for v in rules.check_qa(cur_text or '', d, root, last_ts)}
+                vs = [v for v in vs if (v['rule'], v['message']) not in before]
+            if vs:
+                return True, _fmt('content', f'blocking this write to qa-audit.md: it introduces '
+                                             f'{"" if whole else "new "}violations.', vs)
         if too_big and fname in ('spec.md', 'tasks.md'):
             return True, _fmt('content', f'blocking this write to {fname}: file too large.',
                               [_v('R1' if fname == 'tasks.md' else 'R2',

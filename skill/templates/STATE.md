@@ -17,6 +17,9 @@ step that changes what's true; append/edit, don't let it grow into a second spec
 ## Next action
 [One line — the next concrete step. e.g. "Run check_spec.py on specs/007-checkout/, then Step 6 converge."]
 
+## Test state
+[One line — the last test/run command and its result, e.g. "python -m unittest discover -s tests: 214 run, 0 failures (2026-10-02)"; plus what was NOT run (device, SAP, tablet) and who must run it.]
+
 ## Quick pointers (grep targets — don't restate their content here)
 | What | Where |
 |---|---|

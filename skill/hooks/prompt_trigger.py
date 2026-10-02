@@ -152,14 +152,24 @@ prompt = event.get('prompt') if isinstance(event.get('prompt'), str) else ''
 _sid = event.get('session_id') if isinstance(event.get('session_id'), str) else None
 _cwd = event.get('cwd') if isinstance(event.get('cwd'), str) and event.get('cwd') else None
 
+_secret_labels = []
 try:  # evidence recorder — additive, must never affect output or exit code
     sys.path.insert(0, str(Path(__file__).parent.parent / 'scripts'))
     import aidd_evidence as _ev
-    _ev.append(_ev.find_root(_cwd or Path.cwd()), _sid,
-               'prompt', text=re.sub(r'\s+', ' ', prompt).strip()[:_ev.MAX_PROMPT_CHARS])
+    _stored, _secret_labels = _ev.redact_secrets(prompt)
+    _ev.append(_ev.find_root(_cwd or Path.cwd()), _sid, 'prompt', text=_stored)
 except Exception as _e:
     try:
         _ev.record_hook_error(_cwd, _sid, 'prompt_trigger', _e)
+    except Exception:
+        pass
+
+if _secret_labels:  # credential hygiene warning — independent of the planning-keyword match
+    try:
+        print("[aidd] Credential hygiene: this message contains a secret (" + ', '.join(_secret_labels)
+              + "). It was redacted from the evidence log. NEVER copy it into files, specs, memory, "
+              "commands or logs; use an environment variable or a connection profile outside the chat. "
+              "Next action: reference the secret by variable name only (e.g. $env:DB_PASSWORD).")
     except Exception:
         pass
 

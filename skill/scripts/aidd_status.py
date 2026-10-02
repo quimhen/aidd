@@ -173,6 +173,7 @@ def build_status(spec_dir, root=None):
                 'tasks': {'approval': 'unparseable', 'waves': 0, 'critical_path_min': None,
                           'approval_recorded': False},
                 'code_edits': 0, 'auditors': {}, 'qa_audit': (d / 'qa-audit.md').exists(),
+                'qa_evidence': {'checked': False, 'r10': 0, 'r11': 0},
                 'visual_debt_open': 0, 'debt_blocking': 0, 'active': False,
                 'why_blocked': [f'Could not analyse this spec ({type(e).__name__}); check spec.md/tasks.md '
                                 'for pathological content (huge, binary or malformed tables).']}
@@ -216,6 +217,7 @@ def _build_status(spec_dir, root=None):
     missing = set(rules.uncovered_domains(root, None, d.name, since_edit, spec_dir=d))
     st['auditors'] = {dom: dom not in missing for dom in doms}
     st['qa_audit'] = (d / 'qa-audit.md').exists()
+    st['qa_evidence'] = _qa_evidence(d, root, since_edit if edits else None)
     st['visual_debt_open'] = len(rules.open_visual_debt(spec_text)) if spec_text else 0
     st['debt_blocking'] = len(rules.open_debt_blocking(root).get(d.name, []))
     st['active'] = ev.get_active_spec(root) == d.name
@@ -223,12 +225,28 @@ def _build_status(spec_dir, root=None):
     return st
 
 
+def _qa_evidence(d, root, last_edit_ts):
+    """R10/R11 state of qa-audit.md: {'checked', 'r10', 'r11'} (violation counts). Never raises."""
+    out = {'checked': False, 'r10': 0, 'r11': 0}
+    try:
+        p = d / 'qa-audit.md'
+        if not p.exists():
+            return out
+        vs = rules.check_qa(_read(p), d, root, last_edit_ts)
+        out['checked'] = True
+        out['r10'] = sum(1 for v in vs if v['rule'] == 'R10')
+        out['r11'] = sum(1 for v in vs if v['rule'] == 'R11')
+    except Exception:
+        pass
+    return out
+
+
 def _why_blocked(d, root, st):
     """Human-readable lines: what currently blocks this spec and the exact next action."""
     out = []
     try:
         for v in rules.check_spec_dir(d, root):
-            if v['rule'] in ('R4', 'R5', 'R6', 'R7'):
+            if v['rule'] in ('R4', 'R5', 'R6', 'R7', 'R10', 'R11', 'R12'):
                 out.append(f"{v['rule']} {v['message']} → {v['fix']}")
         ap = st['tasks']['approval']
         if st['open'] and ap == 'no-tasks':
@@ -285,6 +303,16 @@ def _route_summary(route):
     return ' · '.join('/'.join(s) + ' ' + lbl for s, lbl in groups)
 
 
+def _qa_evidence_segment(st):
+    q = st.get('qa_evidence') or {}
+    if not q.get('checked'):
+        return ''
+    n10, n11 = q.get('r10', 0), q.get('r11', 0)
+    if not (n10 or n11):
+        return ' · evidence ✔'
+    return f' · evidence ✘ (R10 {n10}, R11 {n11})'
+
+
 def format_status(st, glob=None):
     a, t = st['alignment'], st['tasks']
     align = (f"{a['proposed']} proposed"
@@ -312,7 +340,8 @@ def format_status(st, glob=None):
         f"Tasks: {tk} · Waves: {t['waves']} · critical path {cp}   "
         f"Build: {st['code_edits']} code edits · Auditors: {aud}",
         f"Visual debt open: {st['visual_debt_open']} (blocking this spec: {st.get('debt_blocking', 0)}) · "
-        f"qa-audit.md: {'yes' if st['qa_audit'] else 'no'}" + (' · ACTIVE pointer' if st['active'] else ''),
+        f"qa-audit.md: {'yes' if st['qa_audit'] else 'no'}" + _qa_evidence_segment(st)
+        + (' · ACTIVE pointer' if st['active'] else ''),
     ]
     for w in st.get('why_blocked') or []:
         lines.append(f'  WHY blocked: {w}')

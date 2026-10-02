@@ -164,5 +164,161 @@ class TestHardRulesIntegration(unittest.TestCase):
             self.assertNotIn("R2 ", r.stdout)
 
 
+CTL_HDR = ("| CTL-nnn | Screen or COMP-nnn | Visible text | id | Action/handler | Destination | "
+           "Data source | States | Class/style | Calls API-nnn (if any) | Status | PR/Spec ref |\n"
+           "|---|---|---|---|---|---|---|---|---|---|---|---|\n")
+CONTRACT_TABLE = (
+    "| API-nnn | Method + path | Request schema | Response schema | Error cases | Auth | "
+    "Stored procedure(s) | Swagger/OpenAPI ref | Consumed by (CTL-nnn) | Exception reason (if no SP) | PR/Spec ref |\n"
+    "|---|---|---|---|---|---|---|---|---|---|---|\n"
+    "| API-001 | `POST /orders` | `{ a }` | `{ b }` | 400 | Bearer | `sp_Create` | /sw | CTL-001 | | |\n")
+
+
+class TestG1Controls(unittest.TestCase):
+    def test_action_without_destination_data_states_is_flagged(self):
+        md = "## Control inventory\n" + CTL_HDR + \
+            "| CTL-001 | SCREEN-01 | Save | btn | onSave | | | | | | Explicit | |\n"
+        gaps = check_spec.check_g1_controls(md)
+        self.assertEqual(len(gaps), 1, gaps)
+        self.assertIn("Destination, Data source, States", gaps[0])
+
+    def test_filled_and_na_with_reason_is_clean(self):
+        md = "## Control inventory\n" + CTL_HDR + \
+            ("| CTL-001 | SCREEN-01 | Save | btn | onSave | SCREEN-02 | API-001 | empty/loading/error "
+             "| | | Explicit | |\n"
+             "| CTL-002 | SCREEN-01 | Help | btn | open | n/a — external app | n/a - static text "
+             "| empty: hidden | | | Explicit | |\n")
+        self.assertEqual(check_spec.check_g1_controls(md), [])
+
+    def test_bare_na_is_flagged(self):
+        md = "## Control inventory\n" + CTL_HDR + \
+            "| CTL-001 | SCREEN-01 | Save | btn | onSave | n/a | n/a | loading | | | Explicit | |\n"
+        self.assertEqual(len(check_spec.check_g1_controls(md)), 1)
+
+    def test_control_without_action_is_not_flagged(self):
+        md = "## Control inventory\n" + CTL_HDR + \
+            "| CTL-001 | SCREEN-01 | Title | h1 | | | | | | | Explicit | |\n"
+        self.assertEqual(check_spec.check_g1_controls(md), [])
+
+    def test_old_table_without_new_columns_is_not_flagged(self):
+        md = ("## Control inventory\n"
+              "| CTL-nnn | Screen | Visible text | id | Action/handler | Status | PR/Spec ref |\n"
+              "|---|---|---|---|---|---|---|\n"
+              "| CTL-001 | SCREEN-01 | Save | btn | onSave | Explicit \\| [Not Verified] | |\n")
+        self.assertEqual(check_spec.check_g1_controls(md), [])
+
+
+class TestG2Acceptance(unittest.TestCase):
+    HDR = "## Acceptance cases\n\n| Case | Real data (id) | Expected | Edge? |\n|---|---|---|---|\n"
+
+    def test_missing_section_is_flagged(self):
+        self.assertIn("no `## Acceptance cases`", check_spec.check_g2_acceptance("# spec\n")[0])
+
+    def test_placeholder_row_only_is_flagged(self):
+        self.assertEqual(len(check_spec.check_g2_acceptance(self.HDR + "| AC-001 | | | |\n")), 1)
+
+    def test_no_edge_row_is_flagged(self):
+        g = check_spec.check_g2_acceptance(self.HDR + "| AC-001 | emp 1234 | pays 100 | |\n")
+        self.assertIn("no `edge` row", g[0])
+
+    def test_with_edge_is_clean(self):
+        md = self.HDR + "| AC-001 | emp 1234 | pays 100 | |\n| AC-002 | emp 9 | date 9999 ok | edge |\n"
+        self.assertEqual(check_spec.check_g2_acceptance(md), [])
+
+
+class TestG3Traceability(unittest.TestCase):
+    HDR = "| Mockup field (SCREEN-XX / CTL-nnn) | Room/store | DTO | API | SP | Filled-by |\n|---|---|---|---|---|---|\n"
+
+    def test_empty_cell_is_flagged(self):
+        g = check_spec.check_g3_traceability(self.HDR + "| SCREEN-01 / CTL-001 | store | | API-001 | sp_x | T-02 |\n")
+        self.assertEqual(len(g), 1)
+        self.assertIn("DTO", g[0])
+
+    def test_complete_row_and_na_are_clean(self):
+        md = self.HDR + "| SCREEN-01 / CTL-001 | store | Dto.x | API-001 | n/a — no DB | T-02 |\n"
+        self.assertEqual(check_spec.check_g3_traceability(md), [])
+
+
+class TestG4ContractHash(unittest.TestCase):
+    def _doc(self, hash_line, table=CONTRACT_TABLE):
+        return f"# C\n\nContract version: 1\n{hash_line}\n\n{table}"
+
+    def test_hash_ignores_pr_ref_and_whitespace(self):
+        a = check_spec.compute_contract_hash(self._doc("Contract hash: PENDING"))
+        b = CONTRACT_TABLE.replace("| CTL-001 | | |", "|   CTL-001   | | PR#9 |")
+        self.assertEqual(a, check_spec.compute_contract_hash(self._doc("x", b)))
+        self.assertEqual(len(a), 12)
+
+    def test_pending_is_flagged(self):
+        g = check_spec.check_g4_contract_hash(self._doc("Contract hash: PENDING"))
+        self.assertIn("--stamp-contract", g[0])
+
+    def test_match_is_clean_and_mismatch_lists_stale_tasks(self):
+        h = check_spec.compute_contract_hash(self._doc(""))
+        self.assertEqual(check_spec.check_g4_contract_hash(self._doc(f"Contract hash: {h}")), [])
+        changed = CONTRACT_TABLE.replace("400", "400, 409")
+        tasks = "| T-03 | API-001 | f.py | x |\n| T-04 | CTL-009 | g.py | x |\n"
+        g = check_spec.check_g4_contract_hash(self._doc(f"Contract hash: {h}", changed), tasks)
+        self.assertEqual(len(g), 1)
+        self.assertIn("T-03", g[0])
+        self.assertNotIn("T-04", g[0])
+
+    def test_stamp_round_trip_via_cli(self):
+        with tempfile.TemporaryDirectory() as d:
+            p = Path(d) / "contracts.md"
+            p.write_text(self._doc("Contract hash: PENDING"), encoding="utf-8")
+            r = subprocess.run([sys.executable, str(SCRIPTS_DIR / "check_spec.py"), d, "--stamp-contract"],
+                               capture_output=True, text=True, encoding="utf-8", timeout=20)
+            self.assertEqual(r.returncode, 0, r.stdout)
+            text = p.read_text(encoding="utf-8")
+            self.assertNotIn("PENDING", text)
+            self.assertEqual(check_spec.check_g4_contract_hash(text), [])
+            # edit the contract -> mismatch; re-stamp -> clean again
+            p.write_text(text.replace("400", "500"), encoding="utf-8")
+            self.assertEqual(len(check_spec.check_g4_contract_hash(p.read_text(encoding="utf-8"))), 1)
+            subprocess.run([sys.executable, str(SCRIPTS_DIR / "check_spec.py"), "--stamp-contract", d],
+                           capture_output=True, text=True, timeout=20)
+            self.assertEqual(check_spec.check_g4_contract_hash(p.read_text(encoding="utf-8")), [])
+
+    def test_stamp_without_contracts_is_usage_error(self):
+        with tempfile.TemporaryDirectory() as d:
+            r = subprocess.run([sys.executable, str(SCRIPTS_DIR / "check_spec.py"), d, "--stamp-contract"],
+                               capture_output=True, text=True, timeout=20)
+            self.assertEqual(r.returncode, 2)
+
+
+class TestG5Consumers(unittest.TestCase):
+    HDR = ("| COMP-nnn | Name | File | First defined in | Used in (SCREEN-XX) | Consumers | Notes |\n"
+           "|---|---|---|---|---|---|---|\n")
+
+    def test_screen_without_consumers_is_flagged(self):
+        g = check_spec.check_g5_consumers(self.HDR + "| COMP-001 | Card | c.dart | 003 | SCREEN-02 | | |\n")
+        self.assertEqual(len(g), 1)
+        self.assertIn("COMP-001", g[0])
+
+    def test_consumers_filled_or_unused_is_clean(self):
+        md = self.HDR + ("| COMP-001 | Card | c.dart | 003 | SCREEN-02 | a.dart | |\n"
+                         "| COMP-002 | Hdr | h.dart | 003 | | | |\n")
+        self.assertEqual(check_spec.check_g5_consumers(md), [])
+
+    def test_old_index_without_column_is_clean(self):
+        md = ("| COMP-nnn | Name | File | First defined in | Used in (SCREEN-XX) | Notes |\n|---|---|---|---|---|---|\n"
+              "| COMP-001 | Card | c.dart | 003 | SCREEN-02 | |\n")
+        self.assertEqual(check_spec.check_g5_consumers(md), [])
+
+
+class TestGapsEndToEnd(unittest.TestCase):
+    def test_spec_without_acceptance_and_bad_traceability_exit_one(self):
+        with tempfile.TemporaryDirectory() as d:
+            (Path(d) / "spec.md").write_text("# spec\n", encoding="utf-8")
+            (Path(d) / "traceability.md").write_text(TestG3Traceability.HDR +
+                "| SCREEN-01 / CTL-001 | | | | | |\n", encoding="utf-8")
+            r = subprocess.run([sys.executable, str(SCRIPTS_DIR / "check_spec.py"), d],
+                               capture_output=True, text=True, encoding="utf-8", timeout=20)
+            self.assertEqual(r.returncode, 1, r.stdout)
+            self.assertIn("G2 ", r.stdout)
+            self.assertIn("G3 ", r.stdout)
+
+
 if __name__ == "__main__":
     unittest.main()

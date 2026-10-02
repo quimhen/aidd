@@ -565,6 +565,46 @@ class TestTemplates(unittest.TestCase):
             self.assertIn(needle, a)
             self.assertIn(needle, b)
         self.assertNotIn('Estimated hours', a + b)
+        # 003: both trees carry the new files and sections
+        self.assertEqual(self.read(self.TREES[0], 'traceability.md'), self.read(self.TREES[1], 'traceability.md'))
+        needles = {
+            'qa-audit.md': ('## Execution evidence', '| Code | Kind | Evidence | Verified by |', '## Bug reports',
+                            '| # | Code | Symptom | Root cause | Fix | Pattern sweep |', 'adb devices'),
+            'mockup-audit.md': ('Destination', 'Data source', 'States'),
+            'plan.md': ('## Entry route', '## Device targets'),
+            'spec.md': ('## Acceptance cases', '| Case | Real data (id) | Expected | Edge? |', '## Optional Align questions'),
+            'contracts.md': ('Contract version:', 'Contract hash: PENDING'),
+            'charter.md': ('SAP pitfalls', '`**/*.xml`'),
+            'STATE.md': ('## Test state',),
+            'tasks.md': ('| View / logic |', '- Kind:'),
+            'design-system/components-index.md': ('Consumers',),
+            'traceability.md': ('Mockup field', 'Room/store', 'DTO', 'API', 'SP', 'Filled-by'),
+        }
+        for tree in self.TREES:
+            for name, needs in needles.items():
+                txt = self.read(tree, name)
+                for needle in needs:
+                    self.assertIn(needle, txt, f'{tree.parent.name}/{name}: {needle}')
+            self.assertNotIn('New view vs. reuse', self.read(tree, 'tasks.md'))
+        self.assertEqual(self.read(self.TREES[0], 'spec.md').count('→ Step 2 align question'), 7)
+        # the optional Align questions never become checklist rows
+        for tree in self.TREES:
+            rows = [ln for ln in self.read(tree, 'spec.md').splitlines() if ln.endswith('| → Step 2 align question |')]
+            self.assertEqual(len(rows), 7)
+
+    def test_qa_template_green_checks_only_inside_comment(self):
+        for tree in self.TREES:
+            raw = self.read(tree, 'qa-audit.md')
+            outside = re.sub(r'<!--.*?-->', '', raw, flags=re.S)
+            rows = [ln for ln in outside.splitlines() if ln.startswith('|')]
+            self.assertFalse([ln for ln in rows if '✅' in ln], 'placeholder green-check row outside a comment')
+            self.assertIn('✅', raw)  # the example still exists, inside the comment
+
+    def test_tasks_template_has_no_reuse_word_beside_codes(self):
+        for tree in self.TREES:
+            for ln in self.read(tree, 'tasks.md').splitlines():
+                if ln.startswith('| T-') or ln.startswith('- Kind:'):
+                    self.assertIsNone(re.search(r'reutiliza|remapea|envuelve|wrap|reus|rewir', ln, re.I), ln)
 
     def test_spec_template_filled_passes(self):
         for tree in self.TREES:

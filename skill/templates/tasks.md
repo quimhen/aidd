@@ -12,10 +12,12 @@ approval before anything gets written.
 - **Naming & File Contract from `plan.md`** — PascalCase for classes/types, camelCase for functions/variables, the project's own file-naming case. Restate the specific convention here, don't just point at plan.md and assume the agent will look it up.
 - **Antifragile / Design for Failure** — assume every operation crossing a boundary (network, DB, disk, external API, hardware) can fail: explicit timeout, retry with backoff, graceful degradation, and a traceable/recoverable record for anything that exhausts retries (dead-letter entry, status field, log with enough context to replay manually). Never fail silently to the user.
 
-| Task | Codes satisfied (SCREEN/COMP/CTL/API) | Target file | New view vs. reuse | Tracker ref | Status | Explicitly out of scope |
+| Task | Codes satisfied (SCREEN/COMP/CTL/API) | Target file | View / logic | Tracker ref | Status | Explicitly out of scope |
 |---|---|---|---|---|---|---|
-| T-01 | COMP-001, CTL-001 | | new component | | | any other file; any code not listed here |
-| T-02 | SCREEN-01, CTL-002 | | new view \| reuse logic only \| reuse view too | | | any other file; any code not listed here |
+| T-01 | COMP-001, CTL-001 | | VIEW-new | | | any other file; any code not listed here |
+| T-02 | SCREEN-01, CTL-002 | | VIEW-new \| LOGIC \| VIEW-legacy | | | any other file; any code not listed here |
+
+`View / logic` says what the task builds: `VIEW-new` = a new presentation faithful to the mockup (data and logic may come from existing code); `LOGIC` = data/state/behaviour only, no presentation; `VIEW-legacy` = the old view is kept as it is, and only with a written justification (5+ characters) in the task's `Kind:` line. The default for a visual redesign is a new view plus the logic behind it. A task that names a SCREEN/COMP code together with a word like reutiliza, remapea, envuelve, wrap, reuse or rewire must carry the `Kind:` line below (`aidd rules` checks it).
 
 `Tracker ref` and `Status` are write-back-only, same discipline as `PR/Spec ref` elsewhere in this project's templates (`mockup-audit.md`, `contracts.md`, `qa-audit.md`): leave both blank here. `tasks_to_issues.py` fills `Tracker ref` when it creates the tracker issue for a row; `sync_issues.py` keeps `Status` current with the tracker's live state; `link_pr_to_task.py` fills/refreshes `Tracker ref` once a PR is opened for that task. Never hand-author either column.
 
@@ -27,6 +29,7 @@ Order `COMP-nnn` tasks before any `SCREEN-XX` task that uses them — building a
 **Classify**
 - Nature: `REQUIREMENT` (new work/improvement) \| `INCIDENT` (fixes something broken)
 - Priority: 1 CRITICAL / 2 HIGH / 3 MEDIUM / 4 LOW — default 3 unless there's a clear blocking/risk signal
+- Kind: VIEW-new | LOGIC | VIEW-legacy: [justification, 5+ characters — only for VIEW-legacy]
 
 **Estimate**
 - Effort: High / Medium / Low

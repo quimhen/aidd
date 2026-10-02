@@ -818,5 +818,93 @@ class TestRecorders(RecorderCase):
         self.assertLess(avg_ms, 2000)
 
 
+class TestCredentialHygiene(RecorderCase):
+    SECRET = "Hunter2xyzSecret"
+
+    def test_prompt_secret_is_redacted_in_log_and_warns(self):
+        r = self.hook("prompt_trigger.py", prompt=f"la clave de la BD es password={self.SECRET} gracias")
+        self.assertEqual(r.returncode, 0)
+        text = self.ev("prompt")[0]["detail"]["text"]
+        self.assertNotIn(self.SECRET, text)
+        self.assertIn("password=[redacted]", text)
+        self.assertIn("gracias", text)
+        self.assertIn("Credential hygiene", r.stdout)
+        self.assertNotIn(self.SECRET, r.stdout)
+        self.assertNotIn(self.SECRET, r.stderr)
+
+    def test_warning_independent_of_planning_keyword(self):
+        r = self.hook("prompt_trigger.py", prompt=f"toma pwd: {self.SECRET}")
+        self.assertNotIn("looks like a requirement", r.stdout)
+        self.assertIn("Credential hygiene", r.stdout)
+
+    def test_no_warning_for_ordinary_prompt(self):
+        r = self.hook("prompt_trigger.py", prompt="necesito modificar el token de sesion del login")
+        self.assertNotIn("Credential hygiene", r.stdout)
+        self.assertIn("[aidd]", r.stdout)
+        self.assertEqual(self.ev("prompt")[0]["detail"]["text"], "necesito modificar el token de sesion del login")
+
+    def test_ordinary_quote_still_verifies_with_secret_in_prompt(self):
+        self.hook("prompt_trigger.py", prompt=f"Confirmar tal cual. password={self.SECRET}")
+        self.assertTrue(aidd_evidence.quote_in_prompts(self.root, "Confirmar tal cual", session=self.session_id))
+
+    def test_large_prompt_is_fast_and_exits_zero(self):
+        t0 = time.perf_counter()
+        r = self.hook("prompt_trigger.py", prompt="password= " * 110000)
+        self.assertEqual(r.returncode, 0)
+        self.assertLess(time.perf_counter() - t0, 8.0)
+
+    def test_secret_straddling_limit_not_exposed_in_hook(self):
+        self.hook("prompt_trigger.py", prompt="x" * 3990 + f" password={self.SECRET}")
+        text = self.ev("prompt")[0]["detail"]["text"]
+        self.assertNotIn("Hunter", text)
+        self.assertLessEqual(len(text), 4000)
+
+    def test_agent_dispatch_head_is_redacted(self):
+        r = self.hook("mark_agent_dispatch.py", tool_input={
+            "subagent_type": "general-purpose", "description": "B",
+            "prompt": f"Connect with token={self.SECRET} and build"})
+        self.assertEqual(r.returncode, 0)
+        head = self.ev("subagent")[0]["detail"]["head"]
+        self.assertNotIn(self.SECRET, head)
+        self.assertIn("token=[redacted]", head)
+
+    def test_answers_are_redacted(self):
+        q = "Cual es la conexion?"
+        resp = f'User has answered your questions: "{q}"="clave={self.SECRET}". You can now continue'
+        r = self.hook("mark_user_question.py",
+                      tool_input={"questions": [{"question": q, "options": [{"label": "Otra"}]}]},
+                      tool_response=resp)
+        self.assertEqual(r.returncode, 0)
+        d = self.ev("answer")[0]["detail"]
+        self.assertNotIn(self.SECRET, d["text"])
+        self.assertNotIn(self.SECRET, json.dumps(d["pairs"]))
+        self.assertIn("[redacted]", json.dumps(d["pairs"]))
+
+    def test_plain_answer_still_matches_option(self):
+        q = "Aprobar tasks?"
+        resp = f'User has answered your questions: "{q}"="Approve". You can now continue'
+        self.hook("mark_user_question.py",
+                  tool_input={"questions": [{"question": q, "options": [{"label": "Approve"}]}]},
+                  tool_response=resp)
+        self.assertIsNotNone(aidd_evidence.affirmative_answer(self.root, self.session_id, r"tasks"))
+
+    def test_hooks_exit_zero_with_broken_evidence_dir(self):
+        bad = Path(self._evtd.name) / "iamafile"
+        bad.write_text("x", encoding="utf-8")
+        old = os.environ["AIDD_EVIDENCE_DIR"]
+        os.environ["AIDD_EVIDENCE_DIR"] = str(bad)
+        try:
+            r = self.hook("prompt_trigger.py", prompt=f"password={self.SECRET} y modificar login")
+            self.assertEqual(r.returncode, 0)
+            self.assertNotIn("Traceback", r.stderr)
+            self.assertIn("Credential hygiene", r.stdout)
+            r = self.hook("mark_agent_dispatch.py", tool_input={"prompt": f"token={self.SECRET}"})
+            self.assertEqual(r.returncode, 0)
+            r = self.hook("mark_user_question.py", tool_input={"questions": []}, tool_response="x")
+            self.assertEqual(r.returncode, 0)
+        finally:
+            os.environ["AIDD_EVIDENCE_DIR"] = old
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -106,6 +106,24 @@ def approved_tasks(**kw):
     return t.replace("Approved: PENDING", f"Approved: 2026-10-01 hash:{R.approval_hash(t)}")
 
 
+QA_LEDGER = "## Mapping ledger\n\n| Code | Status |\n|---|---|\n| SCREEN-01 | ✅ DONE |\n"
+QA_EVIDENCE_HEAD = "## Execution evidence\n\n| Code | Kind | Evidence | Verified by |\n|---|---|---|---|\n"
+
+
+def qa_text(evidence_rows="", ledger=QA_LEDGER, extra=""):
+    """qa-audit.md body: a ✅ SCREEN-01 ledger row plus an `Execution evidence` table with `evidence_rows`
+    (empty string => no evidence table at all, i.e. an R10 violation)."""
+    head = QA_EVIDENCE_HEAD + evidence_rows if evidence_rows else ""
+    return f"# QA audit\n\n{ledger}\n{head}\n{extra}"
+
+
+QA_ROW_OK = "| SCREEN-01 | screenshot | evidence/login.png | agent |\n"
+QA_BUGS_REPEAT_BLANK = (
+    "## Bug reports\n\n| # | Code | Symptom | Root cause | Fix | Pattern sweep |\n|---|---|---|---|---|---|\n"
+    "| 1 | SCREEN-01 | N/D card | | patched | |\n"
+    "| 2 | SCREEN-01 | N/D again | | patched | |\n")
+
+
 class Base(unittest.TestCase):
     """Synthetic project dir (specs/001-x/…, a real src/cart.py) + helpers to build evidence and run a hook.
     Every test runs with AIDD_EVIDENCE_DIR pointing at a scratch dir OUTSIDE the project (and outside the

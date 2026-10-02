@@ -24,7 +24,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from gate_fixtures import (  # noqa: E402
     Base, EV, R, HOOKS_DIR, QUOTE, CHECKLIST_QUOTE, CHECKLIST_OK, CHECKLIST_PROPOSED, CHECKLIST_FABRICATED,
     CHECKLIST_BLANK, CHECKLIST_FAKE_REPO, CHECKLIST_SHORT_QUOTE, DEBT_OPEN, DEBT_RESOLVED, WAIVED_VISUAL,
-    spec_text, debt_spec, tasks_text, approved_tasks,
+    spec_text, debt_spec, tasks_text, approved_tasks, qa_text, QA_ROW_OK, QA_BUGS_REPEAT_BLANK,
 )
 import _common  # noqa: E402
 import rule_gate  # noqa: E402
@@ -885,6 +885,87 @@ class TestR7QaAudit(Base):
         EV.append(self.root, "other", "subagent", type="g", desc="Perf", head="performance")
         EV.append(self.root, "other", "subagent", type="g", desc="UI", head="mockup")
         self.assertBlocked(self.gate(QA, content="# qa"), "R7")
+
+
+# ------------------------------------------------------------------------------ R10 / R11
+
+class TestR10R11QaContent(Base):
+    EVID = "specs/001-x/evidence/login.png"
+
+    def code_edit(self):
+        self.ev("code_edit", path="src/app.py", spec="001-x")
+
+    def test_blocks_done_row_without_execution_evidence(self):
+        r = self.gate(QA, content=qa_text())
+        self.assertBlocked(r, "R10", "SCREEN-01", "Next action")
+
+    def test_blocks_missing_evidence_file(self):
+        r = self.gate(QA, content=qa_text(QA_ROW_OK))
+        self.assertBlocked(r, "R10", "does not exist")
+
+    def test_allows_existing_fresh_evidence(self):
+        self.put(self.EVID, "png", age=-10)
+        self.assertAllowed(self.gate(QA, content=qa_text(QA_ROW_OK)))
+
+    def test_r10_blocks_even_without_any_code_edit(self):
+        # _qa_gate returns early with no code_edit events; the content check must not depend on that
+        self.assertBlocked(self.gate(QA, content=qa_text()), "R10")
+
+    def test_stale_evidence_after_code_edit_blocks(self):
+        self.put(self.EVID, "png", age=100)
+        self.code_edit()
+        self.assertBlocked(self.gate(QA, content=qa_text(QA_ROW_OK)), "R10", "stale")
+
+    def test_evidence_newer_than_code_edit_allows(self):
+        self.code_edit()
+        self.subagent("Perf auditor", "performance review of the change")   # R7 still applies after a code edit
+        self.put(self.EVID, "png", age=-10)
+        self.assertAllowed(self.gate(QA, content=qa_text(QA_ROW_OK)))
+
+    def test_code_edit_of_another_session_does_not_make_it_stale(self):
+        self.put(self.EVID, "png", age=100)
+        EV.append(self.root, "other-session", "code_edit", path="src/app.py", spec="001-x")
+        self.assertAllowed(self.gate(QA, content=qa_text(QA_ROW_OK)))
+
+    def test_repeat_bug_report_without_root_cause_blocks_r11(self):
+        self.put(self.EVID, "png", age=-10)
+        r = self.gate(QA, content=qa_text(QA_ROW_OK, extra=QA_BUGS_REPEAT_BLANK))
+        self.assertBlocked(r, "R11", "Root cause")
+
+    def test_escape_path_is_not_evidence(self):
+        row = "| SCREEN-01 | screenshot | ../../outside.png | agent |\n"
+        self.assertBlocked(self.gate(QA, content=qa_text(row)), "R10", "not a path inside")
+
+    def test_warn_mode_prints_and_allows(self):
+        r = self.gate(QA, content=qa_text(), env={"AIDD_RULES": "warn"})
+        self.assertEqual(r.returncode, 0)
+        self.assertIn("R10", r.err)
+        self.assertIn("AIDD_RULES=warn", r.err)
+
+    def test_off_mode_is_silent(self):
+        r = self.gate(QA, content=qa_text(), env={"AIDD_RULES": "off"})
+        self.assertEqual((r.returncode, r.err.strip()), (0, ""))
+
+    def test_edit_does_not_reblock_old_violations(self):
+        self.put(QA, qa_text(QA_ROW_OK))          # existing violation: evidence file is missing
+        r = self.gate(QA, tool="Edit", old_string="# QA audit", new_string="# QA audit v2")
+        self.assertAllowed(r)
+
+    def test_edit_introducing_a_new_violation_blocks(self):
+        self.put(self.EVID, "png", age=-10)
+        self.put(QA, qa_text(QA_ROW_OK))
+        r = self.gate(QA, tool="Edit", old_string="evidence/login.png", new_string="evidence/other.png")
+        self.assertBlocked(r, "R10", "new violations")
+
+    def test_whole_file_write_reblocks_old_violations(self):
+        self.put(QA, qa_text(QA_ROW_OK))          # same violation as on disk, but a whole-file Write
+        r = self.gate(QA, content=qa_text(QA_ROW_OK))
+        self.assertBlocked(r, "R10")
+        self.assertNotIn("new violations", r.err)
+
+    def test_oversize_qa_audit_blocks_with_next_action(self):
+        r = self.gate(QA, content="x" * (R.MAX_CHARS + 10))
+        self.assertBlocked(r, "R10", "Next action")
 
 
 # ----------------------------------------------------------------------------------- R4

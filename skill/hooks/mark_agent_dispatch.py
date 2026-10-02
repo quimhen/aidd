@@ -44,7 +44,7 @@ try:  # evidence recorder
     _ev.append(_ev.find_root(_cwd or Path.cwd()), _sid, 'subagent',
                type=_s(_ti.get('subagent_type')),
                desc=_s(_ti.get('description'))[:200],
-               head=_s(_ti.get('prompt'))[:400])
+               head=_ev.redact_secrets(_s(_ti.get('prompt')), limit=400)[0])
 except Exception as _e:
     try:
         _ev.record_hook_error(_cwd, _sid, 'mark_agent_dispatch', _e)

@@ -1,5 +1,10 @@
 # API Contracts — [feature name]
 
+Contract version: 1
+Contract hash: PENDING
+
+The hash is a fingerprint of the contract table below (the `PR/Spec ref` column excluded). `check_spec.py <spec_dir> --stamp-contract` writes it; when the table later changes, a mismatch lists the `API-` tasks built on the old contract as stale. Bump `Contract version` on every deliberate contract change. Never hand-write the hash.
+
 One row per endpoint the frontend depends on. Fill this before Step 4 (Tasks) when the feature
 is full-stack — a task that implements a `CTL-nnn` calling an undefined `API-nnn` is not ready to approve.
 

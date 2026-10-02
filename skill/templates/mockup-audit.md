@@ -24,9 +24,11 @@ it here just to have an entry.
 | COMP-001 | | | | |
 
 ## Control inventory
-| CTL-nnn | Screen or COMP-nnn | Visible text | id | Action/handler | Class/style | Calls API-nnn (if any) | Status | PR/Spec ref |
-|---|---|---|---|---|---|---|---|---|
-| CTL-001 | SCREEN-01 | | | | | | Explicit \| [Not Verified] | |
+| CTL-nnn | Screen or COMP-nnn | Visible text | id | Action/handler | Destination | Data source | States | Class/style | Calls API-nnn (if any) | Status | PR/Spec ref |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| CTL-001 | SCREEN-01 | | | | | | | | | Explicit \| [Not Verified] | |
+
+For every control with an Action: `Destination` = where it leads (a screen, a modal, an external app, or `n/a — <reason>`); `Data source` = where its data comes from (API/SP/store/field, or `n/a — <reason>`); `States` = what it shows when empty / loading / error. A visual wired to nothing, or reachable from nowhere, is a gap, not a pass.
 
 `Calls API-nnn` stays empty for a frontend-only feature. For a full-stack one, fill it in and mirror the same code in `contracts.md`'s "Consumed by" column — the link must be visible from both directions.
 

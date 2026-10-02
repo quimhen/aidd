@@ -12,10 +12,12 @@ approval before anything gets written.
 - **Naming & File Contract from `plan.md`** — PascalCase for classes/types, camelCase for functions/variables, the project's own file-naming case. Restate the specific convention here, don't just point at plan.md and assume the agent will look it up.
 - **Antifragile / Design for Failure** — assume every operation crossing a boundary (network, DB, disk, external API, hardware) can fail: explicit timeout, retry with backoff, graceful degradation, and a traceable/recoverable record for anything that exhausts retries (dead-letter entry, status field, log with enough context to replay manually). Never fail silently to the user.
 
-| Task | Codes satisfied (SCREEN/COMP/CTL/API) | Target file | New view vs. reuse | Explicitly out of scope |
+| Task | Codes satisfied (SCREEN/COMP/CTL/API) | Target file | View / logic | Explicitly out of scope |
 |---|---|---|---|---|
-| T-01 | COMP-001, CTL-001 | | new component | any other file; any code not listed here |
-| T-02 | SCREEN-01, CTL-002 | | new view \| reuse logic only \| reuse view too | any other file; any code not listed here |
+| T-01 | COMP-001, CTL-001 | | VIEW-new | any other file; any code not listed here |
+| T-02 | SCREEN-01, CTL-002 | | VIEW-new \| LOGIC \| VIEW-legacy | any other file; any code not listed here |
+
+`View / logic` says what the task builds: `VIEW-new` = a new presentation faithful to the mockup (data and logic may come from existing code); `LOGIC` = data/state/behaviour only, no presentation; `VIEW-legacy` = the old view is kept as it is, and only with a written justification (5+ characters) in the task's `Kind:` line. The default for a visual redesign is a new view plus the logic behind it. A task that names a SCREEN/COMP code together with a word like reutiliza, remapea, envuelve, wrap, reuse or rewire must carry the `Kind:` line below (`aidd rules` checks it).
 
 Order `COMP-nnn` tasks before any `SCREEN-XX` task that uses them — building a component inline inside the first screen that needs it, then extracting it once a second screen needs the same thing, is a second pass on work already reviewed once.
 
@@ -25,6 +27,7 @@ Order `COMP-nnn` tasks before any `SCREEN-XX` task that uses them — building a
 **Classify**
 - Nature: `REQUIREMENT` (new work/improvement) \| `INCIDENT` (fixes something broken)
 - Priority: 1 CRITICAL / 2 HIGH / 3 MEDIUM / 4 LOW — default 3 unless there's a clear blocking/risk signal
+- Kind: VIEW-new | LOGIC | VIEW-legacy: [justification, 5+ characters — only for VIEW-legacy]
 
 **Estimate**
 - Effort: High / Medium / Low

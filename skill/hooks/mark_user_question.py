@@ -48,6 +48,9 @@ try:
     _resp = event.get('tool_response')
     if _resp is not None:
         _text, _pairs = _ev.parse_answers(_resp, _known if _clean else [])
+        _text = _ev.redact_secrets(_text, limit=2000)[0]
+        _pairs = [[p[0], _ev.redact_secrets(p[1], limit=1000)[0]] if isinstance(p, (list, tuple)) and len(p) == 2
+                  else p for p in _pairs]
         _ev.append_answer(_root, _sid, _text, _pairs, options=_options if _pairs else None)
 except Exception as _e:
     try:

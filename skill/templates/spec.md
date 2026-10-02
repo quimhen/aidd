@@ -69,3 +69,27 @@ While a row is `open`, writes under the blocked spec and its code edits are BLOC
 Every functional requirement traces to at least one code from `mockup-audit.md` (or `contracts.md`
 for a full-stack requirement) — a requirement with no code behind it either belongs in a different
 spec or the audit is incomplete.
+
+## Acceptance cases
+
+Real data, written BEFORE building: the cases the user would otherwise discover during their own test.
+At least one row, and at least one `edge` (empty, extreme, boundary, legacy or odd data: a 9999 date, a
+zero, a user with no rows). `Real data (id)` is a real record id/key from the system, not an invented value.
+
+| Case | Real data (id) | Expected | Edge? |
+|---|---|---|---|
+| AC-001 | | | |
+
+## Optional Align questions
+
+Not part of the Minimum Requirements Checklist above (those 7 rows stay as they are, and old specs without
+this section stay valid). Ask the ones that apply in Step 2 and record the answer with its Source
+(`user — "<their words, 3+ words>"` or `repo — <path[:line]>`). Blank = not asked yet, never guessed.
+
+| Question | Answer | Source |
+|---|---|---|
+| Which states must each screen/flow handle (empty, loading, error, offline)? | | |
+| Who may see or do this (permissions/roles)? | | |
+| Entry route: how does the user reach this from the app's start? | | |
+| Target devices (phone, tablet, desktop, orientation)? | | |
+| Contract owner and status (who defines the backend contract, is it final or still moving)? | | |
