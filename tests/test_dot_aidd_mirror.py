@@ -61,6 +61,7 @@ import aidd.cli as aidd_cli  # noqa: E402
 VERBATIM_SCRIPTS = [
     "check_spec.py",
     "check_charter.py",
+    "flowmap.py",
     "find_spec.py",
     "tasks_to_issues.py",
     "link_pr_to_task.py",

@@ -95,6 +95,21 @@ def main():
 
     audit_codes = all_codes(mockup_audit) | all_codes(contracts)
 
+    # 0. Step 1.5 Flowmap (visual-flow.toon): must parse, validate and cite real codes
+    flow_file = spec_dir / 'visual-flow.toon'
+    if (spec_dir / 'visual-flow.md').exists() and not flow_file.exists():
+        gaps.append("visual-flow.md is the legacy Mermaid format — migrate it to visual-flow.toon "
+                    "(templates/visual-flow.toon, render with `aidd flow`); the user cannot walk a "
+                    "raw Mermaid block, and Flowmap validates what Mermaid cannot.")
+    if flow_file.exists():
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        import flowmap
+        _flows, flow_errors, flow_warnings = flowmap.check_file(flow_file, spec_dir)
+        for msg in flow_errors:
+            gaps.append(f"visual-flow.toon: {msg}")
+        for msg in flow_warnings:
+            gaps.append(f"visual-flow.toon (warning): {msg}")
+
     # 1. [Not Verified] rows still open
     not_verified = mockup_audit.count('[Not Verified]')
     if not_verified:

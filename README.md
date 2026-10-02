@@ -69,6 +69,10 @@ where the tool allows it, followed as a written discipline everywhere else.
 - **Searches before creating.** Every request runs against a compact, auto-built graph of every
   existing spec (`specs/index.toon`) before anything new gets created — a match means "amend this,"
   not "start over."
+- **Shows the plan before building it.** Step 1.5 turns each use case into an interactive
+  actors × processes flow with generated pseudocode (`aidd flow specs/001-login/visual-flow.toon
+  --open`) — the user clicks through it and corrects the flow by node, not in prose. Source is
+  a compact TOON file; layout, routing and pseudocode are derived, never hand-drawn.
 - **Plans out loud.** Ambiguity gets resolved as an explicit question before code is written, not
   discovered after a review.
 - **Ships in small, reviewable pieces.** One code, one file, one PR — a wrong pass costs one edit,
@@ -149,6 +153,7 @@ aidd init /path/to/your/project   # installs the .aidd/ bundle there
 aidd search "login"               # search the spec graph
 aidd check specs/001-login/       # mechanical gap-check
 aidd check-charter .         # run charter.md's checkable rules
+aidd flow specs/001-login/visual-flow.toon --open   # Flowmap: interactive flow + pseudocode
 aidd tasks-to-issues specs/001-login/tasks.md --apply   # sync tasks (github by default)
 aidd tasks-to-issues specs/001-login/tasks.md --provider azure_devops --org ... --project ... --apply
 aidd adapters generate all /path/to/your/project   # native commands for Gemini CLI, Cursor, Windsurf, Cline, Copilot

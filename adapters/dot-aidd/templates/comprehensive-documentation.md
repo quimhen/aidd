@@ -11,7 +11,7 @@
 [Screen → Code map, copied from plan.md.]
 
 ## 3. Formal flow
-[One Mermaid diagram per US-nnn, copied verbatim from visual-flow.md.]
+[Per US-nnn: link the rendered `visual-flow.html` (interactive actors × processes flow), and paste the generated pseudocode from `aidd flow specs/[###]/visual-flow.toon --pseudo`; use `--mermaid` only if the reader cannot open HTML.]
 
 ## 4. What we have today
 [✅ rows copied verbatim from the latest qa-audit.md revision.]

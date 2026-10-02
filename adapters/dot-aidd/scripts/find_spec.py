@@ -62,7 +62,7 @@ CODE_RE = re.compile(r'\b(SCREEN-\d+(?:-F\d+)?|CTL-\d+|COMP-\d+|API-\d+|US-\d+)\
 SEARCHED_FILES = [
     'spec.md', 'mockup-audit.md', 'plan.md', 'tasks.md',
     'contracts.md', 'data-model.md', 'qa-audit.md',
-    'comprehensive-documentation.md', 'visual-flow.md',
+    'comprehensive-documentation.md', 'visual-flow.md', 'visual-flow.toon',
 ]
 
 STOPWORDS = {

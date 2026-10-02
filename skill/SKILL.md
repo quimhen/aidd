@@ -72,7 +72,7 @@ Every artifact below has a real starting skeleton in this skill's own `templates
 ~/.claude/skills/aidd/templates/
 ├── STATE.md                  # project-root continuity file — copy once per project, read first always
 ├── mockup-audit.md
-├── visual-flow.md
+├── visual-flow.toon
 ├── spec.md                   # Step 2 — Minimum Requirements Checklist + functional requirements
 ├── contracts.md              # API-nnn contracts — only for full-stack features
 ├── data-model.md             # entities/relationships — only when the feature adds/changes data
@@ -90,6 +90,7 @@ Every artifact below has a real starting skeleton in this skill's own `templates
 ~/.claude/skills/aidd/scripts/
 ├── check_spec.py              # mechanical gap-checker — run before the Step 6 Auditor reads by hand
 ├── check_charter.py      # runs charter.md's checkable rules — see below
+├── flowmap.py                 # Step 1.5 — visual-flow.toon → interactive actors×processes HTML + generated pseudocode (aidd flow)
 ├── research_project.py        # [optional, one-time] proposes candidate spec areas on a brownfield project with no specs/ yet — see "Research mode" below
 ├── tasks_to_issues.py         # turns an approved tasks.md into real tracker issues (dry-run by default)
 └── providers/                 # github_provider.py / azure_devops_provider.py / bitbucket_provider.py — see "Issue tracker integration" below
@@ -203,7 +204,7 @@ Step -1 greps `specs/*/mockup-audit.md` for a matching *spec*; that doesn't help
 Step 4's approved task list has a dependency order (`COMP-nnn` before the `SCREEN-XX` that uses it) but tasks with no dependency between them don't need to run in sequence. Group the approved tasks into waves — same-wave tasks touch disjoint files and have no ordering requirement between them — and dispatch every task in a wave as parallel Agent tool calls **in one message**, not one call at a time. This is where an agentic/looping workflow actually saves wall-clock time over a linear one; skipping it turns Step 5 back into a slow serial queue for no reason.
 
 ### Take the fast lane for a small, contained change
-The full pipeline (mockup audit → flow diagram → plan → tasks → implement → converge → handoff doc) is overkill for a one-screen, one-control fix with no new use case and no new component — forcing the full ceremony on a trivial change is itself a time cost this skill exists to eliminate. Fast lane conditions (all must hold): touches exactly one existing `SCREEN-XX`, no new `US-nnn`, no new `COMP-nnn`, no navigation change. When they hold: skip `visual-flow.md` and `comprehensive-documentation.md` entirely, amend `mockup-audit.md` and `qa-audit.md` directly (still under Step -1's amend-don't-duplicate rule), and run it as a single task with the same four-part Definition of Done. The moment any fast-lane condition stops holding mid-work, stop and go back to the full pipeline from Step 1 — don't keep stretching the fast lane past its conditions.
+The full pipeline (mockup audit → flow diagram → plan → tasks → implement → converge → handoff doc) is overkill for a one-screen, one-control fix with no new use case and no new component — forcing the full ceremony on a trivial change is itself a time cost this skill exists to eliminate. Fast lane conditions (all must hold): touches exactly one existing `SCREEN-XX`, no new `US-nnn`, no new `COMP-nnn`, no navigation change. When they hold: skip `visual-flow.toon` and `comprehensive-documentation.md` entirely, amend `mockup-audit.md` and `qa-audit.md` directly (still under Step -1's amend-don't-duplicate rule), and run it as a single task with the same four-part Definition of Done. The moment any fast-lane condition stops holding mid-work, stop and go back to the full pipeline from Step 1 — don't keep stretching the fast lane past its conditions.
 
 ### Grep first — never read a whole file to check one code
 **Reading an entire spec file to confirm one fact wastes exactly the time this skill exists to save.** Every code (`SCREEN-XX`, `CTL-nnn`, `COMP-nnn`, `API-nnn`, `US-nnn`) is a search key by design — use it as one:
@@ -421,21 +422,32 @@ Keep it mechanical — tables and codes, not prose about how a screen "feels."
 
 ### Step 1.5 — Visual Process Flow (draw it, don't describe it)
 
-**Explaining step-by-step what a user can do on a screen, in prose, is where interaction with the AI usually breaks down** — it takes many messages and still under- or over-specifies. Replace that with a diagram: copy `templates/visual-flow.md` to `specs/[###-feature]/visual-flow.md` and fill in one Mermaid `flowchart TD` per `US-nnn`, built mechanically from Step 1's screen inventory, control inventory, and navigation map — every node labeled with its `SCREEN-XX`/`CTL-nnn` code, not a redescription:
+**Explaining step-by-step what a user can do on a screen, in prose, is where interaction with the AI usually breaks down** — and the user cannot confirm a plan they cannot see. Replace that with **AIDD Flowmap**: copy `templates/visual-flow.toon` to `specs/[###-feature]/visual-flow.toon` and fill one `flow: US-nnn` block per use case, built mechanically from Step 1's screen inventory, control inventory and navigation map. The source is **AIDD-TOON** (the same tabular TOON dialect as `specs/index.toon`, not JSON, not Mermaid): `actors` (swimlane rows — human / system / data / external), `processes` (phases), `steps` (every screen/control step cites its `SCREEN-XX`/`CTL-nnn` code, never a redescription) and `links` (labeled branches; a decision's every branch must carry its condition). **Never place coordinates** — layout, routing and pseudocode are derived.
 
-```mermaid
-flowchart TD
-  A([Enter Waiter profile]) --> B[SCREEN-01 Table map]
-  B --> C{CTL-004 Open table}
-  C -- table occupied --> D[Block: table already has an open ticket]
-  C -- table free --> E[SCREEN-08 Order ticket]
-  E --> F[CTL-060 Add item]
-  E --> G[CTL-061 Apply discount]
-  F --> H[SCREEN-09 Kitchen ticket]
-  H --> I{CTL-077 Send to kitchen / CTL-078 Cancel ticket}
+```
+flow: US-001
+title: Waiter opens a table
+actors[3]{id,label,kind}:
+  waiter,Waiter,human
+  pos,POS app,system
+  db,SQL Server,data
+processes[2]{id,label}:
+  P1,Choose table
+  P2,Take order
+steps[4]{id,actor,process,type,code,label,detail}:
+  s1,waiter,P1,start,,Enters waiter profile,
+  s2,pos,P1,screen,SCREEN-01,Table map,
+  s3,pos,P1,decision,CTL-004,Open table?,Checks open ticket via API-012
+  s4,pos,P2,screen,SCREEN-08,Order ticket,
+links[3]{from,to,label,role}:
+  s1,s2,,main
+  s2,s3,,main
+  s3,s4,free,main
 ```
 
-**This diagram is the interaction surface for Step 2**, not a diagram to review passively: present it, and have the user correct the *diagram* directly (redraw a branch, mark a node wrong, add a missing decision) instead of describing the flow in words. A round of "move this node" or "this branch is missing" is one small diff to the flowchart; the same correction attempted in prose is where a spec's back-and-forth usually stalls. Keep one flowchart per `US-nnn` (not one giant diagram for the whole feature) so a correction stays local and reviewable.
+Then run `aidd flow specs/[###-feature]/visual-flow.toon --open` (or `python scripts/flowmap.py ...`). It validates first (dangling links, dead ends, unreachable steps, decision branches without a condition, missing codes — and with `--spec-dir`, codes that do not exist in the spec) and only then writes a standalone interactive `visual-flow.html` with: the **actors × processes swimlane flow**, **generated pseudocode** (IF/ELSE/GOTO derived from the graph, synchronized with the diagram), and an **Actors × Processes matrix**. The user can click any step, walk the flow with the arrow keys, pick a branch with `1-9`, filter by actor or process, and gets the exact reference to cite (`US-001/s3`).
+
+**This is the interaction surface for Step 2**, not a diagram to review passively: show the user the rendered HTML and have them correct the *flow* by node reference ("US-001/s3: missing branch for a reserved table") instead of describing it in words; each correction is one small diff to the TOON followed by a re-render. Keep one `flow:` block per `US-nnn` so a correction stays local. `check_spec.py` validates `visual-flow.toon` automatically.
 
 ### Step 2 — Align (before planning, not during implementation)
 
@@ -499,11 +511,11 @@ The delta line is the point: it tells you at a glance whether this pass actually
 
 ### Step 7 — Comprehensive Documentation (handoff)
 
-Copy `templates/comprehensive-documentation.md`. Once a spec converges, assemble its parts into one handoff-quality document — the same genre as a formal process handoff doc: not a re-explanation, a re-assembly of what already exists in `mockup-audit.md`/`plan.md`/`visual-flow.md`/`qa-audit.md`. Fixed sections:
+Copy `templates/comprehensive-documentation.md`. Once a spec converges, assemble its parts into one handoff-quality document — the same genre as a formal process handoff doc: not a re-explanation, a re-assembly of what already exists in `mockup-audit.md`/`plan.md`/`visual-flow.toon`/`qa-audit.md`. Fixed sections:
 
 1. **Objective and scope** — from the `US-nnn` list and their purpose; explicitly state what's out of scope.
 2. **Architecture** — the Screen → Code map from Step 3.
-3. **Formal flow** — the Step 1.5 Mermaid diagrams, one per `US-nnn`, verbatim.
+3. **Formal flow** — the Step 1.5 Flowmap per `US-nnn` (link `visual-flow.html`, paste the generated pseudocode).
 4. **What we have today / What's missing** — pulled directly from the latest `qa-audit.md` revision: ✅ rows under "today", ⚠️/❌/🔄 rows under "missing," each with its evidence pointer. Never re-describe status in new prose — copy the row.
 5. **Verification checklist** — the Definition of Done items, grouped by screen.
 6. **Access, configuration, and working rules** — only if the feature has real prerequisites (credentials, environment flags, endpoints); omit the section entirely rather than leaving it "N/A."
@@ -518,7 +530,7 @@ charter.md                     # project root, not per-feature — Step -2, copi
 
 specs/[###-feature-name]/
 ├── mockup-audit.md            # Step 1 — screen/component/control/behavior inventory, hash, provenance
-├── visual-flow.md            # Step 1.5 — one Mermaid flowchart per US-nnn
+├── visual-flow.toon            # Step 1.5 — one Flowmap `flow:` block per US-nnn (renders to interactive HTML + pseudocode)
 ├── contracts.md               # [full-stack only] API-nnn endpoints consumed by this feature
 ├── data-model.md              # [only if persisted data changes] entities/relationships
 ├── research.md                # [optional] technology decisions worth recording

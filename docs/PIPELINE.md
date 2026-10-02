@@ -3,7 +3,7 @@
 AIDD is the default pipeline for any change to a codebase — UI or backend-only, a new feature or a
 one-line fix — not a UI-specific tool. On every requirement it classifies itself first (new spec,
 amendment, or a fast-lane fix) against a searchable graph of every existing spec, then turns the
-work into stable codes, a Mermaid flowchart you correct instead of describe, a task list detailed
+work into stable codes, an interactive actors×processes flow with generated pseudocode that you correct instead of describe, a task list detailed
 with a classify/estimate/decompose/assign rubric, and a per-PR done-checklist audited by an
 independent pass. Self-contained: no other skill required.
 
@@ -150,7 +150,7 @@ run, applied by default.
   ordering requirement) get dispatched as parallel agent calls **in one message**, not one at a
   time. This is where an agentic workflow actually saves wall-clock time over a linear one.
 - **Take the fast lane for small changes** — one existing screen, no new use case, no new
-  component, no navigation change → skip `visual-flow.md` and `comprehensive-documentation.md`,
+  component, no navigation change → skip `visual-flow.toon` and `comprehensive-documentation.md`,
   amend directly, one task. The full pipeline on a trivial fix is itself a time cost this skill
   exists to eliminate.
 
@@ -184,7 +184,7 @@ Every artifact has a real starting skeleton — nothing is reconstructed from me
 ~/.claude/skills/aidd/templates/
 ├── STATE.md                       project-root continuity, read first
 ├── mockup-audit.md
-├── visual-flow.md
+├── visual-flow.toon
 ├── contracts.md                    full-stack only
 ├── data-model.md                   only if persisted data changes
 ├── research.md                     optional
@@ -398,23 +398,32 @@ inventory, Component inventory, Control inventory, Navigation map, Behavior list
 
 ### Step 1.5 — Visual Process Flow — draw it, don't describe it
 
-Explaining step-by-step what a user can do, in prose, is where AI interaction usually breaks down.
-Copy `templates/visual-flow.md`: one Mermaid flowchart per `US-nnn`, every node labeled with its
-code.
+**Explaining step-by-step what a user can do on a screen, in prose, is where interaction with the AI usually breaks down** — and the user cannot confirm a plan they cannot see. Replace that with **AIDD Flowmap**: copy `templates/visual-flow.toon` to `specs/[###-feature]/visual-flow.toon` and fill one `flow: US-nnn` block per use case, built mechanically from Step 1's screen inventory, control inventory and navigation map. The source is **AIDD-TOON** (the same tabular TOON dialect as `specs/index.toon`, not JSON, not Mermaid): `actors` (swimlane rows — human / system / data / external), `processes` (phases), `steps` (every screen/control step cites its `SCREEN-XX`/`CTL-nnn` code, never a redescription) and `links` (labeled branches; a decision's every branch must carry its condition). **Never place coordinates** — layout, routing and pseudocode are derived.
 
-```mermaid
-flowchart TD
-  A([Enter Waiter profile]) --> B[SCREEN-01 Table map]
-  B --> C{CTL-004 Open table}
-  C -- table occupied --> D[Block: table already has an open ticket]
-  C -- table free --> E[SCREEN-08 Order ticket]
-  E --> F[CTL-060 Add item] --> H[SCREEN-09 Kitchen ticket]
+```
+flow: US-001
+title: Waiter opens a table
+actors[3]{id,label,kind}:
+  waiter,Waiter,human
+  pos,POS app,system
+  db,SQL Server,data
+processes[2]{id,label}:
+  P1,Choose table
+  P2,Take order
+steps[4]{id,actor,process,type,code,label,detail}:
+  s1,waiter,P1,start,,Enters waiter profile,
+  s2,pos,P1,screen,SCREEN-01,Table map,
+  s3,pos,P1,decision,CTL-004,Open table?,Checks open ticket via API-012
+  s4,pos,P2,screen,SCREEN-08,Order ticket,
+links[3]{from,to,label,role}:
+  s1,s2,,main
+  s2,s3,,main
+  s3,s4,free,main
 ```
 
-**This diagram is the interaction surface for Step 2** — correct the diagram directly ("move this
-node", "this branch is missing") instead of describing the fix in words.
+Then run `aidd flow specs/[###-feature]/visual-flow.toon --open` (or `python scripts/flowmap.py ...`). It validates first (dangling links, dead ends, unreachable steps, decision branches without a condition, missing codes — and with `--spec-dir`, codes that do not exist in the spec) and only then writes a standalone interactive `visual-flow.html` with: the **actors × processes swimlane flow**, **generated pseudocode** (IF/ELSE/GOTO derived from the graph, synchronized with the diagram), and an **Actors × Processes matrix**. The user can click any step, walk the flow with the arrow keys, pick a branch with `1-9`, filter by actor or process, and gets the exact reference to cite (`US-001/s3`).
 
-→ `specs/[###]/visual-flow.md`
+**This is the interaction surface for Step 2**, not a diagram to review passively: show the user the rendered HTML and have them correct the *flow* by node reference ("US-001/s3: missing branch for a reserved table") instead of describing it in words; each correction is one small diff to the TOON followed by a re-render. Keep one `flow:` block per `US-nnn` so a correction stays local. `check_spec.py` validates `visual-flow.toon` automatically.
 
 ### Step 2 — Align (Alignment Agent)
 
@@ -495,7 +504,7 @@ specs/
 ├── index.toon            auto-built spec graph
 └── [###-feature-name]/
     ├── mockup-audit.md
-    ├── visual-flow.md
+    ├── visual-flow.toon
     ├── contracts.md      full-stack only
     ├── data-model.md     if data changes
     ├── research.md       optional

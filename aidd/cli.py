@@ -59,6 +59,18 @@ def cmd_check(args):
     return _run("check_spec.py", [args.spec_dir])
 
 
+def cmd_flow(args):
+    extra = [args.flow_file]
+    for flag, on in (("--check", args.check), ("--pseudo", args.pseudo), ("--mermaid", args.mermaid), ("--open", args.open)):
+        if on:
+            extra.append(flag)
+    if args.output:
+        extra += ["-o", args.output]
+    if args.spec_dir:
+        extra += ["--spec-dir", args.spec_dir]
+    return _run("flowmap.py", extra)
+
+
 def cmd_check_charter(args):
     return _run("check_charter.py", [args.root] if args.root else [])
 
@@ -210,6 +222,16 @@ def build_parser():
     p_check = sub.add_parser("check", help="Run the mechanical gap-checker on one spec folder")
     p_check.add_argument("spec_dir")
     p_check.set_defaults(func=cmd_check)
+
+    p_flow = sub.add_parser("flow", help="Flowmap: render a visual-flow.toon to an interactive actors x processes flow + pseudocode")
+    p_flow.add_argument("flow_file")
+    p_flow.add_argument("-o", "--output")
+    p_flow.add_argument("--check", action="store_true", help="validate only")
+    p_flow.add_argument("--pseudo", action="store_true", help="print generated pseudocode (markdown)")
+    p_flow.add_argument("--mermaid", action="store_true", help="print Mermaid (markdown-embed fallback)")
+    p_flow.add_argument("--spec-dir", help="cross-check node codes against this spec folder")
+    p_flow.add_argument("--open", action="store_true")
+    p_flow.set_defaults(func=cmd_flow)
 
     p_cc = sub.add_parser("check-charter", help="Run charter.md's checkable rules")
     p_cc.add_argument("root", nargs="?", default=None, help="Project root (default: cwd)")

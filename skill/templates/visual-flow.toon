@@ -1,0 +1,28 @@
+# AIDD Flowmap source (AIDD-TOON). One `flow:` block per US-nnn, separated by a line of `---`.
+# Render:  python scripts/flowmap.py specs/[###-feature]/visual-flow.toon --open
+# Every screen/control step cites its SCREEN-XX / CTL-nnn code (never a redescription).
+# Tables are `name[N]{fields}:` — N must equal the number of rows. Fields are CSV; quote a field that contains a comma.
+# Do NOT place coordinates: layout, routing and pseudocode are generated from the steps and links.
+flow: US-001
+title: [use case description]
+status: draft
+actors[3]{id,label,kind}:
+  user,User,human
+  app,Application,system
+  db,Database / SP,data
+processes[2]{id,label}:
+  P1,[first process]
+  P2,[second process]
+steps[6]{id,actor,process,type,code,label,detail}:
+  s1,user,P1,start,,Entry point,
+  s2,app,P1,screen,SCREEN-01,Screen name,What it shows
+  s3,app,P1,decision,CTL-001,Action?,Rule or API-nnn it checks
+  s4,app,P1,error,,Blocked,Why it is blocked
+  s5,db,P2,api,API-001,Persist result,Stored procedure name
+  s6,user,P2,end,,Done,
+links[5]{from,to,label,role}:
+  s1,s2,,main
+  s2,s3,,main
+  s3,s4,condition A,error
+  s3,s5,condition B,main
+  s5,s6,,main
