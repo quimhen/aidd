@@ -80,7 +80,7 @@ where the tool allows it, followed as a written discipline everywhere else.
 - **Never lets the implementer grade its own work.** Step 6's review must come from a separate
   agent dispatch, one per domain the change touched. On Claude Code this is an actual technical
   gate (`hooks/rule_gate.py` + `stop_gate.py`), not just a rule stated in a doc.
-- **Enforces the rules instead of asking nicely.** Hard rules R1–R9: estimates are agent
+- **Enforces the rules instead of asking nicely.** Hard rules R1–R12: estimates are agent
   minutes per wave (human hours only as a reference), skipping a step needs the user's quoted
   confirmation (verified against what the user typed or answered), the agent can't answer its own
   Align questions (blank answers block planning, `repo —` sources must exist and cite a line),
@@ -88,7 +88,10 @@ where the tool allows it, followed as a written discipline everywhere else.
   answer plus a tamper-evident hash, a spec stays open until `aidd rules close`/`abandon` (touching
   another spec can't switch the gates off), code edits are blocked for every open spec without a
   recorded approval, every required domain needs its own distinct auditor, and a session can't
-  end on built code without its closing audits (R8 relaxes after 3 blocks). Hooks write an
+  end on built code without its closing audits (R8 relaxes after 3 blocks); a ✅ screen/API/field
+  needs executed evidence, not a code reading (R10, freshness best-effort), a repeated bug needs a
+  root cause and pattern sweep (R11), and a task that reuses a screen/component must say whether it is a
+  new view or logic only (R12). Hooks write an
   append-only evidence log (guarded against the agent by R9: the Write/Edit tools and a lexical shell guard, not a sandbox) (per-session in the temp dir, plus a project log only where
   a `specs/` or `.aidd/` root exists) that the gates read; `aidd status` lists every open spec with the
   ledger and **WHY blocked**, and `aidd rules check` prints `PASS|FAIL Rn … → fix`.
@@ -239,7 +242,7 @@ See `adapters/README.md`.
 Early — the core pipeline, the search/graph tools, the charter checker, the graph-coherence
 gate, the issue-tracker sync (GitHub/Azure DevOps/Bitbucket, plus bidirectional status sync
 via `aidd tracker sync` and PR<->task linking via `aidd tracker link-pr`), CI templates and
-`aidd ci install`, the Claude Code hooks (ten by default, plus an opt-in per-file memory hook; one `rule_gate.py` enforcing hard rules R1–R9
+`aidd ci install`, the Claude Code hooks (ten by default, plus an opt-in per-file memory hook; one `rule_gate.py` enforcing hard rules R1–R12
 including the independent-audit and graph-coherence gates, and a `stop_gate.py`), the evidence log, `aidd status`/`aidd rules`, the multi-agent adapter generator (`generate_adapters.py`, rendering
 Gemini CLI/Cursor/Windsurf/Cline/Copilot commands from one source), the real auto-discovery
 extension registry (`extension_registry.py`, loading provider/adapter/hook extensions from
