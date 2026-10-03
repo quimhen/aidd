@@ -14,6 +14,9 @@
 | FR-007 | ⚠️ PARTIAL | The code path is ready and covered by unit tests (AC-003, AC-007). Real spec 005 still has no recorded spec_closed: it needs the owner's install and a NEW typed "Yes, close [spec:005-aidd-token-planning]" after this file exists | spec 006 | n/a |
 | FR-008 | ✅ IMPLEMENTED | skill/SKILL.md and skill/AIDD.md (six planning rules in Step 4, gaps G1-G6), skill/templates/tasks.md and the adapters/dot-aidd copies; skill/scripts/check_spec.py `check_g6_single_owner` (:308); tests/test_check_spec.py `TestG6SingleOwner` (:310) | spec 006 T-18, T-19 | n/a |
 
+| FR-009 | ✅ IMPLEMENTED | skill/scripts/aidd_evidence.py `open_specs(root, include_approved=False)` (:1277, obligation definition back to a recorded plan/tasks edit); skill/scripts/aidd_status.py `cmd_close` (:652), `cmd_abandon` (:730), `build_status(named=...)` (:239-266); hooks stop_gate.py:70 and rule_gate.py:372 and the status listing (:372) stay strict | spec 006 T-22 | n/a |
+| FR-010 | ✅ IMPLEMENTED | skill/scripts/aidd_rules.py `pre_build_since` (:1732-1768, `AIDD_R5_FIX_EDITS` default 3, 0 = strict, per-file recorded edits, unrecorded mtime and rebuilt find_spec always strict); R5 sentence in skill/AIDD.md:329, adapters/dot-aidd/AIDD.md:329, skill/SKILL.md:99 and :387 | spec 006 T-25 | n/a |
+
 ## Device preflight
 Not applicable: no device and no UI. Preflight: no device required (Windows hooks and CLI only).
 
@@ -28,6 +31,9 @@ Not applicable: no device and no UI. Preflight: no device required (Windows hook
 | FR-006 | command-output | evidence/ac-006.txt | agent |
 | FR-007 | command-output | evidence/ac-007-close.txt | agent |
 | FR-008 | command-output | evidence/full-suite-and-check-spec.txt | agent |
+| FR-009 | command-output | evidence/amend-FR009-FR010-functional.txt | agent |
+| FR-010 | command-output | evidence/amend-FR009-FR010-functional.txt | agent |
+| FR-004 | command-output | evidence/amend-FR009-FR010-functional.txt | agent |
 
 Also executed: the full suite `python -m pytest tests -q -p no:cacheprovider` = 1247 passed, 21 subtests passed, after fix batches F1 and F2 (full-suite-and-check-spec.txt is the earlier run of 1221 passed). The targeted re-run after the last code edit is evidence/final-fr002-fr003-fr005-rerun.txt (90 passed). Timing of 4 contended appends: 5.7 s against the 10 s hook timeout; uncontended 34-49 ms (evidence/T-21-functional-delta-c5-c6.txt). F2 performance delta: PASS, worst rule_gate process about 0.26 s of a 15 s timeout. Evidence strength noted by the read-only verifier: several earlier files show pytest test names rather than assertion text (ac-001-002, ac-006, ac-007-close); the decoy-model case of F2 and the whole dot-aidd mirror are only partially shown (Open exceptions).
 
@@ -58,6 +64,7 @@ Not applicable: no database. The evidence log is an append-only text file.
 ## Revision log (append, never overwrite)
 ```
 Rev 1 (2026-10-03) — 75.0% (6/8 FR fully implemented; FR-006 and FR-007 partial, see Open exceptions)
+Rev 2 (2026-10-03) — 80.0% (8/10 FR fully implemented: FR-009 and FR-010 added by the owner's amendments; FR-007 done in practice, spec 005 is closed; FR-006 partial; full suite 1260 passed, 21 subtests passed; security, functional and performance audits of the amendments: PASS WITH EXCEPTIONS, no High or Medium findings)
 ```
 
 ## Open exceptions (rows left unresolved on purpose)
@@ -72,7 +79,12 @@ Rev 1 (2026-10-03) — 75.0% (6/8 FR fully implemented; FR-006 and FR-007 partia
 | FR-004 | L4 (LOW, confirmed): the bearer or basic pattern plus 8 characters redacts ordinary prose, a tokens number in prompt heads is redacted, and a redacted JSON password loses its closing quote | pending owner decision |
 | FR-004 | The INSTALLED hooks (old) lose dispatch events and count scratch files written by auditors through PowerShell as code edits: observed live while closing this spec (a read-only auditor dispatch was not recorded, a code edit at 12:33:37 made finished audits stale and blocked the first writes of this file); the new hooks are not installed yet | pending install |
 | FR-004 | Evidence strength: the F2 decoy model case and the dot-aidd mirror are only partially shown in F2-functional-delta.txt (only aidd_evidence.py hashed); ac-001-002, ac-006 and ac-007-close show test names, not assertion text | pending owner decision |
-| FR-008 | G6 flags T-14 and T-18 (same documentation files): T-18 amends what T-14 wrote at the owner's FR-008 request; fixing it needs a tasks.md edit that would void the approval | pending owner decision |
+| FR-010 | LOW (security): the R5 gate runs before the current edit is recorded, so the tolerance lets N+1 (4 at the default) edits pass after the audit; `cmd_approve` does not check R5; the approval itself stays bound to the final tasks.md content by the Approved hash, the recorded approved event and the tagged answer | pending owner decision |
+| FR-010 | LOW (security, plausible): once a file has any recorded spec_edit its mtime is ignored even with tolerance 0, so an edit whose row was lost stays invisible; `AIDD_R5_FIX_EDITS` is not in `_ENV_NAMES` of the R9 assignment guard (only the advisory CLI report is affected) | pending owner decision |
+| FR-004 | LOW (security, F3): `_read_log` reads the spill in the order (dr, sp); (sp, dr) closes a tiny window in which a concurrent drain hides one spilled row from a single read; and a disk failure in the middle of closing the log file could merge a partial line with the retried row | pending owner decision |
+| FR-010 | LOW (performance): `pre_build_since` is about 3.5x and `pre_build_audit_done` about 6x slower than HEAD (0.35-0.86 s on a 35k-row log) because `_spec_file_edit_ts` scans the log once per file; scanning once would fix it; it only runs when plan.md or tasks.md is written, under the 15 s timeout | pending owner decision |
+| FR-003 | R5 provenance in this spec.md fails `aidd rules check`: one checklist row (requester) is still Proposed and two user quotes are not found in the recorded prompts, because the OLD hooks lost the owner's prompts while this spec was written; it never blocked approval, close or the code gate | pending owner decision |
+| FR-008 | Resolved: T-18 now carries `same owner as T-14` and `check_spec.py` reports no G6 gap | none |
 | FR-004 | Under sustained contention a hook process spends 5-5.7 s of its 10 s budget and each spilled row writes its own `hook_error` (noisy) | pending owner decision |
 
 A feature is not done while any row above is unresolved without an entry in this table.

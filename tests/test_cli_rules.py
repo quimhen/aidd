@@ -1,6 +1,7 @@
 """`aidd status` / `aidd rules` must be pure passthroughs to aidd_status.py: options that come
 BEFORE the subcommand or spec dir work, and exit codes are forwarded. The evidence log lives in a
 temp dir (AIDD_EVIDENCE_DIR) so no test writes <repo>/.aidd."""
+import json
 import os
 import subprocess
 import sys
@@ -102,13 +103,14 @@ class TestCloseApprovedOnlySpec(tas.EvBase):
     def test_approved_only_spec_is_open_and_closes_with_the_recorded_answer(self):
         tmp, root, d = self._approved_without_spec_edit()
         with tmp:
-            self.assertEqual(tas.ev.open_specs(root), ["001-x"])
+            self.assertEqual(tas.ev.open_specs(root), [])                  # FR-009: no obligation for the gates
+            self.assertEqual(tas.ev.open_specs(root, include_approved=True), ["001-x"])   # closable when named
             self._ready(root, d)
             self.answer(root, "Close this spec? [spec:001-x]", "Yes, close")
             r = self.aidd("rules", "close", "001-x", cwd=root)
             self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
             self.assertIn("closed as completed", r.stdout)
-            self.assertEqual(tas.ev.open_specs(root), [])
+            self.assertEqual(tas.ev.open_specs(root, include_approved=True), [])
             self.assertEqual(tas.ev.events(root, kind="spec_closed")[-1]["detail"]["spec"], "001-x")
 
     def test_close_is_refused_without_the_answer_and_the_spec_stays_open(self):
@@ -117,8 +119,33 @@ class TestCloseApprovedOnlySpec(tas.EvBase):
             self._ready(root, d)
             r = self.aidd("rules", "close", "001-x", cwd=root)
             self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
-            self.assertNotIn("not an open spec", r.stdout)                 # it IS open; the answer is missing
-            self.assertEqual(tas.ev.open_specs(root), ["001-x"])
+            self.assertNotIn("not an open spec", r.stdout)                 # it IS closable; the answer is missing
+            self.assertEqual(tas.ev.open_specs(root, include_approved=True), ["001-x"])
+
+    def test_approved_only_spec_abandons_when_named_with_the_recorded_answer(self):
+        """FR-009 (c): `aidd rules abandon <id>` abandons a legacy approved-only spec once the user answered."""
+        tmp, root, d = self._approved_without_spec_edit()
+        with tmp:
+            self.answer(root, "Abandon this spec? [spec:001-x]", "Abandon")
+            r = self.aidd("rules", "abandon", "001-x", cwd=root)
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+            self.assertIn("abandoned", r.stdout)
+            self.assertEqual(tas.ev.open_specs(root, include_approved=True), [])
+            last = tas.ev.events(root, kind="spec_closed")[-1]["detail"]
+            self.assertEqual((last["spec"], last["reason"]), ("001-x", "abandoned"))
+
+    def test_legacy_approved_spec_is_not_listed_but_named_status_reports_it_open(self):
+        """FR-009 (a)/(e): unrelated code edits never list a legacy approved spec as open; naming it does."""
+        tmp, root, d = self._approved_without_spec_edit()
+        with tmp:
+            for i in range(30):
+                tas.ev.append(root, "s1", "code_edit", path=f"src/f{i}.py", spec="001-x")
+            r = self.aidd("status", "--json", cwd=root)
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+            self.assertEqual(json.loads(r.stdout)["open_specs"], [])
+            r = self.aidd("status", str(d), "--json", cwd=root)
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+            self.assertTrue(json.loads(r.stdout)["open"])
 
     def test_closed_spec_cannot_be_closed_twice(self):
         tmp, root, d = self._approved_without_spec_edit()

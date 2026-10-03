@@ -1,0 +1,45 @@
+Functional/backend audit, FR-009 / FR-010 amendments + F3 (spec 006). Scratch: TEMP/TMP redirected to the session scratchpad; no live .aidd/, ~/.claude or aidd-hooks touched.
+
+(1) AC-009
+$ python -m pytest tests/test_stop_gate.py -v -p no:cacheprovider -k "obligation or real_tasks_edit or active_pointer or closed_spec or two_open"
+  8 passed (test_an_approved_spec_without_recorded_tasks_edit_creates_no_obligation [120 code edits, stop exit 0],
+  test_a_real_tasks_edit_after_approval_blocks [exit 2], test_two_open_specs_..., test_closed_spec_..., test_the_active_pointer_...)
+  (tests run stop_gate.py as a real subprocess in scratch roots via gate_fixtures.Base)
+$ python -m pytest tests/test_cli_rules.py tests/test_aidd_status.py -v -p no:cacheprovider -k "approved_only or legacy_approved or abandon or close or unknown_spec"
+  31 passed (incl. TestCloseApprovedOnlySpec::test_legacy_approved_spec_is_not_listed_but_named_status_reports_it_open,
+  ::test_approved_only_spec_is_open_and_closes_with_the_recorded_answer, ::test_approved_only_spec_abandons_when_named_with_the_recorded_answer,
+  ::test_close_is_refused_without_the_answer_and_the_spec_stays_open)
+
+(2) AC-010
+$ python -m pytest tests/test_rule_gate.py tests/test_aidd_rules.py -v -p no:cacheprovider -k "TestR5UsesPreBuildAudit or ac010 or pre_build"
+  10 passed (test_ac010_default_tolerates_three_recorded_edits_then_blocks, test_ac010_three_edits_tolerated_fourth_blocks,
+  test_ac010_strict_with_zero, test_ac010_unrecorded_newer_mtime_fails_closed, test_ac010_rebuild_stays_strict_within_tolerance,
+  test_ac010_approval_hash_binds_final_tasks, test_pre_build_helpers, ...)
+$ python scratchpad/ac10.py (synthetic events, real pre_build_audit_done/pre_build_since)
+  default: n=0..4 -> [True, True, True, True, False]
+  default: 4 edits + fresh audit -> True
+  =0: n=0..2 -> [True, False, False]
+  unrecorded newer mtime -> False
+  rebuild within tolerance -> False
+  rebuild + audit -> True
+
+(3) F3
+$ python -m pytest tests -q -p no:cacheprovider -k TestStorage   (x15)
+  15/15 runs: "11 passed, 1249 deselected", 0 failures
+$ python -m pytest tests -q -p no:cacheprovider
+  1260 passed, 21 subtests passed in 191.56s (0:03:11)
+
+(4)
+$ python C:\Users\jquimis\.claude\skills\aidd\scripts\check_spec.py specs/006-aidd-phased-audits-attribution   (exit 0)
+  Plan: ~64 min, ~1675k tokens (derived human ref ~3.2 h)
+  No mechanical gaps found.
+$ aidd rules check specs/006-aidd-phased-audits-attribution   (exit 1)
+  PASS R1 R2 R3 R4 R6 R7 R9 R10 R11 R12 R13 R14
+  FAIL R5 1 checklist row(s) are still [Proposed - unconfirmed]; planning is blocked.
+  FAIL R5 Quote not found in any recorded user prompt/answer: "adiciona la investigacion en el spec 006 y procedamos".
+  FAIL R5 Quote not found in any recorded user prompt/answer: "ubicarla en fases especificas para evitar auditar a cada mom".
+
+(5) SHA256 prefix skill/scripts vs adapters/dot-aidd/scripts
+  aidd_evidence.py 2C652AD23900FE3F == 2C652AD23900FE3F
+  aidd_rules.py    EE7B409FF71732D6 == EE7B409FF71732D6
+  aidd_status.py   FAFA0173135D437B == FAFA0173135D437B

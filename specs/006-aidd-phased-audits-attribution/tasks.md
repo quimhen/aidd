@@ -22,10 +22,15 @@ One row = one small PR. Codes are the FR-nnn of spec.md (no screens). Every buil
 | T-15 | FR-001..FR-006 | audit: security (no file writes except its report) | LOGIC | | | any code edit |
 | T-16 | FR-001..FR-006 | audit: functional with executed AC-001..AC-007 | LOGIC | | | any code edit |
 | T-17 | FR-004, FR-001, FR-003 | audit: performance of hook hot paths | LOGIC | | | any code edit |
-| T-18 | FR-008 | SKILL.md, AIDD.md, templates/tasks.md + their adapters/dot-aidd copies | LOGIC | | | scripts, hooks |
+| T-18 | FR-008 | SKILL.md, AIDD.md, templates/tasks.md + their adapters/dot-aidd copies, same owner as T-14 | LOGIC | | | scripts, hooks |
 | T-19 | FR-008 | scripts/check_spec.py + its test file | LOGIC | | | any other file |
 | T-20 | FR-008, FR-004 | audit: delta security of F1, T-18, T-19 | LOGIC | | | any code edit |
 | T-21 | FR-008, FR-004 | audit: delta functional (AC-004, AC-005, AC-008) | LOGIC | | | any code edit |
+| T-22 | FR-009 | scripts/aidd_evidence.py (open_specs), same owner as T-01; scripts/aidd_status.py (cmd_close, cmd_abandon, status of a named spec), same owner as T-08; their adapters/dot-aidd copies; tests/test_evidence.py, tests/test_stop_gate.py, tests/test_cli_rules.py, tests/test_aidd_status.py (incl. an abandon test for an approved-only spec) | LOGIC | | | any other file |
+| T-23 | FR-009 | audit: delta security of the open_specs change | LOGIC | | | any code edit |
+| T-24 | FR-009, FR-010 | audit: functional delta of AC-009, AC-003, AC-007, AC-010 | LOGIC | | | any code edit |
+| T-25 | FR-010 | scripts/aidd_rules.py (pre_build_since), same owner as T-06; its adapters/dot-aidd copy; tests/test_aidd_rules.py, tests/gate_fixtures.py, tests/test_rule_gate.py; the R5 lines of SKILL.md and AIDD.md and adapters/dot-aidd/AIDD.md | LOGIC | | | any other file |
+| T-26 | FR-009, FR-010 | audit: performance of the amendments and the F3 hardening | LOGIC | | | any code edit |
 
 FR-007 has no code task: after wave 5 and the owner's install, the owner types `Yes, close [spec:005-aidd-token-planning]` as a new message and the agent runs `aidd rules close 005-aidd-token-planning`.
 
@@ -279,6 +284,67 @@ FR-007 has no code task: after wave 5 and the owner's install, the owner types `
 - Objective: delta functional audit (domain: functional) that EXECUTES AC-004, AC-005, AC-008 and the denied-dispatch case against the final code, with evidence files under specs/006-aidd-phased-audits-attribution/evidence/, plus a timing check of the contended multi-append case (domain: performance).
 - Activities: run, save output, report PASS/FAIL per case.
 
+### T-22
+**Estimate**
+- Effort: Medium
+- Agent min: 12
+- Human ref hours: 0.6
+- Tokens (est): 70k
+- Agent role: builder
+- Model tier: high
+**Decompose**
+- Objective: FR-009. One owner agent for scripts/aidd_evidence.py, scripts/aidd_status.py, their adapters/dot-aidd copies and the four test files. `open_specs` (obligation definition used by the Stop gate R8, the R6 code-edit gate, R7 and obligation listings) goes back to "a recorded plan.md or tasks.md edit and no spec_closed"; an `approved` event alone no longer opens a spec there. Add a separate helper (e.g. `closable_specs` or an `include_approved` parameter) that DOES count approved-only specs, used only by `aidd rules close <id>` and `aidd status <spec_dir>` when the user names the spec. Update the tests that encode the FR-005 behaviour for the gates (tests/test_stop_gate.py `test_an_approved_spec_without_recorded_tasks_edit_is_open`, tests/test_evidence.py TestOpenSpecs approved cases) and add: a legacy approved spec with 117 unrelated code edits does not block the Stop gate (AC-009); `aidd rules close` still closes it when named (keep tests/test_cli_rules.py TestCloseApprovedOnlySpec green); a real plan/tasks edit after approval still blocks.
+- Activities: targeted tests only (the files touched plus tests/test_dot_aidd_mirror.py); the main agent runs the full suite once.
+
+### T-23
+**Estimate**
+- Effort: Medium
+- Agent min: 6
+- Human ref hours: 0.3
+- Tokens (est): 60k
+- Agent role: auditor
+- Model tier: high
+**Decompose**
+- Objective: delta security audit (domain: security) of T-22 only: can the narrower obligation definition be abused to hide an open spec from R6/R7/R8 (an agent skipping plan/tasks edit records), and does naming a spec in `aidd rules close` open any new way to close or abandon a spec without the user's tagged answer?
+- Activities: read-only; findings ranked, CONFIRMED vs PLAUSIBLE.
+
+### T-24
+**Estimate**
+- Effort: Medium
+- Agent min: 6
+- Human ref hours: 0.3
+- Tokens (est): 60k
+- Agent role: auditor
+- Model tier: medium
+**Decompose**
+- Objective: delta functional audit (domain: functional) that EXECUTES AC-009, AC-003 and AC-007 against the final code with evidence under specs/006-aidd-phased-audits-attribution/evidence/ (in scratch dirs, never the real log).
+- Activities: run, save output, report PASS/FAIL per case.
+
+### T-25
+**Estimate**
+- Effort: Medium
+- Agent min: 12
+- Human ref hours: 0.6
+- Tokens (est): 70k
+- Agent role: builder
+- Model tier: high
+**Decompose**
+- Objective: FR-010 (R5 tolerance `AIDD_R5_FIX_EDITS`, default 3, 0 = strict). One owner agent for skill/scripts/aidd_rules.py (`pre_build_since` ~:1732-1744; reuse the pattern of `audit_since` ~:1507-1520: `ts[-1]` if tol is 0, `ts[-tol-1]` if more than tol timestamps, else 0.0), its byte-identical mirror, the tests and the R5 prose. Per-file staleness: for each of spec.md/plan.md/tasks.md that has recorded `spec_edit` events use ONLY those events (never its mtime, which every edit bumps and would defeat the tolerance); for a file with no recorded event keep the mtime as the fail-closed fallback; pool these timestamps, sort, and apply the tolerance over the pool; rebuilt `find_spec` events stay always strict (added to the max after the tolerance step). `pre_build_audit_done`, `rule_gate._r5_tasks` and the fix texts need no edit.
+- Tests: pin `AIDD_R5_FIX_EDITS=0` in `TestPhasedAudits` setUp/tearDown (pattern of `AIDD_R7_FIX_EDITS` ~:1282-1289) and add `self.env["AIDD_R5_FIX_EDITS"] = "0"` next to the R7 line in tests/gate_fixtures.py (~:234) so existing rule_gate tests stay strict; adapt `test_pre_build_helpers` (~:1497-1509); add AC-010 tests: 3 recorded tasks.md edits after an audit tolerated, the 4th blocked, strict with 0, mtime-only without recorded events fails closed, a rebuilt graph still demands an audit, and `approval_valid` still binds the final tasks.md content.
+- Docs: one sentence about `AIDD_R5_FIX_EDITS` (default 3, 0 = strict) in the R5 text of skill/AIDD.md (~:329) and skill/SKILL.md (~:99, :225, :371, :387), the same line by hand in adapters/dot-aidd/AIDD.md; copy aidd_rules.py byte-identical to adapters/dot-aidd/scripts/ (tests/test_dot_aidd_mirror.py). Targeted tests only; the main agent runs the full suite once.
+
+### T-26
+**Estimate**
+- Effort: Medium
+- Agent min: 6
+- Human ref hours: 0.3
+- Tokens (est): 60k
+- Agent role: auditor
+- Model tier: medium
+**Decompose**
+- Objective: delta performance audit (domain: performance) of FR-009 and FR-010 and the F3 hardening: cost of `open_specs`/`pre_build_since` on a loaded evidence log, `_read_log` with the new read order, and the hooks cold start; flag any regression above 20% or anything approaching the hook timeouts.
+- Activities: measure with a synthetic log in a scratch dir; report a table and a verdict.
+
 ## Waves
 
 | Wave | Tasks | Roles | Agent time (min) | Tokens (k) | Human ref (h) |
@@ -290,15 +356,18 @@ FR-007 has no code task: after wave 5 and the owner's install, the owner types `
 | 5 | T-15, T-16, T-17 | auditor | 3 | 204 | 0.15 |
 | 6 | T-18, T-19 | docs, builder | 8 | 124 | 0.4 |
 | 7 | T-20, T-21 | auditor | 8 | 136 | 0.4 |
+| 8 | T-22 | builder | 12 | 70 | 0.6 |
+| 9 | T-25 | builder | 12 | 70 | 0.6 |
+| 10 | T-23, T-24, T-26 | auditor | 6 | 180 | 0.3 |
 
-Waves 1-5 are done (their `Agent min` were ideal estimates; measured wall time was 2-27 min per task, see FR-008). Waves 6-7 use real wall time.
+Waves 1-8 are done or in flight (their `Agent min` were ideal estimates in waves 1-7; measured wall time was 2-27 min per task, see FR-008). Waves 9-10 use real wall time. T-23 and T-24 audit FR-009 and FR-010 together, with T-26 for performance.
 
-Total agent time (critical path): 34 min
-Total tokens (k): 1355
+Total agent time (critical path): 64 min
+Total tokens (k): 1675
 
 ## Approval gate
 
-Approved: 2026-10-03 hash:b7740aeb2c72
+Approved: 2026-10-03 hash:bde2d5babfbe
 
 ## Definition of Done (applies to every task above)
 1. Code implements exactly the FR cited, in exactly the target file, following plan.md's Naming contract, SOLID and the antifragile standard.

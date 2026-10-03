@@ -412,7 +412,9 @@ def _rotate_if_needed(path):
         pass
 
 
-def _write_row(directory, path, row, timeout=None):
+def _write_row(directory, path, row, timeout=None, written=None):
+    """aidd:FR-004 `written` (a list) gets True once the row is flushed and closed in the log, so a
+    failure AFTER that (lock release / stale-lock cleanup) is not retried and never duplicates the row."""
     gi = Path(directory) / '.gitignore'
     with _locked(directory, timeout):
         if not gi.exists():
@@ -424,6 +426,8 @@ def _write_row(directory, path, row, timeout=None):
             if new:
                 fh.write(HEADER)
             fh.write(row)
+        if written is not None:
+            written.append(True)
 
 
 # aidd:FR-004 Spill: when the lock cannot be taken, the row goes to `<log>.spill` next to the log
@@ -532,17 +536,20 @@ def _read_log(path):
     if not spilled:
         return _read_rows(path)
     _drain_path(path, READ_DRAIN_TIMEOUT)
+    # Spill files FIRST, the log AFTER: a concurrent drain writes the log before it deletes the spill,
+    # so every row is in the spill at the first read or in the log at the second one.
+    extra = []
+    for p in (dr, sp):
+        try:
+            extra += _read_rows(p)
+        except OSError:
+            continue
     try:
         rows = _read_rows(path)
     except OSError:
         rows = []
     seen = set(rows)
-    extra = []
-    for p in (dr, sp):
-        try:
-            extra += [r for r in _read_rows(p) if r not in seen and not seen.add(r)]
-        except OSError:
-            continue
+    extra = [r for r in extra if r not in seen and not seen.add(r)]
     return sorted(rows + extra, key=_row_ts) if extra else rows
 
 
@@ -574,8 +581,9 @@ def _append(root, session, kind, detail, report):
             t0 = time.monotonic()
             if sleep_s:
                 time.sleep(sleep_s + random.random() * 0.05)
+            written = []
             try:
-                _write_row(path.parent, path, row, min(timeout, max(FAST_LOCK_TIMEOUT, left)))
+                _write_row(path.parent, path, row, min(timeout, max(FAST_LOCK_TIMEOUT, left)), written)
                 took = time.monotonic() - t0
                 if str(path.parent) in _contended:
                     _contended.discard(str(path.parent))  # this directory's lock is free again
@@ -587,8 +595,10 @@ def _append(root, session, kind, detail, report):
                     _lock_spent += took
                 return True
             except Exception as exc:        # lock timeout or I/O error: retry, then spill
-                err = exc
                 _lock_spent += time.monotonic() - t0
+                if written:                 # the row is already in the log: recorded, never re-written
+                    return True
+                err = exc
         _contended.add(str(path.parent))
         spilled = _spill_row(path, row)
     except Exception as exc:
@@ -1274,18 +1284,21 @@ def _answer_event(root, session, topic_re, since_ts=0.0, label_re=None, must_con
 # Open specs / active spec
 # ---------------------------------------------------------------------------
 
-def open_specs(root):
+def open_specs(root, include_approved=False):
     """Spec ids with a `spec_edit` of plan.md OR tasks.md (spec.md alone does not open a spec) and no
     LATER `spec_closed` event (any session). A closed spec re-opens on a later plan/tasks edit, except a
-    tasks.md edit whose `hash` equals the closing event's `hash` (status-only edit).
-    aidd:FR-005 An `approved` event also opens a spec never seen before (its plan/tasks `spec_edit`
-    may have been lost), so it can be closed or abandoned; it never re-opens a closed spec."""
+    tasks.md edit whose `hash` equals the closing event's `hash` (status-only edit). This strict default
+    is the obligation definition used by the gates (R4/R6/R8) and the open-spec listing.
+    aidd:FR-009 With `include_approved=True` (closable variant, used only when the user names the spec:
+    close / abandon / named status) an `approved` event also opens a spec never seen before (aidd:FR-005:
+    its plan/tasks `spec_edit` may have been lost); it never re-opens a closed spec."""
     state = {}      # spec -> open?
     closed_hash = {}  # spec -> hash recorded by the closing event ('' = none)
     for e in _project_events(root):
         d = e['detail']
         if e['kind'] == 'approved' and d.get('spec'):
-            state.setdefault(str(d['spec']), True)
+            if include_approved:
+                state.setdefault(str(d['spec']), True)
         elif e['kind'] == 'spec_edit':
             name = str(d.get('file') or '') or re.split(r'[\\/]', str(d.get('path') or ''))[-1]
             name = name.strip().rstrip('. ').split(':')[0].lower()

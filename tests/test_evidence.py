@@ -35,6 +35,10 @@ class EvidenceCase(unittest.TestCase):
         (self.root / "specs").mkdir()
         os.environ["AIDD_EVIDENCE_DIR"] = str(self.evdir)
         os.environ["AIDD_TESTING"] = "1"
+        # The per-process contention budget is module state: a spill in an earlier test must not put this
+        # test in fast-try mode (8 threads would then spill and log an extra `hook_error` row).
+        ev._contended.clear()
+        ev._lock_spent = 0.0
 
     def unset_env(self):
         os.environ.pop("AIDD_EVIDENCE_DIR", None)
@@ -125,6 +129,48 @@ class TestStorage(EvidenceCase):
         [t.start() for t in ts]
         [t.join() for t in ts]
         self.assertEqual(len(ev.events(self.root)), 200)
+
+    def test_failure_after_the_row_is_written_is_not_retried(self):
+        """F3 (1): an error raised AFTER the row reached the log (lock release) never duplicates or spills it."""
+        import contextlib
+        real = ev._locked
+
+        @contextlib.contextmanager
+        def bad_exit(d, timeout=None):
+            with real(d, timeout):
+                yield
+            raise OSError("unlock failed")
+
+        with unittest.mock.patch.object(ev, "_locked", bad_exit):
+            self.assertTrue(ev.append(self.root, "s", "prompt", text="once"))
+        path = ev._session_path("s")
+        self.assertEqual(len(ev._read_rows(path)), 1)
+        self.assertFalse(ev._spill_paths(path)[0].exists())
+        self.assertEqual([e["detail"].get("text") for e in ev.events(self.root)], ["once"])
+
+    def test_read_sees_every_row_when_a_drain_runs_between_the_reads(self):
+        """F3 (2): spill read first, log after: a drain moving rows spill->log mid-read loses/duplicates none."""
+        ev.append(self.root, "s", "prompt", text="in-log")
+        path = ev._session_path("s")
+        for i in range(3):
+            self.assertTrue(ev._spill_row(path, ev._row(time.time() + i, "s", "prompt", {"text": f"sp-{i}"})))
+        real_read = ev._read_rows
+        state = {"drained": False}
+
+        def read_then_drain(p):
+            rows = real_read(p)
+            if Path(p) != Path(path) and not state["drained"]:
+                state["drained"] = True
+                ev._drain_locked(path)          # concurrent drain lands right after this read
+            return rows
+
+        with unittest.mock.patch.object(ev, "_drain_path", lambda *a, **k: None), \
+                unittest.mock.patch.object(ev, "_read_rows", read_then_drain):
+            rows = ev._read_log(path)
+        self.assertTrue(state["drained"])
+        self.assertEqual(len(rows), 4)
+        self.assertEqual(len(set(rows)), 4)
+        self.assertEqual(set(rows), set(real_read(path)))            # all four now in the log, none lost
 
     def test_processes_no_lost_rows(self):
         procs = [multiprocessing.Process(target=_proc_worker, args=(self.root, 20, f"p{k}")) for k in range(4)]
@@ -464,25 +510,37 @@ class TestOpenSpecs(EvidenceCase):
         self.assertEqual(ev.open_specs(self.root), [])
 
 
-    def test_approved_only_spec_is_open(self):
+    def test_approved_only_spec_is_not_an_obligation(self):
+        """FR-009: an `approved` event alone does not open a spec for the gates (legacy specs stay quiet)."""
         ev.append_approved(self.root, "s", "001-a", "h1")      # its plan/tasks spec_edit was never recorded
-        self.assertEqual(ev.open_specs(self.root), ["001-a"])
+        self.assertEqual(ev.open_specs(self.root), [])
+
+    def test_approved_only_spec_is_closable_when_named(self):
+        ev.append_approved(self.root, "s", "001-a", "h1")
+        self.assertEqual(ev.open_specs(self.root, include_approved=True), ["001-a"])
 
     def test_approved_never_reopens_a_closed_spec(self):
         self.edit("001-a")
         ev.append_spec_closed(self.root, "s", "001-a", hash="h1")
         ev.append_approved(self.root, "s", "001-a", "h1")
         self.assertEqual(ev.open_specs(self.root), [])
+        self.assertEqual(ev.open_specs(self.root, include_approved=True), [])
         ev.append_approved(self.root, "s", "002-b", "h2")
         ev.append_spec_closed(self.root, "s", "002-b", hash="h2")
         ev.append_approved(self.root, "s", "002-b", "h2")      # approved after close, no edit: stays closed
         self.assertEqual(ev.open_specs(self.root), [])
+        self.assertEqual(ev.open_specs(self.root, include_approved=True), [])
 
     def test_approved_spec_closes_and_a_real_edit_reopens_it(self):
         ev.append_approved(self.root, "s", "001-a", "h1")
         ev.append_spec_closed(self.root, "s", "001-a", hash="h1")
-        self.assertEqual(ev.open_specs(self.root), [])
+        self.assertEqual(ev.open_specs(self.root, include_approved=True), [])
         self.edit("001-a", "plan.md")
+        self.assertEqual(ev.open_specs(self.root), ["001-a"])
+
+    def test_real_edit_after_approval_opens_the_spec_for_the_gates(self):
+        ev.append_approved(self.root, "s", "001-a", "h1")
+        self.edit("001-a", "tasks.md")
         self.assertEqual(ev.open_specs(self.root), ["001-a"])
 
 

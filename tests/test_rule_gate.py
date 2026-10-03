@@ -1871,6 +1871,24 @@ class TestR5UsesPreBuildAudit(PlanBase):
         self.assertBlocked(self.gate(TASKS, tool="Edit", old_string="Approved: PENDING",
                                      new_string=f"Approved: 2026-10-01 hash:{h}"), "R5")
 
+    def test_ac010_default_tolerates_three_recorded_edits_then_blocks(self):
+        t = tasks_text()
+        self.spec_edit("tasks.md")             # the recorded first draft of tasks.md
+        self.ready_for_tasks(t)
+        h = R.approval_hash(t)
+        default = {"AIDD_R5_FIX_EDITS": None}  # unset => the default tolerance (3)
+        approve = dict(tool="Edit", old_string="Approved: PENDING", new_string=f"Approved: 2026-10-01 hash:{h}")
+        for _ in range(3):
+            self.spec_edit("tasks.md")
+            self.answer("Approve the tasks?", "Approve")   # R6: the answer must postdate the last change
+            self.assertAllowed(self.gate(TASKS, env=default, **approve))
+        self.spec_edit("tasks.md")             # the 4th edit needs a fresh audit
+        self.answer("Approve the tasks?", "Approve")
+        self.assertBlocked(self.gate(TASKS, env=default, **approve), "R5")
+        self.assertBlocked(self.gate(TASKS, **approve), "R5")   # strict (0): blocked too
+        self.subagent("Auditor", "independent auditor over tasks.md")
+        self.assertAllowed(self.gate(TASKS, env=default, **approve))
+
 
 if __name__ == "__main__":
     unittest.main()

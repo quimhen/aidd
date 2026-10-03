@@ -236,11 +236,12 @@ def _approval_recorded(root, spec, tasks_text):
         return False
 
 
-def build_status(spec_dir, root=None):
+def build_status(spec_dir, root=None, named=False):
     """Mechanical ledger of one spec as a plain dict (JSON-serialisable). Never raises: a
-    pathological spec/tasks file yields a degraded ledger flagged `unparseable` (D14)."""
+    pathological spec/tasks file yields a degraded ledger flagged `unparseable` (D14).
+    aidd:FR-009 `named=True` (the user named this spec) also reports an approved-only spec as open."""
     try:
-        return _build_status(spec_dir, root)
+        return _build_status(spec_dir, root, named)
     except Exception as e:
         d = Path(spec_dir)
         return {'spec': d.name, 'root': str(root or ''), 'open': False, 'unparseable': True,
@@ -255,14 +256,14 @@ def build_status(spec_dir, root=None):
                                 'for pathological content (huge, binary or malformed tables).']}
 
 
-def _build_status(spec_dir, root=None):
+def _build_status(spec_dir, root=None, named=False):
     d = Path(spec_dir).resolve()
     root = Path(root) if root else ev.find_root(d)
     spec_text, tasks_text = _read(d / 'spec.md'), _read(d / 'tasks.md')
     st = {'spec': d.name, 'root': str(root)}
     since = rules.spec_first_edit_ts(ev, root, d.name)
 
-    st['open'] = d.name in ev.open_specs(root)
+    st['open'] = d.name in ev.open_specs(root, include_approved=named)
     st['route'] = _route(spec_text, root, since)
     st['alignment'] = _alignment(spec_text, root, since)
 
@@ -472,7 +473,7 @@ def cmd_status(args):
         if not spec_dir.is_dir():
             print(f'Not a directory: {spec_dir}')
             return 0
-        sts = [build_status(spec_dir, root)]
+        sts = [build_status(spec_dir, root, named=True)]
     else:
         names = {p.name: p for p in _spec_dirs(root)}
         shown = [names[s] for s in g['open_specs'] if s in names]
@@ -648,7 +649,7 @@ def cmd_close(spec_arg):
         print(f'Not a spec directory: {spec_arg}')
         return 1
     root = ev.find_root(d)
-    if d.name not in ev.open_specs(root):
+    if d.name not in ev.open_specs(root, include_approved=True):   # aidd:FR-009 named spec: closable
         print(f'{d.name} is not an open spec (no plan.md/tasks.md edit and no `approved` event recorded, or '
               'already closed) - nothing to close.')
         return 1
@@ -726,7 +727,7 @@ def cmd_abandon(spec_arg, reason=''):
     spec_id = d.name if d is not None else Path(str(spec_arg)).name
     if d is not None:
         root = ev.find_root(d)
-    if spec_id not in ev.open_specs(root):
+    if spec_id not in ev.open_specs(root, include_approved=True):   # aidd:FR-009 named spec: closable
         print(f'{spec_id} is not an open spec - nothing to abandon.')
         return 1
     sess = _current_session(root)

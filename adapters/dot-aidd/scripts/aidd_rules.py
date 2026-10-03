@@ -1732,16 +1732,33 @@ def mapper_since(ev, root, spec_dir):
 def pre_build_since(ev, root, spec_dir, session=None):
     """FR-002/FR-003: ts the ONE pre-build coherence audit must postdate: the last change of spec.md,
     plan.md or tasks.md (mtime or recorded `spec_edit`, whichever is later) and the last graph rebuild
-    by find_spec in `session` (the pre-build audit absorbs the graph-coherence audit)."""
+    by find_spec in `session` (the pre-build audit absorbs the graph-coherence audit).
+
+    FR-010: the last AIDD_R5_FIX_EDITS (default 3, 0 = strict) RECORDED edits are tolerated. A file
+    with recorded edits counts only those (its mtime moves with every edit); a file with none keeps
+    its mtime, strict (fail-closed). Graph rebuilds stay strict."""
     d = Path(spec_dir)
-    ts = [m for m in (_mtime(d / f) for f in PRE_BUILD_FILES) if m is not None]
-    ts += _spec_file_edit_ts(ev, root, d.name, PRE_BUILD_FILES)
+    ts, strict = [], []
+    for f in PRE_BUILD_FILES:
+        rec = _spec_file_edit_ts(ev, root, d.name, (f,))
+        m = _mtime(d / f)
+        if rec:
+            ts += rec
+        elif m is not None:
+            strict.append(m)
     try:
-        ts += [e['ts'] for e in ev.events(root, session, 'find_spec')
-               if (e.get('detail') or {}).get('rebuilt') and (e.get('detail') or {}).get('ok') is not False]
+        tol = max(0, int(os.environ.get('AIDD_R5_FIX_EDITS', '3')))
+    except ValueError:
+        tol = 3
+    ts.sort()
+    # Unlike audit_since, a short history keeps ts[0]: an audit must still postdate the first draft.
+    since = (ts[-1] if tol == 0 else ts[max(0, len(ts) - tol - 1)]) if ts else 0.0
+    try:
+        strict += [e['ts'] for e in ev.events(root, session, 'find_spec')
+                   if (e.get('detail') or {}).get('rebuilt') and (e.get('detail') or {}).get('ok') is not False]
     except Exception:
         pass
-    return max(ts) if ts else 0.0
+    return max([since] + strict)
 
 
 def pre_build_audit_done(ev, root, session, spec_dir):

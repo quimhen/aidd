@@ -1415,9 +1415,15 @@ class TestPhasedAudits(unittest.TestCase):
         cl =CHECKLIST.replace('[Proposed — unconfirmed]', 'user — "pagar mas rapido por favor"')
         self.spec_text = spec(checklist=cl)
         self.prompts = ['es el modulo de checkout', 'pagar mas rapido por favor', 'no hace falta el flowmap']
+        self._old_tol = os.environ.get('AIDD_R5_FIX_EDITS')
+        os.environ['AIDD_R5_FIX_EDITS'] = '0'   # strict by default; AC-010 tests override it
 
     def tearDown(self):
         R._evidence = self._old
+        if self._old_tol is None:
+            os.environ.pop('AIDD_R5_FIX_EDITS', None)
+        else:
+            os.environ['AIDD_R5_FIX_EDITS'] = self._old_tol
 
     def fake(self, rows):
         # prompts postdate the first recorded spec edit (1000) so quote verification holds
@@ -1507,6 +1513,60 @@ class TestPhasedAudits(unittest.TestCase):
         self.assertFalse(R.pre_build_audit_done(None, self.root, 's', self.d))   # fail-closed
         put(self.root / 'specs' / '002-n' / 'spec.md', 'x', 777.0)
         self.assertEqual(R.mapper_since(FakeEv(), self.root, self.root / 'specs' / '002-n'), 777.0)   # mtime fallback
+        # FR-010: with the tolerance the recorded edits of a file replace its mtime
+        os.environ['AIDD_R5_FIX_EDITS'] = '3'
+        g = FakeEv(self.spec_edits(1000) + [ev('spec_edit', t, spec='001-x', file='tasks.md') for t in (1300, 1310, 1320)])
+        self.assertEqual(R.pre_build_since(g, self.root, self.d, 's'), 1100)   # plan.md mtime stays strict
+        os.environ['AIDD_R5_FIX_EDITS'] = 'x'                                   # ValueError -> 3
+        self.assertEqual(R.pre_build_since(g, self.root, self.d, 's'), 1100)
+
+    # --- AC-010: AIDD_R5_FIX_EDITS tolerance -------------------------------------------------
+    def _tol_rows(self, n_edits, extra=()):
+        rows = [ev('spec_edit', 1000, spec='001-x', file='spec.md'),
+                ev('spec_edit', 1100, spec='001-x', file='plan.md'),
+                ev('spec_edit', 1200, spec='001-x', file='tasks.md'),
+                ev('find_spec', 1010), ev('subagent', 1050, head='Mapper'),
+                ev('subagent', 1300, head='coherence audit')]
+        rows += [ev('spec_edit', 1400 + 10 * i, spec='001-x', file='tasks.md') for i in range(n_edits)]
+        return rows + list(extra)
+
+    def test_ac010_three_edits_tolerated_fourth_blocks(self):
+        self._chain()
+        os.environ.pop('AIDD_R5_FIX_EDITS', None)   # the default (3)
+        for n in (1, 2, 3):
+            self.fake(self._tol_rows(n))
+            ok(self, self.r5())
+        self.fake(self._tol_rows(4))
+        bad(self, self.r5(), 'R5', 'pre-build coherence audit')
+        self.fake(self._tol_rows(4, [ev('subagent', 1500, head='audit')]))
+        ok(self, self.r5())
+
+    def test_ac010_strict_with_zero(self):
+        self._chain()
+        os.environ['AIDD_R5_FIX_EDITS'] = '0'
+        self.fake(self._tol_rows(1))
+        bad(self, self.r5(), 'R5', 'pre-build coherence audit')
+
+    def test_ac010_unrecorded_newer_mtime_fails_closed(self):
+        self._chain()
+        os.environ['AIDD_R5_FIX_EDITS'] = '3'
+        put(self.d / 'plan.md', 'plan v2', 1350.0)   # newer than the audit, no recorded plan.md edit
+        rows = [r for r in self._tol_rows(0) if (r.get('detail') or {}).get('file') != 'plan.md']
+        self.fake(rows)
+        bad(self, self.r5(), 'R5', 'pre-build coherence audit')
+
+    def test_ac010_rebuild_stays_strict_within_tolerance(self):
+        self._chain()
+        os.environ['AIDD_R5_FIX_EDITS'] = '3'
+        self.fake(self._tol_rows(1, [ev('find_spec', 1450, rebuilt=True)]))
+        bad(self, self.r5(), 'R5', 'pre-build coherence audit')
+
+    def test_ac010_approval_hash_binds_final_tasks(self):
+        os.environ['AIDD_R5_FIX_EDITS'] = '3'
+        t = tasks()
+        signed = t.replace('Approved: PENDING', f'Approved: 2026-10-01 hash:{R.approval_hash(t)}')
+        self.assertIs(R.approval_valid(signed), True)
+        self.assertIsNot(R.approval_valid(signed + '\n- one more fix\n'), True)   # tolerance never extends to approval
 
 
 if __name__ == '__main__':

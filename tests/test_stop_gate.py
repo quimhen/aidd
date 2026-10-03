@@ -156,17 +156,27 @@ class TestR8(StopBase):
         self.ev("code_edit", path="src/app.py", spec="001-x")
         self.assertEqual(self.stop().returncode, 0)
 
-    def test_an_approved_spec_without_recorded_tasks_edit_is_open(self):
-        """FR-004 (spec 006): an `approved` event opens the spec even if the recorder never saw tasks.md."""
+    def test_an_approved_spec_without_recorded_tasks_edit_creates_no_obligation(self):
+        """FR-009 / AC-009 (spec 006): a legacy approved spec nobody amends (no recorded plan/tasks edit) never
+        nags the Stop gate, however many unrelated code edits follow."""
         self.put(TASKS, approved_tasks())
         self.approved_event()
         EV.set_active_spec(self.root, "001-x")
+        for i in range(120):
+            self.ev("code_edit", path=f"src/f{i}.py", spec="001-x")
+        r = self.stop()
+        self.assertEqual(r.returncode, 0, r.err)
+        self.assertNotIn("001-x", r.err)
+
+    def test_a_real_tasks_edit_after_approval_blocks(self):
+        """FR-009 (d): amending the approved spec (recorded plan/tasks edit) makes it an obligation again."""
+        self.put(TASKS, approved_tasks())
+        self.approved_event()
+        self.open_spec()
         self.ev("code_edit", path="src/app.py", spec="001-x")
         r = self.stop()
         self.assertEqual(r.returncode, 2, r.err)
         self.assertIn("001-x", r.err)
-        self.close_spec(reason="completed")                     # a closed spec stays closed
-        self.assertEqual(self.stop().returncode, 0)
 
     def test_switching_the_pointer_does_not_hide_an_open_spec(self):
         self.implemented()
