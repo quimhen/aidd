@@ -45,7 +45,7 @@ SPEC = r"""# 001-x
 | 4 | run | | |
 """
 
-TASKS = """# Tasks
+LEGACY_TASKS = """# Tasks
 
 ## Waves
 
@@ -68,6 +68,42 @@ Total agent time (critical path): 35 min
 ### T-03
 - Agent min: 15
 - Human ref hours: 2
+"""
+
+# FR-009: an unapproved tasks.md must use the NEW format (only an approved legacy file is exempt)
+TASKS = """# Tasks
+
+## Waves
+
+| Wave | Tasks | Roles | Agent time (min) | Tokens (k) | Human ref (h) |
+|---|---|---|---|---|---|
+| 1 | T-01, T-02 | builder | 20 | 150 | 4 |
+| 2 | T-03 | tests | 15 | 80 | 2 |
+
+Total agent time (critical path): 35 min
+Total tokens (k): 230
+
+### T-01
+- Agent min: 10
+- Human ref hours: 2
+- Tokens (est): 60k
+- Agent role: builder
+- Model tier: medium
+- Status: todo
+
+### T-02
+- Agent min: 20
+- Human ref hours: 2
+- Tokens (est): 90k
+- Agent role: builder
+- Model tier: medium
+
+### T-03
+- Agent min: 15
+- Human ref hours: 2
+- Tokens (est): 80k
+- Agent role: tests
+- Model tier: medium
 """
 
 ROUTE_PROMPT = "please go on, no mockup for this one, thanks"
@@ -188,6 +224,62 @@ class EvBase(unittest.TestCase):
         return r
 
 
+NEW_TASKS = """# Tasks
+
+## Waves
+
+| Wave | Tasks | Roles | Agent time (min) | Tokens (k) | Human ref (h) |
+|---|---|---|---|---|---|
+| 1 | T-01, T-02 | builder | 20 | 150 | 4 |
+| 2 | T-03 | tester | 15 | 80 | 2 |
+
+Total agent time (critical path): 35 min
+Total tokens (k): 230
+
+### T-01
+- Agent min: 10
+- Tokens (est): 60k
+- Human ref hours: 2
+
+### T-02
+- Agent min: 20
+- Tokens (est): 90k
+- Human ref hours: 2
+
+### T-03
+- Agent min: 15
+- Tokens (est): 80k
+- Human ref hours: 2
+"""
+
+
+class TestPlanTokens(EvBase):
+    def test_new_header_reports_tokens(self):
+        tmp, root, d = make_project(tasks=NEW_TASKS)
+        with tmp:
+            self.spec_edit(root, file="spec.md")
+            st = aidd_status.build_status(d)
+            self.assertEqual(st["tasks"]["tokens_k"], 230)
+            self.assertEqual(st["tasks"]["critical_path_min"], 35)
+            text = aidd_status.format_status(st)
+            self.assertIn("~", text)
+            self.assertIn("k tokens", text)
+            self.assertIn("~230k tokens", text)
+
+    def test_legacy_header_has_no_tokens(self):
+        tmp, root, d = make_project(tasks=LEGACY_TASKS)
+        with tmp:
+            self.spec_edit(root, file="spec.md")
+            st = aidd_status.build_status(d)
+            self.assertIsNone(st["tasks"]["tokens_k"])
+            text = aidd_status.format_status(st)
+            self.assertIn("critical path 35 min", text)
+            self.assertNotIn("tokens", text)
+
+    def test_waves_reads_columns_by_header(self):
+        self.assertEqual(aidd_status._waves(NEW_TASKS), (2, 35, [150, 80]))
+        self.assertEqual(aidd_status._waves(LEGACY_TASKS), (2, 35, []))
+
 class TestLedger(EvBase):
     def test_ledger_from_evidence(self):
         tmp, root, d = make_project()
@@ -214,7 +306,7 @@ class TestLedger(EvBase):
             self.assertTrue(st["mapper"])
             self.assertTrue(st["graph"])
             self.assertEqual(st["tasks"], {"approval": "pending", "waves": 2, "critical_path_min": 35,
-                                         "approval_recorded": False})
+                                         "approval_recorded": False, "tokens_k": 230})
             self.assertEqual(st["code_edits"], 3)
             self.assertEqual(st["auditors"], {"performance": True})
             text = aidd_status.format_status(st) + "\n" + aidd_status.format_global(aidd_status._global(root))
@@ -721,9 +813,9 @@ class TestRulesClose(EvBase):
             r = run_script("rules", "close", "001-x", cwd=root)          # no answer at all
             self.assertEqual(r.returncode, 1, r.stdout)
             self.assertIn("AskUserQuestion", r.stdout)
-            self.answer(root, "Close spec 001-x as completed?", "No")     # a No
+            self.answer(root, "Close spec 001-x as completed? [spec:001-x]", "No")     # a No
             self.assertEqual(run_script("rules", "close", "001-x", cwd=root).returncode, 1)
-            self.answer(root, "Approve these tasks again?", "Approve")    # wrong topic
+            self.answer(root, "Approve these tasks again? [spec:001-x]", "Approve")    # wrong topic
             self.assertEqual(run_script("rules", "close", "001-x", cwd=root).returncode, 1)
             self.assertEqual(ev.open_specs(root), ["001-x"])
             self.assertEqual(ev.get_active_spec(root), "001-x")
@@ -731,7 +823,7 @@ class TestRulesClose(EvBase):
     def test_close_answer_older_than_qa_audit_refused(self):
         tmp, root, d = self._approved_project()
         with tmp:
-            self.answer(root, "Close spec 001-x as completed?", "Yes, close")   # before the audit
+            self.answer(root, "Close this spec? [spec:001-x]", "Yes, close")   # before the audit
             self._ready_to_close(root, d)
             t = time.time() + 30
             os.utime(d / "qa-audit.md", (t, t))
@@ -741,7 +833,7 @@ class TestRulesClose(EvBase):
         tmp, root, d = self._approved_project()
         with tmp:
             self._ready_to_close(root, d)
-            self.answer(root, "Close spec 001-x as completed?", "Yes, close")
+            self.answer(root, "Close this spec? [spec:001-x]", "Yes, close")
             r = run_script("rules", "close", "001-x", cwd=root)
             self.assertEqual(r.returncode, 0, r.stdout)
             self.assertIsNone(ev.get_active_spec(root))
@@ -763,7 +855,7 @@ class TestRulesClose(EvBase):
         tmp, root, d = self._approved_project()
         with tmp:
             self._ready_to_close(root, d)
-            self.answer(root, "Close spec 001-x as completed?", "Yes, close")
+            self.answer(root, "Close this spec? [spec:001-x]", "Yes, close")
             tick()
             ev.append(root, "s1", "code_edit", path="src/other.py", spec="002-other")   # no per-spec attribution
             r = run_script("rules", "close", "001-x", cwd=root)
@@ -778,7 +870,7 @@ class TestRulesClose(EvBase):
             (d / "tasks.md").write_text(text + "\nApproved: 2026-01-01 hash:" + aidd_rules.approval_hash(text) + "\n",
                                         encoding="utf-8")
             self._ready_to_close(root, d)
-            self.answer(root, "Close spec 001-x as completed?", "Yes, close")
+            self.answer(root, "Close this spec? [spec:001-x]", "Yes, close")
             r = run_script("rules", "close", "001-x", cwd=root)
             self.assertEqual(r.returncode, 1, r.stdout)
             self.assertIn("approved", r.stdout)
@@ -787,10 +879,20 @@ class TestRulesClose(EvBase):
         tmp, root, d = self._approved_project()
         with tmp:
             self._ready_to_close(root, d)
-            self.answer(root, "Close spec 001-x as completed?", "Yes", options=["Yes", "No"])
+            self.answer(root, "Close spec 001-x as completed? [spec:001-x]", "Yes", options=["Yes", "No"])
             r = run_script("rules", "close", "001-x", cwd=root)
             self.assertEqual(r.returncode, 1, r.stdout)
             self.assertIn('"Yes, close"', r.stdout)
+
+    def test_close_needs_the_spec_tag(self):
+        tmp, root, d = self._approved_project()
+        with tmp:
+            self._ready_to_close(root, d)
+            self.answer(root, "Close this spec? [spec:002-y]", "Yes, close")    # wrong tag
+            self.assertEqual(run_script("rules", "close", "001-x", cwd=root).returncode, 1)
+            self.answer(root, "Close this spec?", "Yes, close")                 # no tag
+            self.assertEqual(run_script("rules", "close", "001-x", cwd=root).returncode, 1)
+            self.assertEqual(ev.open_specs(root), ["001-x"])
 
     def test_unknown_spec(self):
         with tempfile.TemporaryDirectory() as t:
@@ -819,9 +921,9 @@ class TestRulesAbandon(EvBase):
         tmp, root, d = self._open()
         with tmp:
             self.prompt(root)
-            self.answer(root, "Abandon spec 001-x?", "No, keep it")
+            self.answer(root, "Abandon spec 001-x? [spec:001-x]", "No, keep it")
             self.assertEqual(run_script("rules", "abandon", "001-x", cwd=root).returncode, 1)
-            self.answer(root, "Close spec 001-x as completed?", "Yes, close")   # close != abandon
+            self.answer(root, "Close this spec? [spec:001-x]", "Yes, close")   # close != abandon
             self.assertEqual(run_script("rules", "abandon", "001-x", cwd=root).returncode, 1)
             self.assertEqual(ev.open_specs(root), ["001-x"])
 
@@ -829,17 +931,27 @@ class TestRulesAbandon(EvBase):
         tmp, root, d = self._open()
         with tmp:
             self.prompt(root)
-            self.answer(root, "Abandon spec 001-x?", "Yes", options=["Yes", "No"])
+            self.answer(root, "Abandon spec 001-x? [spec:001-x]", "Yes", options=["Yes", "No"])
             r = run_script("rules", "abandon", "001-x", cwd=root)
             self.assertEqual(r.returncode, 1, r.stdout)
             self.assertIn('"Abandon"', r.stdout)
+            self.assertEqual(ev.open_specs(root), ["001-x"])
+
+    def test_abandon_needs_the_spec_tag(self):
+        tmp, root, d = self._open()
+        with tmp:
+            self.prompt(root)
+            self.answer(root, "Abandon this spec? [spec:002-y]", "Abandon")     # wrong tag
+            self.assertEqual(run_script("rules", "abandon", "001-x", cwd=root).returncode, 1)
+            self.answer(root, "Abandon this spec?", "Abandon")                  # no tag
+            self.assertEqual(run_script("rules", "abandon", "001-x", cwd=root).returncode, 1)
             self.assertEqual(ev.open_specs(root), ["001-x"])
 
     def test_refused_when_not_open(self):
         tmp, root, d = make_project()
         with tmp:
             self.prompt(root)
-            self.answer(root, "Abandon spec 001-x?", "Abandon")
+            self.answer(root, "Abandon this spec? [spec:001-x]", "Abandon")
             self.assertEqual(run_script("rules", "abandon", "001-x", cwd=root).returncode, 1)
 
     def test_abandon_unblocks_and_status_reflects_it(self):
@@ -847,7 +959,7 @@ class TestRulesAbandon(EvBase):
         with tmp:
             self.prompt(root)
             self.assertIn("Open specs: 001-x", run_script("status", cwd=root).stdout)
-            self.answer(root, "Abandon spec 001-x?", "Abandon")
+            self.answer(root, "Abandon this spec? [spec:001-x]", "Abandon")
             r = run_script("rules", "abandon", "001-x", "--reason", "scope dropped by the user", cwd=root)
             self.assertEqual(r.returncode, 0, r.stdout)       # no qa-audit.md needed, tasks not approved
             self.assertIn("scope dropped", r.stdout)
@@ -863,7 +975,7 @@ class TestRulesAbandon(EvBase):
         tmp, root, d = self._open()
         with tmp:
             self.prompt(root)
-            self.answer(root, "Descartar la spec?", "Descartar")
+            self.answer(root, "Descartar esta spec? [spec:001-x]", "Descartar")
             self.assertEqual(run_script("rules", "abandon", str(d), cwd=root).returncode, 0)
             self.assertEqual(ev.open_specs(root), [])
 

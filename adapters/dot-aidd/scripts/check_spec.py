@@ -511,6 +511,18 @@ def main():
 
     print(f"aidd spec check — {spec_dir}")
     print("=" * 60)
+    # FR-008: informational plan totals (never a gap, never affects the exit code)
+    try:
+        if tasks:
+            import aidd_rules as _ar
+            _t = _ar.plan_totals(tasks)
+            _m = _t.get('minutes')
+            if _m:
+                _h = round(_ar.derived_human_hours(_m), 1)
+                _tok = f", ~{_t['tokens_k']}k tokens" if _t.get('tokens_k') is not None else ""
+                print(f"Plan: ~{_m} min{_tok} (derived human ref ~{_h} h)")
+    except Exception:
+        pass
     if not gaps:
         print("No mechanical gaps found. (This does not check screenshots, business logic, "
               "or anything requiring judgment — that's still the Auditor's job.)")

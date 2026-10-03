@@ -34,7 +34,12 @@ Order `COMP-nnn` tasks before any `SCREEN-XX` task that uses them — building a
 **Estimate**
 - Effort: High / Medium / Low
 - Agent min: [whole minutes an AI agent needs to do it — this is what the plan is scheduled on]
-- Human ref hours: [hours a human would need — reference only, never the schedule; guide: Low 4-8h, Medium 8-20h, High 20-40h]
+- Human ref hours: [DERIVED = Agent min x 3 / 60 (calibration file), never estimated by hand; reference only, never the schedule]
+- Tokens (est): 60k
+- Agent role: builder   # builder | sql | tests | docs | auditor | mapper
+- Model tier: medium   # medium | high (never lower)
+
+Estimates come from the baselines in skill/templates/calibration.toon (about 1-3 min and 50-75k tokens per one-file task). Human ref hours is DERIVED (Agent min x 3 / 60), not estimated by hand.
 
 **Decompose**
 - Objective: [1 sentence — what it achieves]
@@ -53,7 +58,10 @@ A field you can't substantiate → leave it blank, don't invent it.
 **Estimate**
 - Effort: High / Medium / Low
 - Agent min: [whole minutes]
-- Human ref hours: [hours]
+- Human ref hours: [derived: Agent min x 3 / 60]
+- Tokens (est): [k]
+- Agent role: [builder|sql|tests|docs|auditor|mapper]
+- Model tier: [medium|high]
 
 [Same Classify / Decompose / Assign sections as T-01.]
 
@@ -63,12 +71,15 @@ Estimates are **agent time**, not human hours. Waves run one after another; task
 parallel, so a wave takes as long as its longest task (`max` of its tasks' `Agent min`) and the critical path is the
 sum of the waves. A task that depends on another goes in a later wave.
 
-| Wave | Tasks | Agent time (min) | Human ref (h) |
-|---|---|---|---|
-| 1 | T-01 | [max Agent min of the wave] | [hours] |
-| 2 | T-02 | [max Agent min of the wave] | [hours] |
+| Wave | Tasks | Roles | Agent time (min) | Tokens (k) | Human ref (h) |
+|---|---|---|---|---|---|
+| 1 | T-01 | builder | [MAX Agent min of the wave] | [SUM of tasks' tokens] | [derived] |
+| 2 | T-02 | tests | [MAX Agent min of the wave] | [SUM of tasks' tokens] | [derived] |
 
 Total agent time (critical path): [sum of wave Agent times] min
+Total tokens (k): [sum of wave tokens]
+
+Legacy: approved files with the 4-column header (Wave | Tasks | Agent time (min) | Human ref (h)) stay valid.
 
 ## Approval gate
 

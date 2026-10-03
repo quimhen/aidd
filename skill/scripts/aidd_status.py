@@ -137,17 +137,33 @@ def _alignment(spec_text, root, since):
 
 
 def _waves(tasks_text):
+    """(n_waves, critical_path_min, tokens_k_per_wave) - Waves columns read BY HEADER NAME (both variants)."""
     t = rules._clean(tasks_text)
     tbl = rules._table(t, r'waves\b')
-    times = []
+    times, toks = [], []
     n = 0
     if tbl:
+        hdr = [re.sub(r'[\s*`_]+', ' ', h).strip().lower() for h in tbl[0]]
+
+        def col(prefix):
+            return next((i for i, h in enumerate(hdr) if h.startswith(prefix)), None)
+        ti, ki = col('agent time'), col('tokens')
         for r in tbl[1]:
-            if len(r) > 2 and re.fullmatch(r'\d+', r[2].strip()):
-                times.append(int(r[2].strip()))
+            if ti is not None and len(r) > ti and re.fullmatch(r'\d+', r[ti].strip()):
+                times.append(int(r[ti].strip()))
+            if ki is not None and len(r) > ki and re.fullmatch(r'\d+', r[ki].strip()):
+                toks.append(int(r[ki].strip()))
         n = len(tbl[1])
     m = re.search(r'total agent time \(critical path\)\s*:\s*(\d+)', t.replace('*', ''), re.I)
-    return n, (int(m.group(1)) if m else (sum(times) if times else None))
+    return n, (int(m.group(1)) if m else (sum(times) if times else None)), toks
+
+
+def _plan_segment(t):
+    mins = t.get('critical_path_min')
+    if mins is None:
+        return ''
+    tk = t.get('tokens_k')
+    return f" · ~{mins} min" + (f", ~{tk}k tokens" if tk is not None else '')
 
 
 def _approval_recorded(root, spec, tasks_text):
@@ -191,7 +207,7 @@ def _build_status(spec_dir, root=None):
     st['alignment'] = _alignment(spec_text, root, since)
 
     sm, pm = _mtime(d / 'spec.md'), _mtime(d / 'plan.md')
-    subs = ev.events(root, kind='subagent')
+    subs = [e for e in ev.events(root, kind='subagent') if rules._subagent_counts(e)]
     st['mapper'] = bool(sm is not None and any(e['ts'] > sm for e in subs))
     fs = ev.events(root, kind='find_spec')
     last_fs = max(fs, key=lambda e: e['ts']) if fs else None
@@ -205,8 +221,10 @@ def _build_status(spec_dir, root=None):
         approval = 'pending'
     else:
         approval = 'valid' if rules.approval_valid(tasks_text) else 'invalid'
-    waves, critical = _waves(tasks_text)
-    st['tasks'] = {'approval': approval, 'waves': waves, 'critical_path_min': critical}
+    waves, critical, _wt = _waves(tasks_text)
+    pt = rules.plan_totals(tasks_text)
+    st['tasks'] = {'approval': approval, 'waves': waves, 'critical_path_min': critical,
+                   'tokens_k': pt.get('tokens_k')}
 
     # Rev 2 (D1): a code edit carries no spec attribution - it applies to every open spec.
     edits = ev.events(root, kind='code_edit')
@@ -337,7 +355,7 @@ def format_status(st, glob=None):
     state = 'OPEN' if st.get('open') else 'not open'
     lines = [
         f"{st['spec']} [{state}]  Route: {_route_summary(st['route'])}   Align: {align}",
-        f"Tasks: {tk} · Waves: {t['waves']} · critical path {cp}   "
+        f"Tasks: {tk} · Waves: {t['waves']} · critical path {cp}{_plan_segment(t)}   "
         f"Build: {st['code_edits']} code edits · Auditors: {aud}",
         f"Visual debt open: {st['visual_debt_open']} (blocking this spec: {st.get('debt_blocking', 0)}) · "
         f"qa-audit.md: {'yes' if st['qa_audit'] else 'no'}" + _qa_evidence_segment(st)
@@ -571,7 +589,8 @@ def cmd_close(spec_arg):
         return 1
     sess = _current_session(root)
     # the answer must postdate qa-audit.md (a stale "yes" from before the audit does not count)
-    ans = ev.affirmative_answer(root, sess, CLOSE_TOPIC, _mtime(d / 'qa-audit.md') or 0.0, label_re=CLOSE_LABEL)
+    ans = ev.affirmative_answer(root, sess, CLOSE_TOPIC, _mtime(d / 'qa-audit.md') or 0.0, label_re=CLOSE_LABEL,
+                               must_contain=f'[spec:{d.name}]')
     if ans is None:
         print('Refused: no recorded user answer "Yes, close" to a close question (asked after qa-audit.md).\n'
               'Fix: ' + _ASK_FIX.format(opt='Yes, close', what='closing the spec (e.g. "Close spec X as '
@@ -581,6 +600,24 @@ def cmd_close(spec_arg):
     cleared = _clear_pointer(root, d.name)
     print(f'{d.name} closed as completed' + (' (active-spec pointer cleared).' if cleared else '.'))
     return 0
+
+
+def _abandon_since(root, spec_id, d):
+    """Timestamp after which an abandon answer counts: the spec's last `approved` / `spec_closed`
+    (re-open) event, else tasks.md mtime, else 0.0."""
+    try:
+        ts = [e['ts'] for k in ('approved', 'spec_closed') for e in ev.events(root, kind=k)
+              if (e['detail'] or {}).get('spec') == spec_id]
+        if ts:
+            return max(ts)
+    except Exception:
+        pass
+    try:
+        if d is not None:
+            return _mtime(d / 'tasks.md') or 0.0
+    except Exception:
+        pass
+    return 0.0
 
 
 def cmd_abandon(spec_arg, reason=''):
@@ -593,7 +630,9 @@ def cmd_abandon(spec_arg, reason=''):
         print(f'{spec_id} is not an open spec - nothing to abandon.')
         return 1
     sess = _current_session(root)
-    ans = ev.affirmative_answer(root, sess, ABANDON_TOPIC, 0.0, label_re=ABANDON_LABEL)
+    ans = ev.affirmative_answer(root, sess, ABANDON_TOPIC, _abandon_since(root, spec_id, d),
+                               label_re=ABANDON_LABEL,
+                               must_contain=f'[spec:{spec_id}]')
     if ans is None:
         print('Refused: no recorded user answer "Abandon" to an abandon question in this session.\n'
               'Fix: ' + _ASK_FIX.format(opt='Abandon', what='abandoning the spec (e.g. "Abandon spec X?")'))

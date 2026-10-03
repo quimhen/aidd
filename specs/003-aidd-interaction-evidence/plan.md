@@ -62,7 +62,7 @@ because it depends on T-01's R12; `traceability.md` is added to the both-trees n
    `reutiliza\w*|remapea\w*|envuelve\w*|wrap\w*|reus\w*|rewir\w*` (case-insensitive, deliberately broad: wrapper/reused count).
    Requirement: `Kind: VIEW-new` or `Kind: LOGIC` or `Kind: VIEW-legacy: <5+ chars>` (whole remainder after the first colon).
    `Kind` is hashed text: do NOT add it to `_HASH_EXCLUDED`. **The tasks template currently has a column "New view vs. reuse" and a
-   placeholder `reuse logic only` next to `SCREEN-01`, which would trip R12 on the raw template: T-03 REPLACES that column with
+   placeholder `reuse logic only` next to a screen code, which would trip R12 on the raw template: T-03 REPLACES that column with
    `View / logic` (values `VIEW-new | LOGIC | VIEW-legacy`) and keeps no reuse word beside a screen/component code.**
    Known consequence: `aidd rules approve` (`cmd_approve`) refuses a tasks.md failing `check_content`, and adding `Kind` changes
    the approval hash, so an already-approved tasks.md with reuse wording must be re-approved.

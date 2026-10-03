@@ -74,6 +74,48 @@ def debt_spec(debt=DEBT_OPEN):
 
 
 def tasks_text(a1=30, a2=20, w1=30, w2=20, total=50, ids="COMP-001", approved="Approved: PENDING"):
+    """Valid tasks.md in the NEW format (FR-009: only an APPROVED legacy file is exempt)."""
+    return f"""# Tasks — x
+
+| Task | Codes |
+|---|---|
+| T-01 | {ids} |
+
+### T-01
+- Agent min: {a1}
+- Human ref hours: 8
+- Tokens (est): 60k
+- Agent role: builder
+- Model tier: medium
+
+### T-02
+- Agent min: {a2}
+- Human ref hours: 4
+- Tokens (est): 40k
+- Agent role: tests
+- Model tier: medium
+
+## Waves
+
+| Wave | Tasks | Roles | Agent time (min) | Tokens (k) | Human ref (h) |
+|---|---|---|---|---|---|
+| 1 | T-01 | builder | {w1} | 60 | 8 |
+| 2 | T-02 | tests | {w2} | 40 | 4 |
+
+Total agent time (critical path): {total} min
+Total tokens (k): 100
+
+{approved}
+"""
+
+
+def approved_tasks(**kw):
+    t = tasks_text(**kw)
+    return t.replace("Approved: PENDING", f"Approved: 2026-10-01 hash:{R.approval_hash(t)}")
+
+
+def legacy_tasks_text(a1=30, a2=20, w1=30, w2=20, total=50, ids="COMP-001", approved="Approved: PENDING"):
+    """Legacy (specs 001-004) 4-column tasks.md: no Tokens/role/tier. Exempt ONLY when approved (FR-009)."""
     return f"""# Tasks — x
 
 | Task | Codes |
@@ -101,9 +143,49 @@ Total agent time (critical path): {total} min
 """
 
 
-def approved_tasks(**kw):
-    t = tasks_text(**kw)
+def approved_legacy_tasks(**kw):
+    t = legacy_tasks_text(**kw)
     return t.replace("Approved: PENDING", f"Approved: 2026-10-01 hash:{R.approval_hash(t)}")
+
+
+def new_tasks(t1=60, t2=40, wt1=None, wt2=None, total_tokens=None, roles1="builder", roles2="tests",
+              role1="builder", role2="tests", tier1="medium", tier2="medium", extra_t1="",
+              approved="Approved: PENDING", a1=30, a2=20, total=50):
+    """Valid NEW-header (6 columns, tokens + roles) tasks.md: 2 tasks, 2 waves."""
+    wt1 = t1 if wt1 is None else wt1
+    wt2 = t2 if wt2 is None else wt2
+    total_tokens = (t1 + t2) if total_tokens is None else total_tokens
+    return f"""# Tasks — x
+
+| Task | Codes |
+|---|---|
+| T-01 | COMP-001 |
+
+### T-01
+- Agent min: {a1}
+- Human ref hours: 1.5
+- Tokens (est): {t1}k
+{('- Agent role: ' + role1 + chr(10)) if role1 else ''}- Model tier: {tier1}
+{extra_t1}
+### T-02
+- Agent min: {a2}
+- Human ref hours: 1
+- Tokens (est): {t2}k
+- Agent role: {role2}
+- Model tier: {tier2}
+
+## Waves
+
+| Wave | Tasks | Roles | Agent time (min) | Tokens (k) | Human ref (h) |
+|---|---|---|---|---|---|
+| 1 | T-01 | {roles1} | {a1} | {wt1} | 1.5 |
+| 2 | T-02 | {roles2} | {a2} | {wt2} | 1 |
+
+Total agent time (critical path): {total} min
+Total tokens (k): {total_tokens}
+
+{approved}
+"""
 
 
 QA_LEDGER = "## Mapping ledger\n\n| Code | Status |\n|---|---|\n| SCREEN-01 | ✅ DONE |\n"

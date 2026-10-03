@@ -86,10 +86,18 @@ def _obligations(ev, rules, roots):
             missing = []
             if not (d / 'qa-audit.md').exists():
                 missing.append(f'[ ] specs/{spec}/qa-audit.md does not exist - write it from the auditors\' findings.')
-            for dom in sorted(rules.uncovered_domains(root, None, spec, since, spec_dir=d)):
-                missing.append(f'[ ] no distinct {dom} auditor subagent ran after the last code edit - dispatch an '
-                               f'independent {dom} auditor (Agent tool; its description/prompt must name "{dom}"; one '
-                               'subagent covers one domain).')
+            doms = sorted(rules.uncovered_domains(root, None, spec, since, spec_dir=d))
+            try:
+                reasons = rules._uncovered_reasons(ev, root, None, doms, since) if doms else {}
+            except Exception:
+                reasons = {}
+            for dom in doms:
+                tier = reasons.get(dom) == 'tier'
+                note = ' (model tier too low, R14: a haiku auditor does not count)' if tier else ''
+                model = ' with a medium or high model (model: sonnet or opus)' if tier else ''
+                missing.append(f'[ ] no distinct {dom} auditor subagent ran after the last code edit{note} - dispatch an '
+                               f'independent {dom} auditor (Agent tool{model}; its description/prompt must name "{dom}"; '
+                               'one subagent covers one domain).')
             if missing:
                 out.append((root, spec, key, edits, missing))
     return out

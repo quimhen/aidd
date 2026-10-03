@@ -217,11 +217,17 @@ def _r5_plan(ev, rules, d, root, session):
     return out
 
 
+def _counting_subs(ev, root, session):
+    """R14: only subagent events that count as independent (not low-tier) feed R5."""
+    _, rules = _libs()
+    return [e for e in ev.events(root, session, 'subagent') if rules._subagent_counts(e)]
+
+
 def _r5_tasks(ev, d, root, session):
     out = []
     plan = d / 'plan.md'
     pm = _mtime(plan)
-    subs = ev.events(root, session, 'subagent')
+    subs = _counting_subs(ev, root, session)
     if pm is None:
         out.append(_v('R5', 'plan.md does not exist.', f'Write specs/{d.name}/plan.md (Step 3) before tasks.md.'))
     elif not [e for e in subs if e['ts'] > pm]:
@@ -316,10 +322,18 @@ def _qa_gate(ev, rules, d, root, session):
         return []  # baseline qa-audit.md, nothing implemented yet (same as the legacy gate)
     since = rules.audit_since(edits)
     out = []
-    for dom in sorted(rules.uncovered_domains(root, session, d.name, since, spec_dir=d)):
+    doms = sorted(rules.uncovered_domains(root, session, d.name, since, spec_dir=d))
+    try:
+        reasons = rules._uncovered_reasons(ev, root, session, doms, since) if doms else {}
+    except Exception:
+        reasons = {}
+    for dom in doms:
+        tier = reasons.get(dom) == 'tier'
+        note = ' (model tier too low, R14: a haiku auditor does not count)' if tier else ''
+        model = ' with a medium or high model (model: sonnet or opus)' if tier else ''
         out.append(_v('R7', f'No distinct {dom} auditor subagent ran after the last code edit of {d.name} '
-                            '(one subagent covers ONE domain).',
-                      f'Dispatch an independent {dom} auditor subagent (Agent tool) whose description or '
+                            f'(one subagent covers ONE domain){note}.',
+                      f'Dispatch an independent {dom} auditor subagent (Agent tool){model} whose description or '
                       f'prompt names "{dom}", then write qa-audit.md from ITS findings.'))
     return out
 
@@ -407,7 +421,14 @@ def _protected(ev, cp, segs):
         cd = ev.canon_path(envd)
         if cp == cd or cp.startswith(cd.rstrip('/') + '/'):
             return True
-    return _session_log(ev, cp)
+    return _session_log(ev, cp) or _transcript_path(cp)
+
+
+def _transcript_path(p):
+    """R9: host transcript files (.claude/projects/<proj>/<session>.jsonl) are not agent-writable."""
+    import re
+    return bool(re.search(r'(^|/)\.claude/projects/[^/]+/[^/]+\.jsonl(:[^/:]*)*$',
+                          str(p).replace('\\', '/').lower().rstrip('. ')))
 
 
 def _session_log(ev, cp):
@@ -707,6 +728,8 @@ def _mentions(low):
     import re
     if 'events.toon' in low or 'active_spec' in low:
         return True
+    if re.search(r'\.claude[\s\S]{0,300}projects[\s\S]{0,300}\.jsonl', low.replace('\\', '/')):
+        return True                                            # R9: host transcripts (reads stay allowed in _script_write)
     i = low.find('.aidd')
     while i != -1:
         prev = low[i - 1] if i > 0 else ' '
@@ -744,6 +767,8 @@ def _prot_tok(tok, ctx_aidd, cwd_prot):
         return False
     if segs[-1] in ('events.toon', 'active_spec') or segs[-1].startswith('active_spec.'):
         return True
+    if _transcript_path(t):
+        return True                                           # host transcripts (R9)
     if 'aidd-hooks' in segs:
         return True                                           # the per-session evidence logs (D5)
     for i, s in enumerate(segs):
@@ -972,6 +997,8 @@ def _needs_check(low, cwd):
         return True
     if 'join-path' in low and 'aidd' in low:
         return True
+    if '.jsonl' in low and '.claude' in low:
+        return True                                            # R9: host transcripts
     return any(c in low for c in '*?[') and ('.a' in low or '.*' in low or '.?' in low or '.[' in low)
 
 
@@ -1020,6 +1047,20 @@ def _record_error(event, err):
         pass
 
 
+def _sync_transcript(event):
+    """FR-013: incremental transcript sync of AskUserQuestion answers. Never changes exit code/output."""
+    try:
+        tp = event.get('transcript_path')
+        if not isinstance(tp, str) or not tp:
+            return
+        if HOOKS_DIR not in sys.path:
+            sys.path.insert(0, HOOKS_DIR)
+        import _common as C
+        _ev().sync_ask_answers(tp, C.session_of(event), C.str_field(event, 'cwd') or os.getcwd())
+    except Exception as e:
+        _record_error(event, e)
+
+
 def main():
     mode = _mode()
     if mode == 'off':
@@ -1033,6 +1074,7 @@ def main():
             event = {}
         if not isinstance(event, dict):
             event = {}
+        _sync_transcript(event)
         if event.get('tool_name') in SHELL_TOOLS:   # cheap pre-check: import nothing unless it can matter
             ti = event.get('tool_input')
             cmd = ti.get('command') if isinstance(ti, dict) else None

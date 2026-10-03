@@ -68,6 +68,7 @@ VERBATIM_SCRIPTS = [
     "aidd_evidence.py",
     "aidd_status.py",
     "find_spec.py",
+    "aidd_calibrate.py",
     "tasks_to_issues.py",
     "link_pr_to_task.py",
     "sync_issues.py",

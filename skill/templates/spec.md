@@ -4,6 +4,9 @@ Produced during Step 2 (Align), from Step 1's mockup-audit.md. Nothing here is g
 a blank field is an open alignment question, not a placeholder to fill with a reasonable-sounding
 default.
 
+Risk: low | medium | high
+<!-- high = writes to SAP/DB, security or money; high risk audits on the highest model tier, others medium; never the lowest tier -->
+
 ## Minimum Requirements Checklist (fill before Step 3 starts)
 
 | Question | Answer | Source | If unanswered |

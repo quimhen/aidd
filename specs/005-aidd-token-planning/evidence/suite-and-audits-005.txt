@@ -1,0 +1,17 @@
+Executed 2026-10-03 in D:\Fuentes\AIDD (branch feat/004-aidd-graph-first, uncommitted spec 005 work on top of commit 1a1c0bc)
+
+### Full test suite after the audit fixes F1-F4 and the mirror sync
+python -m unittest discover -s tests
+Ran 1159 tests in 178.133s
+OK
+(before spec 005: 1033 tests; 126 new tests: R1/R13/R14, calibration, status totals, typed confirmations, transcript sync, R9 transcript guard)
+
+### AC-011 on the real transcript of this session (closing logic auditor, throwaway session id, isolated evidence dir)
+First sync recorded 3 pairs, including `[tasks:37ed463c]` -> 'Approve'; second sync recorded 0; a transcript without AskUserQuestion and a missing file both returned 0 without raising; affirmative_answer found the answer event.
+
+### Audit rounds
+1. Performance (opus, high), hot paths of the transcript sync: PASS WITH NOTES. Real 4.85 MB transcript: first pass 71 ms, no-change pass 0.27 ms; marker capped (ids 200, pending 20, queued 200).
+2. Logic and security (opus, high): FAIL. HIGH: legacy header skipped token/role checks (F1); HIGH: Explore (haiku) agents counted as auditors (F2); HIGH (known gap): script writes into the host transcript (F3); MINOR: re-asked question dedupe and stale Abandon (F4).
+3. Fixes F1-F4 applied with tests.
+4. Security and functional re-audit (opus, high): PASS WITH NOTES. F1-F4 CLOSED; no deadlock in the new tasks.md flow; hook latency 94 ms (python startup 52 ms).
+5. Performance delta audit (sonnet, medium): PASS WITH NOTES. mark_agent_dispatch 68-73 ms (startup 49 ms); sync 1.1 ms no-change; typed_approval with 500 prompts 3.7 ms; _check_tasks 500 tasks 74 ms; _mentions regex worst adversarial 100 KB input 541 ms.

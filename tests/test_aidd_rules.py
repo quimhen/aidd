@@ -68,19 +68,26 @@ def tasks(a1=30, a2=20, w1=30, w2=20, total=50, extra_block=''):
 ### T-01
 - Agent min: {a1}
 - Human ref hours: 8
+- Tokens (est): 60k
+- Agent role: builder
+- Model tier: medium
 
 ### T-02
 - Agent min: {a2}
 - Human ref hours: 4
+- Tokens (est): 40k
+- Agent role: tests
+- Model tier: medium
 {extra_block}
 ## Waves
 
-| Wave | Tasks | Agent time (min) | Human ref (h) |
-|---|---|---|---|
-| 1 | T-01 | {w1} | 8 |
-| 2 | T-02 | {w2} | 4 |
+| Wave | Tasks | Roles | Agent time (min) | Tokens (k) | Human ref (h) |
+|---|---|---|---|---|---|
+| 1 | T-01 | builder | {w1} | 60 | 8 |
+| 2 | T-02 | tests | {w2} | 40 | 4 |
 
 Total agent time (critical path): {total} min
+Total tokens (k): 100
 
 Approved: PENDING
 """
@@ -115,19 +122,21 @@ class TestR1(unittest.TestCase):
         bad(self, R.check_content('tasks', t), 'R1', 'no rows')
 
     def test_wrong_column_order(self):
-        t = tasks().replace('| Wave | Tasks | Agent time (min) | Human ref (h) |',
-                            '| Wave | Agent time (min) | Tasks | Human ref (h) |')
+        t = tasks().replace('| Wave | Tasks | Roles | Agent time (min) | Tokens (k) | Human ref (h) |',
+                            '| Wave | Tasks | Roles | Tokens (k) | Agent time (min) | Human ref (h) |')
         bad(self, R.check_content('tasks', t), 'R1', 'column order')
 
     def test_wave_time_off_by_one(self):
         bad(self, R.check_content('tasks', tasks(w1=31, total=51)), 'R1', 'max of its tasks')
 
     def test_wave_is_max_not_sum(self):
-        t = tasks().replace('| 1 | T-01 | 30 | 8 |', '| 1 | T-01, T-02 | 50 | 12 |').replace('| 2 | T-02 | 20 | 4 |\n', '')
+        t = (tasks().replace('| 1 | T-01 | builder | 30 | 60 | 8 |', '| 1 | T-01, T-02 | builder, tests | 50 | 100 | 12 |')
+             .replace('| 2 | T-02 | tests | 20 | 40 | 4 |\n', ''))
         bad(self, R.check_content('tasks', t), 'R1', 'max of its tasks')
 
     def test_parallel_wave_ok(self):
-        t = tasks().replace('| 1 | T-01 | 30 | 8 |', '| 1 | T-01, T-02 | 30 | 12 |').replace('| 2 | T-02 | 20 | 4 |\n', '')
+        t = (tasks().replace('| 1 | T-01 | builder | 30 | 60 | 8 |', '| 1 | T-01, T-02 | builder, tests | 30 | 100 | 12 |')
+             .replace('| 2 | T-02 | tests | 20 | 40 | 4 |\n', ''))
         ok(self, R.check_content('tasks', t.replace('critical path): 50', 'critical path): 30')))
 
     def test_total_off_by_one(self):
@@ -629,13 +638,18 @@ class TestTemplates(unittest.TestCase):
         for tree in self.TREES:
             raw = self.read(tree, 'tasks.md')
             vs = R.check_content('tasks', raw)
-            self.assertEqual(rules(vs), {'R1'})
+            self.assertIn('R1', rules(vs))
+            self.assertLessEqual(rules(vs), {'R1', 'R13'})
             self.assertTrue(all(v['fix'] for v in vs))
             filled = re.sub(r'(Agent min:) \[[^\]]*\]', lambda m, c=iter([30, 20]): f'{m.group(1)} {next(c)}', raw)
             filled = re.sub(r'(Human ref hours:) \[[^\]]*\]', r'\1 4', filled)
-            filled = re.sub(r'(\| 1 \| T-01 \| )\[[^\]]*\]( \| )\[[^\]]*\]', r'\g<1>30\g<2>4', filled)
-            filled = re.sub(r'(\| 2 \| T-02 \| )\[[^\]]*\]( \| )\[[^\]]*\]', r'\g<1>20\g<2>4', filled)
+            filled = re.sub(r'(Tokens \(est\):) \[[^\]]*\]', r'\1 40k', filled)
+            filled = re.sub(r'(Agent role:) \[[^\]]*\]', r'\1 tests', filled)
+            filled = re.sub(r'(Model tier:) \[[^\]]*\]', r'\1 medium', filled)
+            filled = re.sub(r'(\| 1 \| T-01 \| builder \| )\[[^\]]*\]( \| )\[[^\]]*\]( \| )\[[^\]]*\]', r'\g<1>30\g<2>60\g<3>4', filled)
+            filled = re.sub(r'(\| 2 \| T-02 \| tests \| )\[[^\]]*\]( \| )\[[^\]]*\]( \| )\[[^\]]*\]', r'\g<1>20\g<2>40\g<3>4', filled)
             filled = re.sub(r'(critical path\): )\[[^\]]*\]', r'\g<1>50', filled)
+            filled = re.sub(r'(Total tokens \(k\): )\[[^\]]*\]', r'\g<1>100', filled)
             ok(self, R.check_content('tasks', filled))
             self.assertFalse(R.approval_valid(filled))  # still PENDING
             signed = filled.replace('Approved: PENDING', f'Approved: 2026-10-01 hash:{R.approval_hash(filled)}')
@@ -786,7 +800,9 @@ class TestM4Tables(unittest.TestCase):
         self.assertTrue([v for v in vs if v['rule'] == 'R2'], vs)
 
     def test_garbage_row_after_blank_in_waves_and_debt(self):
-        t = tasks().replace('| 2 | T-02 | 20 | 4 |\n', '| 2 | T-02 | 20 | 4 |\n\n| 3 | T-02 | huge | 1 |\n')
+        row2 = '| 2 | T-02 | tests | 20 | 40 | 4 |\n'
+        t = tasks().replace(row2, row2 + '\n| 3 | T-02 | tests | huge | 40 | 1 |\n')
+        self.assertNotEqual(t, tasks())
         bad(self, R.check_content('tasks', t), 'R1')
         d = spec(WAIVE0, extra='SCREEN-04\n' + DEBT.format(status='open', src='') + '\n| nothing | 007-x | maybe | |\n')
         bad(self, R.check_content('spec', d), 'R4')
@@ -1196,7 +1212,7 @@ class TestD10D14Tasks(unittest.TestCase):
         big = '9' * 5000
         for t in (tasks(a1=big), tasks(w1=big), tasks(total=big),
                   tasks().replace('Human ref hours: 8', f'Human ref hours: {big}'),
-                  tasks().replace('| 1 | T-01 | 30 | 8 |', f'| 1 | T-01 | 30 | {big}.{big} |'),
+                  tasks().replace('| 1 | T-01 | builder | 30 | 60 | 8 |', f'| 1 | T-01 | builder | 30 | 60 | {big}.{big} |'),
                   tasks(a1=big, w1=big, total=big)):
             vs = R.check_content('tasks', t)
             self.assertTrue(vs and all(v['rule'] == 'R1' for v in vs), vs[:1])
@@ -1277,6 +1293,92 @@ class TestD1D2Evidence(unittest.TestCase):
                             {'text': 'x', 'pairs': [['Waive it?', 'Yes waive it']]}])
         self.assertTrue(R.quote_verified(f, 'r', 'yes waive it'))
         self.assertFalse(R.quote_verified(f, 'r', 'waive it now'))
+
+
+# ============================================================ Spec 005 token planning (T-13)
+sys.path.insert(0, str(REPO / 'tests'))
+from gate_fixtures import new_tasks, legacy_tasks_text, approved_legacy_tasks as _approved_legacy  # noqa: E402
+
+
+class TestTokenPlanning(unittest.TestCase):
+    def test_valid_new_header(self):
+        ok(self, R.check_content('tasks', new_tasks()))
+
+    def test_wave_tokens_not_sum(self):
+        vs = R.check_content('tasks', new_tasks(wt2=50))
+        bad(self, vs, 'R1', 'Wave 2')
+
+    def test_total_tokens_wrong(self):
+        bad(self, R.check_content('tasks', new_tasks(total_tokens=99)), 'R1', 'Total tokens')
+
+    def test_missing_agent_role(self):
+        vs = R.check_content('tasks', new_tasks(role1=''))
+        bad(self, vs, 'R13', 'T-01')
+
+    def test_tier_low_invalid(self):
+        bad(self, R.check_content('tasks', new_tasks(tier2='low')), 'R13', 'T-02')
+
+    def test_auditor_with_medium_valid(self):
+        ok(self, R.check_content('tasks', new_tasks(role2='auditor', roles2='auditor', tier2='medium')))
+
+    def test_roles_cell_mismatch(self):
+        bad(self, R.check_content('tasks', new_tasks(roles1='docs')), 'R1')
+
+    def test_approved_legacy_skips_new_checks(self):
+        t = _approved_legacy()
+        self.assertTrue(R._is_legacy_tasks(t))
+        self.assertFalse(rules(R.check_content('tasks', t)) & {'R1', 'R13'})
+
+    def test_approved_legacy_file_passes(self):
+        ok(self, R.check_content('tasks', _approved_legacy()))
+
+    def test_unapproved_legacy_header_with_missing_fields_is_rejected(self):
+        # audit F1 probe: a NEW, UNAPPROVED tasks.md keeping the 4-column header must not pass R1/R13
+        t = legacy_tasks_text()
+        self.assertFalse(R._is_legacy_tasks(t))
+        vs = R.check_content('tasks', t)
+        bad(self, vs, 'R1', 'exempt only while its recorded approval is valid')
+        bad(self, vs, 'R1', 'Tokens (est)')
+        bad(self, vs, 'R1', 'Total tokens')
+        bad(self, vs, 'R13', 'Agent role')
+        bad(self, vs, 'R13', 'Model tier')
+
+    def test_edited_approved_legacy_without_migrating_is_rejected(self):
+        t = _approved_legacy().replace('- Agent min: 30', '- Agent min: 31').replace('| 1 | T-01 | 30 |', '| 1 | T-01 | 31 |')
+        t = t.replace('critical path): 50', 'critical path): 51')
+        self.assertFalse(R.approval_valid(t))
+        self.assertFalse(R._is_legacy_tasks(t))
+        vs = R.check_content('tasks', t)
+        bad(self, vs, 'R1', 'exempt only while')
+        bad(self, vs, 'R13', 'T-01')
+
+    def test_migrating_edited_legacy_to_new_format_passes(self):
+        from gate_fixtures import tasks_text as _new_fmt, approved_tasks as _approved_new
+        migrated = _new_fmt(a1=31, w1=31, total=51)
+        ok(self, R.check_content('tasks', migrated))
+        ok(self, R.check_content('tasks', _approved_new(a1=31, w1=31, total=51)))
+
+    def test_plan_totals(self):
+        self.assertEqual(R.plan_totals(new_tasks()), {'minutes': 50, 'tokens_k': 100})
+        legacy = R.plan_totals(legacy_tasks_text())
+        self.assertEqual(legacy['minutes'], 50)
+        self.assertIsNone(legacy['tokens_k'])
+
+    def test_derived_human_hours(self):
+        self.assertEqual(R.derived_human_hours(3), 0.15)
+
+    def test_r4_sibling_backticked_screen_ignored(self):
+        root = Path(tempfile.mkdtemp())
+        d = root / 'specs' / '001-x'
+        d.mkdir(parents=True)
+        (d / 'spec.md').write_text(spec(WAIVE0), encoding='utf-8')
+        other = root / 'specs' / '002-y'
+        other.mkdir()
+        (other / 'plan.md').write_text('example `SCREEN-07` quoted, but SCREEN-08 is real', encoding='utf-8')
+        vs = R.check_spec_dir(d, static_only=True)
+        msg = ' '.join(v['message'] for v in vs if v['rule'] == 'R4')
+        self.assertNotIn('SCREEN-07', msg)
+        self.assertIn('SCREEN-08', msg)
 
 
 if __name__ == '__main__':

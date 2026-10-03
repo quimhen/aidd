@@ -23,7 +23,12 @@ import sys
 import unicodedata
 from pathlib import Path
 
-RULE_IDS = ('R1', 'R2', 'R3', 'R4', 'R5', 'R6', 'R7', 'R9', 'R10', 'R11', 'R12')
+RULE_IDS = ('R1', 'R2', 'R3', 'R4', 'R5', 'R6', 'R7', 'R9', 'R10', 'R11', 'R12', 'R13', 'R14')
+
+AGENT_ROLES = ('builder', 'sql', 'tests', 'docs', 'auditor', 'mapper')
+MODEL_TIERS = ('medium', 'high')
+LOWEST_TIER_RE = re.compile(r'haiku', re.I)
+HUMAN_FACTOR_DEFAULT = 3
 
 ROUTE_STEPS = ('-1', '0', '1', '1.5', '2', '3', '4')
 VISUAL_STEPS = ('0', '1', '1.5')
@@ -315,28 +320,208 @@ def _check_kind(t, blocks):
     return out
 
 
+_LEGACY_WAVES_HDR = '| Wave | Tasks | Agent time (min) | Human ref (h) |'
+_NEW_WAVES_HDR = '| Wave | Tasks | Roles | Agent time (min) | Tokens (k) | Human ref (h) |'
+# column indexes per Waves header variant (FR-001 / FR-005)
+_WAVES_IDX = {
+    'legacy': {'agent': 2, 'human': 3, 'width': 4},
+    'new': {'roles': 2, 'agent': 3, 'tokens': 4, 'human': 5, 'width': 6},
+}
+_TOKENS_RE = re.compile(r'(\d{1,9})\s*k?', re.I)
+
+
+def _waves_variant(header):
+    """'new' when the Waves header names a 'roles' column, else 'legacy'."""
+    return 'new' if any(_hdr(header, i) == 'roles' for i in range(len(header or []))) else 'legacy'
+
+
+def _waves_header_ok(header, variant):
+    if variant == 'new':
+        return (len(header) >= 6 and _hdr(header, 0) == 'wave' and _hdr(header, 1) == 'tasks'
+                and _hdr(header, 2) == 'roles' and _hdr(header, 3).startswith('agent time')
+                and _hdr(header, 4).startswith('tokens') and _hdr(header, 5).startswith('human ref'))
+    return (_hdr(header, 0) == 'wave' and _hdr(header, 1) == 'tasks'
+            and _hdr(header, 2).startswith('agent time') and _hdr(header, 3).startswith('human ref'))
+
+
+def _is_legacy_tasks(text):
+    """FR-009: True iff the tasks.md approval is valid AND its Waves header has no 'tokens' column.
+    Legacy files (specs 001-004) skip every token/role check."""
+    try:
+        if approval_valid(text) is not True:
+            return False
+        tbl = _table(_clean(text), r'waves\b')
+        header = tbl[0] if tbl else []
+        return not any(_hdr(header, i).startswith('tokens') for i in range(len(header)))
+    except Exception:  # pragma: no cover - defensive
+        return False
+
+
+def _tokens_k(s):
+    """Thousands of tokens in '60k' / '60' / '60 k', else None."""
+    m = _TOKENS_RE.fullmatch((s or '').strip())
+    return int(m.group(1)) if m else None
+
+
+def _field_value(blk, name):
+    """Field value with a trailing '# comment' removed (template style), lower-cased."""
+    v = _field(blk, name)
+    if v is None:
+        return None
+    return v.split('#', 1)[0].strip().lower()
+
+
+def _check_tokens(blocks, waves, text=''):
+    """R1 (FR-001): `- Tokens (est): <N>k` per task; wave Tokens (k) = SUM of its tasks;
+    `Total tokens (k): N` = sum of the waves. `waves` are NEW-variant rows padded to 6 cells."""
+    out, tok = [], {}
+    ix = _WAVES_IDX['new']
+    for tid, blk in blocks.items():
+        raw = _field(blk, 'tokens (est)')
+        n = _tokens_k(raw) if raw is not None else None
+        if n is None:
+            out.append(_v('R1', f'{tid}: "Tokens (est):" missing or not a number of thousands, got "{raw or ""}".',
+                          f'In {tid} add "- Tokens (est): <N>k" (thousands of tokens, e.g. 60k).'))
+        else:
+            tok[tid] = n
+    wave_sums, all_ok = [], True
+    for r in waves:
+        wid = r[0] or '?'
+        ids = _TASK_ID_RE.findall(r[1])
+        cell = _tokens_k(r[ix['tokens']])
+        if cell is None:
+            all_ok = False
+            out.append(_v('R1', f'Wave {wid}: "Tokens (k)" must be a whole number of thousands, got "{r[ix["tokens"]]}".',
+                          f'Set wave {wid} Tokens (k) to the SUM of its tasks\' "Tokens (est)".'))
+            continue
+        wave_sums.append(cell)
+        if ids and all(i in tok for i in ids):
+            exp = sum(tok[i] for i in ids)
+            if exp != cell:
+                out.append(_v('R1', f'Wave {wid}: Tokens {cell}k != sum of its tasks ({exp}k). '
+                                    'Every task in a wave consumes its own tokens, so wave tokens = the sum.',
+                              f'Set wave {wid} Tokens (k) to {exp}.'))
+    total = _field(text, 'total tokens (k)') if text else None
+    if total is None:
+        out.append(_v('R1', 'Missing line "Total tokens (k): N".',
+                      'Add "Total tokens (k): <sum of wave Tokens>" under the Waves table.'))
+    else:
+        n = _tokens_k(total)
+        if n is None:
+            out.append(_v('R1', f'Total tokens line must read "N", got "{total.strip()}".',
+                          'Write "Total tokens (k): <N>" with N = sum of wave Tokens (k).'))
+        elif all_ok and waves and n != sum(wave_sums):
+            out.append(_v('R1', f'Total tokens {n}k != sum of waves ({sum(wave_sums)}k).',
+                          f'Set the total to "Total tokens (k): {sum(wave_sums)}".'))
+    return out
+
+
+def _check_roles(blocks):
+    """R13 (FR-004): each task needs `- Agent role:` in AGENT_ROLES and `- Model tier:` in MODEL_TIERS."""
+    out = []
+    roles_s, tiers_s = ' | '.join(AGENT_ROLES), ' | '.join(MODEL_TIERS)
+    for tid, blk in blocks.items():
+        role = _field_value(blk, 'agent role')
+        if role not in AGENT_ROLES:
+            out.append(_v('R13', f'{tid}: "Agent role:" must be one of {roles_s}, got "{role or ""}".',
+                          f'In {tid} write "- Agent role: <{roles_s}>".'))
+        tier = _field_value(blk, 'model tier')
+        if tier not in MODEL_TIERS:
+            out.append(_v('R13', f'{tid}: "Model tier:" must be one of {tiers_s} (never lower), got "{tier or ""}".',
+                          f'In {tid} write "- Model tier: <{tiers_s}>".'))
+    return out
+
+
+def _wave_expected_roles(row, blocks):
+    """Set of valid roles of the wave's tasks, or None when a task has no valid role (R13 reports it)."""
+    roles = set()
+    for i in _TASK_ID_RE.findall(row[1]):
+        r = _field_value(blocks.get(i, ''), 'agent role')
+        if r not in AGENT_ROLES:
+            return None
+        roles.add(r)
+    return roles
+
+
+def _wave_roles_ok(row, blocks):
+    """FR-005: the wave 'Roles' cell equals the set of its tasks' roles (case-insensitive, order-free)."""
+    exp = _wave_expected_roles(row, blocks)
+    if exp is None:
+        return True
+    got = {c.strip().lower() for c in _plain(row[_WAVES_IDX['new']['roles']]).split(',') if c.strip()}
+    return got == exp
+
+
+def derived_human_hours(agent_min, factor=HUMAN_FACTOR_DEFAULT):
+    """FR-003: human reference hours DERIVED from agent minutes (non-blocking in v1)."""
+    return round(agent_min * factor / 60, 2)
+
+
+def plan_totals(tasks_text):
+    """{'minutes': critical-path total, 'tokens_k': total tokens or None}, both header variants. Never raises."""
+    res = {'minutes': None, 'tokens_k': None}
+    try:
+        t = _clean(tasks_text)
+        tbl = _table(t, r'waves\b')
+        rows, ix = [], _WAVES_IDX['legacy']
+        if tbl:
+            ix = _WAVES_IDX[_waves_variant(tbl[0])]
+            rows = [r + [''] * (ix['width'] - len(r)) for r in tbl[1]]
+        total = _field(t, 'total agent time (critical path)')
+        m = re.fullmatch(r'(\d{1,9})\s*min\w*', (total or '').strip(), re.I)
+        if m:
+            res['minutes'] = int(m.group(1))
+        elif rows:
+            vals = [int(r[ix['agent']]) for r in rows if re.fullmatch(r'\d{1,9}', r[ix['agent']])]
+            res['minutes'] = sum(vals) if vals else None
+        tt = _field(t, 'total tokens (k)')
+        n = _tokens_k(tt) if tt is not None else None
+        if n is not None:
+            res['tokens_k'] = n
+        elif rows and 'tokens' in ix:
+            vals = [_tokens_k(r[ix['tokens']]) for r in rows]
+            vals = [v for v in vals if v is not None]
+            res['tokens_k'] = sum(vals) if vals else None
+    except Exception:  # pragma: no cover - defensive
+        pass
+    return res
+
+
 def _check_tasks(text):
     out = []
     t = _clean(text)
-    fix_w = ('Add a "## Waves" section with the table | Wave | Tasks | Agent time (min) | Human ref (h) | '
+    fix_w = (f'Add a "## Waves" section with the table {_NEW_WAVES_HDR} '
+             f'(legacy approved files: {_LEGACY_WAVES_HDR}) '
              'and one row per wave (waves run sequentially, tasks inside a wave in parallel).')
     tbl = _table(t, r'waves\b')
     waves = []
+    variant = 'legacy'
+    # FR-009: ONLY an approved tasks.md (approval_valid) with no tokens column is legacy and exempt
+    legacy_ok = _is_legacy_tasks(text)
     if tbl is None:
         out.append(_v('R1', 'tasks.md has no "## Waves" table.', fix_w))
     else:
         header, rows = tbl
-        ok = (_hdr(header, 0) == 'wave' and _hdr(header, 1) == 'tasks'
-              and _hdr(header, 2).startswith('agent time') and _hdr(header, 3).startswith('human ref'))
-        if not ok:
-            out.append(_v('R1', 'Waves table header must be exactly | Wave | Tasks | Agent time (min) | '
-                                'Human ref (h) | in that column order.',
-                          'Rewrite the Waves table header as | Wave | Tasks | Agent time (min) | Human ref (h) |.'))
+        variant = _waves_variant(header)
+        if variant == 'legacy' and not legacy_ok:
+            out.append(_v('R1', f'Waves table header must be the NEW one {_NEW_WAVES_HDR}; the legacy '
+                                f'{_LEGACY_WAVES_HDR} is exempt only while its recorded approval is valid '
+                                '(unapproved, or edited after approval).',
+                          f'Migrate: rewrite the Waves header as {_NEW_WAVES_HDR}, add "Tokens (est)", "Agent role" '
+                          'and "Model tier" to every task block, fill wave Roles/Tokens (k) and '
+                          '"Total tokens (k): N", then re-approve.'))
+        if not _waves_header_ok(header, variant):
+            out.append(_v('R1', f'Waves table header must be exactly {_NEW_WAVES_HDR} (or, legacy, '
+                                f'{_LEGACY_WAVES_HDR}) in that column order.',
+                          f'Rewrite the Waves table header as {_NEW_WAVES_HDR}.'))
         elif not rows:
             out.append(_v('R1', 'Waves table has no rows.', fix_w))
         else:
+            width = _WAVES_IDX[variant]['width']
             for r in rows:
-                waves.append(r + [''] * (4 - len(r)))
+                waves.append(r + [''] * (width - len(r)))
+    ix = _WAVES_IDX[variant]
+    ai, hi = ix['agent'], ix['human']
 
     out += _neutral_cell_violations(t)
     blocks = _task_blocks(t)
@@ -373,20 +558,20 @@ def _check_tasks(text):
         scheduled.update(ids)
         if not ids:
             out.append(_v('R1', f'Wave {wid} lists no task ids (T-nn).', f'List the tasks of wave {wid} in the Tasks cell.'))
-        if not re.fullmatch(r'\d{1,9}(\.\d{1,9})?', r[3]):
-            out.append(_v('R1', f'Wave {wid}: "Human ref (h)" must be a number, got "{r[3]}".',
+        if not re.fullmatch(r'\d{1,9}(\.\d{1,9})?', r[hi]):
+            out.append(_v('R1', f'Wave {wid}: "Human ref (h)" must be a number, got "{r[hi]}".',
                           f'Fill wave {wid} Human ref (h) with a number.'))
-        if not re.fullmatch(r'\d{1,9}', r[2]):
-            out.append(_v('R1', f'Wave {wid}: "Agent time (min)" must be a whole number, got "{r[2]}".',
+        if not re.fullmatch(r'\d{1,9}', r[ai]):
+            out.append(_v('R1', f'Wave {wid}: "Agent time (min)" must be a whole number, got "{r[ai]}".',
                           f'Set wave {wid} Agent time (min) to the max "Agent min" of its tasks.'))
             continue
-        wave_times.append(int(r[2]))
+        wave_times.append(int(r[ai]))
         unknown = [i for i in ids if i not in agent]
         if unknown:
             out.append(_v('R1', f'Wave {wid} cites {", ".join(unknown)} with no valid "Agent min:" block.',
                           f'Add/fix the "### {unknown[0]}" block with "Agent min:" so wave {wid} can be verified.'))
-        elif ids and max(agent[i] for i in ids) != int(r[2]):
-            out.append(_v('R1', f'Wave {wid}: Agent time {r[2]} min != max of its tasks ({max(agent[i] for i in ids)} min). '
+        elif ids and max(agent[i] for i in ids) != int(r[ai]):
+            out.append(_v('R1', f'Wave {wid}: Agent time {r[ai]} min != max of its tasks ({max(agent[i] for i in ids)} min). '
                                 'Tasks inside a wave run in parallel, so wave time = the longest task.',
                           f'Set wave {wid} Agent time (min) to {max(agent[i] for i in ids)}.'))
     if waves:
@@ -408,6 +593,19 @@ def _check_tasks(text):
             out.append(_v('R1', f'Total {mm.group(1)} min != sum of waves ({sum(wave_times)} min). '
                                 'Waves run sequentially, so the critical path is the sum of wave times.',
                           f'Set the total to "Total agent time (critical path): {sum(wave_times)} min".'))
+
+    # FR-001/004/005/009: token and role checks on every tasks.md except an approved legacy one;
+    # wave-level Tokens/Roles cells only exist (and are checked) under the NEW header
+    if not legacy_ok:
+        new_waves = waves if variant == 'new' else []
+        out += _check_tokens(blocks, new_waves, t)
+        out += _check_roles(blocks)
+        for r in new_waves:
+            if not _wave_roles_ok(r, blocks):
+                wid = r[0] or '?'
+                exp = ', '.join(sorted(_wave_expected_roles(r, blocks) or ()))
+                out.append(_v('R1', f'Wave {wid}: Roles "{r[ix["roles"]]}" != roles of its tasks ({exp}).',
+                              f'Set wave {wid} Roles to "{exp}".'))
     return out
 
 
@@ -824,6 +1022,14 @@ def check_debt(root, spec_id, extra_texts=None):
         return [_v('R4', f'check_debt failed internally ({e}).', 'Report this to the AIDD maintainers.')]
 
 
+def _strip_code_spans(text):
+    """FR-011: drop inline `code spans` so sibling-spec examples do not count as codes."""
+    try:
+        return re.sub(r'`[^`\n]*`', '', text)
+    except Exception:
+        return text
+
+
 def _check_debt_impl(root, spec_id, extra_texts):
     root = Path(root)
     specs = root / 'specs'
@@ -850,7 +1056,7 @@ def _check_debt_impl(root, spec_id, extra_texts):
         except Exception:
             files = []
         for f in files:
-            universe |= _codes(_norm_nl(_read(f)))
+            universe |= _codes(_strip_code_spans(_norm_nl(_read(f))))
     audited = _audited_codes(specs, d.name, texts.get('mockup-audit.md'))
 
     out = []
@@ -1207,13 +1413,54 @@ def required_domains(spec_dir):
     return doms
 
 
+def is_low_tier(model):
+    """True iff the model name is the lowest tier (haiku); empty/None/'inherit' -> False (R14)."""
+    try:
+        return bool(LOWEST_TIER_RE.search(str(model or '')))
+    except Exception:
+        return False
+
+
+def _subagent_counts(event):
+    """A subagent evidence event counts for gates unless its model is low tier (old events count)."""
+    try:
+        return not is_low_tier((event.get('detail') or {}).get('model'))
+    except Exception:
+        return True
+
+
+def _uncovered_reasons(ev, root, session, domains, since_ts):
+    """{domain: 'tier'|'none'} for uncovered domains: 'tier' when only low-tier subagents match it."""
+    try:
+        missing = _uncovered(ev, root, session, domains, since_ts)
+    except Exception:
+        missing = set(domains)
+    try:
+        low = [e for e in ev.events(root, session, 'subagent')
+               if e.get('ts', 0) > since_ts and not _subagent_counts(e)]
+    except Exception:
+        low = []
+    out = {}
+    for dom in missing:
+        tier = False
+        if dom in DOMAIN_RE:
+            for e in low:
+                det = e.get('detail') or {}
+                if DOMAIN_RE[dom].search(f"{det.get('head', '')} {det.get('desc', '')}"):
+                    tier = True
+                    break
+        out[dom] = 'tier' if tier else 'none'
+    return out
+
+
 def _uncovered(ev, root, session, domains, since_ts):
     """Domains (subset of `domains`) left without a DISTINCT matching subagent (M9): maximum
     bipartite matching domains -> subagent events; one subagent covers one domain only."""
     doms = sorted(d for d in domains if d in DOMAIN_RE)
     unknown = {d for d in domains if d not in DOMAIN_RE}
     try:
-        events = [e for e in ev.events(root, session, 'subagent') if e.get('ts', 0) > since_ts]
+        events = [e for e in ev.events(root, session, 'subagent')
+                  if e.get('ts', 0) > since_ts and _subagent_counts(e)]
     except Exception:
         events = []
     texts = [f"{(e.get('detail') or {}).get('head', '')} {(e.get('detail') or {}).get('desc', '')}" for e in events]
@@ -1284,7 +1531,8 @@ def is_protected_path(path):
         p = posixpath.normpath(str(path).replace('\\', '/')).lower()
     except Exception:
         return False
-    return bool(re.search(r'(^|/)\.aidd/evidence(/|$)', p) or re.search(r'(^|/)\.aidd/active_spec$', p))
+    return bool(re.search(r'(^|/)\.aidd/evidence(/|$)', p) or re.search(r'(^|/)\.aidd/active_spec$', p)
+                or re.search(r'(^|/)\.claude/projects/[^/]+/[^/]+\.jsonl$', p))
 
 
 # ------------------------------------------------------------- check_spec_dir
@@ -1496,7 +1744,7 @@ def _evidence_rules(ev, d, root, session, spec_t, has_tasks, plan_p, tasks_p, qa
             out.append(_v('R5', 'No find_spec run recorded in this session.',
                           'Run `python skill/scripts/find_spec.py` (Step -1) before planning.'))
         sm = _mtime(d / 'spec.md')
-        if sm is not None and not [e for e in ev.events(root, session, 'subagent') if e['ts'] > sm]:
+        if sm is not None and not [e for e in ev.events(root, session, 'subagent') if e['ts'] > sm and _subagent_counts(e)]:
             out.append(_v('R5', 'No independent subagent (Mapper/Alignment) ran after the last edit of spec.md.',
                           'Dispatch a Mapper/Alignment subagent (Agent tool) over spec.md before writing plan.md.'))
         if has_tasks:
@@ -1504,12 +1752,12 @@ def _evidence_rules(ev, d, root, session, spec_t, has_tasks, plan_p, tasks_p, qa
                 out.append(_v('R5', 'tasks.md exists but plan.md does not.', 'Write plan.md (Step 3) before tasks.md.'))
             else:
                 pm = _mtime(plan_p)
-                if not [e for e in ev.events(root, session, 'subagent') if e['ts'] > pm]:
+                if not [e for e in ev.events(root, session, 'subagent') if e['ts'] > pm and _subagent_counts(e)]:
                     out.append(_v('R5', 'No independent subagent ran after the last edit of plan.md.',
                                   'Dispatch an independent auditor subagent over plan.md before writing tasks.md.'))
             lf = ev.last_event(root, 'find_spec', session)
             if lf and (lf.get('detail') or {}).get('rebuilt') and not [
-                    e for e in ev.events(root, session, 'subagent') if e['ts'] > lf['ts']]:
+                    e for e in ev.events(root, session, 'subagent') if e['ts'] > lf['ts'] and _subagent_counts(e)]:
                 out.append(_v('R5', 'The graph index was rebuilt but no subagent audited it afterwards.',
                               'Dispatch a graph-coherence auditor subagent, then retry.'))
     except Exception as e:
@@ -1536,8 +1784,13 @@ def _evidence_rules(ev, d, root, session, spec_t, has_tasks, plan_p, tasks_p, qa
             missing = _uncovered(ev, root, session, required_domains(d), since)
         except Exception:
             missing = set(required_domains(d))
+        try:
+            reasons = _uncovered_reasons(ev, root, session, required_domains(d), since)
+        except Exception:
+            reasons = {}
         for dom in sorted(missing):
-            out.append(_v('R7', f'No {dom} auditor subagent ran after the last code edit.',
+            tier = ' (model tier too low, R14: a haiku auditor does not count)' if reasons.get(dom) == 'tier' else ''
+            out.append(_v('R7', f'No {dom} auditor subagent ran after the last code edit.{tier}',
                           f'Dispatch a dedicated {dom} auditor subagent (one subagent per domain) whose '
                           f'prompt/description names "{dom}", then rewrite qa-audit.md.'))
     return out

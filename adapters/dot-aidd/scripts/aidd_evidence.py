@@ -503,21 +503,222 @@ def count(root, kind, **match):
 # Typed recorders (new kinds)
 # ---------------------------------------------------------------------------
 
-def append_answer(root, session, text, pairs, options=None):
+def append_answer(root, session, text, pairs, options=None, tool_use_id=None):
     """`pairs` = [[question, answer], ...]; `options` (optional) = [[label, ...], ...] aligned with
     pairs: the option labels the question OFFERED (affirmative_answer requires the chosen answer to
-    be one of them)."""
+    be one of them). `tool_use_id` (optional) is stored in the detail when given."""
     d = {'text': str(text or '')[:2000], 'pairs': pairs}
     if options is not None:
         d['options'] = options
+    if tool_use_id:
+        d['tool_use_id'] = str(tool_use_id)
     append(root, session, 'answer', **d)
 
 
-def append_question(root, session, text, options=None):
+def append_question(root, session, text, options=None, tool_use_id=None):
     d = {'text': str(text or '')[:4000]}
     if options is not None:
         d['options'] = options
+    if tool_use_id:
+        d['tool_use_id'] = str(tool_use_id)
     append(root, session, 'question', **d)
+
+
+# ---------------------------------------------------------------------------
+# Transcript sync (AskUserQuestion pairs and queued messages, recovered from the host transcript)
+# ---------------------------------------------------------------------------
+
+def _labels_of(q):
+    out = []
+    try:
+        for o in (q.get('options') or []):
+            if isinstance(o, dict):
+                if isinstance(o.get('label'), str):
+                    out.append(o['label'])
+            elif isinstance(o, str):
+                out.append(o)
+    except Exception:
+        pass
+    return out
+
+
+def parse_transcript_pairs(path, start_offset=0, pending=None):
+    """(pairs, new_offset): AskUserQuestion question/answer pairs found in the JSONL transcript from
+    byte `start_offset`; only COMPLETE lines are consumed (new_offset = first unprocessed byte).
+    Each pair = {'tool_use_id','questions':[str],'options':[[label]],'pairs':[[q, a]]}.
+    `pending` ({tool_use_id: [question dicts]}) carries unanswered AskUserQuestion tool_use entries across
+    calls; it is updated in place (answered ids removed, capped to the 20 newest). Never raises."""
+    pairs = []
+    known = pending if isinstance(pending, dict) else {}
+    off = start_offset if isinstance(start_offset, int) and start_offset >= 0 else 0
+    try:
+        with open(path, 'rb') as fh:
+            fh.seek(off)
+            while True:
+                line = fh.readline()
+                if not line or not line.endswith(b'\n'):
+                    break
+                off += len(line)
+                try:
+                    obj = json.loads(line.decode('utf-8', 'replace'))
+                except ValueError:
+                    continue
+                try:
+                    if not isinstance(obj, dict):
+                        continue
+                    msg = obj.get('message')
+                    content = msg.get('content') if isinstance(msg, dict) else None
+                    if not isinstance(content, list):
+                        continue
+                    for blk in content:
+                        if not isinstance(blk, dict):
+                            continue
+                        if blk.get('type') == 'tool_use' and blk.get('name') == 'AskUserQuestion':
+                            qs = (blk.get('input') or {}).get('questions') if isinstance(blk.get('input'), dict) else None
+                            qs = [q for q in (qs if isinstance(qs, list) else [])
+                                  if isinstance(q, dict) and isinstance(q.get('question'), str)]
+                            if qs and isinstance(blk.get('id'), str):
+                                known.pop(blk['id'], None)
+                                known[blk['id']] = qs
+                        elif blk.get('type') == 'tool_result' and blk.get('tool_use_id') in known:
+                            tid = blk['tool_use_id']
+                            qs = known.pop(tid)
+                            qstrs = [q['question'] for q in qs]
+                            tur = obj.get('toolUseResult')
+                            ans = tur.get('answers') if isinstance(tur, dict) else None
+                            if isinstance(ans, dict):
+                                pp = []
+                                for q, a in ans.items():
+                                    if isinstance(a, (list, tuple)):
+                                        a = ', '.join(str(x) for x in a)
+                                    pp.append([str(q), str(a)])
+                            else:
+                                pp = parse_answers(blk.get('content'), qstrs)[1]
+                            pairs.append({'tool_use_id': tid, 'questions': qstrs,
+                                          'options': [_labels_of(q) for q in qs], 'pairs': pp})
+                except Exception:
+                    continue
+    except Exception:
+        pass
+    try:
+        while len(known) > 20:
+            known.pop(next(iter(known)))
+    except Exception:
+        pass
+    return pairs, off
+
+
+def _marker_path(session):
+    return HOOKS_TMP / (_safe_sid(session) + '.transcript.json')
+
+
+def _read_marker(session):
+    m = {'offset': 0, 'ids': [], 'queued': [], 'pending': {}}
+    try:
+        d = json.loads(_marker_path(session).read_text(encoding='utf-8'))
+        if isinstance(d, dict):
+            if isinstance(d.get('offset'), int) and d['offset'] >= 0:
+                m['offset'] = d['offset']
+            for k in ('ids', 'queued'):
+                if isinstance(d.get(k), list):
+                    m[k] = [x for x in d[k] if isinstance(x, str)]
+            if isinstance(d.get('pending'), dict):
+                m['pending'] = {k: v for k, v in d['pending'].items()
+                                if isinstance(k, str) and isinstance(v, list)}
+    except Exception:
+        pass
+    return m
+
+
+def _write_marker(session, m):
+    try:
+        p = _marker_path(session)
+        p.parent.mkdir(parents=True, exist_ok=True)
+        tmp = p.with_name(p.name + '.%d.tmp' % os.getpid())
+        tmp.write_text(json.dumps(m), encoding='utf-8')
+        os.replace(str(tmp), str(p))
+    except Exception:
+        pass
+
+
+def sync_ask_answers(transcript_path, session, root=None):
+    """Record AskUserQuestion question+answer events recovered from the transcript. Skips tool_use ids
+    already synced and questions already present in the session log (never duplicates the PostToolUse
+    hook). Returns the number of pairs recorded. Never raises."""
+    try:
+        if not transcript_path or not os.path.isfile(str(transcript_path)):
+            return 0
+        m = _read_marker(session)
+        before = json.dumps(m['pending'], sort_keys=True)
+        found, new_off = parse_transcript_pairs(transcript_path, m['offset'], m['pending'])
+        if not found:
+            if new_off != m['offset'] or json.dumps(m['pending'], sort_keys=True) != before:
+                m['offset'] = new_off
+                _write_marker(session, m)
+            return 0
+        qevs = events(root, session=session, kind='question')
+        # by-text dedupe only against hook-written questions (no tool_use_id), and only when no event
+        # with a tool_use_id carries that same text (a re-asked identical question is a NEW question)
+        have = ' \n'.join(str(e['detail'].get('text', '')) for e in qevs
+                          if not e['detail'].get('tool_use_id'))
+        have_ids = {str(e['detail'].get('tool_use_id')) for e in qevs if e['detail'].get('tool_use_id')}
+        tagged = ' \n'.join(str(e['detail'].get('text', '')) for e in qevs if e['detail'].get('tool_use_id'))
+        n = 0
+        for p in found:
+            if p['tool_use_id'] in m['ids'] or p['tool_use_id'] in have_ids:
+                continue
+            m['ids'].append(p['tool_use_id'])
+            if any(q and q in have and q not in tagged for q in p['questions']):
+                continue
+            parts = []
+            for q, labs in zip(p['questions'], p['options']):
+                parts.append(q)
+                parts.extend(labs)
+            qtext = redact_secrets(' | '.join(x for x in parts if x), limit=4000)[0]
+            append_question(root, session, qtext, options=p['options'], tool_use_id=p['tool_use_id'])
+            prs = [[redact_secrets(str(a[0]), limit=1000)[0], redact_secrets(str(a[1]), limit=1000)[0]]
+                   for a in p['pairs'] if isinstance(a, (list, tuple)) and len(a) == 2]
+            atext = ', '.join('"%s"="%s"' % (a, b) for a, b in prs)
+            append_answer(root, session, atext, prs, options=p['options'] if prs else None,
+                          tool_use_id=p['tool_use_id'])
+            n += 1
+        m['offset'] = new_off
+        m['ids'] = m['ids'][-200:]
+        _write_marker(session, m)
+        return n
+    except Exception:
+        return 0
+
+
+def record_queued_messages(root, session, queued):
+    """Record user messages the host queued mid-turn as 'prompt' events (source='queued'), deduped
+    through the transcript marker file. Returns the number recorded. Never raises."""
+    try:
+        if not isinstance(queued, list):
+            return 0
+        import hashlib
+        m = _read_marker(session)
+        n = 0
+        for it in queued:
+            if not isinstance(it, dict):
+                continue
+            c = it.get('content')
+            role = it.get('role')
+            if not isinstance(c, str) or not c.strip() or role not in (None, 'user'):
+                continue
+            ts = it.get('timestamp')
+            key = str(ts) if ts else hashlib.sha1(c.encode('utf-8', 'replace')).hexdigest()[:16]
+            if key in m['queued']:
+                continue
+            m['queued'].append(key)
+            append(root, session, 'prompt', text=redact_secrets(c)[0], source='queued')
+            n += 1
+        if n:
+            m['queued'] = m['queued'][-200:]
+            _write_marker(session, m)
+        return n
+    except Exception:
+        return 0
 
 
 def append_approved(root, session, spec, hash):
@@ -766,6 +967,9 @@ _AFFIRM_RE = re.compile(r'^(approve|approved|aprobar|aprobado|aprobada|si|yes|ok
 _NEG_RE = re.compile(r'\b(no|rechazar|rechazo|rechazado|reject|rejected|cancel|cancelar|not)\b')
 
 
+_TYPED_NEG_RE = re.compile(r"^(no\b|don't|dont|do not|cancel|keep|cancelar|mantener)")
+
+
 def _rx(r):
     return r if hasattr(r, 'search') else re.compile(str(r), re.I)
 
@@ -786,7 +990,11 @@ def typed_approval(root, session, since_ts, label_re, must_contain):
             text = str(e['detail'].get('text', '')).strip()
             if not text or '\n' in text or len(text) > 120 or text[0] in '<[':
                 continue
-            if lx.search(text) and need in re.sub(r'\s+', ' ', text).lower():
+            if need not in re.sub(r'\s+', ' ', text).lower():
+                continue
+            if _TYPED_NEG_RE.match(text.lower()) or (_NEG_RE.search(normalise(text)) and not lx.search(text)):
+                return None     # the newest tagged typed reply is a refusal: it cancels older approvals
+            if lx.search(text):
                 return e
     except Exception:
         pass

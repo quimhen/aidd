@@ -195,7 +195,15 @@ try:  # evidence recorder — additive, must never affect output or exit code
     sys.path.insert(0, str(Path(__file__).parent.parent / 'scripts'))
     import aidd_evidence as _ev
     _stored, _secret_labels = _ev.redact_secrets(prompt)
-    _ev.append(_ev.find_root(_cwd or Path.cwd()), _sid, 'prompt', text=_stored)
+    _root = _ev.find_root(_cwd or Path.cwd())
+    if prompt:
+        _ev.append(_root, _sid, 'prompt', text=_stored)
+    _tp = event.get('transcript_path')
+    if isinstance(_tp, str) and _tp:
+        _ev.sync_ask_answers(_tp, _sid, _root)
+    _queued = event.get('queued_messages')
+    if isinstance(_queued, list):
+        _ev.record_queued_messages(_root, _sid, _queued)
 except Exception as _e:
     try:
         _ev.record_hook_error(_cwd, _sid, 'prompt_trigger', _e)

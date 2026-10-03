@@ -83,6 +83,11 @@ def cmd_status(args):
     return _run("aidd_status.py", ["status", *args.status_args])
 
 
+def cmd_calibrate(args):
+    # Passthrough to aidd_calibrate.py (`record <spec_dir>`).
+    return _run("aidd_calibrate.py", [args.action, args.spec_dir])
+
+
 def cmd_rules(args):
     # Pure passthrough to aidd_status.py (`rules check|approve|close|abandon <spec>`).
     return _run("aidd_status.py", ["rules", *args.rules_args])
@@ -267,6 +272,12 @@ def build_parser():
         add_help=False)
     p_rules.add_argument("rules_args", nargs=argparse.REMAINDER, help="forwarded to aidd_status.py (try: aidd rules check specs/001-x)")
     p_rules.set_defaults(func=cmd_rules)
+
+    p_cal = sub.add_parser(
+        "calibrate", help="Record measured minutes/tokens of a closed spec into .aidd/calibration.toon")
+    p_cal.add_argument("action", choices=["record"], help="record")
+    p_cal.add_argument("spec_dir", help="spec folder, e.g. specs/005-x")
+    p_cal.set_defaults(func=cmd_calibrate)
 
     p_cc = sub.add_parser("check-charter", help="Run charter.md's checkable rules")
     p_cc.add_argument("root", nargs="?", default=None, help="Project root (default: cwd)")

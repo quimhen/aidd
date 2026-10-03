@@ -1,0 +1,6 @@
+human_factor: 3
+classes[3]{class,agent_min,tokens_k,source}:
+  Low,1,45,seed-004
+  Medium,2,62,seed-004
+  High,4,90,seed-004
+runs[0]{spec,class,agent_min,tokens_k}:
