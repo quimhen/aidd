@@ -1,0 +1,30 @@
+Executed 2026-10-03 from C:\Proyectos\Integraciones\Integraciones with D:\Fuentes\AIDD\skill\scripts\find_spec.py
+(real spec 001-pos-sap-sync: backend-only, no mockup-audit.md; before this change its `tree` was empty)
+
+### find_spec.py --code API-003            (AC-001; 6 lines, limit 25)
+API-003 API  DI API oInvoices.Add()  (001-pos-sap-sync/contracts.md:14)
+  <- FR-003 [cites] Crear la Factura copiando cada línea de la entrega (BaseType  spec.md:70
+  <- FR-005 [cites] Devolver a eBA DocEntry por paso y NUMERO_SRI = ESTAB-PTOEMI  spec.md:72
+  <- FR-006 [cites] Reintento idempotente cada paso guarda su DocEntry y verific  spec.md:73
+  <- FR-009 [cites] Ejecución por partes un método por documento (Pedido, Entreg  spec.md:75
+  <- T-13 [satisfies] SBO.DAL/PosFacturaSap.cs  tasks.md:29
+
+### find_spec.py --code T-16               (AC-002; 5 lines)
+T-16 T  SBO.DAL/PosVentaSync.cs  (001-pos-sap-sync/tasks.md:32)
+  -> FR-005 [satisfies] Devolver a eBA DocEntry por paso y NUMERO_SRI = ESTAB-PTOEMI  spec.md:72
+  -> FR-009 [satisfies] Ejecución por partes un método por documento (Pedido, Entreg  spec.md:75
+  -> FR-010 [satisfies] Control de puesta en marcha y concurrencia candado por venta  spec.md:76
+  -> SBO.DAL/PosVentaSync.cs [targets]
+
+### find_spec.py --tree 001-pos-sap-sync   (AC-003; 87 lines, non-empty; first lines)
+001-pos-sap-sync — Spec — Sincronización de ventas del Punto de Venta (POS) a SAP B1
+  - AC-001  BP 9999999999999C serie 11 → 001-099 ( @SECDOCELEC )
+    - T-19  specs/001-pos-sap-sync/evidence/prueba-controlada.md
+  - FR-001  Tomar ventas POS pendientes y crear el Pedido en SAP (bodega
+    - API-001  DI API oOrders.Add()
+      - T-04  SBO.DAL/Entity/PosVentaCab.cs
+      - T-05  SBO.DAL/Entity/PosVentaLinea.cs
+      - T-11  SBO.DAL/PosPedidoSap.cs
+
+Tests (D:\Fuentes\AIDD): python -m unittest tests.test_dot_aidd_mirror tests.test_find_spec tests.test_read_hint
+tests.test_install_hooks tests.test_rule_gate tests.test_stop_gate tests.test_aidd_rules tests.test_hooks -> Ran 526 tests, OK.

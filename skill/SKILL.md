@@ -263,6 +263,14 @@ Group the approved tasks into waves — same-wave tasks touch disjoint files and
 ### Take the fast lane for a small, contained change
 Fast lane conditions (all must hold): touches exactly one existing `SCREEN-XX`, no new `US-nnn`, no new `COMP-nnn`, no navigation change. When they hold: skip `visual-flow.toon` and `comprehensive-documentation.md` entirely, amend `mockup-audit.md` and `qa-audit.md` directly, and run it as a single task with the same four-part Definition of Done. The moment any condition stops holding mid-work, stop and go back to the full pipeline from Step 1.
 
+### W1 — Graph first, filter first (working rule for every agent, subagents included)
+Before reading any file, ask the graph and filter; read only what the answer points to.
+1. **Graph first:** `python <AIDD_HOME>/scripts/find_spec.py <keywords|code>` and `--tree <spec-id>` return the spec, use case, screen, component, control and API relations without opening any spec file. `python <AIDD_HOME>/scripts/find_spec.py --code <CODE>` returns one node with its neighbours (tasks, requirements, acceptance cases, API, memory) and file:line in at most 25 lines. Memory the same way: `aidd mem search`, then `aidd mem show <id>` for the one hit you need.
+2. **Filter, never dump:** `grep -n` / `rg` for a code or symbol, `sed -n 'A,Bp'` or Read with `offset`/`limit` for a range, `| head`, `| cut -c1-200`, `wc -l` before opening. Never `cat` an evidence log (`events.toon`), an index, a `*.sql` or a whole `spec.md`/`plan.md`/`contracts.md` to check one fact.
+3. **Whole-file reads are the exception:** only the file you are about to edit, or Step 1's own exhaustive pass. State why in one line.
+4. **Auditors get a scope, not the world:** hand each auditor the changed codes, the files in the diff since the last audit and the `check_spec.py` report. It reads the rest through the graph and grep.
+5. **Audit once per phase:** collect the fixes first, then run one auditor per required domain. R7 tolerates the last `AIDD_R7_FIX_EDITS` code edits (default 3; `0` = strict), so a small fix after an audit does not force a re-audit.
+
 ### Grep first — never read a whole file to check one code
 Every code (`SCREEN-XX`, `CTL-nnn`, `COMP-nnn`, `API-nnn`, `US-nnn`) is a search key by design. To check whether a code exists: `grep -n "CTL-057" specs/[###]/mockup-audit.md`, not a full read. To find where a screen is implemented: grep its `PR/Spec ref` cell or the code marker in source. To audit, use `scripts/check_spec.py`'s report as the first source of truth. The one legitimate exception is **Step 1's own audit pass** — it is exhaustive by design, once.
 
@@ -363,7 +371,7 @@ One code, one file, one PR. Each task has `Agent min:` + `Human ref hours:`, a `
 Group approved tasks into waves (same-wave tasks touch disjoint files). Dispatch every task in a wave as parallel subagent calls in one message. Thread codes into the code: `aidd:CODE` in comments. Code edits are gated while any open spec lacks a valid approval.
 
 ### Step 6 — Converge
-Run `python <AIDD_HOME>/scripts/check_spec.py specs/[###-feature]/` before the manual audit. Then dispatch one independent auditor per required domain (`performance` always; `ui`, `backend`, `database` by what the tasks touch) — fresh agents that did NOT implement the PRs. Each re-derives its own `qa-audit.md` rows from the code. The Auditor must not be the same agent that implemented.
+Run `python <AIDD_HOME>/scripts/check_spec.py specs/[###-feature]/` before the manual audit. Then dispatch one independent auditor per required domain (`performance` always; `ui`, `backend`, `database` by what the tasks touch) — fresh agents that did NOT implement the PRs. Each re-derives its own `qa-audit.md` rows from the code. The Auditor must not be the same agent that implemented. Each auditor starts from `find_spec.py --code` for every changed code plus the `check_spec.py` report and the diff since the last audit, and reads full files only for what those point to.
 
 ### Step 7 — Comprehensive Documentation (handoff)
 Copy `templates/comprehensive-documentation.md` and fill it in — mechanical assembly, no new judgment calls.

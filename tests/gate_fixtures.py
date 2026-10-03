@@ -149,6 +149,7 @@ class Base(unittest.TestCase):
         self.env = {k: v for k, v in os.environ.items() if k != "AIDD_RULES"}
         self.env["AIDD_EVIDENCE_DIR"] = str(self.evdir)
         self.env["AIDD_TESTING"] = "1"
+        self.env["AIDD_R7_FIX_EDITS"] = "0"       # strict R7 by default; tolerance tests override it
 
     def tearDown(self):
         _common.marker_path(self.session).unlink(missing_ok=True)

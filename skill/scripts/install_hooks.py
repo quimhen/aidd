@@ -6,7 +6,7 @@ Run this ONCE after copying the aidd skill into ~/.claude/skills/ on any device:
     python ~/.claude/skills/aidd/scripts/install_hooks.py
 
 What it installs (global scope, per the user's own choice — every Claude Code
-session on this machine, not just projects that already use aidd). 10 hooks:
+session on this machine, not just projects that already use aidd). 11 hooks:
   - SessionStart   -> hooks/session_start.py    resets the per-session marker
   - PostToolUse    -> hooks/mark_invoked.py      (matcher: Skill) marks aidd invoked
   - PreToolUse     -> hooks/rule_gate.py (matcher: Write|Edit|MultiEdit|NotebookEdit|Bash|PowerShell) THE single gate
@@ -28,6 +28,8 @@ session on this machine, not just projects that already use aidd). 10 hooks:
                        that the human was asked (evidence for R6 approvals)
   - Stop           -> hooks/stop_gate.py  R8: no stopping with an approved, implemented
                        spec that has no closing audit
+  - PreToolUse     -> hooks/read_hint.py (matcher: Read) W1 hint (spec 004, FR-008):
+                       non-blocking nudge toward the graph before reading raw files
 
 MIGRATION: the three old aidd PreToolUse entries (require_aidd.py,
 require_independent_audit.py, require_graph_coherence_audit.py) are REMOVED from
@@ -72,6 +74,7 @@ HOOK_DEFS = [
     ('SessionStart', 'startup|resume|clear|compact', SKILL_DIR / 'hooks' / 'memory_context.py'),
     ('PostToolUse', 'AskUserQuestion', SKILL_DIR / 'hooks' / 'mark_user_question.py'),
     ('Stop', None, SKILL_DIR / 'hooks' / 'stop_gate.py'),
+    ('PreToolUse', 'Read', SKILL_DIR / 'hooks' / 'read_hint.py'),
 ]
 
 # Seconds a hook may run before Claude Code kills it (a killed gate is a skipped gate, so every

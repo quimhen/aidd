@@ -16,6 +16,7 @@ Every regex here is linear and applied to ONE line (or one short cell); artifact
 MAX_CHARS are never scanned (a single "file too large" violation instead).
 """
 import hashlib
+import os
 import posixpath
 import re
 import sys
@@ -1235,6 +1236,22 @@ def _uncovered(ev, root, session, domains, since_ts):
     return {d for d in doms if d not in matched} | unknown
 
 
+def audit_since(edits):
+    """Timestamp an auditor subagent must postdate to cover the code edits.
+
+    The last AIDD_R7_FIX_EDITS (default 3, 0 = strict) code edits are tolerated: small fixes made
+    after an audit (typically its own findings) do not force a full re-audit. Larger changes do.
+    """
+    try:
+        tol = max(0, int(os.environ.get('AIDD_R7_FIX_EDITS', '3')))
+    except ValueError:
+        tol = 3
+    ts = sorted(e['ts'] for e in edits)
+    if not ts:
+        return 0.0
+    return ts[-1] if tol == 0 else (ts[-tol - 1] if len(ts) > tol else 0.0)
+
+
 def uncovered_domains(root, session, spec_id, since_ts, spec_dir=None):
     """M9: required domains of `spec_id` (root/specs/<id>, or `spec_dir`) that still lack a
     DISTINCT subagent event after `since_ts`. Fail-closed: no evidence module => all uncovered."""
@@ -1512,7 +1529,7 @@ def _evidence_rules(ev, d, root, session, spec_t, has_tasks, plan_p, tasks_p, qa
     if qa_p.exists():
         try:
             edits = ev.events(root, session, 'code_edit')   # D1: code_edit has no spec attribution
-            since = max([e['ts'] for e in edits], default=0.0)
+            since = audit_since(edits)
         except Exception:
             since = 0.0
         try:

@@ -770,7 +770,36 @@ def _rx(r):
     return r if hasattr(r, 'search') else re.compile(str(r), re.I)
 
 
+def typed_approval(root, session, since_ts, label_re, must_contain):
+    """Fallback when the host never records AskUserQuestion answers (no PostToolUse for it): a
+    recorded USER PROMPT that is one short line, starts with the approving label and carries the exact
+    `must_contain` tag (e.g. `Approve [tasks:37ed463c]`). Subagent hand-backs and system notices start
+    with `<` or `[` and are longer, so an agent cannot produce one. Newest match wins; else None."""
+    try:
+        if not (label_re and must_contain):
+            return None
+        lx = _rx(label_re)
+        need = re.sub(r'\s+', ' ', str(must_contain)).strip().lower()
+        evs = [e for s in {session, 'unknown-session'}
+               for e in events(root, kind='prompt', session=s, since=since_ts or 0.0)]
+        for e in sorted(evs, key=lambda x: x['ts'], reverse=True):
+            text = str(e['detail'].get('text', '')).strip()
+            if not text or '\n' in text or len(text) > 120 or text[0] in '<[':
+                continue
+            if lx.search(text) and need in re.sub(r'\s+', ' ', text).lower():
+                return e
+    except Exception:
+        pass
+    return None
+
+
 def affirmative_answer(root, session, topic_re, since_ts=0.0, label_re=None, must_contain=None):
+    """AskUserQuestion answer (see `_answer_event`), else a typed approval (see `typed_approval`)."""
+    return (_answer_event(root, session, topic_re, since_ts, label_re, must_contain)
+            or typed_approval(root, session, since_ts, label_re, must_contain))
+
+
+def _answer_event(root, session, topic_re, since_ts=0.0, label_re=None, must_contain=None):
     """The newest `answer` event (same session or 'unknown-session', ts > since_ts) that has a
     question matching `topic_re` (uses `pairs` ONLY, never raw text); returned only if the chosen
     answer matches `label_re` (default: a generic affirmative that contains no negative) AND is one of

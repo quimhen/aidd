@@ -2,6 +2,9 @@
 
 Run: python -m unittest discover -s tests -v
 """
+import contextlib
+import io
+import os
 import subprocess
 import sys
 import time
@@ -247,21 +250,28 @@ class TestIndexOptimization(unittest.TestCase):
             cwd=str(cwd), capture_output=True, text=True, timeout=15,
         )
 
-    def test_version_is_3(self):
-        self.assertEqual(find_spec.INDEX_VERSION, 3)
+    def test_version_is_4(self):
+        self.assertEqual(find_spec.INDEX_VERSION, 4)
 
     def test_old_version_index_is_rebuilt(self):
         with TemporaryDirectory() as d:
             root = Path(d)
             self._mk(root, "001-a", "# A\nfacturacion electronica\n")
+            specs = root / "specs"
             self._run(root, "--reindex")
-            idx = root / "specs" / "index.toon"
-            idx.write_text(idx.read_text(encoding="utf-8").replace("version: 3", "version: 2"), encoding="utf-8")
-            self.assertIsNone(find_spec.load_index(root / "specs"))
+            idx = specs / "index.toon"
+            lines = idx.read_text(encoding="utf-8").splitlines()
+            self.assertEqual(lines[0], f"version: {find_spec.INDEX_VERSION}")
+            lines[0] = "version: 3"
+            idx.write_text("\n".join(lines) + "\n", encoding="utf-8")
+            self.assertTrue(idx.read_text(encoding="utf-8").startswith("version: 3"))
+            self.assertIsNone(find_spec.load_index(specs))
+            index, rebuilt, _changed = find_spec.get_index(specs, [specs / "001-a"])
+            self.assertTrue(rebuilt)
+            self.assertEqual(index["version"], find_spec.INDEX_VERSION)
             result = self._run(root, "facturacion")
             self.assertEqual(result.returncode, 0)
-            self.assertIn("rebuilt", result.stdout)
-            self.assertIn("version: 3", idx.read_text(encoding="utf-8"))
+            self.assertIn("version: 4", idx.read_text(encoding="utf-8"))
 
     def test_words_capped_at_25(self):
         with TemporaryDirectory() as d:
@@ -378,6 +388,258 @@ class TestAuditRev1(unittest.TestCase):
             r = self._search(root, "pdf")
             self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
             self.assertIn("001-login", r.stdout)
+
+
+SPEC_MD = """# Spec
+
+## Acceptance cases
+
+| ID | Case |
+|---|---|
+| AC-001 | User logs in |
+| AC-002 | User logs out |
+
+## Functional requirements
+
+| ID | Requirement | Cites |
+|---|---|---|
+| FR-001 | Login works | AC-001 |
+| FR-002 | Logout works | |
+"""
+
+TASKS_MD = """# Tasks
+
+| ID | Task | Target | Codes satisfied |
+|---|---|---|---|
+| T-16 | Sync sales | SBO.DAL/PosVentaSync.cs | FR-005, FR-009, FR-010 |
+"""
+
+CONTRACTS_MD = """# Contracts
+
+## API-001 Create sale
+
+| API-002 | GET | /sales |
+"""
+
+
+class TestGraphParsers(unittest.TestCase):
+    def test_spec_nodes_and_edges(self):
+        nodes, edges = find_spec.parse_spec_nodes(SPEC_MD)
+        ids = {n["id"]: n["kind"] for n in nodes}
+        self.assertEqual(ids.get("AC-001"), "AC")
+        self.assertEqual(ids.get("AC-002"), "AC")
+        self.assertEqual(ids.get("FR-001"), "FR")
+        self.assertEqual(ids.get("FR-002"), "FR")
+        self.assertIn(("FR-001", "AC-001", "cites"), edges)
+        self.assertEqual(len([e for e in edges if e[0] == "FR-002"]), 0)
+
+    def test_task_edges(self):
+        nodes, edges = find_spec.parse_task_nodes(TASKS_MD)
+        self.assertEqual([n["id"] for n in nodes], ["T-16"])
+        self.assertEqual(nodes[0]["kind"], "T")
+        for fr in ("FR-005", "FR-009", "FR-010"):
+            self.assertIn(("T-16", fr, "satisfies"), edges)
+        self.assertIn(("T-16", "SBO.DAL/PosVentaSync.cs", "targets"), edges)
+
+    def test_contracts_only_dir(self):
+        with TemporaryDirectory() as d:
+            (Path(d) / "contracts.md").write_text(CONTRACTS_MD, encoding="utf-8")
+            g = find_spec.build_graph(Path(d))
+        self.assertIn("API-001", g["nodes"])
+        self.assertIn("API-002", g["nodes"])
+        self.assertEqual(g["nodes"]["API-001"]["kind"], "API")
+        self.assertEqual(g["edges"], [])
+
+    def test_empty_and_malformed(self):
+        for text in ("", "not a table\n|||\n## Acceptance cases\n| x"):
+            for fn in (find_spec.parse_spec_nodes, find_spec.parse_task_nodes,
+                       find_spec.parse_contract_nodes):
+                nodes, edges = fn(text)
+                self.assertEqual((nodes, edges), ([], []))
+        with TemporaryDirectory() as d:
+            g = find_spec.build_graph(Path(d))
+        self.assertEqual(g["nodes"], {})
+        self.assertEqual(g["edges"], [])
+
+    def test_duplicate_ids_keep_first(self):
+        text = SPEC_MD.replace("| AC-002 | User logs out |",
+                               "| AC-001 | Duplicate |")
+        with TemporaryDirectory() as d:
+            (Path(d) / "spec.md").write_text(text, encoding="utf-8")
+            g = find_spec.build_graph(Path(d))
+        self.assertEqual(g["nodes"]["AC-001"]["label"], "User logs in")
+
+
+GQ_SPEC = """# Demo
+
+## Acceptance cases
+
+| ID | Real data | Expected |
+|----|-----------|----------|
+| AC-001 | Sale 123 synced | ok |
+| AC-002 | Sale 456 retried | ok |
+
+## Functional requirements
+
+| ID | Requirement | Cites |
+|----|-------------|-------|
+| FR-005 | Sync sales to SAP | AC-001, API-003 |
+| FR-009 | Retry failed sync | AC-002 |
+"""
+
+GQ_TASKS = """# Tasks
+
+| ID | Title | Codes | Target |
+|----|-------|-------|--------|
+| T-16 | Implement sync | FR-005, FR-009 | SBO.DAL/PosVentaSync.cs |
+"""
+
+GQ_CONTRACTS = """# Contracts
+
+## API-003 POST /sales/sync
+
+| ID | Purpose |
+|----|---------|
+| API-003 | Sync one sale |
+"""
+
+
+class TestGraphQuery(unittest.TestCase):
+    def _spec(self, root, name="001-demo", tasks=GQ_TASKS):
+        d = root / "specs" / name
+        d.mkdir(parents=True, exist_ok=True)
+        (d / "spec.md").write_text(GQ_SPEC, encoding="utf-8")
+        (d / "tasks.md").write_text(tasks, encoding="utf-8")
+        (d / "contracts.md").write_text(GQ_CONTRACTS, encoding="utf-8")
+        return d
+
+    def _index(self, root):
+        specs = root / "specs"
+        dirs = sorted(p for p in specs.iterdir() if p.is_dir())
+        return find_spec.get_index(specs, dirs)
+
+    def _code(self, index, code, specs):
+        lines = []
+        found = find_spec.print_code(index, code, specs_root=specs, out=lines.append)
+        return found, lines
+
+    def test_graph_round_trip_with_special_chars(self):
+        g = {"nodes": {"T-1": {"kind": "T", "label": "a b", "file": "tasks.md", "line": 3},
+                       "FR-1": {"kind": "FR", "label": "x", "file": "spec.md", "line": 9}},
+             "edges": [("T-1", "C:/src/a;b:c.cs", "targets"), ("T-1", "FR-1", "satisfies")]}
+        back = find_spec.decode_graph(find_spec.encode_graph(g))
+        self.assertEqual(set(back["nodes"]), {"T-1", "FR-1"})
+        self.assertEqual(back["nodes"]["T-1"]["line"], 3)
+        self.assertEqual(sorted(back["edges"]), sorted(g["edges"]))
+
+    def test_decode_garbage_never_raises(self):
+        for cell in (None, "", "garbage", "N:a", "E:x", ";;;", "N:a:b:c:notint:d", "%%%:;:"):
+            g = find_spec.decode_graph(cell)
+            self.assertEqual(set(g), {"nodes", "edges"})
+
+    def test_index_graph_contains_codes(self):
+        with TemporaryDirectory() as d:
+            root = Path(d)
+            self._spec(root)
+            index, _r, _c = self._index(root)
+            g = find_spec.decode_graph(index["specs"]["001-demo"]["graph"])
+            for code in ("API-003", "T-16", "FR-005", "AC-001"):
+                self.assertIn(code, g["nodes"])
+
+    def test_print_code_api_and_task(self):
+        with TemporaryDirectory() as d:
+            root = Path(d)
+            self._spec(root)
+            index, _r, _c = self._index(root)
+            for code, kind in (("API-003", "API"), ("T-16", "T")):
+                found, lines = self._code(index, code, root / "specs")
+                self.assertTrue(found)
+                self.assertLessEqual(len(lines), 25)
+                self.assertIn(code, lines[0])
+                self.assertIn(kind, lines[0])
+            _f, lines = self._code(index, "t-16", root / "specs")
+            text = "\n".join(lines)
+            self.assertIn("FR-005", text)
+            self.assertIn("FR-009", text)
+            self.assertIn("SBO.DAL/PosVentaSync.cs", text)
+
+    def test_print_code_unknown(self):
+        with TemporaryDirectory() as d:
+            root = Path(d)
+            self._spec(root)
+            index, _r, _c = self._index(root)
+            found, lines = self._code(index, "API-999", root / "specs")
+            self.assertFalse(found)
+            self.assertIn("No node", lines[0])
+
+    def test_two_specs_share_budget(self):
+        with TemporaryDirectory() as d:
+            root = Path(d)
+            self._spec(root, "001-demo")
+            self._spec(root, "002-other")
+            index, _r, _c = self._index(root)
+            found, lines = self._code(index, "API-003", root / "specs")
+            self.assertTrue(found)
+            self.assertLessEqual(len(lines), 25)
+            self.assertGreaterEqual(len([ln for ln in lines if ln.startswith("API-003")]), 2)
+
+    def test_tree_backend_only_non_empty(self):
+        with TemporaryDirectory() as d:
+            root = Path(d)
+            self._spec(root)
+            index, _r, _c = self._index(root)
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                find_spec.print_tree(index["specs"]["001-demo"])
+            out = buf.getvalue()
+            self.assertNotIn("no structure captured", out)
+            self.assertIn("FR-005", out)
+            self.assertTrue("AC-001" in out or "T-16" in out)
+
+    def test_memory_neighbour_in_graph(self):
+        with TemporaryDirectory() as d:
+            root = Path(d)
+            self._spec(root)
+            try:
+                sys.path.insert(0, str(SCRIPTS_DIR))
+                import aidd_memory
+                aidd_memory.add_entry(root, type="decision", title="Sync uses API-003",
+                                      codes=["API-003"], date="2026-10-01")
+            except Exception as e:  # pragma: no cover
+                nodes, edges = find_spec.memory_nodes_for({"API-003"}, root=root)
+                self.assertEqual((nodes, edges), ([], []))
+                self.skipTest(f"memory not creatable ({e}); AC-004 needs manual check")
+            index, _r, _c = self._index(root)
+            g = find_spec.decode_graph(index["specs"]["001-demo"]["graph"])
+            mems = [k for k in g["nodes"] if k.startswith("MEM-")]
+            self.assertTrue(mems)
+            self.assertIn((mems[0], "API-003", "mentions"), g["edges"])
+            _f, lines = self._code(index, "API-003", root / "specs")
+            self.assertTrue(any("MEM-" in ln for ln in lines))
+
+    def test_incremental_only_changed_spec(self):
+        with TemporaryDirectory() as d:
+            root = Path(d)
+            self._spec(root, "001-demo")
+            d2 = self._spec(root, "002-other")
+            specs = root / "specs"
+            index, rebuilt, _c = self._index(root)
+            self.assertTrue(rebuilt)
+            before1 = dict(index["specs"]["001-demo"])
+            before2 = dict(index["specs"]["002-other"])
+            tasks = d2 / "tasks.md"
+            tasks.write_text(GQ_TASKS.replace("T-16", "T-17"), encoding="utf-8")
+            future = time.time() + 10
+            os.utime(tasks, (future, future))
+            dirs = sorted(p for p in specs.iterdir() if p.is_dir())
+            self.assertEqual(find_spec.stale_spec_names(index, dirs), {"002-other"})
+            index2, rebuilt2, changed = find_spec.get_index(specs, dirs)
+            self.assertTrue(rebuilt2)
+            self.assertEqual(changed, {"002-other"})
+            self.assertEqual(index2["specs"]["001-demo"]["graph"], before1["graph"])
+            self.assertEqual(index2["specs"]["001-demo"]["files"], before1["files"])
+            self.assertNotEqual(index2["specs"]["002-other"]["graph"], before2["graph"])
+            self.assertIn("T-17", find_spec.decode_graph(index2["specs"]["002-other"]["graph"])["nodes"])
 
 
 if __name__ == "__main__":

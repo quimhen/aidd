@@ -82,7 +82,7 @@ def _obligations(ev, rules, roots):
             edits = [e for e in ev.events(root, None, 'code_edit') if e['ts'] > at]
             if not edits:
                 continue
-            since = max(e['ts'] for e in edits)
+            since = rules.audit_since(edits)
             missing = []
             if not (d / 'qa-audit.md').exists():
                 missing.append(f'[ ] specs/{spec}/qa-audit.md does not exist - write it from the auditors\' findings.')

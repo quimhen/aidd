@@ -37,6 +37,7 @@ Usage:
     python find_spec.py <query words or codes...>
     python find_spec.py --list                  # list every existing spec, no query
     python find_spec.py --tree <spec-id>          # print that spec's use-case/screen/action tree
+    python find_spec.py --code <CODE>            # one node: kind/label/file:line + in/out neighbours (<=25 lines)
     python find_spec.py --reindex                # force a full index rebuild, no search
 
 Examples:
@@ -107,8 +108,8 @@ MAX_WORDS_PER_SPEC = 25
 MIN_WORD_LEN = 4
 
 INDEX_FILENAME = 'index.toon'
-INDEX_VERSION = 3
-TABLE_FIELDS = ['id', 'title', 'codes', 'words', 'tree', 'files']
+INDEX_VERSION = 4
+TABLE_FIELDS = ['id', 'title', 'codes', 'words', 'tree', 'graph', 'files']
 TABLE_HEADER_RE = re.compile(r'^specs\[(\d+)\]\{([^}]*)\}:\s*$')
 TABLE_ROW_RE = re.compile(r'^\|(.+)\|\s*$')
 
@@ -156,6 +157,46 @@ def _decode_tree(raw: str) -> list:
     return [p.split('>') for p in raw.split('|') if p]
 
 
+def _pct(s) -> str:
+    return str(s).replace('%', '%25').replace(':', '%3A').replace(';', '%3B')
+
+
+def _unpct(s: str) -> str:
+    return s.replace('%3A', ':').replace('%3B', ';').replace('%25', '%')
+
+
+def encode_graph(graph) -> str:
+    """Graph -> one TOON cell: ';'-joined records N:id:kind:file:line:label and
+    E:src:dst:kind. ':' ';' '%' are percent-encoded inside fields."""
+    try:
+        recs = []
+        for nid, n in sorted(graph.get('nodes', {}).items()):
+            label = re.sub(r'[|;:\s]+', ' ', str(n.get('label', ''))).strip()[:60]
+            recs.append(':'.join(['N', _pct(nid), _pct(n.get('kind', '')), _pct(n.get('file', '')),
+                                  str(int(n.get('line', 0) or 0)), _pct(label)]))
+        for src, dst, kind in graph.get('edges', []):
+            recs.append(':'.join(['E', _pct(src), _pct(dst), _pct(kind)]))
+        return ';'.join(recs)
+    except Exception:
+        return ''
+
+
+def decode_graph(cell) -> dict:
+    """Inverse of encode_graph. Never raises: a bad cell yields an empty graph."""
+    nodes, edges = {}, []
+    try:
+        for rec in (cell or '').split(';'):
+            parts = rec.split(':')
+            if parts[0] == 'N' and len(parts) == 6:
+                nodes[_unpct(parts[1])] = {'kind': _unpct(parts[2]), 'label': _unpct(parts[5]),
+                                           'file': _unpct(parts[3]), 'line': int(parts[4] or 0)}
+            elif parts[0] == 'E' and len(parts) == 4:
+                edges.append((_unpct(parts[1]), _unpct(parts[2]), _unpct(parts[3])))
+    except Exception:
+        return {'nodes': {}, 'edges': []}
+    return {'nodes': nodes, 'edges': edges}
+
+
 def dumps_index(index: dict) -> str:
     lines = [f"version: {index['version']}", f"generated: {index['generated']}"]
     specs = index['specs']
@@ -168,6 +209,7 @@ def dumps_index(index: dict) -> str:
             '|'.join(entry.get('codes', [])),
             '|'.join(entry.get('words', [])),
             _encode_tree(entry.get('tree', [])),
+            entry.get('graph', ''),
             _encode_files(entry.get('files', {})),
         ]
         lines.append('  ' + _csv_row(row))
@@ -192,13 +234,14 @@ def loads_index(text: str):
                 i += 1
                 if len(row) != len(TABLE_FIELDS):
                     continue
-                spec_id, title, codes_raw, words_raw, tree_raw, files_raw = row
+                spec_id, title, codes_raw, words_raw, tree_raw, graph_raw, files_raw = row
                 specs[spec_id] = {
                     'path': spec_id,
                     'title': title,
                     'codes': [c for c in codes_raw.split('|') if c],
                     'words': [w for w in words_raw.split('|') if w],
                     'tree': _decode_tree(tree_raw),
+                    'graph': graph_raw,
                     'files': _decode_files(files_raw),
                 }
             continue
@@ -288,6 +331,32 @@ def memory_hits_for(codes, root=None, limit=3):
         return lines[:limit]
     except Exception:
         return []
+
+
+def memory_nodes_for(codes, root=None, limit=3):
+    """Best-effort (nodes, edges) for AIDD Memory entries tied to `codes`:
+    MEM-<id> nodes plus (MEM-<id>, code, 'mentions') edges. Never raises;
+    ([], []) when root, memory dir or aidd_memory is missing."""
+    if not codes or root is None:
+        return [], []
+    try:
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        import aidd_memory
+        nodes, edges, seen = [], [], set()
+        for code in sorted(codes):
+            for e in aidd_memory.search(root, '', code=code, limit=limit):
+                mid = f"MEM-{e['id']}"
+                if mid not in seen:
+                    if len(seen) >= limit:
+                        continue
+                    seen.add(mid)
+                    nodes.append({'id': mid, 'kind': 'MEM',
+                                  'label': f"{e['type']} {e['title']}".strip()[:60],
+                                  'file': '.aidd/memory', 'line': 0})
+                edges.append((mid, code, 'mentions'))
+        return nodes, edges
+    except Exception:
+        return [], []
 
 
 def tokenize_query(query_terms):
@@ -409,6 +478,195 @@ def parse_relationship_edges(mockup_audit_text: str):
     return edges
 
 
+GRAPH_CODE_RE = re.compile(r'\b(?:AC|FR|T|API|US|SCREEN|COMP|CTL)-\d+(?:-F\d+)?', re.IGNORECASE)
+NODE_KINDS = ('US', 'SCREEN', 'COMP', 'CTL', 'AC', 'FR', 'T', 'API', 'MEM')
+EDGE_KINDS = ('contains', 'cites', 'satisfies', 'targets', 'mentions')
+_GRAPH_LABEL_MAX = 60
+
+
+def _graph_label(text, limit=_GRAPH_LABEL_MAX):
+    s = re.sub(r'[|;:`*]', ' ', text or '')
+    return re.sub(r'\s+', ' ', s).strip()[:limit].strip()
+
+
+def _graph_codes(cell):
+    seen = []
+    for c in GRAPH_CODE_RE.findall(cell or ''):
+        cu = c.upper()
+        if cu not in seen:
+            seen.append(cu)
+    return seen
+
+
+def _md_tables(text):
+    """[(section_heading_lower, header_cells, [(lineno, cells), ...]), ...] for every
+    markdown table in text. Never raises."""
+    out = []
+    heading = ''
+    cur = None
+    try:
+        for i, line in enumerate((text or '').splitlines(), 1):
+            s = line.strip()
+            m = TABLE_ROW_RE.match(s)
+            if not m:
+                cur = None
+                if s.startswith('#'):
+                    heading = s.lstrip('#').strip().lower()
+                continue
+            cells = [c.strip() for c in m.group(1).split('|')]
+            if cur is None:
+                cur = (heading, [c.lower() for c in cells], [])
+                out.append(cur)
+            elif set(''.join(cells)) <= set('-: '):
+                continue
+            else:
+                cur[2].append((i, cells))
+    except Exception:
+        return []
+    return out
+
+
+def _col(header, *needles):
+    for idx, h in enumerate(header):
+        if any(n in h for n in needles):
+            return idx
+    return None
+
+
+def _cell(cells, idx):
+    return cells[idx] if idx is not None and idx < len(cells) else ''
+
+
+def parse_spec_nodes(spec_md_text):
+    """(nodes, edges) from spec.md: AC-nnn rows of '## Acceptance cases' and FR-nnn
+    rows of '## Functional requirements'; edges FR -> cited codes ('cites')."""
+    nodes, edges = [], []
+    try:
+        for heading, header, rows in _md_tables(spec_md_text):
+            if 'acceptance cases' in heading:
+                kind, label_col = 'AC', _col(header, 'real data')
+            elif 'functional requirements' in heading:
+                kind, label_col = 'FR', _col(header, 'requirement')
+            else:
+                continue
+            cites_col = _col(header, 'cites')
+            if label_col is None:
+                label_col = 1
+            for lineno, cells in rows:
+                m = re.match(r'^[`*\s]*((?:AC|FR)-\d+)\b', cells[0] if cells else '', re.IGNORECASE)
+                if not m or m.group(1).upper()[:2] != kind:
+                    continue
+                nid = m.group(1).upper()
+                nodes.append({'id': nid, 'kind': kind,
+                              'label': _graph_label(_cell(cells, label_col)), 'line': lineno})
+                if kind == 'FR':
+                    for code in _graph_codes(_cell(cells, cites_col)):
+                        if code != nid and code.split('-')[0] in ('AC', 'API', 'SCREEN', 'COMP', 'CTL'):
+                            edges.append((nid, code, 'cites'))
+    except Exception:
+        return [], []
+    return nodes, edges
+
+
+def parse_task_nodes(tasks_md_text):
+    """(nodes, edges) from the main task table of tasks.md: T-nn nodes labelled with
+    the target file; edges T -> code ('satisfies') and T -> target file ('targets')."""
+    nodes, edges = [], []
+    try:
+        for _heading, header, rows in _md_tables(tasks_md_text):
+            codes_col = _col(header, 'codes')
+            target_col = _col(header, 'target')
+            for lineno, cells in rows:
+                m = re.match(r'^[`*\s]*(T-\d+)\s*[`*]*\s*$', cells[0] if cells else '', re.IGNORECASE)
+                if not m:
+                    continue
+                tid = m.group(1).upper()
+                target = _cell(cells, target_col).strip().strip('`').strip()
+                nodes.append({'id': tid, 'kind': 'T', 'label': _graph_label(target), 'line': lineno})
+                for code in _graph_codes(_cell(cells, codes_col)):
+                    if code.split('-')[0] in ('FR', 'AC', 'API', 'SCREEN', 'COMP', 'CTL'):
+                        edges.append((tid, code, 'satisfies'))
+                if target:
+                    edges.append((tid, target, 'targets'))
+    except Exception:
+        return [], []
+    return nodes, edges
+
+
+def parse_contract_nodes(contracts_md_text):
+    """(nodes, edges) from contracts.md: each distinct API-nnn at the start of a table
+    row's first cell or in a markdown heading. No edges."""
+    nodes, seen = [], set()
+    try:
+        for i, line in enumerate((contracts_md_text or '').splitlines(), 1):
+            s = line.strip()
+            if s.startswith('#'):
+                htext = s.lstrip('#').strip()
+                m = re.search(r'\bAPI-\d+\b', htext, re.IGNORECASE)
+                if not m:
+                    continue
+                label = htext[:m.start()] + ' ' + htext[m.end():]
+            else:
+                rm = TABLE_ROW_RE.match(s)
+                if not rm:
+                    continue
+                cells = [c.strip() for c in rm.group(1).split('|')]
+                m = re.match(r'^[`*\s]*(API-\d+)\b', cells[0], re.IGNORECASE)
+                if not m:
+                    continue
+                label = ''
+                for c in cells[1:]:
+                    if c and not re.fullmatch(r'[\s`*,]*(?:API-\d+[\s`*,]*)+', c, re.IGNORECASE):
+                        label = c
+                        break
+            nid = m.group(0).strip('`* ').upper() if not s.startswith('#') else m.group(0).upper()
+            if nid in seen:
+                continue
+            seen.add(nid)
+            nodes.append({'id': nid, 'kind': 'API',
+                          'label': _graph_label(label.strip(' -')), 'line': i})
+    except Exception:
+        return [], []
+    return nodes, []
+
+
+def _read_text(path: Path):
+    try:
+        return path.read_text(encoding='utf-8')
+    except (OSError, UnicodeDecodeError):
+        return None
+
+
+def build_graph(spec_dir):
+    """{'nodes': {id: {kind,label,file,line}}, 'edges': [(src,dst,kind)]} merging the
+    mockup chain ('contains') with spec/tasks/contracts parsers. First definition wins."""
+    graph_nodes, graph_edges = {}, []
+    try:
+        spec_dir = Path(spec_dir)
+        audit = _read_text(spec_dir / 'mockup-audit.md')
+        if audit:
+            try:
+                for e in parse_relationship_edges(audit):
+                    if len(e) == 2:
+                        graph_edges.append((e[0], e[1], 'contains'))
+            except Exception:
+                pass
+        for fname, parser in (('spec.md', parse_spec_nodes), ('tasks.md', parse_task_nodes),
+                              ('contracts.md', parse_contract_nodes)):
+            text = _read_text(spec_dir / fname)
+            if not text:
+                continue
+            nodes, edges = parser(text)
+            for n in nodes:
+                if n['id'] not in graph_nodes:
+                    graph_nodes[n['id']] = {'kind': n['kind'], 'label': n['label'],
+                                            'file': fname, 'line': n['line']}
+            graph_edges.extend(edges)
+    except Exception:
+        pass
+    return {'nodes': graph_nodes, 'edges': graph_edges}
+
+
 def build_tree_paths(edges):
     """Root-to-leaf paths (root = a code that's never a child) — the spec's
     tree: use case -> screen -> component -> control -> API, in whatever
@@ -472,6 +730,15 @@ def build_spec_entry(spec_dir: Path):
 
     tree = build_tree_paths(parse_relationship_edges(mockup_audit_text)) if mockup_audit_text else []
 
+    graph = build_graph(spec_dir)
+    try:
+        mnodes, medges = memory_nodes_for(set(graph['nodes']), root=Path(spec_dir).resolve().parent.parent)
+        for n in mnodes:
+            graph['nodes'].setdefault(n['id'], {k: n[k] for k in ('kind', 'label', 'file', 'line')})
+        graph['edges'].extend(medges)
+    except Exception:
+        pass
+
     return {
         'path': spec_dir.name,
         'title': spec_title(spec_dir),
@@ -479,6 +746,7 @@ def build_spec_entry(spec_dir: Path):
         'words': [],  # filled by build_index (TF-IDF needs all specs)
         '_tf': tf,
         'tree': tree,
+        'graph': encode_graph(graph),
         'files': files_mtime,
     }
 
@@ -670,10 +938,152 @@ def fulltext_fallback(specs_root: Path, spec_dirs, codes, words):
     return results
 
 
+def neighbours(graph, code):
+    """{'out': [(dst, kind)], 'in': [(src, kind)]} for `code` over a decoded graph."""
+    out, inn = [], []
+    for src, dst, kind in graph.get('edges', []):
+        if src == code:
+            out.append((dst, kind))
+        if dst == code:
+            inn.append((src, kind))
+    return {'out': out, 'in': inn}
+
+
+def locate_in_file(spec_dir, fname, code) -> int:
+    """1-based line of the first line of spec_dir/fname containing `code`, else 0. Never raises."""
+    try:
+        needle = code.lower()
+        with open(Path(spec_dir) / fname, encoding='utf-8') as fh:
+            for i, line in enumerate(fh, 1):
+                if needle in line.lower():
+                    return i
+    except Exception:
+        pass
+    return 0
+
+
+def _node_loc(spec_dir, node):
+    fname = node.get('file', '')
+    line = node.get('line', 0) or 0
+    if fname and not line and spec_dir is not None:
+        line = locate_in_file(spec_dir, fname, node.get('_id', ''))
+    return f"{fname}:{line}" if fname else ''
+
+
+def print_code(index, code, specs_root=None, out=print) -> bool:
+    """Print one capped block per spec whose graph holds `code`. True if found."""
+    want = code.upper()
+    hits = []
+    for sid in sorted(index.get('specs', {})):
+        entry = index['specs'][sid]
+        graph = decode_graph(entry.get('graph', ''))
+        nid = next((k for k in graph['nodes'] if k.upper() == want), None)
+        if nid is not None:
+            hits.append((sid, graph, nid))
+    if not hits:
+        out(f"No node '{code}'")
+        m = re.match(r'[A-Za-z]+', code)
+        if m:
+            pre = m.group(0).upper()
+            ids = sorted({k for e in index.get('specs', {}).values()
+                          for k in decode_graph(e.get('graph', ''))['nodes']
+                          if k.upper().startswith(pre + '-') or k.upper().startswith(pre)})
+            if ids:
+                out('  similar: ' + ', '.join(ids[:5]))
+        return False
+
+    per = 25 if len(hits) == 1 else max(6, 25 // len(hits))
+    for sid, graph, nid in hits:
+        spec_dir = Path(specs_root) / sid if specs_root is not None else None
+        nodes = graph['nodes']
+
+        def desc(i, arrow, kind):
+            n = dict(nodes.get(i, {}))
+            n['_id'] = i
+            loc = _node_loc(spec_dir, n)
+            return f"  {arrow} {i} [{kind}] {n.get('label', '')}  {loc}".rstrip()
+
+        node = dict(nodes[nid])
+        node['_id'] = nid
+        loc = _node_loc(spec_dir, node)
+        lines = [f"{nid} {node.get('kind', '')}  {node.get('label', '')}  ({sid}/{loc})"]
+        nb = neighbours(graph, nid)
+        total_extra = 0
+        body = []
+        for arrow, key in (('->', 'out'), ('<-', 'in')):
+            mem_n = 0
+            shown = 0
+            for other, kind in nb[key]:
+                is_mem = nodes.get(other, {}).get('kind') == 'MEM' or other.startswith('MEM-')
+                if is_mem:
+                    if mem_n >= 3:
+                        total_extra += 1
+                        continue
+                    mem_n += 1
+                elif shown >= 8:
+                    total_extra += 1
+                    continue
+                else:
+                    shown += 1
+                body.append(desc(other, arrow, kind))
+        room = per - 1 - (1 if total_extra else 0)
+        if len(body) > room:
+            total_extra += len(body) - (per - 2)
+            body = body[:per - 2]
+        lines.extend(body)
+        if total_extra:
+            lines.append(f"  ... +{total_extra} more (use --tree {sid})")
+        for ln in lines[:per]:
+            out(ln)
+    return True
+
+
+_TREE_KINDS = ('contains', 'cites', 'satisfies')
+
+
+def _unified_children(graph):
+    """parent -> sorted children using contains/cites and reversed satisfies."""
+    children = {}
+    for src, dst, kind in graph.get('edges', []):
+        if kind in ('contains', 'cites'):
+            p, c = src, dst
+        elif kind == 'satisfies':
+            p, c = dst, src
+        else:
+            continue
+        if p == c:
+            continue
+        children.setdefault(p, set()).add(c)
+    return children
+
+
 def print_tree(entry):
-    paths = entry.get('tree', [])
     title = entry.get('title', '')
     print(f"{entry.get('path')}" + (f" — {title}" if title else ""))
+    graph = decode_graph(entry.get('graph', ''))
+    children = _unified_children(graph)
+    paths = entry.get('tree', [])
+    if children:
+        nodes = graph['nodes']
+        all_kids = set().union(*children.values())
+        roots = sorted(children.keys() - all_kids)
+        if not roots:
+            roots = sorted(children)
+
+        def label(code):
+            lab = nodes.get(code, {}).get('label', '')
+            return code + (f"  {lab}" if lab else '')
+
+        def rec_g(code, depth, visited):
+            print('  ' * depth + '- ' + label(code))
+            for k in sorted(children.get(code, ())):
+                if k in visited:
+                    continue
+                rec_g(k, depth + 1, visited | {k})
+
+        for r in roots:
+            rec_g(r, 1, {r})
+        return
     if not paths:
         print("  (no structure captured — mockup-audit.md missing, or its Screen/Component/"
               "Control inventory tables have no rows yet)")
@@ -729,6 +1139,11 @@ def main():
             sys.exit(2)
         print_tree(entry)
         sys.exit(0)
+
+    if len(args) == 2 and args[0] == '--code':
+        index, rebuilt, changed = get_index(specs_root, spec_dirs)
+        found = print_code(index, args[1], specs_root)
+        sys.exit(0 if found else 2)
 
     if args == ['--list']:
         if not spec_dirs:

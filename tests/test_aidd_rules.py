@@ -1213,7 +1213,46 @@ class TestD10D14Tasks(unittest.TestCase):
         self.assertEqual(R._match_spec_ref('9' * 5000, ['001-x']), [])
 
 
+class TestAuditSince(unittest.TestCase):
+    """audit_since: the last N code edits (AIDD_R7_FIX_EDITS, default 3) do not invalidate an audit."""
+
+    def _since(self, tol, stamps):
+        old = os.environ.get('AIDD_R7_FIX_EDITS')
+        if tol is None:
+            os.environ.pop('AIDD_R7_FIX_EDITS', None)
+        else:
+            os.environ['AIDD_R7_FIX_EDITS'] = tol
+        try:
+            return R.audit_since([{'ts': t} for t in stamps])
+        finally:
+            if old is None:
+                os.environ.pop('AIDD_R7_FIX_EDITS', None)
+            else:
+                os.environ['AIDD_R7_FIX_EDITS'] = old
+
+    def test_strict_uses_last_edit(self):
+        self.assertEqual(self._since('0', [1, 5, 3]), 5)
+
+    def test_default_tolerates_last_three(self):
+        self.assertEqual(self._since(None, [1, 2, 3]), 0.0)
+        self.assertEqual(self._since(None, [1, 2, 3, 4, 5]), 2)
+
+    def test_no_edits_and_bad_value(self):
+        self.assertEqual(self._since('0', []), 0.0)
+        self.assertEqual(self._since('abc', [1, 2, 3, 4]), 1)
+
+
 class TestD1D2Evidence(unittest.TestCase):
+    def setUp(self):
+        self._old_tol = os.environ.get('AIDD_R7_FIX_EDITS')
+        os.environ['AIDD_R7_FIX_EDITS'] = '0'
+
+    def tearDown(self):
+        if self._old_tol is None:
+            os.environ.pop('AIDD_R7_FIX_EDITS', None)
+        else:
+            os.environ['AIDD_R7_FIX_EDITS'] = self._old_tol
+
     def test_r7_ignores_code_edit_spec_attribution(self):
         root = mkroot()
         d = root / 'specs' / '001-x'

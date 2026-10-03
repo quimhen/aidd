@@ -314,7 +314,7 @@ def _qa_gate(ev, rules, d, root, session):
     edits = ev.events(root, session, 'code_edit')   # D1: no spec attribution - any code edit counts
     if not edits:
         return []  # baseline qa-audit.md, nothing implemented yet (same as the legacy gate)
-    since = max(e['ts'] for e in edits)
+    since = rules.audit_since(edits)
     out = []
     for dom in sorted(rules.uncovered_domains(root, session, d.name, since, spec_dir=d)):
         out.append(_v('R7', f'No distinct {dom} auditor subagent ran after the last code edit of {d.name} '

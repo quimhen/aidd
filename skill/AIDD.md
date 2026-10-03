@@ -134,6 +134,14 @@ Step 4's approved task list has a dependency order (`COMP-nnn` before the `SCREE
 ### Take the fast lane for a small, contained change
 The full pipeline (mockup audit → flow diagram → plan → tasks → implement → converge → handoff doc) is overkill for a one-screen, one-control fix with no new use case and no new component — forcing the full ceremony on a trivial change is itself a time cost this skill exists to eliminate. Fast lane conditions (all must hold): touches exactly one existing `SCREEN-XX`, no new `US-nnn`, no new `COMP-nnn`, no navigation change. When they hold: skip `visual-flow.toon` and `comprehensive-documentation.md` entirely, amend `mockup-audit.md` and `qa-audit.md` directly (still under Step -1's amend-don't-duplicate rule), and run it as a single task with the same four-part Definition of Done. The moment any fast-lane condition stops holding mid-work, stop and go back to the full pipeline from Step 1 — don't keep stretching the fast lane past its conditions.
 
+### W1 — Graph first, filter first (working rule for every agent, subagents included)
+Before reading any file, ask the graph and filter; read only what the answer points to.
+1. **Graph first:** `python <AIDD_HOME>/scripts/find_spec.py <keywords|code>` and `--tree <spec-id>` return the spec, use case, screen, component, control and API relations without opening any spec file. Memory the same way: `aidd mem search`, then `aidd mem show <id>` for the one hit you need.
+2. **Filter, never dump:** `grep -n` / `rg` for a code or symbol, `sed -n 'A,Bp'` or Read with `offset`/`limit` for a range, `| head`, `| cut -c1-200`, `wc -l` before opening. Never `cat` an evidence log (`events.toon`), an index, a `*.sql` or a whole `spec.md`/`plan.md`/`contracts.md` to check one fact.
+3. **Whole-file reads are the exception:** only the file you are about to edit, or Step 1's own exhaustive pass. State why in one line.
+4. **Auditors get a scope, not the world:** hand each auditor the changed codes, the files in the diff since the last audit and the `check_spec.py` report. It reads the rest through the graph and grep.
+5. **Audit once per phase:** collect the fixes first, then run one auditor per required domain. R7 tolerates the last `AIDD_R7_FIX_EDITS` code edits (default 3; `0` = strict), so a small fix after an audit does not force a re-audit.
+
 ### Grep first — never read a whole file to check one code
 **Reading an entire spec file to confirm one fact wastes exactly the time this skill exists to save.** Every code (`SCREEN-XX`, `CTL-nnn`, `COMP-nnn`, `API-nnn`, `US-nnn`) is a search key by design — use it as one:
 - To check whether a code exists or what its status is: `grep -n "CTL-057" specs/[###]/mockup-audit.md`, not a full read of the file. Read only the matched line(s) and the row they're part of.
