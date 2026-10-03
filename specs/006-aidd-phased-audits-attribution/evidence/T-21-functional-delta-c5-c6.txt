@@ -1,0 +1,14 @@
+T-21 case 5 (performance timing). Command: python <scratchpad>\c5.py <scratchpad>   (scratch dir, TEMP/TMP redirected, lock file held fresh by a thread)
+uncontended 4 appends: 48.8 ms [True, True, True, True]
+run 1: 4 appends under held lock: 5.73 s  results=[True, True, True, True]
+run 2: 4 appends under held lock: 5.70 s  results=[True, True, True, True]
+run 3: 4 appends under held lock: 5.71 s  results=[True, True, True, True]
+post-contention (state reset) 4 appends: 33.6 ms [True, True, True, True]
+Result: PASS. 5.7 s for 4 appends (includes the hook_error rows) < 10 s hook timeout; happy path in milliseconds (~8-12 ms per append).
+Caveat: ~5.7 s leaves ~4.3 s of margin for the rest of the hook (not much if a hook does more than 4 locked appends).
+
+T-21 case 6. Command: python C:\Users\jquimis\.claude\skills\aidd\scripts\check_spec.py specs/006-aidd-phased-audits-attribution ; exit code 0
+aidd spec check — specs\006-aidd-phased-audits-attribution
+Plan: ~34 min, ~1355k tokens (derived human ref ~1.7 h)
+No mechanical gaps found. (This does not check screenshots, business logic, or anything requiring judgment — that's still the Auditor's job.)
+(G6 line: none printed; G6 not yet active in the installed script at run time.)

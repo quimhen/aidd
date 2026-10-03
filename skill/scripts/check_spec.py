@@ -297,6 +297,40 @@ def check_g5_consumers(index_text):
     return gaps
 
 
+def _norm_target(cell):
+    s = cell.strip().lower()
+    s = re.sub(r'^(tests|audit):\s*', '', s)
+    for sep in (' (', ' + ', ','):
+        s = s.split(sep, 1)[0]
+    return re.sub(r'[`\s]', '', s)
+
+
+def check_g6_single_owner(tasks_text):
+    """G6: two tasks-table rows with the same normalised Target file need one owner agent."""
+    header, rows = _find_table(
+        tasks_text, lambda c: _col(c, 'Task') == 0 and _col(c, 'Target file') > 0)
+    if header is None:
+        return []
+    itf = _col(header, 'Target file')
+    seen, gaps = {}, []
+    for r in rows:
+        tid, raw = _cell(r, 0), _cell(r, itf)
+        if not re.match(r'^T-\d+$', tid) or _blank(raw):
+            continue
+        key = _norm_target(raw)
+        if not key:
+            continue
+        if re.search(r'same owner as T-\d+', raw, re.I):
+            seen.setdefault(key, tid)
+            continue
+        if key in seen:
+            gaps.append(f"G6 {seen[key]} and {tid} both target {key}: one owner agent per file; "
+                        f"merge them or write `same owner as {seen[key]}` in the later row")
+        else:
+            seen[key] = tid
+    return gaps
+
+
 def _component_index_paths(spec_dir):
     seen, out = set(), []
     for base in (spec_dir, spec_dir / 'design-system', spec_dir.parent / 'design-system',
@@ -483,6 +517,8 @@ def main():
             gaps += check_g3_traceability(read(spec_dir / 'traceability.md'))
         if contracts:
             gaps += check_g4_contract_hash(contracts, tasks)
+        if tasks:
+            gaps += check_g6_single_owner(tasks)
         for ip in _component_index_paths(spec_dir):
             gaps += [g.replace('components-index.md', str(ip.name), 1) for g in check_g5_consumers(read(ip))]
     except Exception as e:

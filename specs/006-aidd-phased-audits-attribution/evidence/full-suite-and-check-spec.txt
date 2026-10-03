@@ -1,0 +1,11 @@
+$ python -m pytest tests -q   (TEMP/TMP redirected to a scratch dir)
+1221 passed, 14 subtests passed in 228.56s
+
+$ python C:\Users\jquimis\.claude\skills\aidd\scripts\check_spec.py specs/006-aidd-phased-audits-attribution
+aidd spec check - specs\006-aidd-phased-audits-attribution
+Plan: ~18 min, ~1095k tokens (derived human ref ~0.9 h)
+No mechanical gaps found.
+
+AC-006 note (ac-006-e2e.txt): forged pair (answer to question never asked) recorded=0; blank answer recorded=0;
+a complete harness-shaped pair whose tool_use_id NO hook saw is still RECORDED (recorded=1) - aidd_evidence.py:798-809 only shape-checks it.
+AC-004 note (ac-004-e2e.txt): session-log lock held, real pre+post hook subprocesses: 3/3 rows visible via spill, 3 hook_error rows (spilled=True), no duplicate rows, pre hook ~5.3 s (timeout 10 s), post 0.4 s; after unlock rows merged, 3 rows.

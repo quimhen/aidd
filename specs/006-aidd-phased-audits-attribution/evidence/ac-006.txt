@@ -1,0 +1,23 @@
+﻿$ python -m pytest tests/test_aidd_status.py tests/test_transcript_sync.py -k TestAbandonKeepIt or TestForgedPairs or same_tool_use_id or reasked -v
+============================= test session starts =============================
+platform win32 -- Python 3.12.10, pytest-9.1.1, pluggy-1.6.0 -- C:\Users\jquimis\AppData\Local\Programs\Python\Python312\python.exe
+rootdir: D:\Fuentes\AIDD
+configfile: pyproject.toml
+plugins: anyio-4.14.1
+collecting ... collected 107 items / 95 deselected / 12 selected
+
+tests/test_aidd_status.py::TestAbandonKeepIt::test_keep_it_before_the_answer_does_not_cancel PASSED [  8%]
+tests/test_aidd_status.py::TestAbandonKeepIt::test_keep_it_that_does_not_count PASSED [ 16%]
+tests/test_aidd_status.py::TestAbandonKeepIt::test_keep_it_variants_and_unknown_session PASSED [ 25%]
+tests/test_aidd_status.py::TestAbandonKeepIt::test_typed_keep_it_cancels_an_earlier_abandon_answer PASSED [ 33%]
+tests/test_transcript_sync.py::TestSyncAskAnswers::test_reasked_identical_question_new_tool_use_id_recorded PASSED [ 41%]
+tests/test_transcript_sync.py::TestSyncAskAnswers::test_same_tool_use_id_never_duplicated_after_marker_loss PASSED [ 50%]
+tests/test_transcript_sync.py::TestForgedPairsNotRecorded::test_a_forged_pair_never_unlocks_an_approval_but_a_genuine_one_still_does PASSED [ 58%]
+tests/test_transcript_sync.py::TestForgedPairsNotRecorded::test_answer_to_a_question_that_was_never_asked PASSED [ 66%]
+tests/test_transcript_sync.py::TestForgedPairsNotRecorded::test_empty_or_blank_answer PASSED [ 75%]
+tests/test_transcript_sync.py::TestForgedPairsNotRecorded::test_genuine_complete_pair_with_multiple_questions_is_recorded PASSED [ 83%]
+tests/test_transcript_sync.py::TestForgedPairsNotRecorded::test_one_foreign_answer_among_genuine_ones_rejects_the_pair PASSED [ 91%]
+tests/test_transcript_sync.py::TestForgedPairsNotRecorded::test_result_without_any_matching_tool_use PASSED [100%]
+
+====================== 12 passed, 95 deselected in 1.97s ======================
+

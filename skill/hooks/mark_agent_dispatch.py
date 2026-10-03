@@ -31,11 +31,6 @@ def _s(v):
     return v if isinstance(v, str) else ''
 
 
-try:
-    write_timestamp(_sid, 'last_agent_dispatch_ts')
-except Exception:
-    pass
-
 # R14: the built-in Explore agent runs on the lowest tier (haiku) even with no explicit model.
 BUILTIN_AGENT_MODELS = {'explore': 'haiku'}
 
@@ -56,7 +51,7 @@ def _agent_file_model(name, cwd):
             for ln in lines[1:60]:
                 if ln.strip() == '---':
                     break
-                m = re.match(r'\s*model\s*:\s*(.*)$', ln)
+                m = re.match(r'model\s*:\s*(.*)$', ln)     # unindented top-level key only (M1)
                 if m:
                     return m.group(1).strip().strip('\'"').strip()[:200]
     except Exception:
@@ -78,26 +73,53 @@ def _resolve_model(ti, cwd):
     return '', ''
 
 
-try:  # evidence recorder
-    sys.path.insert(0, str(Path(__file__).parent.parent / 'scripts'))
-    import aidd_evidence as _ev
-    _ti = event.get('tool_input')
-    if not isinstance(_ti, dict):
-        _ti = {}
+def _record_subagent():
+    """FR-004: append the counting `subagent` row FIRST (before any other work), with the model
+    always resolved (_resolve_model). The PreToolUse recorder's phase='pre' row is attribution only
+    and does NOT suppress this row; dedupe only skips a duplicate POST row with the same tool_use_id.
+    A failed append (False) writes a hook_error."""
     try:
-        _model, _msrc = _resolve_model(_ti, _cwd)
+        sys.path.insert(0, str(Path(__file__).parent.parent / 'scripts'))
+        import aidd_evidence as _ev
     except Exception:
-        _model, _msrc = _s(_ti.get('model'))[:200], ''
-    _ev.append(_ev.find_root(_cwd or Path.cwd()), _sid, 'subagent',
-               type=_s(_ti.get('subagent_type')),
-               model=_model,
-               model_source=_msrc,
-               desc=_s(_ti.get('description'))[:200],
-               head=_ev.redact_secrets(_s(_ti.get('prompt')), limit=400)[0])
-except Exception as _e:
+        return
     try:
-        _ev.record_hook_error(_cwd, _sid, 'mark_agent_dispatch', _e)
-    except Exception:
-        pass
+        _ti = event.get('tool_input')
+        if not isinstance(_ti, dict):
+            _ti = {}
+        _root = _ev.find_root(_cwd or Path.cwd())
+        _tid = _s(event.get('tool_use_id'))[:_ev.TOOL_USE_ID_MAX]
+        if _tid:
+            for _e in _ev.events(_root, session=_sid, kind='subagent'):
+                _d = _e.get('detail') or {}
+                if _d.get('tool_use_id') == _tid and _d.get('phase') != 'pre':
+                    return
+        try:
+            _model, _msrc = _resolve_model(_ti, _cwd)
+        except Exception:
+            _model, _msrc = _s(_ti.get('model'))[:200], ''
+        detail = dict(phase='post',
+                      type=_s(_ti.get('subagent_type')),
+                      model=_model,
+                      model_source=_msrc,
+                      desc=_s(_ti.get('description'))[:200],
+                      head=_ev.redact_secrets(_s(_ti.get('prompt')), limit=400)[0])
+        if _tid:
+            detail['tool_use_id'] = _tid
+        if not _ev.append(_root, _sid, 'subagent', **detail):
+            _ev.record_hook_error(_cwd, _sid, 'mark_agent_dispatch', 'subagent row not recorded')
+    except Exception as _e:
+        try:
+            _ev.record_hook_error(_cwd, _sid, 'mark_agent_dispatch', _e)
+        except Exception:
+            pass
+
+
+_record_subagent()
+
+try:
+    write_timestamp(_sid, 'last_agent_dispatch_ts')
+except Exception:
+    pass
 
 sys.exit(0)

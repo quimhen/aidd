@@ -1,0 +1,39 @@
+Re-run after the last code edit (fix batch F2), 2026-10-03, PowerShell, repo D:\Fuentes\AIDD.
+
+Command:
+python -m pytest tests/test_aidd_rules.py::TestPhasedAudits tests/test_r14.py tests/test_cli_rules.py::TestCloseApprovedOnlySpec tests/test_evidence.py::TestOpenSpecs tests/test_stop_gate.py -v -p no:cacheprovider
+
+Result: 90 passed in 43.75s (0 failed). Full suite earlier in the same state: 1247 passed, 21 subtests passed.
+
+FR-002 / FR-003 (audits by phases, pre-build audit, R14 floor) - all PASSED:
+  tests/test_aidd_rules.py::TestPhasedAudits::test_graph_rebuild_requires_the_audit_after_it
+  tests/test_aidd_rules.py::TestPhasedAudits::test_haiku_audit_does_not_count
+  tests/test_aidd_rules.py::TestPhasedAudits::test_mapper_required_once_after_first_draft
+  tests/test_aidd_rules.py::TestPhasedAudits::test_no_subagent_demanded_between_spec_edits
+  tests/test_aidd_rules.py::TestPhasedAudits::test_one_pre_build_audit_satisfies_tasks_approval
+  tests/test_aidd_rules.py::TestPhasedAudits::test_pre_build_audit_not_demanded_once_approved
+  tests/test_aidd_rules.py::TestPhasedAudits::test_pre_build_helpers
+  tests/test_r14.py::TestIsLowTier::test_pre_rows_never_count
+  tests/test_r14.py::TestR14R7::test_haiku_security_and_functional_do_not_count
+  tests/test_r14.py::TestR14R7::test_only_performance_and_ui_is_no_longer_enough
+  tests/test_r14.py::TestR14R7::test_pre_row_never_counts_for_r7
+  tests/test_r14.py::TestR14R7::test_post_row_with_same_id_as_pre_counts
+  tests/test_r14.py::TestR14R8::test_pre_row_only_leaves_domain_uncovered
+  tests/test_r14.py::TestR14R5::test_pre_row_does_not_satisfy_tasks_chain
+  tests/test_r14.py::TestR14R5::test_sonnet_subagent_satisfies_tasks_chain
+  tests/test_r14.py::TestDispatchModelResolution::test_custom_agent_file_haiku
+  tests/test_r14.py::TestDispatchModelResolution::test_explore_without_model_is_haiku_builtin
+  (plus the other 18 tests of tests/test_r14.py, all PASSED)
+
+FR-005 (an approved spec is open and can be closed) - all PASSED:
+  tests/test_cli_rules.py::TestCloseApprovedOnlySpec::test_approved_only_spec_is_open_and_closes_with_the_recorded_answer
+  tests/test_cli_rules.py::TestCloseApprovedOnlySpec::test_close_is_refused_without_the_answer_and_the_spec_stays_open
+  tests/test_cli_rules.py::TestCloseApprovedOnlySpec::test_closed_spec_cannot_be_closed_twice
+  tests/test_evidence.py::TestOpenSpecs::test_approved_only_spec_is_open
+  tests/test_evidence.py::TestOpenSpecs::test_approved_never_reopens_a_closed_spec
+  tests/test_evidence.py::TestOpenSpecs::test_approved_spec_closes_and_a_real_edit_reopens_it
+  (plus the other 13 tests of TestOpenSpecs, all PASSED)
+
+R8 stop gate - all 37 tests of tests/test_stop_gate.py::TestR8 PASSED, including
+  test_an_approved_spec_without_recorded_tasks_edit_is_open and
+  test_m9_one_subagent_cannot_cover_two_domains.

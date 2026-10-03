@@ -8,6 +8,7 @@ import tempfile
 import threading
 import time
 import unittest
+import unittest.mock
 from pathlib import Path
 
 SCRIPTS = Path(__file__).resolve().parent.parent / "skill" / "scripts"
@@ -463,6 +464,166 @@ class TestOpenSpecs(EvidenceCase):
         self.assertEqual(ev.open_specs(self.root), [])
 
 
+    def test_approved_only_spec_is_open(self):
+        ev.append_approved(self.root, "s", "001-a", "h1")      # its plan/tasks spec_edit was never recorded
+        self.assertEqual(ev.open_specs(self.root), ["001-a"])
+
+    def test_approved_never_reopens_a_closed_spec(self):
+        self.edit("001-a")
+        ev.append_spec_closed(self.root, "s", "001-a", hash="h1")
+        ev.append_approved(self.root, "s", "001-a", "h1")
+        self.assertEqual(ev.open_specs(self.root), [])
+        ev.append_approved(self.root, "s", "002-b", "h2")
+        ev.append_spec_closed(self.root, "s", "002-b", hash="h2")
+        ev.append_approved(self.root, "s", "002-b", "h2")      # approved after close, no edit: stays closed
+        self.assertEqual(ev.open_specs(self.root), [])
+
+    def test_approved_spec_closes_and_a_real_edit_reopens_it(self):
+        ev.append_approved(self.root, "s", "001-a", "h1")
+        ev.append_spec_closed(self.root, "s", "001-a", hash="h1")
+        self.assertEqual(ev.open_specs(self.root), [])
+        self.edit("001-a", "plan.md")
+        self.assertEqual(ev.open_specs(self.root), ["001-a"])
+
+
+class TestSpill(EvidenceCase):
+    """Spec 006 FR-004: a held lock never loses a row: it is spilled, visible to readers, merged later."""
+
+    def setUp(self):
+        super().setUp()
+        self._patches = [unittest.mock.patch.object(ev, n, v) for n, v in (
+            ("LOCK_TIMEOUT", 0.05), ("RETRY_LOCK_TIMEOUT", 0.05), ("READ_DRAIN_TIMEOUT", 0.05),
+            ("APPEND_RETRY_SLEEPS", (0.01, 0.01)))]
+        for q in self._patches:
+            q.start()
+            self.addCleanup(q.stop)
+
+    def hold_project_lock(self):
+        lock = self.evdir / ".lock"            # AIDD_EVIDENCE_DIR: the project log lives in evdir itself
+        lock.write_text("1")                   # fresh mtime: not stale
+        return lock
+
+    def spill_file(self):
+        return self.evdir / "events.toon.spill"
+
+    def test_lock_held_spills_row_returns_true_and_readers_see_it(self):
+        lock = self.hold_project_lock()
+        self.assertIs(ev.append(self.root, "s", "spec_edit", path="specs/001-a/plan.md", spec="001-a",
+                                file="plan.md"), True)
+        self.assertTrue(self.spill_file().exists())
+        self.assertFalse((self.evdir / "events.toon").exists())          # not in the log yet
+        got = ev.events(self.root, kind="spec_edit")                      # reader sees the spilled row
+        self.assertEqual([e["detail"]["spec"] for e in got], ["001-a"])
+        self.assertEqual(ev.open_specs(self.root), ["001-a"])
+        lock.unlink()
+
+    def test_lock_held_records_a_hook_error(self):
+        self.hold_project_lock()
+        ev.append(self.root, "s", "spec_edit", path="specs/001-a/plan.md", spec="001-a", file="plan.md")
+        errs = ev.events(self.root, session="s", kind="hook_error")
+        self.assertEqual(len(errs), 1)
+        self.assertEqual(errs[0]["detail"]["hook"], "aidd_evidence.append")
+        self.assertEqual(errs[0]["detail"]["kind"], "spec_edit")
+        self.assertTrue(errs[0]["detail"]["spilled"])
+
+    def test_drain_spill_merges_once_and_is_idempotent(self):
+        lock = self.hold_project_lock()
+        ev.append(self.root, "s", "spec_edit", path="specs/001-a/plan.md", spec="001-a", file="plan.md")
+        lock.unlink()
+        ev.drain_spill(self.root)
+        log = self.evdir / "events.toon"
+        self.assertTrue(log.exists())
+        self.assertFalse(self.spill_file().exists())
+        first = log.read_text(encoding="utf-8")
+        ev.drain_spill(self.root)                                         # second run: no change
+        self.assertEqual(log.read_text(encoding="utf-8"), first)
+        self.assertEqual(first.count(",spec_edit,"), 1)
+        self.assertEqual(len(ev.events(self.root, kind="spec_edit")), 1)
+
+    def test_next_locked_write_also_merges_the_spill(self):
+        lock = self.hold_project_lock()
+        ev.append(self.root, "s", "spec_edit", path="specs/001-a/plan.md", spec="001-a", file="plan.md")
+        lock.unlink()
+        self.assertIs(ev.append(self.root, "s", "code_edit", path="src/a.py"), True)
+        self.assertFalse(self.spill_file().exists())
+        self.assertEqual([e["kind"] for e in ev.events(self.root)
+                          if e["kind"] in ("spec_edit", "code_edit")], ["spec_edit", "code_edit"])
+
+    def test_free_lock_appends_normally_without_spill_or_error(self):
+        self.assertIs(ev.append(self.root, "s", "spec_edit", path="specs/001-a/plan.md", spec="001-a",
+                                file="plan.md"), True)
+        self.assertFalse(self.spill_file().exists())
+        self.assertEqual(ev.events(self.root, kind="hook_error"), [])
+
+    def test_no_known_root_returns_false_and_records_nothing(self):
+        self.unset_env()                       # real layout: root=None means no project log
+        self.assertIs(ev.append(None, "s", "spec_edit", path="specs/001-a/plan.md", spec="001-a"), False)
+        self.assertEqual(ev.events(None, kind="spec_edit"), [])
+        self.assertFalse((self.root / ".aidd").exists())
+
+
+class TestContentionBudget(EvidenceCase):
+    """F1 D5: several appends in one process under a held lock stay well under the 10 s hook timeout
+    (real timings: only the first append pays the full lock wait; later ones try once and spill)."""
+
+    def setUp(self):
+        super().setUp()
+        for n, v in (("_contended", set()), ("_lock_spent", 0.0)):
+            q = unittest.mock.patch.object(ev, n, v)
+            q.start()
+            self.addCleanup(q.stop)
+
+    def test_four_appends_under_held_lock_finish_quickly_and_all_spill(self):
+        lock = TestSpill.hold_project_lock(self)
+        t0 = time.monotonic()
+        for i in range(4):
+            self.assertIs(ev.append(self.root, "s", "code_edit", path=f"src/a{i}.py"), True)
+        took = time.monotonic() - t0
+        self.assertLess(took, 6.0, took)
+        self.assertEqual(len(ev.events(self.root, kind="code_edit")), 4)    # spilled, readers see them
+        lock.unlink()
+
+    def test_free_lock_after_contention_resets_the_budget(self):
+        lock = TestSpill.hold_project_lock(self)
+        with unittest.mock.patch.object(ev, "LOCK_TIMEOUT", 0.05), \
+                unittest.mock.patch.object(ev, "APPEND_RETRY_SLEEPS", ()):
+            ev.append(self.root, "s", "code_edit", path="src/a.py")
+        self.assertEqual(len(ev._contended), 1)
+        lock.unlink()
+        self.assertIs(ev.append(self.root, "s", "code_edit", path="src/b.py"), True)
+        self.assertEqual(ev._contended, set())
+        self.assertEqual(ev._lock_spent, 0.0)
+
+
+class TestHookErrorRedaction(EvidenceCase):
+    """F1 D4: hook_error text never stores a secret."""
+
+    def test_append_hook_error_redacts(self):
+        ev.append_hook_error(self.root, "s", "h", RuntimeError("boom password=hunter2 at x"))
+        err = ev.events(self.root, session="s", kind="hook_error")[0]["detail"]["error"]
+        self.assertNotIn("hunter2", err)
+        self.assertIn("password=[redacted]", err)
+
+    def test_record_hook_error_redacts(self):
+        ev.record_hook_error(None, "s", "h", "failed with token=abcdef123456")
+        err = ev.events(self.root, session="s", kind="hook_error")[0]["detail"]["error"]
+        self.assertNotIn("abcdef123456", err)
+
+    def test_append_failure_path_redacts(self):
+        def boom(*a, **k):
+            raise OSError("cannot write: password=hunter2")
+        with unittest.mock.patch.object(ev, "_write_row", boom), \
+                unittest.mock.patch.object(ev, "_contended", set()), \
+                unittest.mock.patch.object(ev, "_lock_spent", 0.0), \
+                unittest.mock.patch.object(ev, "APPEND_RETRY_SLEEPS", ()):
+            ev.append(self.root, "s", "code_edit", path="src/a.py")
+        errs = [e for e in ev.events(self.root, session="s", kind="hook_error")
+                if e["detail"].get("hook") == "aidd_evidence.append"]
+        self.assertEqual(len(errs), 1)
+        self.assertNotIn("hunter2", errs[0]["detail"]["error"])
+        self.assertIn("password=[redacted]", errs[0]["detail"]["error"])
+
+
 class TestAffirmativeAnswer(EvidenceCase):
     TOPIC = r"task|tarea|aprob|approve"
 
@@ -703,6 +864,27 @@ class TestFindSpecDetection(unittest.TestCase):
 
 
 class TestRedactSecrets(EvidenceCase):
+    def test_l1_json_basic_url_and_token_shapes(self):
+        cases = {
+            "json": ('{"password": "Hunter2xyz", "user": "bob"}', "password=[redacted]"),
+            "json_single": ("{'db_password': 'Hunter2xyz'}", "password=[redacted]"),
+            "basic": ("Authorization: Basic SHVudGVyMnh5ejpYWFhYWA==", "basic=[redacted]"),
+            "url": ("postgres://bob:Hunter2xyz@db.local:5432/x", "postgres://bob:[redacted]@db.local"),
+            "sk": ("key sk-ant-Hunter2xyzABCDEFGHIJ0123", "[redacted]"),
+            "ghp": ("ghp_Hunter2xyzABCDEFGHIJKLMNOP0123", "[redacted]"),
+            "akia": ("AKIAHUNTER2XYZ123456 used", "[redacted]"),
+        }
+        for name, (raw, want) in cases.items():
+            with self.subTest(name):
+                out, labels = ev.redact_secrets("x " + raw + " y")
+                self.assertNotIn("Hunter2xyz", out)
+                self.assertNotIn("SHVudGVyMnh5ej", out)
+                self.assertNotIn("HUNTER2XYZ", out)
+                self.assertIn(want, out)
+                self.assertTrue(labels)
+        for benign in ("task-runner started", "https://example.com/path@v1", "ask-me later"):
+            self.assertEqual(ev.redact_secrets(benign), (benign, []), benign)
+
     def test_each_keyword_is_redacted(self):
         cases = {
             "password": "password=Hunter2xyz", "pwd": "pwd: Hunter2xyz", "clave": "clave=Hunter2xyz",

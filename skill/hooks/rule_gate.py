@@ -226,24 +226,21 @@ def _counting_subs(ev, root, session):
 def _r5_tasks(ev, d, root, session):
     out = []
     plan = d / 'plan.md'
-    pm = _mtime(plan)
-    subs = _counting_subs(ev, root, session)
-    if pm is None:
+    if _mtime(plan) is None:
         out.append(_v('R5', 'plan.md does not exist.', f'Write specs/{d.name}/plan.md (Step 3) before tasks.md.'))
-    elif not [e for e in subs if e['ts'] > pm]:
-        out.append(_v('R5', 'No independent subagent ran after the last edit of plan.md.',
-                      'Dispatch an independent auditor/Mapper subagent (Agent tool) over plan.md, then retry.'))
-    state, oks = _find_spec_state(ev, root, session)
+    else:
+        _, rules = _libs()
+        if not rules.pre_build_audit_done(ev, root, session, d):
+            out.append(_v('R5', 'No pre-build coherence audit: no independent subagent ran after the last edit '
+                                'of spec.md/plan.md/tasks.md (or the last graph rebuild).',
+                          'Dispatch ONE pre-build coherence auditor subagent (medium or high tier, never haiku) '
+                          'over spec.md, plan.md, tasks.md, the graph and the estimates, then retry.'))
+    state, _oks = _find_spec_state(ev, root, session)
     if state == 'none':
         out.append(_v('R5', 'No find_spec run recorded in this session.', FIND_SPEC_FIX))
     elif state == 'bad':
         out.append(_v('R5', 'find_spec ran in this session but its output was not a valid find_spec result '
                             '(error / empty).', FIND_SPEC_FIX))
-    else:
-        lf = max(oks, key=lambda e: e['ts'])
-        if (lf.get('detail') or {}).get('rebuilt') and not [e for e in subs if e['ts'] > lf['ts']]:
-            out.append(_v('R5', 'The graph index was rebuilt but no subagent audited it afterwards.',
-                          'Dispatch a Graph Coherence Auditor subagent, then retry.'))
     return out
 
 
@@ -1061,6 +1058,100 @@ def _sync_transcript(event):
         _record_error(event, e)
 
 
+_INTERP_VALUE_FLAGS = {'-W', '-X'}        # interpreter flags that take a separate value (python -W ignore)
+_INVOKES_MAX_DEPTH = 2
+_INVOKES_MAX_CHARS = 2000
+_INVOKES_MAX_WORDS = 64
+
+
+def _aidd_script(w):
+    b = w.replace('\\', '/').split('/')[-1].lower()
+    return b.startswith('aidd') and b.endswith('.py')
+
+
+def _invokes_aidd(cmd, depth=0):
+    """True iff a segment of the shell command RUNS `aidd` (executable/alias) or an aidd*.py script.
+    Recurses (bounded depth) into the body of `bash -c`/`powershell -Command`/`cmd /c` and into
+    `( ... )` / `$( ... )` groups; skips interpreter flags (and their values) before the script path.
+    H1: linear and bounded (best-effort marker): the command is truncated to _INVOKES_MAX_CHARS, each
+    segment to _INVOKES_MAX_WORDS words, and only the FIRST group per segment is recursed into."""
+    if not isinstance(cmd, str) or len(cmd) > 20000:
+        return False
+    cmd = cmd[:_INVOKES_MAX_CHARS]
+    if 'aidd' not in cmd.lower():
+        return False
+    for toks in _tokenize(cmd):
+        words = [t for t in toks if not _is_redirect_out(t)][:_INVOKES_MAX_WORDS]
+        if depth < _INVOKES_MAX_DEPTH:
+            for i, w in enumerate(words):
+                if '$(' in w:
+                    inner = w.split('$(', 1)[1]
+                elif w.startswith('('):
+                    inner = w.lstrip('(')
+                else:
+                    continue
+                if _invokes_aidd(' '.join([inner] + words[i + 1:]).replace(')', ' '), depth + 1):
+                    return True
+                break                                   # only the FIRST group of the segment
+        k = 0
+        while k < len(words) and (('=' in words[k] and words[k].split('=')[0].replace('_', 'a').isalnum())
+                                  or _name(words[k]) in _WRAPPERS or (k > 0 and words[k].startswith('-'))):
+            k += 1
+        if k >= len(words):
+            continue
+        if _name(words[k]) == 'aidd':
+            return True
+        if _name(words[k]) in _SHELLS and depth < _INVOKES_MAX_DEPTH:
+            import re
+            body = list(words[k + 1:])
+            while body and (re.match(r'^[-/][a-z]{1,20}$', body[0].lower())
+                            or body[0].lower() in ('bypass', 'unrestricted', 'remotesigned')):
+                body.pop(0)
+            if body and _invokes_aidd(' '.join(body), depth + 1):
+                return True
+        if _name(words[k]) in _INTERPRETERS:
+            j = k + 1
+            while j < len(words) and words[j].startswith('-'):
+                j += 2 if words[j] in _INTERP_VALUE_FLAGS else 1
+            if j < len(words) and _aidd_script(words[j]):
+                return True
+            for w in words[k + 1:k + 4]:
+                if _aidd_script(w):
+                    return True
+        elif _name(words[k]).startswith('aidd') and words[k].lower().endswith('.py'):
+            return True
+    return False
+
+
+def _write_caller_marker(event):
+    """FR-001: before a shell command that invokes `aidd`, record {session, ts} at caller_marker_path(root)
+    so the CLI can infer its caller session. Best-effort: never blocks, never raises."""
+    try:
+        if event.get('tool_name') not in SHELL_TOOLS:
+            return
+        ti = event.get('tool_input')
+        cmd = ti.get('command') if isinstance(ti, dict) else None
+        if not isinstance(cmd, str) or not _invokes_aidd(cmd):
+            return
+        if HOOKS_DIR not in sys.path:
+            sys.path.insert(0, HOOKS_DIR)
+        import _common as C
+        ev = _ev()
+        sid = C.session_of(event)
+        if not sid:
+            return
+        cwd = event.get('cwd') if isinstance(event.get('cwd'), str) and event.get('cwd') else os.getcwd()
+        path = ev.caller_marker_path(ev.find_root(cwd))
+        os.makedirs(os.path.dirname(str(path)), exist_ok=True)
+        tmp = f'{path}.{os.getpid()}.tmp'
+        import time
+        with open(tmp, 'w', encoding='utf-8') as f:
+            json.dump({'session': sid, 'ts': time.time()}, f)
+        os.replace(tmp, str(path))
+    except Exception:
+        pass
+
+
 def main():
     mode = _mode()
     if mode == 'off':
@@ -1075,20 +1166,25 @@ def main():
         if not isinstance(event, dict):
             event = {}
         _sync_transcript(event)
+        blocked, msg = False, ''
+        skip = False
         if event.get('tool_name') in SHELL_TOOLS:   # cheap pre-check: import nothing unless it can matter
             ti = event.get('tool_input')
             cmd = ti.get('command') if isinstance(ti, dict) else None
             cwd = event.get('cwd')
             if not isinstance(cmd, str) or not _needs_check(cmd.lower(), cwd if isinstance(cwd, str) else ''):
-                sys.exit(0)
-        if HOOKS_DIR not in sys.path:
-            sys.path.insert(0, HOOKS_DIR)
-        blocked, msg = decide(event)
+                skip = True
+        if not skip:
+            if HOOKS_DIR not in sys.path:
+                sys.path.insert(0, HOOKS_DIR)
+            blocked, msg = decide(event)            # H1: the R9/shell gate decides BEFORE the marker
     except SystemExit:
         raise
     except Exception as e:  # never wedge a session over a hook bug
         _record_error(event, e)
         sys.exit(0)
+    if not blocked or mode == 'warn':
+        _write_caller_marker(event)                 # best-effort, only for a command that will run
     if blocked:
         if mode == 'warn':
             _emit('[AIDD_RULES=warn, not blocking] ' + msg)

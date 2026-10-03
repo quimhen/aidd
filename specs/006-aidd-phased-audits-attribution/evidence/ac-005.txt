@@ -1,0 +1,19 @@
+﻿$ python -m pytest tests/test_aidd_rules.py tests/test_rule_gate.py -k TestPhasedAudits or one_pre_build_audit_after_the_last_edit -v
+============================= test session starts =============================
+platform win32 -- Python 3.12.10, pytest-9.1.1, pluggy-1.6.0 -- C:\Users\jquimis\AppData\Local\Programs\Python\Python312\python.exe
+rootdir: D:\Fuentes\AIDD
+configfile: pyproject.toml
+plugins: anyio-4.14.1
+collecting ... collected 360 items / 352 deselected / 8 selected
+
+tests/test_aidd_rules.py::TestPhasedAudits::test_graph_rebuild_requires_the_audit_after_it PASSED [ 12%]
+tests/test_aidd_rules.py::TestPhasedAudits::test_haiku_audit_does_not_count PASSED [ 25%]
+tests/test_aidd_rules.py::TestPhasedAudits::test_mapper_required_once_after_first_draft PASSED [ 37%]
+tests/test_aidd_rules.py::TestPhasedAudits::test_no_subagent_demanded_between_spec_edits PASSED [ 50%]
+tests/test_aidd_rules.py::TestPhasedAudits::test_one_pre_build_audit_satisfies_tasks_approval PASSED [ 62%]
+tests/test_aidd_rules.py::TestPhasedAudits::test_pre_build_audit_not_demanded_once_approved PASSED [ 75%]
+tests/test_aidd_rules.py::TestPhasedAudits::test_pre_build_helpers PASSED [ 87%]
+tests/test_rule_gate.py::TestR5UsesPreBuildAudit::test_one_pre_build_audit_after_the_last_edit_satisfies_r5 PASSED [100%]
+
+====================== 8 passed, 352 deselected in 0.78s ======================
+

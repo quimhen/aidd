@@ -1,0 +1,15 @@
+READ-ONLY inspection of the real spec 005 (no `aidd rules close` run).
+
+$ aidd status specs/005-aidd-token-planning
+005-aidd-token-planning [OPEN]  Route: -1 run ... Mapper ok · Graph ok
+Tasks: approved (hash ok, approval recorded) · Waves: 6
+Build: 113 code edits · Auditors: functional ok performance ok security ok
+qa-audit.md: yes · evidence FAIL (R10 3, R11 1)
+  WHY blocked: R11 ... / R5 Quote not found ...        (static-rule messages still listed while OPEN: expected)
+=> AC-003 first half on real data: 005 shows OPEN although the log holds spec_edit for spec.md only (verified in .aidd/evidence/events.toon: only spec.md rows for 005) = FR-005 works.
+
+FR-007 reasoning (read-only):
+- cmd_close (skill/scripts/aidd_status.py:644-674) checks: open (ok now) -> _close_gaps (R6 approval + recorded approved event, qa-audit.md exists, auditor domains: all 3 ok per status) -> a recorded affirmative answer "Yes, close" tagged [spec:005-aidd-token-planning] asked AFTER qa-audit.md mtime (1791034586 = Oct 3 08:36).
+- The only occurrence of "Yes, close [spec:005" in the session log of 3026cc79 (<tmp>/aidd-hooks/evidence/3026cc79-...toon:46) is inside a synthetic `<agent-message ...>` prompt at ts 1791028785, i.e. synthetic (skipped) AND older than qa-audit.md. So the user's earlier typed answer was never recorded as a real prompt (FR-004 loss) and would not count anyway.
+- Conclusion: after install, 005 is closeable (open + gaps closed) but `aidd rules close` will still be refused until the user types a NEW "Yes, close [spec:005-aidd-token-planning]" after the last qa-audit.md write. Without forging the answer this is correct; FR-007 is satisfied only that way (needs the new hooks installed so the typed prompt is recorded).
+- Deployment gap: ~/.claude/skills/aidd/hooks has no record_dispatch_pre.py and its aidd_status.py has no caller marker code (live hooks still run the old copy); the repo-based `aidd` CLI already runs the new code.

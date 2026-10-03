@@ -9,6 +9,7 @@ import tempfile
 import time
 import unittest
 from pathlib import Path
+from unittest import mock
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SCRIPTS_DIR = REPO_ROOT / "skill" / "scripts"
@@ -294,7 +295,7 @@ class TestLedger(EvBase):
                 tick()
                 ev.append(root, "s1", "code_edit", path=f"src/a{i}.py", spec="001-x")
             tick()
-            ev.append(root, "s1", "subagent", type="general-purpose", desc="performance audit", head="best practice")
+            ev.append(root, "s1", "subagent", type="general-purpose", desc="security audit", head="best practice")
             tick()
             ev.append(root, "s1", "hook_error", hook="rule_gate", error="boom")
             st = aidd_status.build_status(d)
@@ -308,7 +309,7 @@ class TestLedger(EvBase):
             self.assertEqual(st["tasks"], {"approval": "pending", "waves": 2, "critical_path_min": 35,
                                          "approval_recorded": False, "tokens_k": 230})
             self.assertEqual(st["code_edits"], 3)
-            self.assertEqual(st["auditors"], {"performance": True})
+            self.assertEqual(st["auditors"], {"functional": False, "security": True})
             text = aidd_status.format_status(st) + "\n" + aidd_status.format_global(aidd_status._global(root))
             self.assertIn("0/1/1.5 WAIVED(confirmed)", text)
             self.assertIn("critical path 35 min", text)
@@ -330,7 +331,7 @@ class TestLedger(EvBase):
             self.assertFalse(st["route"]["0"]["confirmed"])
             self.assertFalse(st["mapper"])
             self.assertFalse(st["graph"])
-            self.assertEqual(st["auditors"], {"performance": False})
+            self.assertEqual(st["auditors"], {"functional": False, "security": False})
             self.assertIn("WAIVED(unconfirmed)", aidd_status.format_status(st))
 
     def test_proposed_and_unanswered_rows_counted(self):
@@ -354,7 +355,13 @@ class TestLedger(EvBase):
         tasks = TASKS + "\nUses SCREEN-01 and API-002.\n"
         tmp, root, d = make_project(tasks=tasks)
         with tmp:
-            self.assertEqual(set(aidd_status.build_status(d)["auditors"]), {"performance", "ui", "backend"})
+            # security+functional always; ui/backend by codes; performance because the UI is touched
+            self.assertEqual(set(aidd_status.build_status(d)["auditors"]),
+                             {"functional", "security", "ui", "backend", "performance"})
+            # without SCREEN/API/db/hot-path codes performance is NOT required
+            tmp2, root2, d2 = make_project()
+            with tmp2:
+                self.assertEqual(set(aidd_status.build_status(d2)["auditors"]), {"functional", "security"})
 
     def test_one_subagent_cannot_cover_two_domains(self):
         tasks = TASKS + "\nUses SCREEN-01 and API-002.\n"
@@ -769,7 +776,9 @@ class TestRulesClose(EvBase):
         tick()
         ev.append(root, "s1", "code_edit", path="src/a.py", spec="001-x")
         tick()
-        ev.append(root, "s1", "subagent", type="x", desc="performance auditor", head="best practice")
+        ev.append(root, "s1", "subagent", type="x", desc="functional auditor", head="best practice")
+        tick()
+        ev.append(root, "s1", "subagent", type="x", desc="security auditor", head="best practice")
         (d / "qa-audit.md").write_text("# qa\n", encoding="utf-8")
 
     def test_refused_when_not_open(self):
@@ -803,7 +812,8 @@ class TestRulesClose(EvBase):
             r = run_script("rules", "close", "001-x", cwd=root)
             self.assertEqual(r.returncode, 1, r.stdout)
             self.assertIn("R7", r.stdout)
-            self.assertIn("performance", r.stdout)
+            self.assertIn("functional", r.stdout)
+            self.assertIn("security", r.stdout)
             self.assertEqual(ev.open_specs(root), ["001-x"])
 
     def test_refused_without_matching_affirmative_answer(self):
@@ -1030,6 +1040,231 @@ class TestRev2Status(EvBase):
                         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
                         self.assertNotIn("internal error", r.stdout + r.stderr)
                         self.assertNotIn("Traceback", r.stderr)
+
+
+class CallerBase(EvBase):
+    """Spec 006: redirects the caller-marker directory (in-process and in subprocesses) to a scratch dir."""
+
+    def setUp(self):
+        super().setUp()
+        self._hooks_tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._hooks_tmp.cleanup)
+        base = Path(self._hooks_tmp.name)
+        patcher = mock.patch.object(ev, "HOOKS_TMP", base / "aidd-hooks")
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        for k in ("TEMP", "TMP", "TMPDIR"):
+            old = os.environ.get(k)
+            os.environ[k] = str(base)
+            self.addCleanup(lambda k=k, old=old: os.environ.pop(k, None) if old is None
+                            else os.environ.__setitem__(k, old))
+        os.environ.pop("AIDD_CALLER_TTL", None)
+
+    def write_marker(self, root, session, age=0.0, raw=None):
+        p = ev.caller_marker_path(ev.find_root(root))
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(raw if raw is not None else json.dumps({"session": session, "ts": time.time() - age}),
+                     encoding="utf-8")
+        return p
+
+    def cur(self, root):
+        return aidd_status._current_session(ev.find_root(root))
+
+
+class TestCallerSession(CallerBase):
+    """FR-001 / AC-001 / AC-002: the caller marker beats 'newest prompt'; synthetic prompts never count."""
+
+    def test_ac001_busy_window_a_marker_for_b_finds_bs_answer(self):
+        tmp, root, d = make_project()
+        with tmp:
+            self.spec_edit(root, file="tasks.md")
+            self.prompt(root, session="sB")
+            self.answer(root, self.aq(d, "Approve these tasks?"), "Approve", session="sB")
+            self.prompt(root, "keep going with the build please", session="sA")      # A is the busy window
+            self.prompt(root, "<task-notification>agent done</task-notification>", session="sA")
+            r = run_script("rules", "approve", str(d), cwd=root)       # no marker: infers A, B's answer is invisible
+            self.assertEqual(r.returncode, 1, r.stdout)
+            self.assertIn("Inferred session: sA", r.stdout)
+            self.write_marker(root, "sB")                              # rule_gate wrote B's marker before the command
+            r = run_script("rules", "approve", str(d), cwd=root)
+            self.assertEqual(r.returncode, 0, r.stdout)
+            self.assertEqual(len(ev.events(root, kind="approved")), 1)
+
+    def test_ac001_close_finds_bs_answer_through_the_marker(self):
+        tmp, root, d = make_project()
+        with tmp:
+            self.approve(root, d)
+            backdate(d / "tasks.md", 50)
+            ev.set_active_spec(root, "001-x")
+            tick()
+            ev.append(root, "sB", "code_edit", path="src/a.py", spec="001-x")
+            for desc in ("functional auditor", "security auditor"):
+                tick()
+                ev.append(root, "sB", "subagent", type="x", desc=desc, head="best practice")
+            (d / "qa-audit.md").write_text("# qa\n", encoding="utf-8")
+            self.answer(root, "Close this spec? [spec:001-x]", "Yes, close", session="sB")
+            self.prompt(root, "another window typing here", session="sA")
+            self.assertEqual(run_script("rules", "close", "001-x", cwd=root).returncode, 1)
+            self.write_marker(root, "sB")
+            r = run_script("rules", "close", "001-x", cwd=root)
+            self.assertEqual(r.returncode, 0, r.stdout)
+            self.assertEqual(ev.open_specs(root), [])
+
+    def test_ac002_stale_marker_is_ignored(self):
+        tmp, root, d = make_project()
+        with tmp:
+            self.prompt(root, "I type in window A", session="sA")
+            self.write_marker(root, "sB", age=300)
+            self.assertEqual(self.cur(root), "sA")
+            self.write_marker(root, "sB", age=30)
+            self.assertEqual(self.cur(root), "sB")
+            self.write_marker(root, "sB", age=121)
+            self.assertEqual(self.cur(root), "sA")
+            self.write_marker(root, "sB", age=-60)                     # far in the future: not trusted either
+            self.assertEqual(self.cur(root), "sA")
+
+    def test_caller_ttl_env_can_only_shorten(self):
+        tmp, root, d = make_project()
+        with tmp:
+            self.prompt(root, "I type in window A", session="sA")
+            self.write_marker(root, "sB", age=30)
+            with mock.patch.dict(os.environ, {"AIDD_CALLER_TTL": "10"}):
+                self.assertEqual(self.cur(root), "sA")
+            self.write_marker(root, "sB", age=200)
+            with mock.patch.dict(os.environ, {"AIDD_CALLER_TTL": "100000"}):
+                self.assertEqual(self.cur(root), "sA")
+
+    def test_ac002_synthetic_prompts_are_skipped(self):
+        tmp, root, d = make_project()
+        with tmp:
+            self.prompt(root, "a real message typed by the user", session="sB")
+            self.prompt(root, "<task-notification><summary>done</summary></task-notification>", session="sA")
+            self.prompt(root, "[Request interrupted by user]", session="sA")
+            self.prompt(root, "<system-reminder>x</system-reminder>", session="sA")
+            self.assertEqual(self.cur(root), "sB")
+            self.prompt(root, "typed later in A", session="sA")
+            self.assertEqual(self.cur(root), "sA")
+
+    def test_corrupt_marker_is_ignored(self):
+        tmp, root, d = make_project()
+        with tmp:
+            self.prompt(root, "I type in window A", session="sA")
+            for raw in ("{not json", "[]", '"sB"', "null", "", json.dumps({"session": "sB"}),
+                        json.dumps({"session": "sB", "ts": "now"}), json.dumps({"session": "sB", "ts": True}),
+                        json.dumps({"session": 5, "ts": time.time()}),
+                        json.dumps({"session": "unknown-session", "ts": time.time()}),
+                        json.dumps({"session": "  ", "ts": time.time()}),
+                        json.dumps({"session": "sB", "ts": time.time(), "pad": "x" * 5000})):
+                self.write_marker(root, "sB", raw=raw)
+                self.assertEqual(self.cur(root), "sA", raw[:40])
+
+    def test_refusal_names_the_inferred_session_for_approve_close_abandon(self):
+        tmp, root, d = make_project()
+        with tmp:
+            self.spec_edit(root, file="tasks.md")
+            ev.set_active_spec(root, "001-x")
+            self.prompt(root, "I am in window A today", session="sA")
+            for args in (("approve", str(d)), ("abandon", "001-x")):
+                r = run_script("rules", *args, cwd=root)
+                self.assertEqual(r.returncode, 1, (args, r.stdout))
+                self.assertIn("Inferred session: sA", r.stdout, args)
+            # close: the note rides on the missing-answer refusal (the gaps are closed first)
+            self.approve(root, d)
+            backdate(d / "tasks.md", 50)
+            tick()
+            ev.append(root, "sA", "code_edit", path="src/a.py", spec="001-x")
+            for desc in ("functional auditor", "security auditor"):
+                tick()
+                ev.append(root, "sA", "subagent", type="x", desc=desc, head="best practice")
+            (d / "qa-audit.md").write_text("# qa\n", encoding="utf-8")
+            self.prompt(root, "still window A", session="sA")
+            r = run_script("rules", "close", "001-x", cwd=root)
+            self.assertEqual(r.returncode, 1, r.stdout)
+            self.assertIn("Inferred session: sA", r.stdout)
+
+    def test_refusal_says_none_when_no_prompt_was_recorded(self):
+        tmp, root, d = make_project()
+        with tmp:
+            self.spec_edit(root, file="tasks.md")
+            r = run_script("rules", "approve", str(d), cwd=root)
+            self.assertEqual(r.returncode, 1, r.stdout)
+            self.assertIn("Inferred session: none", r.stdout)
+
+    def test_testing_override_still_wins_over_the_marker(self):
+        tmp, root, d = make_project()
+        with tmp:
+            self.write_marker(root, "sB")
+            with mock.patch.dict(os.environ, {"AIDD_SESSION_ID": "forced"}):
+                self.assertEqual(self.cur(root), "forced")
+
+
+class TestWhyAbsentWhenClosed(EvBase):
+    def test_closed_spec_has_no_why_lines_open_one_does(self):
+        tmp, root, d = make_project()
+        with tmp:
+            self.spec_edit(root, file="tasks.md")
+            self.assertTrue(aidd_status.build_status(d)["why_blocked"])
+            tick()
+            ev.append_spec_closed(root, "s1", "001-x", reason="abandoned", hash="")
+            st = aidd_status.build_status(d)
+            self.assertFalse(st["open"])
+            self.assertEqual(st["why_blocked"], [])
+
+
+class TestAbandonKeepIt(EvBase):
+    """FR-006 / AC-006: a typed "No, keep it" cancels an earlier clicked Abandon."""
+
+    def _open(self):
+        tmp, root, d = make_project()
+        self.spec_edit(root)
+        ev.set_active_spec(root, "001-x")
+        return tmp, root, d
+
+    def _abandon(self, root):
+        return run_script("rules", "abandon", "001-x", cwd=root)
+
+    def test_typed_keep_it_cancels_an_earlier_abandon_answer(self):
+        tmp, root, d = self._open()
+        with tmp:
+            self.prompt(root)
+            self.answer(root, "Abandon spec 001-x? [spec:001-x]", "Abandon")
+            self.prompt(root, "No, keep it")
+            r = self._abandon(root)
+            self.assertEqual(r.returncode, 1, r.stdout)
+            self.assertEqual(ev.open_specs(root), ["001-x"])
+            self.answer(root, "Abandon spec 001-x? [spec:001-x]", "Abandon")      # a NEW click after it counts
+            self.assertEqual(self._abandon(root).returncode, 0)
+            self.assertEqual(ev.open_specs(root), [])
+
+    def test_keep_it_variants_and_unknown_session(self):
+        for text, session in (("no keep it, thanks", "s1"), ("No, keep it [spec:001-x]", "s1"),
+                              ("No, keep it", "unknown-session")):
+            tmp, root, d = self._open()
+            with tmp:
+                self.prompt(root)
+                self.answer(root, "Abandon spec 001-x? [spec:001-x]", "Abandon")
+                self.prompt(root, text, session=session)
+                self.assertEqual(self._abandon(root).returncode, 1, (text, session))
+
+    def test_keep_it_that_does_not_count(self):
+        cases = (("No, keep it [spec:002-y]", "s1"),            # names another spec
+                 ("<task-notification>No, keep it</task-notification>", "s1"),   # synthetic
+                 ("[No, keep it]", "s1"),
+                 ("Please, no, keep it", "s1"))                  # does not START with the phrase
+        for text, session in cases:
+            tmp, root, d = self._open()
+            with tmp:
+                self.prompt(root)
+                self.answer(root, "Abandon spec 001-x? [spec:001-x]", "Abandon")
+                self.prompt(root, text, session=session)
+                self.assertEqual(self._abandon(root).returncode, 0, (text, session))
+
+    def test_keep_it_before_the_answer_does_not_cancel(self):
+        tmp, root, d = self._open()
+        with tmp:
+            self.prompt(root, "No, keep it")
+            self.answer(root, "Abandon spec 001-x? [spec:001-x]", "Abandon")
+            self.assertEqual(self._abandon(root).returncode, 0)
 
 
 class TestViaAiddCli(EvBase):

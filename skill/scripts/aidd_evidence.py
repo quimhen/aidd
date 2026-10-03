@@ -21,8 +21,10 @@ Concurrency choice: writes take an O_CREAT|O_EXCL lock file (same technique as
 aidd_memory._locked) instead of relying on a bare O_APPEND write. Reason: the file also
 needs a header on first write and a rewrite on rotation, neither of which is atomic with a
 plain append; one short lock makes header + row + rotation a single critical section and
-guarantees no lost rows. Cost is ~1 ms uncontended. append() is best-effort: on lock
-timeout or any I/O error the row is dropped silently (a hook must never break a session).
+guarantees no lost rows. Cost is ~1 ms uncontended. append() never raises: on lock timeout
+or an I/O error it retries with a short backoff, then spills the row to `<log>.spill` (one
+O_APPEND write, merged back by the next locked write, drain_spill or a reader) and records a
+`hook_error`; it returns True iff the row is in the log or the spill (spec 006 FR-004).
 
 Row integrity (B2): every row is passed through sanitize_line and readers split on '\\n' ONLY
 (never str.splitlines, which also splits on U+2028/U+0085/VT/FF/FS-RS), so no payload can
@@ -30,6 +32,7 @@ forge an extra event.
 """
 import contextlib
 import csv
+import hashlib
 import io
 import json
 import os
@@ -62,10 +65,14 @@ _SECRET_KEY = (r'password|passwd|pwd|clave|contrase[ñn]a|secret|token|api[_ -]?
 # keyword, bounded suffix (e.g. db_password, token_value), `=` or `:` (optionally `es`/`is`), then the
 # value: quoted (<=200 chars) or a bare run (<=200 chars). Bounded quantifiers only, no nesting.
 _SECRET_RE = re.compile(
-    r'(' + _SECRET_KEY + r')[\w-]{0,40}[ ]{0,3}(?:(?:es|is)[ ]{1,3})?[=:][ ]{0,3}'
+    r'(' + _SECRET_KEY + r')[\w-]{0,40}["\']?[ ]{0,3}(?:(?:es|is)[ ]{1,3})?[=:][ ]{0,3}'
     r'(?:"[^"]{1,200}"|\'[^\']{1,200}\'|[^\s"\',;]{1,200})',
-    re.I)
-_BEARER_RE = re.compile(r'(bearer)[ ]{1,3}[A-Za-z0-9._~+/=-]{8,500}', re.I)
+    re.I)                                   # ["']? : JSON keys such as "password": "x" (L1)
+_BEARER_RE = re.compile(r'(bearer|basic)[ ]{1,3}[A-Za-z0-9._~+/=-]{8,500}', re.I)
+# scheme://user:pass@host -> scheme://user:[redacted]@host (L1)
+_URL_CRED_RE = re.compile(r'([a-z][a-z0-9+.-]{0,20}://[^\s:/@]{1,100}):[^\s@/]{1,200}@', re.I)
+# well-known token shapes: OpenAI/Anthropic sk-..., GitHub ghp_/gho_/ghu_/ghs_/ghr_, AWS AKIA... (L1)
+_TOKEN_RE = re.compile(r'\b(?:sk-[A-Za-z0-9_-]{16,200}|gh[pousr]_[A-Za-z0-9]{20,100}|AKIA[0-9A-Z]{16})\b')
 
 
 def _secret_label(raw):
@@ -87,8 +94,21 @@ def redact_secrets(text, limit=None):
             if lab not in labels:
                 labels.append(lab)
             return lab + '=[redacted]'
+        def _note(lab):
+            if lab not in labels:
+                labels.append(lab)
+
+        def _url(m):
+            _note('url_password')
+            return m.group(1) + ':[redacted]@'
+
+        def _tok(m):
+            _note('token')
+            return '[redacted]'
+        s = _URL_CRED_RE.sub(_url, s)
         s = _SECRET_RE.sub(_sub, s)
         s = _BEARER_RE.sub(_sub, s)
+        s = _TOKEN_RE.sub(_tok, s)
         return s[:(limit or MAX_PROMPT_CHARS)], labels
     except Exception:
         return '', []
@@ -181,6 +201,13 @@ def _active_path(root):
     if t is not None:
         return t / 'active_spec'
     return Path(root) / ACTIVE_SPEC_REL
+
+
+def caller_marker_path(root):
+    """aidd:FR-001 `<tempdir>/aidd-hooks/caller-<sha1(str(root))>.json`: the marker rule_gate writes
+    before an `aidd` shell command and the CLI reads to infer its session. Creating the parent
+    directory is the writer's job."""
+    return HOOKS_TMP / ('caller-' + hashlib.sha1(str(root).encode('utf-8')).hexdigest() + '.json')
 
 
 def is_session_log_path(path):
@@ -324,11 +351,11 @@ def project_roots(path):
 # ---------------------------------------------------------------------------
 
 @contextlib.contextmanager
-def _locked(d):
+def _locked(d, timeout=None):
     d = Path(d)
     d.mkdir(parents=True, exist_ok=True)
     path = d / '.lock'
-    deadline = time.monotonic() + LOCK_TIMEOUT
+    deadline = time.monotonic() + (LOCK_TIMEOUT if timeout is None else timeout)
     while True:
         try:
             fd = os.open(str(path), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
@@ -385,11 +412,12 @@ def _rotate_if_needed(path):
         pass
 
 
-def _write_row(directory, path, row):
+def _write_row(directory, path, row, timeout=None):
     gi = Path(directory) / '.gitignore'
-    with _locked(directory):
+    with _locked(directory, timeout):
         if not gi.exists():
             gi.write_text('*\n', encoding='utf-8')
+        _drain_locked(path)
         _rotate_if_needed(path)
         new = not path.exists() or path.stat().st_size == 0
         with open(path, 'a', encoding='utf-8', newline='\n') as fh:
@@ -398,22 +426,192 @@ def _write_row(directory, path, row):
             fh.write(row)
 
 
-def append(root, session, kind, **detail):
-    """Best-effort append of one event, routed by kind (SESSION_KINDS -> per-session log in the temp
-    dir; everything else -> the project log, only if a project root is known). Never raises."""
+# aidd:FR-004 Spill: when the lock cannot be taken, the row goes to `<log>.spill` next to the log
+# with one O_APPEND write (no lock, one row per line, same row format). The next locked write of
+# that log (or drain_spill / a reader) merges it back. `<log>.spill.draining` is the in-flight copy.
+APPEND_RETRY_SLEEPS = (0.15, 0.4)     # backoff before each retry; retries wait RETRY_LOCK_TIMEOUT
+RETRY_LOCK_TIMEOUT = 0.5              # worst case ~3.0 + 0.15 + 0.5 + 0.4 + 0.5 s (+ jitter) < 5 s
+READ_DRAIN_TIMEOUT = 0.3
+# Per-process contention budget (hooks have a 10 s timeout and may append several rows in a row):
+# once an append in this process has spilled, or the consecutive lock waits have used up
+# PROCESS_LOCK_BUDGET, later appends try the lock ONCE for FAST_LOCK_TIMEOUT and otherwise spill
+# with no backoff. A later successful write to a directory that had spilled clears it; once no
+# directory is contended, the budget resets (as does any write that took under FAST_LOCK_TIMEOUT).
+PROCESS_LOCK_BUDGET = 4.5
+FAST_LOCK_TIMEOUT = 0.15
+_contended = set()                    # log directories (str) whose append spilled in this process
+_lock_spent = 0.0
+TOOL_USE_ID_MAX = 200                 # one length for tool_use_id in both dispatch hooks
+
+
+def _spill_paths(path):
+    p = Path(path)
+    return p.with_name(p.name + '.spill'), p.with_name(p.name + '.spill.draining')
+
+
+def _spill_row(path, row):
+    """Append `row` to the spill file of log `path` with a single O_APPEND write. True on success."""
+    try:
+        sp = _spill_paths(path)[0]
+        sp.parent.mkdir(parents=True, exist_ok=True)
+        fd = os.open(str(sp), os.O_WRONLY | os.O_CREAT | os.O_APPEND)
+        try:
+            data = row.encode('utf-8')
+            return os.write(fd, data) == len(data)
+        finally:
+            os.close(fd)
+    except Exception:
+        return False
+
+
+def _row_ts(line):
+    try:
+        return float(line[2:].split(',', 1)[0])
+    except (ValueError, IndexError):
+        return 0.0
+
+
+def _drain_locked(path):
+    """Merge `<path>.spill` (and a leftover `.draining`) into log `path`. Caller holds the lock.
+    Idempotent: rows already in the log are skipped, the merged log is sorted by ts and replaced
+    atomically, and the draining copy is removed only after the replace. Never raises."""
+    try:
+        path = Path(path)
+        sp, dr = _spill_paths(path)
+        if not dr.exists():
+            if not sp.exists():
+                return
+            os.replace(str(sp), str(dr))
+        extra = _read_rows(dr)
+        rows = _read_rows(path) if path.exists() else []
+        seen = set(rows)
+        new = [r for r in extra if r not in seen and not seen.add(r)]
+        if new:
+            merged = sorted(rows + new, key=_row_ts)
+            tmp = path.with_name(path.name + '.drain.tmp')
+            tmp.write_text(HEADER + ''.join(r + '\n' for r in merged), encoding='utf-8', newline='\n')
+            os.replace(str(tmp), str(path))
+        dr.unlink()
+    except Exception:
+        pass
+
+
+def _drain_path(path, timeout=None):
+    """Take the lock of log `path` and drain its spill, if any. Never raises."""
+    try:
+        path = Path(path)
+        sp, dr = _spill_paths(path)
+        if not (sp.exists() or dr.exists()):
+            return
+        with _locked(path.parent, timeout):
+            _drain_locked(path)
+    except Exception:
+        pass
+
+
+def drain_spill(root, timeout=None):
+    """aidd:FR-004 Move the spilled rows of the project log of `root` into that log under the lock.
+    Idempotent, never raises. Session-log spills are drained by their next write or read."""
+    try:
+        pp = _project_path(root) if root is not None else None
+        if pp is not None:
+            _drain_path(pp, timeout)
+    except Exception:
+        pass
+
+
+def _read_log(path):
+    """Row lines of log `path` plus any rows still in its spill (drained first, best-effort).
+    Spilled rows not yet merged are added (deduplicated) and the result is sorted by ts."""
+    path = Path(path)
+    sp, dr = _spill_paths(path)
+    try:
+        spilled = sp.exists() or dr.exists()
+    except OSError:
+        spilled = False
+    if not spilled:
+        return _read_rows(path)
+    _drain_path(path, READ_DRAIN_TIMEOUT)
+    try:
+        rows = _read_rows(path)
+    except OSError:
+        rows = []
+    seen = set(rows)
+    extra = []
+    for p in (dr, sp):
+        try:
+            extra += [r for r in _read_rows(p) if r not in seen and not seen.add(r)]
+        except OSError:
+            continue
+    return sorted(rows + extra, key=_row_ts) if extra else rows
+
+
+def _append(root, session, kind, detail, report):
+    """append() body. True iff the row is in the log or its spill file. `report` = retry and record a
+    `hook_error` on failure (False for that hook_error itself, so there is no recursion).
+    Under contention the per-process budget (PROCESS_LOCK_BUDGET) bounds the total lock wait."""
+    global _lock_spent
+    err, spilled = None, False
     try:
         kind = str(kind)
         row = _row(time.time(), str(session or 'unknown-session'), kind, detail)
         if kind in SESSION_KINDS:
             path = _session_path(session)
-            _write_row(path.parent, path, row)
         else:
             d = _project_dir(root)
             if d is None:
-                return
-            _write_row(d, d / 'events.toon', row)
+                return False            # no known project root: nothing is recorded, by design
+            path = d / 'events.toon'
+        if _contended or _lock_spent >= PROCESS_LOCK_BUDGET:
+            plan = [(0.0, FAST_LOCK_TIMEOUT)]           # already contended: one brief try, then spill
+        else:
+            plan = [(0.0, LOCK_TIMEOUT if report else RETRY_LOCK_TIMEOUT)]
+            plan += [(s, RETRY_LOCK_TIMEOUT) for s in (APPEND_RETRY_SLEEPS if report else ())]
+        for sleep_s, timeout in plan:
+            left = PROCESS_LOCK_BUDGET - _lock_spent
+            if sleep_s and left <= sleep_s:
+                break                                    # budget used up: no more backoff retries
+            t0 = time.monotonic()
+            if sleep_s:
+                time.sleep(sleep_s + random.random() * 0.05)
+            try:
+                _write_row(path.parent, path, row, min(timeout, max(FAST_LOCK_TIMEOUT, left)))
+                took = time.monotonic() - t0
+                if str(path.parent) in _contended:
+                    _contended.discard(str(path.parent))  # this directory's lock is free again
+                    if not _contended:
+                        _lock_spent = 0.0                  # nothing contended any more: reset the budget
+                elif not _contended and not sleep_s and took < FAST_LOCK_TIMEOUT:
+                    _lock_spent = 0.0                      # uncontended write: reset the budget
+                else:
+                    _lock_spent += took
+                return True
+            except Exception as exc:        # lock timeout or I/O error: retry, then spill
+                err = exc
+                _lock_spent += time.monotonic() - t0
+        _contended.add(str(path.parent))
+        spilled = _spill_row(path, row)
+    except Exception as exc:
+        err = exc
+    if report and kind != 'hook_error':
+        try:
+            _append(None, session, 'hook_error',
+                    {'hook': 'aidd_evidence.append', 'error': redact_secrets(err, limit=300)[0],
+                     'kind': str(kind)[:40], 'spilled': bool(spilled)}, False)
+        except Exception:
+            pass
+    return bool(spilled)
+
+
+def append(root, session, kind, **detail):
+    """aidd:FR-004 Append one event, routed by kind (SESSION_KINDS -> per-session log in the temp dir;
+    everything else -> the project log, only if a project root is known). Retries the lock with a short
+    backoff, then spills the row (_spill_row) and records a `hook_error`. Returns True when the row is
+    durably recorded (log or spill), False when it is lost or no project root is known. Never raises."""
+    try:
+        return _append(root, session, kind, detail, True)
     except Exception:
-        pass
+        return False
 
 
 def _parse_rows(rows, session, kind, since, out):
@@ -441,7 +639,10 @@ def _session_logs(session):
     if session is not None:
         return [_session_path(session)]
     try:
-        return sorted(_sessions_dir().glob('*.toon'))
+        sd = _sessions_dir()
+        logs = set(sd.glob('*.toon'))
+        logs.update(p.with_name(p.name[:-len('.spill')]) for p in sd.glob('*.toon.spill'))  # spill-only logs
+        return sorted(logs)
     except OSError:
         return []
 
@@ -459,7 +660,7 @@ def events(root, session=None, kind=None, since=0.0):
             paths.append(pp)
     for p in paths:
         try:
-            _parse_rows(_read_rows(p), session, kind, since, out)
+            _parse_rows(_read_log(p), session, kind, since, out)
         except OSError:
             continue
     if len(paths) > 1:
@@ -468,12 +669,12 @@ def events(root, session=None, kind=None, since=0.0):
 
 
 def _project_events(root):
-    """Every event of the project log only, in file order."""
+    """Every event of the project log only, in file order (spilled rows merged by ts)."""
     out = []
     try:
         pp = _project_path(root) if root is not None else None
         if pp is not None:
-            _parse_rows(_read_rows(pp), None, None, 0.0, out)
+            _parse_rows(_read_log(pp), None, None, 0.0, out)
     except OSError:
         pass
     return out
@@ -641,6 +842,20 @@ def _write_marker(session, m):
         pass
 
 
+def _ask_pair_trusted(p, hook_ids):
+    """FR-006 forgery check: a transcript answer is recorded only if a hook saw its tool_use_id, or
+    it is a complete harness-shaped pair (non-empty answers, each answering one of the questions the
+    paired assistant tool_use asked). Fail closed on any doubt."""
+    try:
+        if p['tool_use_id'] in hook_ids:
+            return True
+        qs = set(p['questions'])
+        prs = [a for a in p['pairs'] if isinstance(a, (list, tuple)) and len(a) == 2]
+        return bool(qs) and bool(prs) and len(prs) == len(p['pairs']) and all(str(a[0]) in qs and str(a[1]).strip() for a in prs)
+    except Exception:
+        return False
+
+
 def sync_ask_answers(transcript_path, session, root=None):
     """Record AskUserQuestion question+answer events recovered from the transcript. Skips tool_use ids
     already synced and questions already present in the session log (never duplicates the PostToolUse
@@ -663,11 +878,16 @@ def sync_ask_answers(transcript_path, session, root=None):
                           if not e['detail'].get('tool_use_id'))
         have_ids = {str(e['detail'].get('tool_use_id')) for e in qevs if e['detail'].get('tool_use_id')}
         tagged = ' \n'.join(str(e['detail'].get('text', '')) for e in qevs if e['detail'].get('tool_use_id'))
+        hook_ids = {str(e['detail'].get('tool_use_id'))
+                    for e in events(root, session=session) if e['kind'] in ('question', 'answer', 'tool_use')
+                    and e['detail'].get('tool_use_id')}
         n = 0
         for p in found:
             if p['tool_use_id'] in m['ids'] or p['tool_use_id'] in have_ids:
                 continue
             m['ids'].append(p['tool_use_id'])
+            if not _ask_pair_trusted(p, hook_ids):
+                continue
             if any(q and q in have and q not in tagged for q in p['questions']):
                 continue
             parts = []
@@ -743,7 +963,7 @@ def append_stop_block_exhausted(root, session, spec, key=''):
 
 
 def append_hook_error(root, session, hook, error):
-    append(root, session, 'hook_error', hook=str(hook), error=str(error)[:300])
+    append(root, session, 'hook_error', hook=str(hook), error=redact_secrets(error, limit=300)[0])
 
 
 def append_find_spec(root, session, rebuilt, ok, source):
@@ -1057,12 +1277,16 @@ def _answer_event(root, session, topic_re, since_ts=0.0, label_re=None, must_con
 def open_specs(root):
     """Spec ids with a `spec_edit` of plan.md OR tasks.md (spec.md alone does not open a spec) and no
     LATER `spec_closed` event (any session). A closed spec re-opens on a later plan/tasks edit, except a
-    tasks.md edit whose `hash` equals the closing event's `hash` (status-only edit)."""
+    tasks.md edit whose `hash` equals the closing event's `hash` (status-only edit).
+    aidd:FR-005 An `approved` event also opens a spec never seen before (its plan/tasks `spec_edit`
+    may have been lost), so it can be closed or abandoned; it never re-opens a closed spec."""
     state = {}      # spec -> open?
     closed_hash = {}  # spec -> hash recorded by the closing event ('' = none)
     for e in _project_events(root):
         d = e['detail']
-        if e['kind'] == 'spec_edit':
+        if e['kind'] == 'approved' and d.get('spec'):
+            state.setdefault(str(d['spec']), True)
+        elif e['kind'] == 'spec_edit':
             name = str(d.get('file') or '') or re.split(r'[\\/]', str(d.get('path') or ''))[-1]
             name = name.strip().rstrip('. ').split(':')[0].lower()
             if name in ('tasks.md', 'plan.md') and d.get('spec'):

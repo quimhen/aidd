@@ -42,7 +42,12 @@ DOMAIN_RE = {
     'backend': re.compile(r'\b(?:backend|apis?|contracts?|endpoints?)\b', re.I),
     'database': re.compile(r'\b(?:databases?|base de datos|sql|schemas?|migrations?|migraci\w*)\b', re.I),
     'performance': re.compile(r'\b(?:performance|rendimiento|best practices?)\b', re.I),
+    'security': re.compile(r'\b(?:security|seguridad|secure|vulnerabilit\w*|threats?)\b', re.I),
+    'functional': re.compile(r'\b(?:functional|funcional\w*|acceptance|aceptaci\w*)\b', re.I),
 }
+
+# FR-002: tasks touching a hot path also require a performance auditor (with UI / database).
+_HOT_PATH_RE = re.compile(r'\bhot[ -]?paths?\b|\blatency\b|\blatencia\b|\bperformance\b|\brendimiento\b', re.I)
 
 _SCREEN_RE = re.compile(r'\bSCREEN-\d+', re.I)
 _TASK_ID_RE = re.compile(r'\bT-\d+\b')
@@ -1397,7 +1402,9 @@ def approval_valid(tasks_text):
 
 
 def required_domains(spec_dir):
-    doms = {'performance'}
+    """FR-002 closing audits: `security` + `functional` always; `ui` / `backend` / `database` by what
+    the tasks touch; `performance` only when the tasks touch a hot path, the database or the UI."""
+    doms = {'security', 'functional'}
     try:
         d = Path(spec_dir)
         tasks = _read(d / 'tasks.md')
@@ -1408,6 +1415,8 @@ def required_domains(spec_dir):
         if (d / 'data-model.md').exists() or re.search(
                 r'stored procedure|migration|\.sql\b|schema', tasks, re.I):
             doms.add('database')
+        if doms & {'ui', 'database'} or _HOT_PATH_RE.search(tasks):
+            doms.add('performance')
     except Exception:
         pass
     return doms
@@ -1421,9 +1430,21 @@ def is_low_tier(model):
         return False
 
 
-def _subagent_counts(event):
-    """A subagent evidence event counts for gates unless its model is low tier (old events count)."""
+def _is_pre_dispatch(event):
+    """True iff a `subagent` row was written by the PreToolUse recorder (detail phase=='pre'): an
+    attribution trail only — the dispatch may have been denied or failed, and its model unresolved."""
     try:
+        return (event.get('detail') or {}).get('phase') == 'pre'
+    except Exception:
+        return False
+
+
+def _subagent_counts(event):
+    """A subagent evidence event counts for gates unless it is a PreToolUse attribution row
+    (phase 'pre', never an audit) or its model is low tier (old events count)."""
+    try:
+        if _is_pre_dispatch(event):
+            return False
         return not is_low_tier((event.get('detail') or {}).get('model'))
     except Exception:
         return True
@@ -1437,7 +1458,7 @@ def _uncovered_reasons(ev, root, session, domains, since_ts):
         missing = set(domains)
     try:
         low = [e for e in ev.events(root, session, 'subagent')
-               if e.get('ts', 0) > since_ts and not _subagent_counts(e)]
+               if e.get('ts', 0) > since_ts and not _is_pre_dispatch(e) and not _subagent_counts(e)]
     except Exception:
         low = []
     out = {}
@@ -1685,6 +1706,56 @@ def spec_first_edit_ts(ev, root, spec_name):
         return 0.0
 
 
+PRE_BUILD_FILES = ('spec.md', 'plan.md', 'tasks.md')
+
+
+def _spec_file_edit_ts(ev, root, spec_name, files):
+    """ts list of recorded `spec_edit` events of `spec_name` touching one of `files` (any session)."""
+    try:
+        sn, fs = str(spec_name).lower(), {f.lower() for f in files}
+        return [e['ts'] for e in ev.events(root, None, 'spec_edit')
+                if str((e.get('detail') or {}).get('spec', '')).lower() == sn
+                and str((e.get('detail') or {}).get('file', '')).lower() in fs]
+    except Exception:
+        return []
+
+
+def mapper_since(ev, root, spec_dir):
+    """FR-002: ts the Mapper/Alignment subagent must postdate — the FIRST recorded draft of spec.md
+    (later spec.md edits do not demand a new subagent). Falls back to spec.md's mtime when no edit was
+    recorded; None when spec.md does not exist."""
+    d = Path(spec_dir)
+    tss = _spec_file_edit_ts(ev, root, d.name, ('spec.md',))
+    return min(tss) if tss else _mtime(d / 'spec.md')
+
+
+def pre_build_since(ev, root, spec_dir, session=None):
+    """FR-002/FR-003: ts the ONE pre-build coherence audit must postdate: the last change of spec.md,
+    plan.md or tasks.md (mtime or recorded `spec_edit`, whichever is later) and the last graph rebuild
+    by find_spec in `session` (the pre-build audit absorbs the graph-coherence audit)."""
+    d = Path(spec_dir)
+    ts = [m for m in (_mtime(d / f) for f in PRE_BUILD_FILES) if m is not None]
+    ts += _spec_file_edit_ts(ev, root, d.name, PRE_BUILD_FILES)
+    try:
+        ts += [e['ts'] for e in ev.events(root, session, 'find_spec')
+               if (e.get('detail') or {}).get('rebuilt') and (e.get('detail') or {}).get('ok') is not False]
+    except Exception:
+        pass
+    return max(ts) if ts else 0.0
+
+
+def pre_build_audit_done(ev, root, session, spec_dir):
+    """FR-003: True iff ONE independent subagent (R14: not low tier) of `session` ran after
+    pre_build_since(ev, root, spec_dir, session). Required once before tasks approval, not after
+    every spec/plan edit. Fail-closed: False on any error."""
+    try:
+        since = pre_build_since(ev, root, spec_dir, session)
+        return any(e.get('ts', 0) > since and _subagent_counts(e)
+                   for e in ev.events(root, session, 'subagent'))
+    except Exception:
+        return False
+
+
 def _contains_words(hay, needle):
     return (' ' + needle + ' ') in (' ' + hay + ' ')
 
@@ -1738,28 +1809,25 @@ def _evidence_rules(ev, d, root, session, spec_t, has_tasks, plan_p, tasks_p, qa
                           '(5+ words), or ask the user (AskUserQuestion) and quote their answer verbatim '
                           '(2+ words).'))
 
-    # R5: find_spec + independent Mapper after spec.md
+    # R5 (FR-002/FR-003 phases): find_spec + Mapper once after the FIRST spec.md draft + ONE pre-build
+    # coherence audit before tasks approval (no subagent demanded after each spec/plan edit)
     try:
         if not ev.last_event(root, 'find_spec', session):
             out.append(_v('R5', 'No find_spec run recorded in this session.',
                           'Run `python skill/scripts/find_spec.py` (Step -1) before planning.'))
-        sm = _mtime(d / 'spec.md')
+        sm = mapper_since(ev, root, d)
         if sm is not None and not [e for e in ev.events(root, session, 'subagent') if e['ts'] > sm and _subagent_counts(e)]:
-            out.append(_v('R5', 'No independent subagent (Mapper/Alignment) ran after the last edit of spec.md.',
+            out.append(_v('R5', 'No independent subagent (Mapper/Alignment) ran after the first draft of spec.md.',
                           'Dispatch a Mapper/Alignment subagent (Agent tool) over spec.md before writing plan.md.'))
         if has_tasks:
             if not plan_p.exists():
                 out.append(_v('R5', 'tasks.md exists but plan.md does not.', 'Write plan.md (Step 3) before tasks.md.'))
-            else:
-                pm = _mtime(plan_p)
-                if not [e for e in ev.events(root, session, 'subagent') if e['ts'] > pm and _subagent_counts(e)]:
-                    out.append(_v('R5', 'No independent subagent ran after the last edit of plan.md.',
-                                  'Dispatch an independent auditor subagent over plan.md before writing tasks.md.'))
-            lf = ev.last_event(root, 'find_spec', session)
-            if lf and (lf.get('detail') or {}).get('rebuilt') and not [
-                    e for e in ev.events(root, session, 'subagent') if e['ts'] > lf['ts'] and _subagent_counts(e)]:
-                out.append(_v('R5', 'The graph index was rebuilt but no subagent audited it afterwards.',
-                              'Dispatch a graph-coherence auditor subagent, then retry.'))
+            elif not approval_valid(_read(tasks_p)) and not pre_build_audit_done(ev, root, session, d):
+                out.append(_v('R5', 'No pre-build coherence audit: no independent subagent ran after the last edit '
+                                    'of spec.md/plan.md/tasks.md (or the last graph rebuild).',
+                              'Dispatch ONE pre-build coherence auditor subagent (medium or high tier, never haiku) '
+                              'over spec.md, plan.md, tasks.md, the graph and the estimates, then run '
+                              '`aidd rules approve <spec_dir>`.'))
     except Exception as e:
         out.append(_v('R5', f'Evidence log unreadable ({e}).', 'Check .aidd/evidence/events.toon.'))
 

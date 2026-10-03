@@ -307,6 +307,39 @@ class TestG5Consumers(unittest.TestCase):
         self.assertEqual(check_spec.check_g5_consumers(md), [])
 
 
+class TestG6SingleOwner(unittest.TestCase):
+    HDR = ("| Task | Codes satisfied | Target file | View / logic | Tracker ref | Status | Out of scope |\n"
+           "|---|---|---|---|---|---|---|\n")
+
+    def test_same_file_two_rows_flagged(self):
+        g = check_spec.check_g6_single_owner(
+            self.HDR + "| T-01 | FR-1 | scripts/a.py + x.py | LOGIC | | | |\n"
+                       "| T-10 | FR-2 | `scripts/A.py` (fn) | LOGIC | | | |\n")
+        self.assertEqual(len(g), 1)
+        self.assertIn("G6 T-01 and T-10", g[0])
+
+    def test_same_owner_exempt(self):
+        g = check_spec.check_g6_single_owner(
+            self.HDR + "| T-01 | FR-1 | scripts/a.py | LOGIC | | | |\n"
+                       "| T-10 | FR-2 | scripts/a.py (fn), same owner as T-01 | LOGIC | | | |\n")
+        self.assertEqual(g, [])
+
+    def test_distinct_and_empty_clean(self):
+        g = check_spec.check_g6_single_owner(
+            self.HDR + "| T-01 | FR-1 | a.py | LOGIC | | | |\n"
+                       "| T-02 | FR-1 | b.py | LOGIC | | | |\n"
+                       "| T-03 | FR-1 | | LOGIC | | | |\n"
+                       "| T-04 | FR-1 | | LOGIC | | | |\n")
+        self.assertEqual(g, [])
+
+    def test_real_spec_006_t01_t10_not_flagged(self):
+        p = Path(__file__).resolve().parent.parent / "specs" / "006-aidd-phased-audits-attribution" / "tasks.md"
+        if not p.exists():
+            self.skipTest("spec 006 absent")
+        g = check_spec.check_g6_single_owner(p.read_text(encoding="utf-8"))
+        self.assertFalse([x for x in g if "T-10" in x or "T-01 " in x], g)
+
+
 class TestGapsEndToEnd(unittest.TestCase):
     def test_spec_without_acceptance_and_bad_traceability_exit_one(self):
         with tempfile.TemporaryDirectory() as d:

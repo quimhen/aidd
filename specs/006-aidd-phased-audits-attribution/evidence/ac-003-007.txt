@@ -1,0 +1,16 @@
+﻿$ python -m pytest tests/test_cli_rules.py tests/test_stop_gate.py tests/test_evidence.py -k approved_only or an_approved_spec or approved_spec_closes or approved_never_reopens -v
+============================= test session starts =============================
+platform win32 -- Python 3.12.10, pytest-9.1.1, pluggy-1.6.0 -- C:\Users\jquimis\AppData\Local\Programs\Python\Python312\python.exe
+rootdir: D:\Fuentes\AIDD
+configfile: pyproject.toml
+plugins: anyio-4.14.1
+collecting ... collected 150 items / 145 deselected / 5 selected
+
+tests/test_cli_rules.py::TestCloseApprovedOnlySpec::test_approved_only_spec_is_open_and_closes_with_the_recorded_answer PASSED [ 20%]
+tests/test_stop_gate.py::TestR8::test_an_approved_spec_without_recorded_tasks_edit_is_open PASSED [ 40%]
+tests/test_evidence.py::TestOpenSpecs::test_approved_never_reopens_a_closed_spec PASSED [ 60%]
+tests/test_evidence.py::TestOpenSpecs::test_approved_only_spec_is_open PASSED [ 80%]
+tests/test_evidence.py::TestOpenSpecs::test_approved_spec_closes_and_a_real_edit_reopens_it PASSED [100%]
+
+====================== 5 passed, 145 deselected in 0.87s ======================
+

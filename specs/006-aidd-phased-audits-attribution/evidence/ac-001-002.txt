@@ -1,0 +1,36 @@
+﻿$ python -m pytest tests/test_aidd_status.py -k TestCallerSession -v -p no:cacheprovider
+============================= test session starts =============================
+platform win32 -- Python 3.12.10, pytest-9.1.1, pluggy-1.6.0 -- C:\Users\jquimis\AppData\Local\Programs\Python\Python312\python.exe
+rootdir: D:\Fuentes\AIDD
+configfile: pyproject.toml
+plugins: anyio-4.14.1
+collecting ... collected 83 items / 74 deselected / 9 selected
+
+tests/test_aidd_status.py::TestCallerSession::test_ac001_busy_window_a_marker_for_b_finds_bs_answer PASSED [ 11%]
+tests/test_aidd_status.py::TestCallerSession::test_ac001_close_finds_bs_answer_through_the_marker PASSED [ 22%]
+tests/test_aidd_status.py::TestCallerSession::test_ac002_stale_marker_is_ignored PASSED [ 33%]
+tests/test_aidd_status.py::TestCallerSession::test_ac002_synthetic_prompts_are_skipped PASSED [ 44%]
+tests/test_aidd_status.py::TestCallerSession::test_caller_ttl_env_can_only_shorten PASSED [ 55%]
+tests/test_aidd_status.py::TestCallerSession::test_corrupt_marker_is_ignored PASSED [ 66%]
+tests/test_aidd_status.py::TestCallerSession::test_refusal_names_the_inferred_session_for_approve_close_abandon PASSED [ 77%]
+tests/test_aidd_status.py::TestCallerSession::test_refusal_says_none_when_no_prompt_was_recorded PASSED [ 88%]
+tests/test_aidd_status.py::TestCallerSession::test_testing_override_still_wins_over_the_marker PASSED [100%]
+
+====================== 9 passed, 74 deselected in 3.42s =======================
+
+$ python -m pytest tests/test_rule_gate.py -k 'marker_*' -v
+============================= test session starts =============================
+platform win32 -- Python 3.12.10, pytest-9.1.1, pluggy-1.6.0 -- C:\Users\jquimis\AppData\Local\Programs\Python\Python312\python.exe
+rootdir: D:\Fuentes\AIDD
+configfile: pyproject.toml
+plugins: anyio-4.14.1
+collecting ... collected 185 items / 180 deselected / 5 selected
+
+tests/test_rule_gate.py::TestCallerMarker::test_marker_is_overwritten_by_the_newer_caller PASSED [ 20%]
+tests/test_rule_gate.py::TestCallerMarker::test_marker_is_written_even_when_the_same_command_is_later_blocked PASSED [ 40%]
+tests/test_rule_gate.py::TestCallerMarker::test_marker_not_written_for_commands_that_do_not_run_aidd PASSED [ 60%]
+tests/test_rule_gate.py::TestCallerMarker::test_marker_not_written_for_non_shell_tools PASSED [ 80%]
+tests/test_rule_gate.py::TestCallerMarker::test_marker_written_for_an_aidd_command PASSED [100%]
+
+====================== 5 passed, 180 deselected in 0.99s ======================
+

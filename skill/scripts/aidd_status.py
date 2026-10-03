@@ -19,8 +19,9 @@ Usage:
 
 Exit codes: 0 ok · 1 refused/violations/error · 2 usage. Never prints a traceback.
 
-The CLI cannot see its own session id. The "current session" is the session of the newest recorded user
-`prompt` event (env AIDD_SESSION_ID / CLAUDE_SESSION_ID / AIDD_EVIDENCE_DIR are ignored unless
+The CLI cannot see its own session id. The "current session" is the session in the caller marker that
+rule_gate writes just before an `aidd` shell command (if under 120 s old, same root), else the session of
+the newest recorded user `prompt` event that is not synthetic (text not starting with `<` or `[`) (env AIDD_SESSION_ID / CLAUDE_SESSION_ID / AIDD_EVIDENCE_DIR are ignored unless
 AIDD_TESTING=1). Answers recorded under 'unknown-session' are accepted. An answer from another session
 is refused. An answer only counts if the user picked the REQUIRED option label of a question that
 offered it: "Approve" (tasks), "Yes, close" (close), "Abandon" (abandon).
@@ -29,6 +30,7 @@ import json
 import os
 import re
 import sys
+import time
 from datetime import date
 from pathlib import Path
 
@@ -87,20 +89,78 @@ def _sanitize_env():
             os.environ.pop(k, None)
 
 
+CALLER_TTL_DEFAULT = 120.0
+CALLER_CLOCK_SKEW = 5.0
+
+
+def _caller_ttl():
+    """aidd:FR-001 Marker freshness window in seconds: env AIDD_CALLER_TTL may only SHORTEN the default."""
+    try:
+        v = float(os.environ.get('AIDD_CALLER_TTL', '') or CALLER_TTL_DEFAULT)
+        return v if 0 < v <= CALLER_TTL_DEFAULT else CALLER_TTL_DEFAULT
+    except Exception:
+        return CALLER_TTL_DEFAULT
+
+
+def _read_caller_marker(root):
+    """aidd:FR-001 Session written by rule_gate in `caller-<sha1(root)>.json` just before this `aidd`
+    command, if the marker is fresh (ts within the TTL of now). Missing/corrupt/stale marker -> None."""
+    try:
+        p = ev.caller_marker_path(root)
+        if p.stat().st_size > 4096:
+            return None
+        m = json.loads(p.read_text(encoding='utf-8', errors='replace'))
+        if not isinstance(m, dict):
+            return None
+        sess, ts = m.get('session'), m.get('ts')
+        if not isinstance(sess, str) or not sess.strip() or sess.strip() == 'unknown-session':
+            return None
+        if isinstance(ts, bool) or not isinstance(ts, (int, float)):
+            return None
+        age = time.time() - float(ts)
+        if -CALLER_CLOCK_SKEW <= age <= _caller_ttl():
+            return sess.strip()
+    except Exception:
+        pass
+    return None
+
+
+def _is_real_prompt(e):
+    """A prompt the user typed: not a synthetic notice / subagent hand-back (text starting `<` or `[`)."""
+    try:
+        text = str((e['detail'] or {}).get('text', '')).strip()
+        return bool(text) and text[0] not in '<['
+    except Exception:
+        return False
+
+
 def _current_session(root):
-    """Session of the caller: (tests only) env override, else the session of the newest recorded user prompt."""
+    """Session of the caller: (tests only) env override, else the fresh caller marker rule_gate wrote for
+    this root, else the session of the newest recorded NON-synthetic user prompt."""
     if os.environ.get('AIDD_TESTING') == '1':
         for k in ('AIDD_SESSION_ID', 'CLAUDE_SESSION_ID'):
             v = os.environ.get(k, '').strip()
             if v:
                 return v
+    m = _read_caller_marker(root)
+    if m:
+        return m
     try:
-        ps = [e for e in ev.events(root, kind='prompt') if e['session'] != 'unknown-session']
+        ps = [e for e in ev.events(root, kind='prompt')
+              if e['session'] != 'unknown-session' and _is_real_prompt(e)]
         if ps:
             return max(ps, key=lambda e: e['ts'])['session']
     except Exception:
         pass
     return None
+
+
+def _session_note(sess):
+    """aidd:FR-001 Names the inferred session in a refusal and says how to correct a wrong inference."""
+    return ('\nInferred session: ' + (sess or 'none (no recorded user prompt)')
+            + '. If that is not this window\'s session, have the user type a short message in this window, then '
+              'run the command again (in the normal case the caller marker written by the hook picks this '
+              'window\'s session).')
 
 
 # ------------------------------------------------------------------ ledger
@@ -259,10 +319,20 @@ def _qa_evidence(d, root, last_edit_ts):
     return out
 
 
+def _was_closed(root, spec_id):
+    """True iff a `spec_closed` event (completed or abandoned) was recorded for `spec_id`."""
+    try:
+        return any((e['detail'] or {}).get('spec') == spec_id for e in ev.events(root, kind='spec_closed'))
+    except Exception:
+        return False
+
+
 def _why_blocked(d, root, st):
     """Human-readable lines: what currently blocks this spec and the exact next action."""
     out = []
     try:
+        if not st.get('open') and _was_closed(root, d.name):
+            return out      # aidd:FR-005 a closed spec is not blocked: no static-rule WHY as if it were open
         for v in rules.check_spec_dir(d, root):
             if v['rule'] in ('R4', 'R5', 'R6', 'R7', 'R10', 'R11', 'R12'):
                 out.append(f"{v['rule']} {v['message']} → {v['fix']}")
@@ -512,7 +582,7 @@ def cmd_approve(spec_arg):
               'a "No" or an answer from another session does not count).\n'
               'Fix: ' + _ASK_FIX.format(opt='Approve', what='approving the tasks and contain EXACTLY the tag ' + tag
                                   + ' (e.g. "Approve these tasks? ' + tag + '")')
-              + ' If you edit tasks.md afterwards, ask again.')
+              + ' If you edit tasks.md afterwards, ask again.' + _session_note(sess))
         return 1
     eol = _detect_eol(raw)
     h = rules.approval_hash(text)
@@ -579,7 +649,8 @@ def cmd_close(spec_arg):
         return 1
     root = ev.find_root(d)
     if d.name not in ev.open_specs(root):
-        print(f'{d.name} is not an open spec (no tasks.md edit recorded, or already closed) - nothing to close.')
+        print(f'{d.name} is not an open spec (no plan.md/tasks.md edit and no `approved` event recorded, or '
+              'already closed) - nothing to close.')
         return 1
     gaps = _close_gaps(d, root)
     if gaps:
@@ -594,7 +665,8 @@ def cmd_close(spec_arg):
     if ans is None:
         print('Refused: no recorded user answer "Yes, close" to a close question (asked after qa-audit.md).\n'
               'Fix: ' + _ASK_FIX.format(opt='Yes, close', what='closing the spec (e.g. "Close spec X as '
-                                                         'completed?")'))
+                                                         'completed?")')
+              + _session_note(sess))
         return 1
     ev.append_spec_closed(root, sess, d.name, reason='completed', hash=_tasks_hash(d))
     cleared = _clear_pointer(root, d.name)
@@ -602,22 +674,50 @@ def cmd_close(spec_arg):
     return 0
 
 
-def _abandon_since(root, spec_id, d):
-    """Timestamp after which an abandon answer counts: the spec's last `approved` / `spec_closed`
-    (re-open) event, else tasks.md mtime, else 0.0."""
+KEEP_IT_RE = re.compile(r'^no,?\s+keep\s+it\b', re.I)
+_SPEC_TAG_RE = re.compile(r'\[spec:([^\]\s]+)\]', re.I)
+
+
+def _keep_it_ts(root, spec_id, session=None):
+    """aidd:FR-006 ts of the newest typed "No, keep it" (a real user prompt starting with that phrase, in
+    `session` or 'unknown-session'; one naming another spec via `[spec:X]` does not count), else 0.0."""
+    try:
+        sessions = {session, 'unknown-session'} if session else {None}
+        best = 0.0
+        for s in sessions:
+            for e in ev.events(root, kind='prompt', session=s):
+                if not _is_real_prompt(e):
+                    continue
+                text = str((e['detail'] or {}).get('text', '')).strip()
+                if not KEEP_IT_RE.match(text):
+                    continue
+                tags = [t.lower() for t in _SPEC_TAG_RE.findall(text)]
+                if tags and str(spec_id).lower() not in tags:
+                    continue
+                best = max(best, e['ts'])
+        return best
+    except Exception:
+        return 0.0
+
+
+def _abandon_since(root, spec_id, d, session=None):
+    """Timestamp after which an abandon answer counts: the later of the newest typed "No, keep it"
+    (it cancels any earlier Abandon answer) and the spec's last `approved` / `spec_closed` (re-open)
+    event, else tasks.md mtime, else 0.0."""
+    keep = _keep_it_ts(root, spec_id, session)
     try:
         ts = [e['ts'] for k in ('approved', 'spec_closed') for e in ev.events(root, kind=k)
               if (e['detail'] or {}).get('spec') == spec_id]
         if ts:
-            return max(ts)
+            return max(max(ts), keep)
     except Exception:
         pass
     try:
         if d is not None:
-            return _mtime(d / 'tasks.md') or 0.0
+            return max(_mtime(d / 'tasks.md') or 0.0, keep)
     except Exception:
         pass
-    return 0.0
+    return keep
 
 
 def cmd_abandon(spec_arg, reason=''):
@@ -630,12 +730,14 @@ def cmd_abandon(spec_arg, reason=''):
         print(f'{spec_id} is not an open spec - nothing to abandon.')
         return 1
     sess = _current_session(root)
-    ans = ev.affirmative_answer(root, sess, ABANDON_TOPIC, _abandon_since(root, spec_id, d),
+    ans = ev.affirmative_answer(root, sess, ABANDON_TOPIC, _abandon_since(root, spec_id, d, sess),
                                label_re=ABANDON_LABEL,
                                must_contain=f'[spec:{spec_id}]')
     if ans is None:
-        print('Refused: no recorded user answer "Abandon" to an abandon question in this session.\n'
-              'Fix: ' + _ASK_FIX.format(opt='Abandon', what='abandoning the spec (e.g. "Abandon spec X?")'))
+        print('Refused: no recorded user answer "Abandon" to an abandon question in this session (a later '
+              'typed "No, keep it" cancels an earlier Abandon).\n'
+              'Fix: ' + _ASK_FIX.format(opt='Abandon', what='abandoning the spec (e.g. "Abandon spec X?")')
+              + _session_note(sess))
         return 1
     ev.append_spec_closed(root, sess, spec_id, reason='abandoned', hash=_tasks_hash(d))
     cleared = _clear_pointer(root, spec_id)

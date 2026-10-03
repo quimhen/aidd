@@ -384,20 +384,31 @@ class TestDomains(unittest.TestCase):
             (d / 'data-model.md').write_text('x', encoding='utf-8')
         return d
 
-    def test_performance_always(self):
-        self.assertEqual(R.required_domains(self.mk('nothing')), {'performance'})
-        self.assertEqual(R.required_domains('/does/not/exist'), {'performance'})
+    BASE = {'security', 'functional'}
+
+    def test_security_functional_always(self):
+        self.assertEqual(R.required_domains(self.mk('nothing')), self.BASE)
+        self.assertEqual(R.required_domains('/does/not/exist'), self.BASE)
 
     def test_ui_backend_database(self):
-        self.assertEqual(R.required_domains(self.mk('SCREEN-01')), {'performance', 'ui'})
-        self.assertEqual(R.required_domains(self.mk('CTL-3')), {'performance', 'ui'})
-        self.assertEqual(R.required_domains(self.mk('COMP-2')), {'performance', 'ui'})
-        self.assertEqual(R.required_domains(self.mk('API-007')), {'performance', 'backend'})
-        self.assertEqual(R.required_domains(self.mk('x', data_model=True)), {'performance', 'database'})
-        self.assertEqual(R.required_domains(self.mk('add a migration')), {'performance', 'database'})
-        self.assertEqual(R.required_domains(self.mk('run script.sql')), {'performance', 'database'})
+        B = self.BASE
+        self.assertEqual(R.required_domains(self.mk('SCREEN-01')), B | {'performance', 'ui'})
+        self.assertEqual(R.required_domains(self.mk('CTL-3')), B | {'performance', 'ui'})
+        self.assertEqual(R.required_domains(self.mk('COMP-2')), B | {'performance', 'ui'})
+        self.assertEqual(R.required_domains(self.mk('API-007')), B | {'backend'})   # backend alone: no performance
+        self.assertEqual(R.required_domains(self.mk('x', data_model=True)), B | {'performance', 'database'})
+        self.assertEqual(R.required_domains(self.mk('add a migration')), B | {'performance', 'database'})
+        self.assertEqual(R.required_domains(self.mk('run script.sql')), B | {'performance', 'database'})
         self.assertEqual(R.required_domains(self.mk('SCREEN-1 API-2 schema')),
-                         {'performance', 'ui', 'backend', 'database'})
+                         B | {'performance', 'ui', 'backend', 'database'})
+
+    def test_performance_matrix_hot_path_db_ui_only(self):
+        B = self.BASE
+        for txt in ('hot path', 'hot-path loop', 'reduce latency', 'baja latencia', 'performance goal', 'mejor rendimiento'):
+            self.assertEqual(R.required_domains(self.mk(txt)), B | {'performance'}, txt)
+        for txt in ('API-1 endpoint', 'plain refactor', 'hotpathology'):
+            self.assertNotIn('performance', R.required_domains(self.mk(txt)), txt)
+        self.assertEqual(R.required_domains(self.mk('API-1 hot path')), B | {'backend', 'performance'})
 
     def test_domain_covered(self):
         fake = FakeEv([ev('code_edit', 100), ev('subagent', 90, head='ui review', desc=''),
@@ -536,7 +547,7 @@ class TestCheckSpecDir(unittest.TestCase):
         self.write('plan.md', 'plan', mtime=1100.0)
         self.write('tasks.md', tasks(), mtime=1200.0)
         self.use(FakeEv([ev('subagent', 1300), ev('find_spec', 1400, rebuilt=True)], self.prompts()))
-        bad(self, R.check_spec_dir(self.d), 'R5', 'graph index was rebuilt')
+        bad(self, R.check_spec_dir(self.d), 'R5', 'pre-build coherence audit')   # rebuild postdates the only subagent
 
     def test_r7_qa_audit_domains(self):
         self.write('spec.md', self.good_spec(), mtime=1000.0)
@@ -545,9 +556,11 @@ class TestCheckSpecDir(unittest.TestCase):
         base = [ev('find_spec', 1500), ev('subagent', 1600), ev('code_edit', 2000, spec='001-x')]
         self.use(FakeEv(base + [ev('subagent', 2100, head='performance best practice')], self.prompts()))
         vs = R.check_spec_dir(self.d)
-        self.assertEqual({v['message'].split()[1] for v in vs if v['rule'] == 'R7'}, {'ui', 'backend'})
+        self.assertEqual({v['message'].split()[1] for v in vs if v['rule'] == 'R7'},
+                         {'ui', 'backend', 'security', 'functional'})
         self.use(FakeEv(base + [ev('subagent', 2100, head='performance'), ev('subagent', 2200, desc='api contract'),
-                        ev('subagent', 2300, desc='ui mockup audit')],
+                        ev('subagent', 2300, desc='ui mockup audit'), ev('subagent', 2400, desc='security review'),
+                        ev('subagent', 2500, desc='functional acceptance')],
                         self.prompts()))
         self.assertEqual([v for v in R.check_spec_dir(self.d) if v['rule'] == 'R7'], [])
 
@@ -994,28 +1007,34 @@ class TestM9Domains(unittest.TestCase):
         root, d = self.mk('SCREEN-1 API-2 schema')
         fake = FakeEv([ev('subagent', 10, head='check ui backend api database sql performance')])
         self.with_ev(fake)
-        self.assertEqual(len(R.uncovered_domains(root, 's', '001-x', 0)), 3)   # 4 required, 1 subagent -> 1 covered
+        self.assertEqual(len(R.uncovered_domains(root, 's', '001-x', 0)), 5)   # 6 required, 1 subagent -> 1 covered
         fake.rows += [ev('subagent', 11, head='ui mockup audit'), ev('subagent', 12, desc='api contract'),
-                      ev('subagent', 13, head='database sql review')]
-        self.assertEqual(R.uncovered_domains(root, 's', '001-x', 0), set())   # 4 distinct subagents (generic -> perf)
-        self.assertEqual(len(R.uncovered_domains(root, 's', '001-x', 12)), 3)   # only #13 is newer than ts 12
+                      ev('subagent', 13, head='database sql review'), ev('subagent', 14, desc='security audit'),
+                      ev('subagent', 15, desc='functional acceptance')]
+        self.assertEqual(R.uncovered_domains(root, 's', '001-x', 0), set())   # 6 distinct subagents (generic -> perf)
+        self.assertEqual(len(R.uncovered_domains(root, 's', '001-x', 12)), 3)   # only #13..#15 are newer than ts 12
 
     def test_matching_is_optimal_not_first_come(self):
         root, d = self.mk('SCREEN-1 API-2')
         # e1 matches ui+backend, e2 only ui: naive greedy e1->ui would leave backend uncovered
         self.with_ev(FakeEv([ev('subagent', 10, head='ui api review'), ev('subagent', 11, head='ui check'),
-                             ev('subagent', 12, head='performance')]))
+                             ev('subagent', 12, head='performance'), ev('subagent', 13, head='security'),
+                             ev('subagent', 14, head='functional')]))
         self.assertEqual(R.uncovered_domains(root, 's', '001-x', 0), set())
 
     def test_substrings_do_not_match(self):
         root, d = self.mk('SCREEN-1 API-2 schema')
         self.with_ev(FakeEv([ev('subagent', 10, head='rapid capital quick build', desc='suite requirements guide')]))
-        self.assertEqual(R.uncovered_domains(root, 's', '001-x', 0), {'ui', 'backend', 'database', 'performance'})
+        self.assertEqual(R.uncovered_domains(root, 's', '001-x', 0),
+                         {'ui', 'backend', 'database', 'performance', 'security', 'functional'})
         for dom, s in (('ui', 'rapid'), ('ui', 'quick'), ('ui', 'build'), ('backend', 'capital'), ('backend', 'rapid'),
-                       ('database', 'mysqlite'), ('performance', 'nonperformance')):
+                       ('database', 'mysqlite'), ('performance', 'nonperformance'),
+                       ('security', 'insecurity'), ('functional', 'dysfunctional')):
             self.assertIsNone(R.DOMAIN_RE[dom].search(s), (dom, s))
         for dom, s in (('ui', 'UI audit'), ('ui', 'Pantalla'), ('backend', 'API/contract'), ('database', 'migración'),
-                       ('database', 'base de datos'), ('performance', 'best practices')):
+                       ('database', 'base de datos'), ('performance', 'best practices'),
+                       ('security', 'Security audit'), ('security', 'seguridad'),
+                       ('functional', 'functional audit'), ('functional', 'acceptance')):
             self.assertIsNotNone(R.DOMAIN_RE[dom].search(s), (dom, s))
 
     def test_compat_wrapper_and_missing_evidence(self):
@@ -1024,7 +1043,7 @@ class TestM9Domains(unittest.TestCase):
         self.assertFalse(R.domain_covered('r', 's', 'ui', 10))
         R._evidence = lambda: None
         root, d = self.mk('SCREEN-1')
-        self.assertEqual(R.uncovered_domains(root, 's', '001-x', 0), {'ui', 'performance'})
+        self.assertEqual(R.uncovered_domains(root, 's', '001-x', 0), {'ui', 'performance', 'security', 'functional'})
 
     def test_r7_in_check_spec_dir_needs_distinct_subagents(self):
         root = mkroot()
@@ -1035,7 +1054,7 @@ class TestM9Domains(unittest.TestCase):
         base = [ev('find_spec', 1500), ev('subagent', 1600), ev('code_edit', 2000, spec='001-x')]
         self.with_ev(FakeEv(base + [ev('subagent', 2100, head='ui backend api performance review all')], ['x']))
         vs = [v for v in R.check_spec_dir(d) if v['rule'] == 'R7']
-        self.assertEqual(len(vs), 2, vs)
+        self.assertEqual(len(vs), 4, vs)   # 5 required (sec, func, ui, backend, perf), one subagent covers one
 
 
 class TestMDos(unittest.TestCase):
@@ -1279,11 +1298,13 @@ class TestD1D2Evidence(unittest.TestCase):
         try:
             R._evidence = lambda: FakeEv([ev('find_spec', 1500), ev('subagent', 1600, head='performance review'),
                                           ev('code_edit', 2000, path='x.py')], ['x'])
-            self.assertEqual(len([v for v in R.check_spec_dir(d) if v['rule'] == 'R7']), 1)
+            # tasks touch nothing -> required = {security, functional}; the pre-edit subagent covers neither
+            self.assertEqual(len([v for v in R.check_spec_dir(d) if v['rule'] == 'R7']), 2)
             R._evidence = lambda: FakeEv([ev('find_spec', 1500), ev('subagent', 1600, head='performance review'),
                                           ev('code_edit', 2000, spec='009-z')], ['x'])
-            self.assertEqual(len([v for v in R.check_spec_dir(d) if v['rule'] == 'R7']), 1)
-            R._evidence = lambda: FakeEv([ev('subagent', 2100, head='performance review'), ev('code_edit', 2000)], ['x'])
+            self.assertEqual(len([v for v in R.check_spec_dir(d) if v['rule'] == 'R7']), 2)
+            R._evidence = lambda: FakeEv([ev('subagent', 2100, head='security review'),
+                                          ev('subagent', 2150, head='functional review'), ev('code_edit', 2000)], ['x'])
             self.assertEqual([v for v in R.check_spec_dir(d) if v['rule'] == 'R7'], [])
         finally:
             R._evidence = old
@@ -1379,6 +1400,113 @@ class TestTokenPlanning(unittest.TestCase):
         msg = ' '.join(v['message'] for v in vs if v['rule'] == 'R4')
         self.assertNotIn('SCREEN-07', msg)
         self.assertIn('SCREEN-08', msg)
+
+
+# ============================================================ Spec 006 phased audits (T-13, AC-005)
+class TestPhasedAudits(unittest.TestCase):
+    """FR-002/FR-003: Mapper once after the first spec draft, ONE pre-build audit before approval."""
+
+    def setUp(self):
+        self.root = mkroot()
+        self.d = self.root / 'specs' / '001-x'
+        self._old = R._evidence
+        put(self.root / 'src' / 'cart.py', 'x\n' * 30)
+        put(self.root / 'a.py', 'x\n' * 30)
+        cl =CHECKLIST.replace('[Proposed — unconfirmed]', 'user — "pagar mas rapido por favor"')
+        self.spec_text = spec(checklist=cl)
+        self.prompts = ['es el modulo de checkout', 'pagar mas rapido por favor', 'no hace falta el flowmap']
+
+    def tearDown(self):
+        R._evidence = self._old
+
+    def fake(self, rows):
+        # prompts postdate the first recorded spec edit (1000) so quote verification holds
+        p = [{'ts': 1001.0, 'session': 's', 'kind': 'prompt', 'detail': {'text': t}} for t in self.prompts]
+        R._evidence = lambda: FakeEv(list(rows) + p)
+
+    def r5(self):
+        return [v for v in R.check_spec_dir(self.d) if v['rule'] == 'R5']
+
+    def spec_edits(self, *stamps):
+        return [ev('spec_edit', t, spec='001-x', file='spec.md') for t in stamps]
+
+    def test_no_subagent_demanded_between_spec_edits(self):
+        put(self.d / 'spec.md', self.spec_text, 1000.0)
+        self.fake(self.spec_edits(1000, 1100, 1200, 1300) + [ev('find_spec', 1010), ev('subagent', 1050, head='Mapper')])
+        ok(self, self.r5())   # the Mapper predates the later edits and that is fine
+
+    def test_mapper_required_once_after_first_draft(self):
+        put(self.d / 'spec.md', self.spec_text, 1000.0)
+        self.fake(self.spec_edits(1000, 1100) + [ev('find_spec', 1010)])
+        bad(self, self.r5(), 'R5', 'Mapper')
+        self.fake(self.spec_edits(1000, 1100) + [ev('find_spec', 1010), ev('subagent', 990, head='Mapper')])
+        bad(self, self.r5(), 'R5', 'Mapper')            # a subagent before the first draft does not count
+        self.fake(self.spec_edits(1000, 1100) + [ev('find_spec', 1010), ev('subagent', 1001, head='Mapper', model='haiku')])
+        bad(self, self.r5(), 'R5', 'Mapper')            # R14: haiku does not count
+        self.fake(self.spec_edits(1000, 1100) + [ev('find_spec', 1010), ev('subagent', 1001, head='Mapper', model='sonnet')])
+        ok(self, self.r5())
+
+    def _chain(self, signed=False):
+        put(self.d / 'spec.md', self.spec_text, 1000.0)
+        put(self.d / 'plan.md', 'plan', 1100.0)
+        t = tasks()
+        if signed:
+            t = t.replace('Approved: PENDING', f'Approved: 2026-10-01 hash:{R.approval_hash(t)}')
+        put(self.d / 'tasks.md', t, 1200.0)
+
+    def test_one_pre_build_audit_satisfies_tasks_approval(self):
+        self._chain()
+        base = self.spec_edits(1000) + [ev('find_spec', 1010), ev('subagent', 1050, head='Mapper')]
+        self.fake(base)
+        bad(self, self.r5(), 'R5', 'pre-build coherence audit')
+        self.fake(base + [ev('subagent', 1300, head='coherence audit')])
+        ok(self, self.r5())
+        # a later plan/tasks edit invalidates it, a fresh one restores it
+        self.fake(base + [ev('subagent', 1300, head='coherence audit'),
+                          ev('spec_edit', 1400, spec='001-x', file='tasks.md')])
+        bad(self, self.r5(), 'R5', 'pre-build coherence audit')
+        self.fake(base + [ev('subagent', 1300, head='coherence audit'),
+                          ev('spec_edit', 1400, spec='001-x', file='tasks.md'), ev('subagent', 1500)])
+        ok(self, self.r5())
+
+    def test_haiku_audit_does_not_count(self):
+        self._chain()
+        base = self.spec_edits(1000) + [ev('find_spec', 1010), ev('subagent', 1050, head='Mapper')]
+        self.fake(base + [ev('subagent', 1300, head='audit', model='haiku')])
+        bad(self, self.r5(), 'R5', 'pre-build coherence audit')
+        self.fake(base + [ev('subagent', 1300, head='audit', model='claude-haiku-4-5')])
+        bad(self, self.r5(), 'R5', 'pre-build coherence audit')
+        self.fake(base + [ev('subagent', 1300, head='audit', model='opus')])
+        ok(self, self.r5())
+
+    def test_pre_build_audit_not_demanded_once_approved(self):
+        self._chain(signed=True)
+        self.fake(self.spec_edits(1000) + [ev('find_spec', 1010), ev('subagent', 1050, head='Mapper')])
+        self.assertEqual([v for v in self.r5() if 'pre-build' in v['message']], [])
+        ok(self, [v for v in R.check_spec_dir(self.d) if v['rule'] != 'R7'])
+
+    def test_graph_rebuild_requires_the_audit_after_it(self):
+        self._chain()
+        base = self.spec_edits(1000) + [ev('find_spec', 1010), ev('subagent', 1300, head='audit')]
+        self.fake(base + [ev('find_spec', 1400, rebuilt=True)])
+        bad(self, self.r5(), 'R5', 'pre-build coherence audit')
+        self.fake(base + [ev('find_spec', 1400, rebuilt=True), ev('subagent', 1500, head='audit')])
+        ok(self, self.r5())
+        self.assertFalse(any('graph index was rebuilt' in v['message'] for v in self.r5()))
+
+    def test_pre_build_helpers(self):
+        self._chain()
+        f = FakeEv(self.spec_edits(1000, 1250) + [ev('find_spec', 1400, rebuilt=True), ev('find_spec', 1500, rebuilt=False)])
+        self.assertEqual(R.mapper_since(f, self.root, self.d), 1000)
+        self.assertEqual(R.pre_build_since(f, self.root, self.d, 's'), 1400)
+        self.assertFalse(R.pre_build_audit_done(f, self.root, 's', self.d))
+        f.rows.append(ev('subagent', 1450, model='haiku'))
+        self.assertFalse(R.pre_build_audit_done(f, self.root, 's', self.d))
+        f.rows.append(ev('subagent', 1450))
+        self.assertTrue(R.pre_build_audit_done(f, self.root, 's', self.d))
+        self.assertFalse(R.pre_build_audit_done(None, self.root, 's', self.d))   # fail-closed
+        put(self.root / 'specs' / '002-n' / 'spec.md', 'x', 777.0)
+        self.assertEqual(R.mapper_since(FakeEv(), self.root, self.root / 'specs' / '002-n'), 777.0)   # mtime fallback
 
 
 if __name__ == '__main__':

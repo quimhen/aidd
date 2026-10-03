@@ -1,0 +1,12 @@
+﻿$ python ac004.py (session-log lock held by another window; real pre+post hook subprocesses, 3 dispatches)
+dispatch 0 record_dispatch_pre.py: rc=0 5.3s stdout='' stderr=''
+dispatch 0 mark_agent_dispatch.py: rc=0 0.4s stdout='' stderr=''
+dispatch 1 record_dispatch_pre.py: rc=0 5.2s stdout='' stderr=''
+dispatch 1 mark_agent_dispatch.py: rc=0 0.4s stdout='' stderr=''
+dispatch 2 record_dispatch_pre.py: rc=0 5.2s stdout='' stderr=''
+dispatch 2 mark_agent_dispatch.py: rc=0 0.4s stdout='' stderr=''
+sessions dir (lock held): ['.lock', 'ac004-session.toon.spill']
+subagent rows seen by a reader while lock held: 3 ['toolu_0', 'toolu_1', 'toolu_2']
+hook_error rows: 3 [{'hook': 'aidd_evidence.append', 'error': 'evidence lock timeout', 'kind': 'subagent', 'spilled': True}, {'hook': 'aidd_evidence.append', 'error': 'evidence lock timeout', 'kind': 'subagent', 'spilled': True}, {'hook': 'aidd_evidence.append', 'error': 'evidence lock timeout', 'kind': 'subagent', 'spilled': True}]
+after lock released: subagent rows: 3 ids: ['toolu_0', 'toolu_1', 'toolu_2']
+sessions dir: ['ac004-session.toon']

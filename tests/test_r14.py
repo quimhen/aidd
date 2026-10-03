@@ -20,6 +20,11 @@ class Helpers(Base):
     def model_sub(self, model, desc="Perf auditor", head="performance review of the change"):
         self.sub(desc, head, model=model)
 
+    def sec_func(self):
+        """FR-002: security and functional auditors are always required (distinct subagents)."""
+        self.sub("Security auditor", "security review of the change", model="sonnet")
+        self.sub("Functional auditor", "functional acceptance review", model="sonnet")
+
 
 class TestIsLowTier(unittest.TestCase):
     def test_haiku_variants(self):
@@ -30,27 +35,52 @@ class TestIsLowTier(unittest.TestCase):
         for m in ("sonnet", "opus", "", None, "inherit"):
             self.assertFalse(R.is_low_tier(m), m)
 
+    def test_pre_rows_never_count(self):
+        for model in ("sonnet", "opus", "", "haiku"):
+            self.assertFalse(R._subagent_counts({"detail": {"phase": "pre", "model": model}}), model)
+        self.assertTrue(R._subagent_counts({"detail": {"phase": "post", "model": "sonnet"}}))
+        self.assertTrue(R._subagent_counts({"detail": {"model": ""}}))         # old rows (no phase) count
+        self.assertFalse(R._subagent_counts({"detail": {"phase": "post", "model": "haiku"}}))
+
 
 class TestR14R7(Helpers):
     def setUp(self):
         super().setUp()
-        self.put(TASKS, approved_tasks())  # cites COMP-001 => performance + ui
+        self.put(TASKS, approved_tasks())  # cites COMP-001 => security + functional + performance + ui
         self.ev("code_edit", path="src/app.py", spec="001-x")
 
     def test_haiku_blocks_with_message(self):
         self.model_sub("haiku")
         self.sub("UI auditor", "mockup check", model="sonnet")
+        self.sec_func()
         self.assertBlocked(self.gate(QA, content="# qa"), "R7", "model tier too low")
 
     def test_full_haiku_id_blocks(self):
         self.model_sub("claude-haiku-4-5-20251001")
         self.sub("UI auditor", "mockup check", model="sonnet")
+        self.sec_func()
         self.assertBlocked(self.gate(QA, content="# qa"), "model tier too low")
 
     def test_uppercase_haiku_blocks(self):
         self.model_sub("HAIKU")
         self.sub("UI auditor", "mockup check", model="sonnet")
+        self.sec_func()
         self.assertBlocked(self.gate(QA, content="# qa"), "model tier too low")
+
+    def test_haiku_security_and_functional_do_not_count(self):
+        """FR-002 domains keep R14: haiku never satisfies security/functional either."""
+        self.model_sub("sonnet")
+        self.sub("UI auditor", "mockup check", model="sonnet")
+        self.sub("Security auditor", "security review", model="haiku")
+        self.sub("Functional auditor", "functional acceptance review", model="haiku")
+        g = self.gate(QA, content="# qa")
+        self.assertBlocked(g, "R7", "security")
+        self.assertBlocked(g, "functional")
+
+    def test_only_performance_and_ui_is_no_longer_enough(self):
+        self.model_sub("sonnet")
+        self.sub("UI auditor", "mockup check", model="sonnet")
+        self.assertBlocked(self.gate(QA, content="# qa"), "R7", "security")
 
     def _allowed_with(self, model):
         if model is None:
@@ -58,6 +88,7 @@ class TestR14R7(Helpers):
         else:
             self.model_sub(model)
         self.sub("UI auditor", "mockup check", model="sonnet")
+        self.sec_func()
         self.assertAllowed(self.gate(QA, content="# qa"))
 
     def test_sonnet_allowed(self):
@@ -79,6 +110,31 @@ class TestR14R7(Helpers):
         self.model_sub("haiku")
         self.model_sub("sonnet")
         self.sub("UI auditor", "mockup check", model="sonnet")
+        self.sec_func()
+        self.assertAllowed(self.gate(QA, content="# qa"))
+
+    def test_pre_row_never_counts_for_r7(self):
+        """F1 D1/D2: a PreToolUse attribution row (phase 'pre', e.g. a denied dispatch) is no audit."""
+        self.sub("Perf auditor", "performance review of the change", model="sonnet", phase="pre")
+        self.sub("UI auditor", "mockup check", model="sonnet")
+        self.sec_func()
+        g = self.gate(QA, content="# qa")
+        self.assertBlocked(g, "R7", "performance")
+        self.assertNotIn("model tier too low", g.err)
+
+    def test_pre_haiku_row_is_not_reported_as_tier(self):
+        self.sub("Perf auditor", "performance review of the change", model="haiku", phase="pre")
+        self.sub("UI auditor", "mockup check", model="sonnet")
+        self.sec_func()
+        g = self.gate(QA, content="# qa")
+        self.assertBlocked(g, "R7", "performance")
+        self.assertNotIn("model tier too low", g.err)
+
+    def test_post_row_with_same_id_as_pre_counts(self):
+        self.sub("Perf auditor", "performance review", model="sonnet", phase="pre", tool_use_id="t1")
+        self.sub("Perf auditor", "performance review", model="sonnet", phase="post", tool_use_id="t1")
+        self.sub("UI auditor", "mockup check", model="sonnet")
+        self.sec_func()
         self.assertAllowed(self.gate(QA, content="# qa"))
 
 
@@ -101,6 +157,7 @@ class TestR14R8(Helpers):
         self.implemented()
         self.model_sub("haiku")
         self.sub("UI", "mockup check", model="sonnet")
+        self.sec_func()
         r = self.stop()
         self.assertEqual(r.returncode, 2, r.err)
         self.assertIn("performance", r.err.lower())
@@ -109,8 +166,18 @@ class TestR14R8(Helpers):
         self.implemented()
         self.model_sub("sonnet")
         self.sub("UI", "mockup check", model="sonnet")
+        self.sec_func()
         r = self.stop()
         self.assertEqual(r.returncode, 0, r.err)
+
+    def test_pre_row_only_leaves_domain_uncovered(self):
+        self.implemented()
+        self.sub("Perf auditor", "performance review of the change", model="sonnet", phase="pre")
+        self.sub("UI", "mockup check", model="sonnet")
+        self.sec_func()
+        r = self.stop()
+        self.assertEqual(r.returncode, 2, r.err)
+        self.assertIn("performance", r.err.lower())
 
 
 class TestR14R5(Helpers):
@@ -126,6 +193,10 @@ class TestR14R5(Helpers):
     def test_sonnet_subagent_satisfies_tasks_chain(self):
         self.sub("Auditor", "independent auditor over plan.md", model="sonnet")
         self.assertAllowed(self.gate(TASKS, content=tasks_text()))
+
+    def test_pre_row_does_not_satisfy_tasks_chain(self):
+        self.sub("Auditor", "independent auditor over plan.md", model="sonnet", phase="pre")
+        self.assertBlocked(self.gate(TASKS, content=tasks_text()), "subagent")
 
 
 class TestDispatchModelResolution(Helpers):
@@ -154,6 +225,7 @@ class TestDispatchModelResolution(Helpers):
                                  prompt="performance review of the change"))
         self.assertEqual((e["model"], e["model_source"]), ("haiku", "builtin"))
         self.sub("UI auditor", "mockup check", model="sonnet")
+        self.sec_func()
         self.assertBlocked(self.gate(QA, content="# qa"), "model tier too low")
 
     def test_explore_with_explicit_model_keeps_it(self):

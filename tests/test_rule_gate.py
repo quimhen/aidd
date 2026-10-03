@@ -572,7 +572,9 @@ class TestR6Approval(PlanBase):
         t = tasks_text()
         self.answer("Approve the tasks?", "Approve")
         self.ready_for_tasks()
-        self.put(TASKS, t, age=-50)  # tasks.md modified after the answer
+        time.sleep(0.05)
+        self.put(TASKS, t, age=0)  # tasks.md modified after the answer
+        self.subagent("Auditor", "independent pre-build audit after the last edit")   # satisfy R5 so R6 is what blocks
         self.assertBlocked(self.approve_edit(t), "R6")
 
     def test_answer_older_than_the_last_recorded_tasks_edit_does_not_count(self):
@@ -580,6 +582,7 @@ class TestR6Approval(PlanBase):
         self.ready_for_tasks(t)
         self.answer("Approve the tasks?", "Approve")
         self.spec_edit("tasks.md")           # tasks.md edited again after the answer (mtime untouched)
+        self.subagent("Auditor", "independent pre-build audit after the last edit")   # satisfy R5 so R6 is what blocks
         self.assertBlocked(self.approve_edit(t), "R6")
 
     def test_answer_from_another_session_does_not_count(self):
@@ -843,6 +846,20 @@ class TestR7QaAudit(Base):
         self.code_edit()
         self.subagent("Perf auditor", "performance review")
         self.subagent("UI auditor", "check the screen against the mockup")
+        self.subagent("Functional auditor", "functional check of the acceptance criteria")
+        self.subagent("Security auditor", "security review of the change")
+        self.assertAllowed(self.gate(QA, content="# qa"))
+
+    def test_functional_and_security_are_always_required(self):
+        """FR-002: even a spec with no UI/db/hot-path code needs functional + security (and no performance)."""
+        self.put(TASKS, approved_tasks(ids="API-002"))
+        self.code_edit()
+        r = self.gate(QA, content="# qa")
+        self.assertBlocked(r, "R7", "functional auditor", "security auditor")
+        self.assertNotIn("performance auditor", r.err)
+        self.subagent("Functional auditor", "functional check of the acceptance criteria")
+        self.subagent("Security auditor", "security review of the change")
+        self.subagent("API auditor", "backend contract review")
         self.assertAllowed(self.gate(QA, content="# qa"))
 
     def test_audit_before_last_code_edit_does_not_count(self):
@@ -861,6 +878,8 @@ class TestR7QaAudit(Base):
         self.subagent("Super auditor", "performance AND ui mockup review in one go")
         self.assertBlocked(self.gate(QA, content="# qa"), "R7")
         self.subagent("UI auditor", "mockup check")
+        self.subagent("Functional auditor", "functional check")
+        self.subagent("Security auditor", "security check")
         self.assertAllowed(self.gate(QA, content="# qa"))
 
     def test_m9_substrings_do_not_match_domains(self):
@@ -918,7 +937,9 @@ class TestR10R11QaContent(Base):
 
     def test_evidence_newer_than_code_edit_allows(self):
         self.code_edit()
-        self.subagent("Perf auditor", "performance review of the change")   # R7 still applies after a code edit
+        for desc, head in (("Perf auditor", "performance review of the change"), ("UI auditor", "mockup check"),
+                           ("Functional auditor", "functional check"), ("Security auditor", "security check")):
+            self.subagent(desc, head)   # R7 still applies after a code edit
         self.put(self.EVID, "png", age=-10)
         self.assertAllowed(self.gate(QA, content=qa_text(QA_ROW_OK)))
 
@@ -1316,6 +1337,8 @@ class TestD1NoAttributionAndD3Approval(PlanBase):
         self.assertBlocked(self.gate(QA, content="# qa"), "R7")
         self.subagent("Perf", "performance review")
         self.subagent("UI", "mockup check")
+        self.subagent("Functional", "functional check")
+        self.subagent("Security", "security check")
         self.assertAllowed(self.gate(QA, content="# qa"))
 
     def test_d1_code_gate_never_reads_the_pointer(self):
@@ -1658,6 +1681,11 @@ class TestRealRecordersLayouts(Base):
             self.assertEqual(gate(tasks, content=tasks_text()).returncode, 0)
             (proj / "specs" / "001-x" / "tasks.md").write_text(tasks_text(), encoding="utf-8")
             self.hook("mark_code_edit.py", parent, tool_name="Write", tool_input={"file_path": tasks})
+            time.sleep(0.02)
+            self.hook("mark_agent_dispatch.py", parent, tool_name="Agent",      # R5: audit AFTER the last tasks.md edit
+                      tool_input={"subagent_type": "general-purpose", "description": "Pre-build auditor",
+                                  "prompt": "independent coherence auditor over tasks.md"})
+            time.sleep(0.02)
             r = gate(str(proj / "src" / "a.py"), content="x = 1")
             self.assertEqual(r.returncode, 2, r.err)
             self.assertIn("R6", r.err)
@@ -1735,6 +1763,113 @@ class TestRealRecordersLayouts(Base):
                 except OSError:
                     pass
             _common.timestamps_path(sid).unlink(missing_ok=True)
+
+
+class TestCallerMarker(Base):
+    """Spec 006 FR-001: rule_gate writes {session, ts} to caller_marker_path(root) only before shell commands
+    that RUN aidd. The marker dir is redirected to a scratch dir (never the live <tmp>/aidd-hooks)."""
+
+    def setUp(self):
+        super().setUp()
+        self._mt = tempfile.TemporaryDirectory()
+        self.addCleanup(self._mt.cleanup)
+        self.tmpenv = {k: self._mt.name for k in ("TEMP", "TMP", "TMPDIR")}
+        p = mock.patch.object(EV, "HOOKS_TMP", Path(self._mt.name) / "aidd-hooks")
+        p.start()
+        self.addCleanup(p.stop)
+        self.mpath = EV.caller_marker_path(EV.find_root(self.root))
+
+    def test_invokes_aidd_classifier(self):
+        for cmd in ("aidd rules approve specs/001-x", "python aidd_status.py status", "cd x && aidd status",
+                    "AIDD_X=1 aidd rules close 001-x", "python skill/scripts/aidd_status.py rules abandon 001-x",
+                    "py -3 aidd_rules.py check"):
+            self.assertTrue(rule_gate._invokes_aidd(cmd), cmd)
+        for cmd in ("echo aidd", "ls", "cat aidd.md", "grep aidd README.md", "git log --grep aidd",
+                    "echo 'aidd status'", "", "x" * 30000 + " aidd"):
+            self.assertFalse(rule_gate._invokes_aidd(cmd), cmd[:40])
+
+    def test_invokes_aidd_shell_bodies_groups_and_interpreter_flags(self):
+        """F1 D3: shell -c/-Command//c bodies, ( ) / $( ) groups, interpreter flags with values."""
+        for cmd in ('bash -c "aidd rules approve specs/001-x"', 'powershell -c "aidd status"',
+                    'powershell -NoProfile -Command "aidd rules approve 001-x"',
+                    'pwsh -ExecutionPolicy Bypass -Command "aidd status"', 'cmd /c aidd rules close 001-x',
+                    '(aidd rules approve 001-x)', 'echo $(aidd status)', 'x=$(aidd status)',
+                    'python -W ignore -X utf8 skill/scripts/aidd_status.py status',
+                    'python3 -X utf8 -u /tmp/aidd_rules.py check',
+                    'bash -c "cd x && aidd status"', 'sh -c "(aidd status)"'):
+            self.assertTrue(rule_gate._invokes_aidd(cmd), cmd)
+        for cmd in ('bash -c "echo aidd"', 'powershell -Command "cat aidd.md"', 'cmd /c echo aidd',
+                    '(echo aidd)', 'echo $(cat aidd.md)', 'python -W ignore other.py aidd'):
+            self.assertFalse(rule_gate._invokes_aidd(cmd), cmd)
+
+    def test_invokes_aidd_is_linear_on_adversarial_input(self):
+        """F2 H1: nested-group input cannot stall the hook (it ran ~13 s before)."""
+        import time
+        for cmd in ("(a " * 500 + "xaidd")[:1500], ("$(a " * 375 + "aidd")[:1500], "(a " * 6000 + "aidd":
+            t0 = time.monotonic()
+            rule_gate._invokes_aidd(cmd)
+            self.assertLess(time.monotonic() - t0, 0.5, len(cmd))
+        for cmd in ('bash -c "aidd rules approve x"', "$(aidd status)"):
+            self.assertTrue(rule_gate._invokes_aidd(cmd), cmd)
+        for cmd in ("echo aidd", "ls"):
+            self.assertFalse(rule_gate._invokes_aidd(cmd), cmd)
+
+    def test_r9_gate_decides_before_the_caller_marker(self):
+        """F2 H1: a blocked R9 command writes no marker (the gate runs first)."""
+        r = self.bash("aidd status > .aidd/evidence/x.toon", env=self.tmpenv)
+        self.assertEqual(r.returncode, 2, r.err)
+        self.assertFalse(self.mpath.is_file())
+
+    def test_marker_written_for_an_aidd_command(self):
+        r = self.bash("aidd rules approve specs/001-x", env=self.tmpenv)
+        self.assertNotIn("Traceback", r.err)
+        self.assertTrue(self.mpath.is_file(), "no caller marker was written")
+        m = json.loads(self.mpath.read_text(encoding="utf-8"))
+        self.assertEqual(m["session"], self.session)
+        self.assertLess(abs(time.time() - m["ts"]), 60)
+        self.assertEqual(sorted(m), ["session", "ts"])
+        self.assertEqual([p.name for p in self.mpath.parent.iterdir()], [self.mpath.name])   # no .tmp left over
+
+    def test_marker_not_written_for_commands_that_do_not_run_aidd(self):
+        for cmd in ("echo aidd", "ls", "cat aidd.md"):
+            self.bash(cmd, env=self.tmpenv)
+            self.assertFalse(self.mpath.exists(), cmd)
+
+    def test_marker_not_written_for_non_shell_tools(self):
+        self.gate("README.md", content="aidd", env=self.tmpenv)
+        self.assertFalse(self.mpath.exists())
+
+    def test_marker_is_overwritten_by_the_newer_caller(self):
+        self.bash("aidd status", env=self.tmpenv)
+        first = json.loads(self.mpath.read_text(encoding="utf-8"))
+        time.sleep(0.05)
+        self.bash("aidd status", env=self.tmpenv)
+        second = json.loads(self.mpath.read_text(encoding="utf-8"))
+        self.assertGreater(second["ts"], first["ts"])
+
+    def test_marker_not_written_when_the_same_command_is_blocked(self):
+        # F2 H1: the R9 gate decides first; a blocked command never runs, so it gets no marker
+        r = self.bash("aidd status && rm -rf .aidd", env=self.tmpenv)
+        self.assertEqual(r.returncode, 2, r.err)
+        self.assertFalse(self.mpath.is_file())
+
+    def test_marker_written_for_an_aidd_command_that_skips_the_shell_check(self):
+        r = self.bash("aidd status", env=self.tmpenv)
+        self.assertEqual(r.returncode, 0, r.err)
+        self.assertTrue(self.mpath.is_file())
+
+
+class TestR5UsesPreBuildAudit(PlanBase):
+    def test_one_pre_build_audit_after_the_last_edit_satisfies_r5(self):
+        t = tasks_text()
+        self.ready_for_tasks(t)
+        self.answer("Approve the tasks?", "Approve")
+        h = R.approval_hash(t)
+        r = self.gate(TASKS, tool="Edit", old_string="Approved: PENDING", new_string=f"Approved: 2026-10-01 hash:{h}")
+        self.assertAllowed(r)
+        self.spec_edit("tasks.md")             # an edit after the audit makes it stale again
+        self.assertBlocked(self.gate(TASKS, tool="Edit", old_string="Approved: PENDING",
+                                     new_string=f"Approved: 2026-10-01 hash:{h}"), "R5")
 
 
 if __name__ == "__main__":

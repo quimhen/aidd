@@ -64,6 +64,13 @@ except Exception:
 try:  # evidence recorder
     sys.path.insert(0, str(Path(__file__).parent.parent / 'scripts'))
     import aidd_evidence as _ev
+
+    def _lost(_kind, _fp):
+        try:
+            _ev.record_hook_error(_cwd, _sid, 'mark_code_edit', 'append returned False: %s row lost (%s)' % (_kind, _fp))
+        except Exception:
+            pass
+
     for _fp in _paths_in:
         _p = Path(_fp)
         if not _p.is_absolute():
@@ -94,11 +101,13 @@ try:  # evidence recorder
                 except Exception:
                     pass
             for _r, _sp in _hits:
-                _ev.append(_r, _sid, 'spec_edit', path=str(_fp), spec=_sp, file=_base, **_extra)
+                if _ev.append(_r, _sid, 'spec_edit', path=str(_fp), spec=_sp, file=_base, **_extra) is False:
+                    _lost('spec_edit', _fp)
                 _ev.set_active_spec(_r, _sp)  # informational pointer only
         elif is_code_file(_fp):
             for _r in _roots:
-                _ev.append(_r, _sid, 'code_edit', path=str(_fp))   # no spec attribution (D1)
+                if _ev.append(_r, _sid, 'code_edit', path=str(_fp)) is False:   # no spec attribution (D1)
+                    _lost('code_edit', _fp)
 except Exception as _e:
     try:
         _ev.record_hook_error(_cwd, _sid, 'mark_code_edit', _e)

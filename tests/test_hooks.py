@@ -394,6 +394,7 @@ import time  # noqa: E402
 
 sys.path.insert(0, str(HOOKS_DIR.parent / "scripts"))
 import aidd_evidence  # noqa: E402
+import aidd_rules  # noqa: E402
 
 
 class RecorderCase(HookTestCase):
@@ -816,6 +817,150 @@ class TestRecorders(RecorderCase):
         avg_ms = (time.perf_counter() - t0) / 5 * 1000
         print(f"[timing] mark_code_edit avg spawn+run {avg_ms:.0f} ms")
         self.assertLess(avg_ms, 2000)
+
+
+class TestDispatchAttribution(RecorderCase):
+    """Spec 006 FR-004: one `subagent` row per dispatch (tool_use_id), a hook_error when the row is lost."""
+    TI = {"subagent_type": "general-purpose", "description": "Auditor", "prompt": "audit performance"}
+
+    def _run_in_process(self, name, event, append_result, kinds=("subagent",)):
+        """Run hook `name` in this process with aidd_evidence.append forced to `append_result` for rows
+        of `kinds` (other kinds go through the real append)."""
+        import io
+        import runpy
+        from unittest import mock
+        real = aidd_evidence.append
+
+        def fake(root, session, kind, **detail):
+            return append_result if kind in kinds else real(root, session, kind, **detail)
+
+        stdin = io.StringIO(json.dumps(dict(event, session_id=self.session_id, cwd=str(self.root))))
+        with mock.patch.object(aidd_evidence, "append", fake), mock.patch.object(sys, "stdin", stdin):
+            with self.assertRaises(SystemExit):
+                runpy.run_path(str(HOOKS_DIR / name), run_name="__main__")
+
+    def errors(self, hook):
+        return [e for e in aidd_evidence.events(self.root, kind="hook_error") if e["detail"].get("hook") == hook]
+
+    def test_pre_then_post_hook_with_same_tool_use_id_is_pre_trail_plus_one_counting_row(self):
+        # F1 D1/D2: the pre row is attribution only (phase 'pre'); the post row still gets written
+        self.assertEqual(self.hook("record_dispatch_pre.py", tool_use_id="toolu_1", tool_input=self.TI).returncode, 0)
+        rows = self.ev("subagent")
+        self.assertEqual([r["detail"].get("phase") for r in rows], ["pre"])
+        self.assertFalse(aidd_rules._subagent_counts(rows[0]))
+        self.assertEqual(self.hook("mark_agent_dispatch.py", tool_use_id="toolu_1", tool_input=self.TI).returncode, 0)
+        rows = self.ev("subagent")
+        self.assertEqual(sorted(r["detail"].get("phase") for r in rows), ["post", "pre"])
+        post = [r for r in rows if r["detail"].get("phase") == "post"][0]
+        self.assertEqual(post["detail"]["tool_use_id"], "toolu_1")
+        self.assertEqual(post["detail"]["desc"], "Auditor")
+        self.assertEqual([r for r in rows if aidd_rules._subagent_counts(r)], [post])
+        self.assertIn("last_agent_dispatch_ts", _common.read_timestamps(self.session_id))   # post still stamps
+
+    def test_denied_dispatch_pre_row_only_never_counts(self):
+        self.hook("record_dispatch_pre.py", tool_use_id="toolu_d", tool_input=self.TI)
+        rows = self.ev("subagent")
+        self.assertEqual(len(rows), 1)
+        self.assertEqual([r for r in rows if aidd_rules._subagent_counts(r)], [])
+
+    def test_explore_dispatch_post_row_resolves_haiku_despite_pre_row(self):
+        ti = {"subagent_type": "Explore", "description": "security audit", "prompt": "audit security"}
+        self.hook("record_dispatch_pre.py", tool_use_id="toolu_e", tool_input=ti)
+        self.hook("mark_agent_dispatch.py", tool_use_id="toolu_e", tool_input=ti)
+        post = [r for r in self.ev("subagent") if r["detail"].get("phase") == "post"]
+        self.assertEqual(len(post), 1)
+        self.assertEqual((post[0]["detail"]["model"], post[0]["detail"]["model_source"]), ("haiku", "builtin"))
+        self.assertEqual([r for r in self.ev("subagent") if aidd_rules._subagent_counts(r)], [])
+
+    def test_agent_file_haiku_dispatch_post_row_resolves_model_despite_pre_row(self):
+        ad = self.root / ".claude" / "agents"
+        ad.mkdir(parents=True)
+        (ad / "cheap-auditor.md").write_text("---\nname: cheap-auditor\nmodel: haiku\n---\nbody\n", encoding="utf-8")
+        ti = {"subagent_type": "cheap-auditor", "description": "performance audit", "prompt": "audit"}
+        self.hook("record_dispatch_pre.py", tool_use_id="toolu_f", tool_input=ti)
+        self.hook("mark_agent_dispatch.py", tool_use_id="toolu_f", tool_input=ti)
+        post = [r for r in self.ev("subagent") if r["detail"].get("phase") == "post"]
+        self.assertEqual((post[0]["detail"]["model"], post[0]["detail"]["model_source"]), ("haiku", "agent_file"))
+        self.assertEqual([r for r in self.ev("subagent") if aidd_rules._subagent_counts(r)], [])
+
+    def test_agent_file_indented_decoy_model_is_ignored(self):
+        """F2 M1: only the unindented top-level `model:` key of the frontmatter counts."""
+        ad = self.root / ".claude" / "agents"
+        ad.mkdir(parents=True)
+        (ad / "decoy.md").write_text("---\nname: decoy\ndescription: |\n  helper\n  model: opus\nmodel: haiku\n---\n",
+                                     encoding="utf-8")
+        ti = {"subagent_type": "decoy", "description": "performance audit", "prompt": "audit"}
+        self.hook("mark_agent_dispatch.py", tool_use_id="toolu_m", tool_input=ti)
+        d = self.ev("subagent")[0]["detail"]
+        self.assertEqual((d["model"], d["model_source"]), ("haiku", "agent_file"))
+
+    def test_pre_hook_ignores_tool_input_tool_use_id_and_shares_length(self):
+        ti = dict(self.TI, tool_use_id="forged")
+        self.hook("record_dispatch_pre.py", tool_input=ti)
+        self.assertNotIn("tool_use_id", self.ev("subagent")[0]["detail"])
+        long_id = "t" * 300
+        self.hook("record_dispatch_pre.py", tool_use_id=long_id, tool_input=self.TI)
+        self.hook("mark_agent_dispatch.py", tool_use_id=long_id, tool_input=self.TI)
+        ids = [r["detail"].get("tool_use_id") for r in self.ev("subagent") if r["detail"].get("tool_use_id")]
+        self.assertEqual(ids, ["t" * aidd_evidence.TOOL_USE_ID_MAX] * 2)
+        self.assertEqual(aidd_evidence.TOOL_USE_ID_MAX, 200)
+
+    def test_post_hook_twice_with_same_tool_use_id_is_one_row(self):
+        self.hook("mark_agent_dispatch.py", tool_use_id="toolu_2", tool_input=self.TI)
+        self.hook("mark_agent_dispatch.py", tool_use_id="toolu_2", tool_input=self.TI)
+        self.assertEqual(len(self.ev("subagent")), 1)
+
+    def test_post_dedupe_ignores_pre_rows_but_not_post_rows(self):
+        self.hook("record_dispatch_pre.py", tool_use_id="toolu_p", tool_input=self.TI)
+        self.hook("mark_agent_dispatch.py", tool_use_id="toolu_p", tool_input=self.TI)
+        self.hook("mark_agent_dispatch.py", tool_use_id="toolu_p", tool_input=self.TI)
+        self.assertEqual(sorted(r["detail"].get("phase") for r in self.ev("subagent")), ["post", "pre"])
+
+    def test_different_tool_use_ids_are_different_rows(self):
+        self.hook("record_dispatch_pre.py", tool_use_id="toolu_a", tool_input=self.TI)
+        self.hook("mark_agent_dispatch.py", tool_use_id="toolu_b", tool_input=self.TI)
+        self.assertEqual(sorted(e["detail"]["tool_use_id"] for e in self.ev("subagent")), ["toolu_a", "toolu_b"])
+
+    def test_pre_hook_is_silent_and_fail_open_on_garbage(self):
+        r = self.hook("record_dispatch_pre.py", tool_input="not-a-dict")
+        self.assertEqual((r.returncode, r.stdout.strip()), (0, ""))
+        self.assertEqual(len(self.ev("subagent")), 1)          # still recorded, with empty fields
+
+    def test_post_hook_records_hook_error_when_append_fails(self):
+        self._run_in_process("mark_agent_dispatch.py", {"tool_use_id": "toolu_3", "tool_input": self.TI}, False)
+        self.assertEqual(self.ev("subagent"), [])
+        errs = self.errors("mark_agent_dispatch")
+        self.assertEqual(len(errs), 1)
+        self.assertIn("not recorded", errs[0]["detail"]["error"])
+
+    def test_pre_hook_records_hook_error_when_append_fails(self):
+        self._run_in_process("record_dispatch_pre.py", {"tool_use_id": "toolu_4", "tool_input": self.TI}, False)
+        self.assertEqual(self.ev("subagent"), [])
+        self.assertEqual(len(self.errors("record_dispatch_pre")), 1)
+
+    def test_no_hook_error_when_append_succeeds(self):
+        self._run_in_process("mark_agent_dispatch.py", {"tool_use_id": "toolu_5", "tool_input": self.TI}, True)
+        self.assertEqual(self.errors("mark_agent_dispatch"), [])
+
+    def test_mark_code_edit_records_hook_error_when_the_row_is_lost(self):
+        f = self.root / "specs" / "001-x" / "plan.md"
+        self._run_in_process("mark_code_edit.py", {"tool_input": {"file_path": str(f)}}, False, ("spec_edit",))
+        self.assertEqual(self.ev("spec_edit"), [])
+        errs = self.errors("mark_code_edit")
+        self.assertEqual(len(errs), 1)
+        self.assertIn("spec_edit row lost", errs[0]["detail"]["error"])
+
+    def test_mark_code_edit_code_file_hook_error_when_the_row_is_lost(self):
+        f = self.root / "src" / "app.py"
+        self._run_in_process("mark_code_edit.py", {"tool_input": {"file_path": str(f)}}, False, ("code_edit",))
+        self.assertEqual(self.ev("code_edit"), [])
+        self.assertTrue(any("code_edit row lost" in e["detail"]["error"] for e in self.errors("mark_code_edit")))
+
+    def test_mark_code_edit_no_hook_error_when_the_row_is_recorded(self):
+        f = self.root / "specs" / "001-x" / "plan.md"
+        self.hook("mark_code_edit.py", tool_input={"file_path": str(f)})
+        self.assertEqual(len(self.ev("spec_edit")), 1)
+        self.assertEqual(self.errors("mark_code_edit"), [])
 
 
 class TestCredentialHygiene(RecorderCase):

@@ -1,0 +1,5 @@
+﻿$ python ac006.py (sync_ask_answers on throwaway transcripts)
+A forged: result answers a question the tool_use never asked: recorded=0 answers_in_log=0
+B incomplete: blank answer: recorded=0 answers_in_log=0
+C well-formed pair, id NOT seen by any hook: recorded=1 answers_in_log=1
+D well-formed pair, id seen by hook: recorded=0 answers_in_log=0

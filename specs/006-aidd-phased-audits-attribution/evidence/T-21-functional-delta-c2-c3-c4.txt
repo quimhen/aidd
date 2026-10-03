@@ -1,0 +1,17 @@
+T-21 cases 2, 3, 4 (denied dispatch / Explore haiku / AC-005). Real hook subprocesses (rule_gate.py, mark_agent_dispatch.py, record_dispatch_pre.py) over tests/gate_fixtures.Base, scratch dirs, TEMP/TMP redirected.
+Command: python <scratchpad>\c234.py <scratchpad>\tmp234   (unittest, 3 tests)
+Final run: "Ran 3 tests ... OK" (test_case2_denied_dispatch_pre_only ok, test_case3_explore_haiku ok, test_case4_ac005 ok). First run of case 4 failed only because my harness recorded the prompts before the first spec edit (quote verification needs prompts after the first draft); fixed in the scratch script, not production.
+
+CASE2 rows: 4 x ('pre','general-purpose','sonnet','tool_input')   (only pre rows, perf/UI/security/functional)
+CASE2 R7 gate (qa-audit.md write) rc 2: "aidd R7: blocking qa-audit.md: not every required domain was audited. - [R7] No distinct functional auditor subagent ran after the last code edit of 001-x ... - [R7] No distinct performance audi..."
+CASE2 R5 messages include: 'No independent subagent (Mapper/Alignment) ran after the first draft of spec.md.', 'No pre-build coherence audit: no independent subagent ran after the last edit of spec.md/plan.md/tasks.md ...'
+=> a pre row alone never satisfies R5 pre-build or R7. PASS.
+
+CASE3 rows (post hook, subagent_type=Explore, no model): 4 x ('post','Explore','haiku','builtin')
+CASE3 R7 gate rc 2: "... No distinct functional auditor subagent ran ... (model tier too low, R14: a haiku auditor does not count)."
+CASE3 R5 messages include the same Mapper and pre-build audit missing. => PASS.
+
+CASE4 after 5 spec.md edits + 1 Mapper post row, R5: []
+CASE4 plan+tasks written, no pre-build audit, R5: ['No pre-build coherence audit: no independent subagent ran after the last edit of spec.md/plan.md/tas...']
+CASE4 after ONE pre-build audit (post row, sonnet), R5: []
+=> no subagent demanded between spec edits; one audit satisfies tasks approval. PASS.

@@ -1,0 +1,17 @@
+ITEM1/2 (driver run via TestCallerMarker harness, scratch TEMP):
+rc=2 no marker: aidd status > .aidd/evidence/x.toon ; aidd status && rm -rf .aidd
+rc=0 marker={session,ts}: aidd status ; bash -c aidd rules approve x ; $(aidd status)
+rc=0 no marker: echo aidd ; ls ; adversarial (a *500+aidd) 0.11s
+
+ITEM3 file_model= 'haiku' resolve= ('haiku', 'agent_file')
+ITEM4 '{"password": "x"}' -> ('{"password=[redacted]}', ['password'])
+ITEM4 'Authorization: Basic YWJjOmRlZg==' -> ('Authorization: basic=[redacted]', ['basic'])
+ITEM4 'https://user:pass@host/p' -> ('https://user:[redacted]@host/p', ['url_password'])
+ITEM4 'key sk-abcdefghijklmnopqrstuvwx1234' -> ('key [redacted]', ['token'])
+ITEM4 'ghp_abcdefghijklmnopqrstuvwxyz0123456789' -> ('[redacted]', ['token'])
+ITEM4 'AKIAIOSFODNN7EXAMPLE' -> ('[redacted]', ['token'])
+ITEM4 'https://example.com/a?b=1' -> ('https://example.com/a?b=1', [])
+ITEM4 'plain text here' -> ('plain text here', [])
+F38529FBF6592B26FA99D571CABDDAA3B624B6CE5D3E29ADEEFD960F83869232 D:\Fuentes\AIDD\skill\scripts\aidd_evidence.py
+F38529FBF6592B26FA99D571CABDDAA3B624B6CE5D3E29ADEEFD960F83869232 D:\Fuentes\AIDD\adapters\dot-aidd\scripts\aidd_evidence.py
+

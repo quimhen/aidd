@@ -1,0 +1,30 @@
+﻿$ python -m pytest tests/test_evidence.py tests/test_hooks.py tests/test_install_hooks.py -k lock_held or drain_spill or next_locked or free_lock or no_known_root or pre_then_post or post_hook or pre_hook or hook_error or record_dispatch_pre or agent_dispatch -v
+============================= test session starts =============================
+platform win32 -- Python 3.12.10, pytest-9.1.1, pluggy-1.6.0 -- C:\Users\jquimis\AppData\Local\Programs\Python\Python312\python.exe
+rootdir: D:\Fuentes\AIDD
+configfile: pyproject.toml
+plugins: anyio-4.14.1
+collecting ... collected 219 items / 200 deselected / 19 selected
+
+tests/test_evidence.py::TestSpill::test_drain_spill_merges_once_and_is_idempotent PASSED [  5%]
+tests/test_evidence.py::TestSpill::test_free_lock_appends_normally_without_spill_or_error PASSED [ 10%]
+tests/test_evidence.py::TestSpill::test_lock_held_records_a_hook_error PASSED [ 15%]
+tests/test_evidence.py::TestSpill::test_lock_held_spills_row_returns_true_and_readers_see_it PASSED [ 21%]
+tests/test_evidence.py::TestSpill::test_next_locked_write_also_merges_the_spill PASSED [ 26%]
+tests/test_evidence.py::TestSpill::test_no_known_root_returns_false_and_records_nothing PASSED [ 31%]
+tests/test_hooks.py::TestRecorders::test_agent_dispatch_records_subagent PASSED [ 36%]
+tests/test_hooks.py::TestRecorders::test_hook_error_is_a_session_kind PASSED [ 42%]
+tests/test_hooks.py::TestDispatchAttribution::test_mark_code_edit_code_file_hook_error_when_the_row_is_lost PASSED [ 47%]
+tests/test_hooks.py::TestDispatchAttribution::test_mark_code_edit_no_hook_error_when_the_row_is_recorded PASSED [ 52%]
+tests/test_hooks.py::TestDispatchAttribution::test_mark_code_edit_records_hook_error_when_the_row_is_lost PASSED [ 57%]
+tests/test_hooks.py::TestDispatchAttribution::test_no_hook_error_when_append_succeeds PASSED [ 63%]
+tests/test_hooks.py::TestDispatchAttribution::test_post_hook_records_hook_error_when_append_fails PASSED [ 68%]
+tests/test_hooks.py::TestDispatchAttribution::test_post_hook_twice_with_same_tool_use_id_is_one_row PASSED [ 73%]
+tests/test_hooks.py::TestDispatchAttribution::test_pre_hook_is_silent_and_fail_open_on_garbage PASSED [ 78%]
+tests/test_hooks.py::TestDispatchAttribution::test_pre_hook_records_hook_error_when_append_fails PASSED [ 84%]
+tests/test_hooks.py::TestDispatchAttribution::test_pre_then_post_hook_with_same_tool_use_id_is_one_row PASSED [ 89%]
+tests/test_hooks.py::TestCredentialHygiene::test_agent_dispatch_head_is_redacted PASSED [ 94%]
+tests/test_install_hooks.py::TestInstallHooks::test_record_dispatch_pre_is_installed_once_and_idempotent PASSED [100%]
+
+===================== 19 passed, 200 deselected in 2.14s ======================
+

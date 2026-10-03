@@ -39,7 +39,7 @@ Every artifact below has a real starting skeleton in this skill's own `templates
 templates/
 ├── STATE.md                  # project-root continuity file — copy once per project, read first always
 ├── mockup-audit.md
-├── visual-flow.md
+├── visual-flow.toon
 ├── spec.md                   # Step 2 — Minimum Requirements Checklist + functional requirements
 ├── contracts.md              # API-nnn contracts — only for full-stack features
 ├── data-model.md             # entities/relationships — only when the feature adds/changes data
@@ -48,6 +48,7 @@ templates/
 ├── tasks.md
 ├── qa-audit.md
 ├── comprehensive-documentation.md
+├── charter.md            # project-root, not per-feature — see "Project charter" below
 └── design-system/
     ├── MASTER.md              # global visual source of truth (Step 0, no-mockup case)
     ├── page-override.md       # per-page/per-screen exception to Master
@@ -55,8 +56,63 @@ templates/
 
 scripts/
 ├── check_spec.py              # mechanical gap-checker — run before the Step 6 Auditor reads by hand
+├── check_charter.py      # runs charter.md's checkable rules — see below
+├── research_project.py        # [optional, one-time] proposes candidate spec areas on a brownfield project with no specs/ yet — see "Research mode" below
 ├── aidd_memory.py             # AIDD Memory — code-anchored WHY in .aidd/memory/ (add/search/show/compact; aidd mem) — see "Memory" below
-└── aidd_memory_import.py      # [optional, one-off] read-only importer from a claude-mem SQLite file (aidd mem import-claude-mem)
+├── aidd_memory_import.py      # [optional, one-off] read-only importer from a claude-mem SQLite file (aidd mem import-claude-mem)
+└── tasks_to_issues.py         # turns an approved tasks.md into real GitHub issues (dry-run by default)
+```
+
+## Project charter
+
+**One file, project-root, not per-feature.** Copy `templates/charter.md` once per project —
+it's what every spec inherits without restating it: locked stack decisions, and project-specific
+rules a generic AIDD default wouldn't cover. The difference from a plain principles document: the
+template splits rules into **prose** (judgment calls, not mechanically checkable) and a
+**Checkable rules table** (`Rule | Type (forbidden/required) | Pattern | Applies to (glob)`) that
+`scripts/check_charter.py` runs for real — `forbidden` fails if the pattern appears anywhere
+under the glob, `required` fails if it appears nowhere. A rule an agent can only promise to follow
+is worth less than one a script actually checks; put a rule in the checkable table whenever it
+*can* be expressed as a pattern, and keep the prose section for genuine judgment calls only.
+
+```bash
+python scripts/check_charter.py [project-root]
+```
+
+Run this alongside `check_spec.py` before Step 6 signs off — the charter covers project-wide
+invariants, `check_spec.py` covers one spec's own internal consistency; neither replaces the other.
+
+### Research mode — bootstrapping specs when none exist yet
+
+**Run this once, at the same time as copying `templates/charter.md`, on a brownfield project that has real code but no `specs/` folder yet** (or only one or two). Step -1's `find_spec.py` can only search specs that already exist; a project with none has nothing for the spec graph (below) to index until someone writes the first ones. Research mode is the one-time bridge:
+
+```bash
+python scripts/research_project.py [project-root]
+```
+
+It's a mechanical, stdlib-only directory scan — no LLM, no file content read — that looks for route/page/screen/controller-like directories (`pages/`, `screens/`, `views/`, `routes/`, `controllers/`, `features/`, `modules/`, or a root `app/`) and prints a numbered list of candidate `specs/[###-slug]/` areas, largest first. **It never writes a spec or invents content** — same division of labor as every other script here (`check_spec.py` flags gaps, `find_spec.py` searches; scripts stay mechanical, the agent supplies judgment). Once the list is in hand: drop the noise (a `shared/`/`utils/`-shaped hit is not a feature), then run Step 0 through Step 2 per area kept, same as any other spec — this only replaces "figure out where to start on an unfamiliar codebase," not any actual step of the pipeline.
+
+## Spec graph — and why it stays cheap
+
+`find_spec.py`'s index (`specs/index.toon`) **is** AIDD's knowledge graph — it just isn't built the way a general-purpose code-knowledge-graph tool builds one. Worth being explicit about the difference, since it's the reason AIDD's own graph stays cheap indefinitely instead of degrading into an expensive full-repo re-scan:
+
+- **A file-by-file graph tool** (e.g. a tool like graphify) has no documented structure to start from, so building its graph means reading every file in the corpus and dispatching an LLM extraction pass per chunk — thorough (it can describe code that was never specified anywhere), but the cost is proportional to the size of the whole repo, every time the graph is rebuilt from scratch, and every doc/image/paper in the corpus needs its own semantic-extraction pass through an LLM subagent.
+- **AIDD's graph is derived from specs the project already maintains**, not from re-reading source code: `find_spec.py` parses `mockup-audit.md`'s own tables (Screen/Component/Control inventories) into a `US-nnn → SCREEN-XX → COMP-nnn → CTL-nnn → API-nnn` DAG, using plain regex/markdown-table parsing — stdlib only, zero LLM calls, zero tokens. Rebuilding it costs a `stat()` per spec file (cheap mtime check) and, only for files that actually changed, a re-parse of that one file — not a walk of the whole codebase.
+- **This is a trade, not a strict improvement**: AIDD's graph can only describe what a spec already documents — it has nothing to say about code with no spec behind it. That's exactly what Research mode above exists to bootstrap on a brownfield project, and it's also why a spec-less area of the codebase is invisible to `find_spec.py` until it gets a spec — by design, since the point of the search is "which spec owns this," not "what does this code do."
+- **Net effect**: on a project that actually follows AIDD (every feature specified before it's built), the graph is already there for free as a side effect of Step 1 — no separate build step, no per-query token cost, no file-by-file re-extraction. A file-by-file tool is the right choice for exploring an unfamiliar codebase that has no specs at all; AIDD's own graph is the right choice once specs exist, because at that point re-deriving structure from source is strictly more expensive than reading the structure the team already wrote down.
+
+## GitHub integration
+
+Once Step 4's task list is approved, `scripts/tasks_to_issues.py` turns each task row into a real
+GitHub issue (via the `gh` CLI), carrying over the row's codes/target file/scope note plus its
+Classify/Estimate/Decompose/Assign detail block as the issue body. Defaults to a dry run that only
+prints what it would create; a `.aidd-issues.json` file next to `tasks.md` tracks what's already
+synced, so re-running after adding new tasks never duplicates issues for ones already created —
+the same "write the reference back, never duplicate" discipline the PR/Spec ref columns already
+use elsewhere.
+
+```bash
+python scripts/tasks_to_issues.py specs/[###-feature]/tasks.md --apply
 ```
 
 ## Speed: what actually cuts time-to-correct-result
@@ -76,7 +132,7 @@ Step -1 greps `specs/*/mockup-audit.md` for a matching *spec*; that doesn't help
 Step 4's approved task list has a dependency order (`COMP-nnn` before the `SCREEN-XX` that uses it) but tasks with no dependency between them don't need to run in sequence. Group the approved tasks into waves — same-wave tasks touch disjoint files and have no ordering requirement between them — and dispatch every task in a wave as parallel Agent tool calls **in one message**, not one call at a time. This is where an agentic/looping workflow actually saves wall-clock time over a linear one; skipping it turns Step 5 back into a slow serial queue for no reason.
 
 ### Take the fast lane for a small, contained change
-The full pipeline (mockup audit → flow diagram → plan → tasks → implement → converge → handoff doc) is overkill for a one-screen, one-control fix with no new use case and no new component — forcing the full ceremony on a trivial change is itself a time cost this skill exists to eliminate. Fast lane conditions (all must hold): touches exactly one existing `SCREEN-XX`, no new `US-nnn`, no new `COMP-nnn`, no navigation change. When they hold: skip `visual-flow.md` and `comprehensive-documentation.md` entirely, amend `mockup-audit.md` and `qa-audit.md` directly (still under Step -1's amend-don't-duplicate rule), and run it as a single task with the same four-part Definition of Done. The moment any fast-lane condition stops holding mid-work, stop and go back to the full pipeline from Step 1 — don't keep stretching the fast lane past its conditions.
+The full pipeline (mockup audit → flow diagram → plan → tasks → implement → converge → handoff doc) is overkill for a one-screen, one-control fix with no new use case and no new component — forcing the full ceremony on a trivial change is itself a time cost this skill exists to eliminate. Fast lane conditions (all must hold): touches exactly one existing `SCREEN-XX`, no new `US-nnn`, no new `COMP-nnn`, no navigation change. When they hold: skip `visual-flow.toon` and `comprehensive-documentation.md` entirely, amend `mockup-audit.md` and `qa-audit.md` directly (still under Step -1's amend-don't-duplicate rule), and run it as a single task with the same four-part Definition of Done. The moment any fast-lane condition stops holding mid-work, stop and go back to the full pipeline from Step 1 — don't keep stretching the fast lane past its conditions.
 
 ### W1 — Graph first, filter first (working rule for every agent, subagents included)
 Before reading any file, ask the graph and filter; read only what the answer points to.
@@ -112,7 +168,7 @@ Each step below has a natural agent boundary. Using it matters most for one reas
 | 2 | **Ask the user** | Main conversation, using the Alignment Agent's compiled list — this is the one genuinely interactive part | — |
 | 3 | **Mapper (drafting)** | A fork/fresh agent drafts `plan.md`: inspects the actual codebase for existing naming conventions, checks `components-index.md`, and fills the Screen→Code / Component→Code maps as a proposal | None |
 | 3 | **Approve the plan** | Main conversation presents the Mapper's draft for the user's confirmation/adjustment | — |
-| 4, 5 | **Builder(s)** | One agent per small-PR task; parallelize across agents only when tasks touch disjoint files | None between implementers, but never the same agent as the Auditors below |
+| 4, 5 | **Builder(s)** | ONE owner agent per target file (all small changes to it); parallelize across agents only when tasks touch disjoint files; audit fixes resume that owner | None between implementers, but never the same agent as the Auditors below |
 | 6 | **Auditores de Cierre (QA)** — one per domain touched, see below | Fresh agents/contexts that did NOT implement the PRs being checked | **Mandatory.** Each re-derives its own domain's `qa-audit.md` rows from the code and evidence — none trusts the implementer's self-reported status |
 | 7 | **Documentador** | Mechanical assembly pass, any agent — no new judgment calls, just copying existing rows | None |
 
@@ -266,18 +322,20 @@ These rules are part of the methodology in every tool (contract: `specs/002-aidd
 
 | Rule | What it blocks | The exact fix |
 |---|---|---|
-| **R1** estimates are agent time | Writing `tasks.md` with no `## Waves` table, a task lacking `Agent min:` / `Human ref hours:` (a bare `Estimated hours:` counts as missing), a wave time that is not the max of its tasks, a total that is not the sum of the waves, or a `Status` / `Tracker ref` / `PR/Spec ref` cell longer than 60 chars or 8 words (those cells are hash-neutral, so they must stay short) | Add `Agent min:` + `Human ref hours:` per task, the Waves table `\| Wave \| Tasks \| Agent time (min) \| Human ref (h) \|`, and `Total agent time (critical path): N min` |
+| **R1** estimates are agent time AND tokens | Writing `tasks.md` with no `## Waves` table, a task lacking `Agent min:` / `Tokens (est):` (a bare `Estimated hours:` counts as missing), a wave time that is not the max of its tasks, a wave token count that is not the SUM of its tasks, a total that is not the sum of the waves, a missing `Total tokens (k): N` (legacy 4-column files that are already approved stay valid), or a `Status` / `Tracker ref` / `PR/Spec ref` cell longer than 60 chars or 8 words (those cells are hash-neutral, so they must stay short) | Add `Agent min:` + `Tokens (est):` per task, the Waves table `\| Wave \| Tasks \| Roles \| Agent time (min) \| Tokens (k) \| Human ref (h) \|`, `Total agent time (critical path): N min` and `Total tokens (k): N`. Human ref hours is DERIVED = Agent min x 3 / 60, never hand-estimated |
 | **R2** route is declared | Writing `spec.md` with no `## Pipeline route` table, a duplicate step row, or a step `waived` without a Reason and `user — "<quote ≥ 3 words>"` (the quote is verified under R5) | Add the route table (one row each for `-1, 0, 1, 1.5, 2, 3, 4`); ask the user (AskUserQuestion) before waiving and quote their words, or set the step back to `run` |
 | **R3** alignment provenance | The Minimum Requirements Checklist missing any question of the shipped template (extra rows are fine) or with a blank / `-` Answer; an answer with no valid `Source`; a `repo — <path>` that does not exist under the project root, has no `:LINE` (or a LINE beyond the file) and no `"quote ≥ 3 words found in that file"` (a bare directory, `.` or `README.md` is rejected); a Proposed marker in ANY column (unconfirmed whatever the Source says) | `user — "<quote>"`, `repo — <existing path>:<LINE>` (or `repo — <path> "<quote from the file>"`), or `[Proposed — unconfirmed]` if the agent chose it |
 | **R4** visual debt | Waived Steps 0/1/1.5 with `SCREEN-nn` codes (any case, also inside HTML comments; in `spec.md`, `plan.md`, `contracts.md` or another spec) and no `## Visual debt` row; a `Blocks spec` that is not an existing spec id; a `resolved` row without a real Mockup source (existing file, `http(s)://` or `figma:`) and a `mockup-audit.md` row for its codes; while a row is `open`, writes under the blocked spec and code edits for it (evaluated on the would-be content of the write) | List the codes in `## Visual debt`, ask the user for the mockup source, run Steps 0/1/1.5, mark the row `resolved` with the source |
-| **R5** chain order | Writing `plan.md` without a `find_spec` run this session, an independent subagent after the last `spec.md` edit, **no blank checklist Answer**, zero `[Proposed` rows, every `user — "quote"` verified (≥ 5 words found in a recorded prompt, or ≥ 2 words found in a recorded answer to an AskUserQuestion — both recorded AFTER the spec's first edit) and no open debt; writing `tasks.md` without `plan.md`, a subagent after the last `plan.md` edit, and (fail-closed) a `find_spec` run, plus a subagent after any graph rebuild | Run `find_spec.py`; dispatch the Mapper/Alignment agent over `spec.md`; ask the user every open question (AskUserQuestion) and quote their answer; dispatch an auditor over `plan.md`; then retry |
+| **R5** chain order | Writing `plan.md` without a `find_spec` run this session, an independent subagent (Mapper/Alignment) after the FIRST `spec.md` draft (not after every edit), **no blank checklist Answer**, zero `[Proposed` rows, every `user — "quote"` verified (≥ 5 words found in a recorded prompt, or ≥ 2 words found in a recorded answer to an AskUserQuestion — both recorded AFTER the spec's first edit) and no open debt; writing `tasks.md` without `plan.md`, and (fail-closed) a `find_spec` run, plus ONE independent pre-build coherence audit (spec, plan, graph, estimates; absorbs the old graph-coherence audit) after the last `spec.md`/`plan.md`/`tasks.md` edit or graph rebuild | Run `find_spec.py`; dispatch the Mapper/Alignment agent once over `spec.md`; ask the user every open question (AskUserQuestion) and quote their answer; dispatch ONE pre-build coherence auditor; then retry |
 | **R6** tasks approval | Writing the `Approved:` line (or running `aidd rules approve`) unless the user's recorded answer is the option **"Approve"** of an AskUserQuestion about approving the tasks (topic `approv|aprob`; asked in this session, newer than the last change of `tasks.md`; the question must OFFER that option and contain the tag `[tasks:<hash8>]` of the current `tasks.md`) and `tasks.md` is R1-valid; the gate allows the edit only if it changes nothing else (`approval_hash` before = after) and the written hash is that hash. **Every write to a code file** — EVERY file except `md markdown txt rst csv tsv log lock png jpg jpeg gif svg ico webp bmp pdf docx xlsx pptx zip` and except `specs/`, `design-system/`, `.aidd/memory/`, `.claude/skills/`, `.git/`, `node_modules/`, `__pycache__/`, `.venv/` (canonical path relative to the outermost project root) — **is blocked while ANY open spec has no valid approval, no hook-recorded `approved{spec,hash}` event for the current hash, or no `tasks.md` at all ("Step 4 missing")**. The hash ignores the `Status`, `Tracker ref` and `PR/Spec ref` columns/lines, so sync/link tools do not void it; any other edit does | Present the tasks, ask with AskUserQuestion (question text with the `[tasks:<hash8>]` tag, option "Approve"), then `aidd rules approve specs/<id>` |
-| **R7** closing audit per domain | Writing `qa-audit.md` while any required domain (`performance` always, `ui`, `backend`, `database` by what the tasks touch) lacks its OWN subagent after the last code edit (any code edit — code edits carry no spec attribution) whose description or the first 400 chars of its prompt name it (word-boundary match; one subagent counts for ONE domain only) | Dispatch one auditor per missing domain, name the domain in its prompt, rewrite `qa-audit.md` |
+| **R7** closing audit per domain | Writing `qa-audit.md` while any required domain (`security` and `functional` always, the functional one with executed evidence per R10; `ui`, `backend`, `database` by what the tasks touch; `performance` only when the tasks touch hot paths, the database or the UI) lacks its OWN subagent (medium or high tier, never haiku) after the last code edit (any code edit — code edits carry no spec attribution) whose description or the first 400 chars of its prompt name it (word-boundary match; one subagent counts for ONE domain only) | Dispatch one auditor per missing domain, name the domain in its prompt, rewrite `qa-audit.md` |
 | **R8** stop gate | Ending the session (Stop hook, exit 2) while ANY open spec (across all sessions) has a valid approval, code edits after its `approved` event, and `qa-audit.md` missing or a required domain uncovered. Blocks at most 3 times per (spec, approval hash), then allows and records `stop_block_exhausted` — it is a nudge, not a lock; `stop_hook_active` is not a free pass | Run the missing auditors and write `qa-audit.md`, then `aidd rules close <id>` |
 | **R9** protected paths | The agent writing anything under `.aidd/` EXCEPT `.aidd/memory/**`, or the per-session evidence directory (`<tempdir>/aidd-hooks/`), via Write/Edit/MultiEdit/NotebookEdit; and Bash/PowerShell commands that write, delete, move or redirect into those paths, that import or `-m`-run `aidd_evidence|aidd_rules|aidd_status`, that contain `AIDD_TESTING`, `AIDD_EVIDENCE_DIR` or `AIDD_SESSION_ID` anywhere, or assign `AIDD_RULES=`, that write/remove/move under `specs/` (e.g. deleting `tasks.md`), that mention `tasks.md` together with `Approved`, or that use the obfuscation forms the audit found (`xargs rm`, `curl -o`, `tar -C`, `unzip -d`, `Expand-Archive`, `iwr`/`Invoke-WebRequest -OutFile`, `Tee-Object`, `[IO.File]::`, `[IO.Directory]::`, `Export-Csv`, `git apply`, `eval`, glob characters in a `.aidd` path). Paths are canonicalised first (case, `..`, trailing dots/spaces, `::$DATA`, 8.3 names, junctions/symlinks). The Bash/PowerShell guard is a cheap lexical pre-check, not a sandbox | None — those files are written by hooks only |
 | **R10** executed evidence | Writing `qa-audit.md` where a ✅ `SCREEN-nn`, `API-nnn` or `-Fnn` code in the Mapping ledger has no row in `## Execution evidence` (`Code \| Kind \| Evidence \| Verified by`); a Kind outside `screenshot \| command-output \| query-result \| log \| manual-test \| not-verified`; an evidence file that does not exist inside the spec dir or project (drive letters, UNC, absolute paths and `..` are not evidence); a screenshot that is not .png/.jpg/.jpeg/.webp; a `manual-test` without `user — "<quote ≥ 3 words>"`; a `not-verified` whose Status is still ✅ or that cites no existing human test script; (best-effort) evidence older than the last recorded code edit. Codes under `Open exceptions` are exempt. Also checked statically by `aidd rules check` and `check_spec.py` (without freshness) | Run it for real, save the screenshot/output under the spec dir, add `\| CODE \| <kind> \| <relative path> \| agent \|`, then rewrite `qa-audit.md`. Cannot run it: Kind `not-verified` + a human test script, Status ⚠️ PARTIAL |
 | **R11** root cause on repeat | A `## Bug reports` table (`# \| Code \| Symptom \| Root cause \| Fix \| Pattern sweep`) where the 2nd report of the same Code has no Root cause or no Pattern sweep, or the 3rd report's Fix does not say `redesign` with a spec id or `T-nn` | Write why it failed again (cause, not symptom) and what you searched where (e.g. `grep -rn "fmt(" forms/` → 4 hits fixed); on the 3rd, `Fix: redesign — spec <id>` |
 | **R12** view vs logic | A task in `tasks.md` that cites `SCREEN-`/`COMP-` and a reuse word (reutiliza, remapea, envuelve, wrap, reuse, rewire) without `Kind:`. `Kind` is part of the approval hash, so an already-approved `tasks.md` with reuse wording must be re-approved | In the task row or its block add `Kind: VIEW-new` (new view, reused logic/data; the default for a redesign), `Kind: LOGIC`, or `Kind: VIEW-legacy: <why, 5+ chars>` |
+| **R13** agent role and model tier | A task in `tasks.md` without `Agent role:` (`builder\|sql\|tests\|docs\|auditor\|mapper`) or without `Model tier:` (`medium\|high`); anything else, including `low`, is invalid | Declare `Agent role:` and `Model tier: medium` or `high` on every task |
+| **R14** no haiku auditors | An auditor/Mapper subagent whose recorded model contains `haiku` does NOT count for R5/R7/R8; an absent or inherited model counts | Dispatch auditors with `model: sonnet` or `opus` |
 
 **Executed evidence, not textual (Definition of Done, R10).** A ✅ on a screen, API or field means it was RUN: a screenshot on the real device, or the output of the command/query, saved as a file and cited in `## Execution evidence`. Reading the code is not evidence. Before claiming there is no device, run `adb devices` (or the platform equivalent) and record the output in `## Device preflight` of `qa-audit.md`. If it truly cannot be run, write `not-verified`, write a human test script the user can follow, and keep the Status ⚠️ PARTIAL; never claim done.
 
@@ -289,7 +347,7 @@ These rules are part of the methodology in every tool (contract: `specs/002-aidd
 
 **R10 freshness is best-effort.** Existence, kind and status checks are firm; freshness is not: (a) edits made through PowerShell/Bash are not recorded, so evidence made stale that way passes; (b) only code extensions are recorded, so edits to `.json/.xml/.html/.css/.yml/.xaml` are invisible; (c) code edits carry no spec attribution, so any recorded code edit in the session makes all file evidence stale; (d) `http(s)://` evidence has no mtime and is not checked; (e) file mtime resets on git checkout or copy.
 
-**`check_spec.py` gaps G1–G5** (each only when the artifact exists): G1 a control with an Action in `mockup-audit.md` needs Destination, Data source and States; G2 `spec.md` needs Acceptance cases with at least one `edge`; G3 every `traceability.md` row needs Mockup field, Room/store, DTO, API, SP and Filled-by; G4 `contracts.md` needs a stamped `Contract hash:` equal to the table's recomputed hash (run `python check_spec.py <spec_dir> --stamp-contract` once the contract is settled; re-stamp after changing it); G5 a component used in a screen needs `Consumers` in `components-index.md`.
+**`check_spec.py` gaps G1–G6** (each only when the artifact exists): G1 a control with an Action in `mockup-audit.md` needs Destination, Data source and States; G2 `spec.md` needs Acceptance cases with at least one `edge`; G3 every `traceability.md` row needs Mockup field, Room/store, DTO, API, SP and Filled-by; G4 `contracts.md` needs a stamped `Contract hash:` equal to the table's recomputed hash (run `python check_spec.py <spec_dir> --stamp-contract` once the contract is settled; re-stamp after changing it); G5 a component used in a screen needs `Consumers` in `components-index.md`; G6 two task rows name the same Target file unless one says `same owner as T-nn`.
 
 **Compact hook output.** Hook output to the model is intentionally compact: the full pipeline hint is sent once per session and `find_spec` output is reduced to verdict lines.
 
@@ -301,7 +359,7 @@ These rules are part of the methodology in every tool (contract: `specs/002-aidd
 
 **CLI (any tool):** `aidd status [spec_dir] [--json]` lists ALL open specs with their approval state ("Step 4 missing" for an open spec without `tasks.md`) and, per spec, the ledger (route steps and whether each waiver is confirmed, proposed/unanswered/unverified alignment answers, Mapper and graph evidence, approval validity and whether the `approved` event is recorded, waves and critical-path minutes, code edits, per-domain auditor coverage, open visual debt) plus **WHY blocked** lines (rule, message, exact fix); globally: how many AskUserQuestion answers were recorded, `stop_block` counts and hook errors; exit 0 always, even for a pathological `tasks.md`. `aidd rules check <spec_dir>` prints `PASS|FAIL Rn message → fix` and exits 1 on any violation. `aidd rules approve <spec_dir>` writes the `Approved:` line and records the `approved` event only with the user's recorded answer "Approve" (same session, newer than `tasks.md`) and an R1-valid `tasks.md`; otherwise it refuses and prints the exact `[tasks:<hash8>]` tag the question text must contain; the question must also OFFER the option "Approve". `aidd rules close <id>` needs an open spec, a valid recorded approval, `qa-audit.md`, every required domain audited and the recorded answer "Yes, close" (asked after `qa-audit.md`); it records `spec_closed(completed)`. `aidd rules abandon <id> [--reason TEXT]` needs the recorded answer "Abandon" and records `spec_closed(abandoned)`. The CLI cannot see its own session id: it uses the session of the newest recorded user prompt, and ignores `AIDD_SESSION_ID`/`AIDD_EVIDENCE_DIR` unless `AIDD_TESTING=1`. `check_spec.py` also reports the static rules (R1–R4, R6, R10–R12) as gaps.
 
-**Limitations — read this before trusting the rules.** (1) **Bash and PowerShell can still edit code**: heredocs, `sed`, `Set-Content`, scripts — the code gate covers Write/Edit/MultiEdit/NotebookEdit; the shell tools are only checked for writes into protected paths. (2) Through Bash/PowerShell an agent can also **try to forge evidence** by calling the CLI or the libraries; the guard that blocks this is lexical (pattern matching on the command text), not a sandbox, and a determined agent can evade it. (3) The gates verify that a subagent ran and a question was answered, **not that they were any good** — an auditor that rubber-stamps still satisfies R5/R7. (4) The user's click cannot be cryptographically proven: an answer is accepted when the hook recorded the user's response to an anchored question that offered the required option, which is evidence, not proof. (5) Hooks **fail open** on a crash, a launch failure or a timeout (15 s gates, 10 s recorders) and record a `hook_error` only when they can run at all — `aidd status` shows the count. (6) **R8 relaxes after 3 blocks per approval hash**, then lets the session end. (7) Session ids and resume/compact behaviour are not verified: events without a session id are `unknown-session`, and the CLI infers its session from the newest prompt. (8) A user quote is checked against what was recorded as typed or answered, not for whether it means what the agent claims. (9) A spec stopped at `spec.md` (no `plan.md`/`tasks.md` yet) is not open, so it opens no gates. (10) Code can be planted under exempt locations (`.git/hooks`, `node_modules/`, `specs/`) because R6 does not gate them. (11) `repo —` sources only prove that the file (and line) exists, not that it is relevant. (12) The shell guard has false positives (`cp … specs/…`, `git mv specs/…`, `echo x > specs/a.md`): use the Write tool for those. (13) With several concurrent windows the CLI can infer the wrong session; it then fails closed (refuses). (14) A stray legacy marker file may appear in `%TEMP%\aidd-hooks` during tests. (15) `AIDD_TESTING` cannot be detected as "started by the test suite": the CLI honours it as set, and the shell guard blocks any command that contains `AIDD_TESTING`, `AIDD_EVIDENCE_DIR` or `AIDD_SESSION_ID`. **In short: the rules stop accidental and self-justified skipping; they do not stop a determined agent.** Escape hatch (owner only): `AIDD_RULES=off|0|false|no|warn`.
+**Limitations — read this before trusting the rules.** (1) **Bash and PowerShell can still edit code**: heredocs, `sed`, `Set-Content`, scripts — the code gate covers Write/Edit/MultiEdit/NotebookEdit; the shell tools are only checked for writes into protected paths. (2) Through Bash/PowerShell an agent can also **try to forge evidence** by calling the CLI or the libraries; the guard that blocks this is lexical (pattern matching on the command text), not a sandbox, and a determined agent can evade it. (3) The gates verify that a subagent ran and a question was answered, **not that they were any good** — an auditor that rubber-stamps still satisfies R5/R7. (4) The user's click cannot be cryptographically proven: an answer is accepted when the hook recorded the user's response to an anchored question that offered the required option, which is evidence, not proof. (5) Hooks **fail open** on a crash, a launch failure or a timeout (15 s gates, 10 s recorders) and record a `hook_error` only when they can run at all — `aidd status` shows the count. (6) **R8 relaxes after 3 blocks per approval hash**, then lets the session end. (7) Session ids and resume/compact behaviour are not verified: events without a session id are `unknown-session`, and the CLI infers its session from the newest prompt. (8) A user quote is checked against what was recorded as typed or answered, not for whether it means what the agent claims. (9) A spec stopped at `spec.md` (no `plan.md`/`tasks.md` yet) is not open, so it opens no gates. (10) Code can be planted under exempt locations (`.git/hooks`, `node_modules/`, `specs/`) because R6 does not gate them. (11) `repo —` sources only prove that the file (and line) exists, not that it is relevant. (12) The shell guard has false positives (`cp … specs/…`, `git mv specs/…`, `echo x > specs/a.md`): use the Write tool for those. (13) Session attribution is inferred: before any Bash/PowerShell command that invokes `aidd`, `rule_gate` writes a caller marker (`<tmp>/aidd-hooks/caller-<sha1(root)>.json`, `{session, ts}`); the CLI prefers a marker younger than ~120 s for the same root, else the newest non-synthetic prompt (not starting with `<` or `[`). Refusals name the inferred session. With several concurrent windows the inference can still be wrong; it then fails closed (refuses). (14) A stray legacy marker file may appear in `%TEMP%\aidd-hooks` during tests. (15) `AIDD_TESTING` cannot be detected as "started by the test suite": the CLI honours it as set, and the shell guard blocks any command that contains `AIDD_TESTING`, `AIDD_EVIDENCE_DIR` or `AIDD_SESSION_ID`. **In short: the rules stop accidental and self-justified skipping; they do not stop a determined agent.** Escape hatch (owner only): `AIDD_RULES=off|0|false|no|warn`.
 
 ## Pipeline
 
@@ -391,21 +449,32 @@ Keep it mechanical — tables and codes, not prose about how a screen "feels."
 
 ### Step 1.5 — Visual Process Flow (draw it, don't describe it)
 
-**Explaining step-by-step what a user can do on a screen, in prose, is where interaction with the AI usually breaks down** — it takes many messages and still under- or over-specifies. Replace that with a diagram: copy `templates/visual-flow.md` to `specs/[###-feature]/visual-flow.md` and fill in one Mermaid `flowchart TD` per `US-nnn`, built mechanically from Step 1's screen inventory, control inventory, and navigation map — every node labeled with its `SCREEN-XX`/`CTL-nnn` code, not a redescription:
+**Explaining step-by-step what a user can do on a screen, in prose, is where interaction with the AI usually breaks down** — and the user cannot confirm a plan they cannot see. Replace that with **AIDD Flowmap**: copy `templates/visual-flow.toon` to `specs/[###-feature]/visual-flow.toon` and fill one `flow: US-nnn` block per use case, built mechanically from Step 1's screen inventory, control inventory and navigation map. The source is **AIDD-TOON** (the same tabular TOON dialect as `specs/index.toon`, not JSON, not Mermaid): `actors` (swimlane rows — human / system / data / external), `processes` (phases), `steps` (every screen/control step cites its `SCREEN-XX`/`CTL-nnn` code, never a redescription) and `links` (labeled branches; a decision's every branch must carry its condition). **Never place coordinates** — layout, routing and pseudocode are derived.
 
-```mermaid
-flowchart TD
-  A([Enter Waiter profile]) --> B[SCREEN-01 Table map]
-  B --> C{CTL-004 Open table}
-  C -- table occupied --> D[Block: table already has an open ticket]
-  C -- table free --> E[SCREEN-08 Order ticket]
-  E --> F[CTL-060 Add item]
-  E --> G[CTL-061 Apply discount]
-  F --> H[SCREEN-09 Kitchen ticket]
-  H --> I{CTL-077 Send to kitchen / CTL-078 Cancel ticket}
+```
+flow: US-001
+title: Waiter opens a table
+actors[3]{id,label,kind}:
+  waiter,Waiter,human
+  pos,POS app,system
+  db,SQL Server,data
+processes[2]{id,label}:
+  P1,Choose table
+  P2,Take order
+steps[4]{id,actor,process,type,code,label,detail}:
+  s1,waiter,P1,start,,Enters waiter profile,
+  s2,pos,P1,screen,SCREEN-01,Table map,
+  s3,pos,P1,decision,CTL-004,Open table?,Checks open ticket via API-012
+  s4,pos,P2,screen,SCREEN-08,Order ticket,
+links[3]{from,to,label,role}:
+  s1,s2,,main
+  s2,s3,,main
+  s3,s4,free,main
 ```
 
-**This diagram is the interaction surface for Step 2**, not a diagram to review passively: present it, and have the user correct the *diagram* directly (redraw a branch, mark a node wrong, add a missing decision) instead of describing the flow in words. A round of "move this node" or "this branch is missing" is one small diff to the flowchart; the same correction attempted in prose is where a spec's back-and-forth usually stalls. Keep one flowchart per `US-nnn` (not one giant diagram for the whole feature) so a correction stays local and reviewable.
+Then run `aidd flow specs/[###-feature]/visual-flow.toon --open` (or `python scripts/flowmap.py ...`). It validates first (dangling links, dead ends, unreachable steps, decision branches without a condition, missing codes — and with `--spec-dir`, codes that do not exist in the spec) and only then writes a standalone interactive `visual-flow.html` with: the **actors × processes swimlane flow**, **generated pseudocode** (IF/ELSE/GOTO derived from the graph, synchronized with the diagram), and an **Actors × Processes matrix**. The user can click any step, walk the flow with the arrow keys, pick a branch with `1-9`, filter by actor or process, and gets the exact reference to cite (`US-001/s3`).
+
+**This is the interaction surface for Step 2**, not a diagram to review passively: show the user the rendered HTML and have them correct the *flow* by node reference ("US-001/s3: missing branch for a reserved table") instead of describing it in words; each correction is one small diff to the TOON followed by a re-render. Keep one `flow:` block per `US-nnn` so a correction stays local. `check_spec.py` validates `visual-flow.toon` automatically.
 
 ### Step 2 — Align (before planning, not during implementation)
 
@@ -439,11 +508,24 @@ Copy `templates/tasks.md`. Each task = **one `SCREEN-XX`, `COMP-nnn`, or `SCREEN
 
 Detail each task with the same four-dimension rubric as a requirements-analysis workflow: **Clasificar** (naturaleza, prioridad), **Estimar** (esfuerzo, horas), **Descomponer** (objetivo + actividades numeradas concretas — analysis/dev/test, not generic), **Asignar** (recurso sugerido, only if the project has a team). Leave anything you can't justify blank — never invent a number or a name to fill a field.
 
-**Estimates are agent time, not human hours (hard rule R1).** Each task states `Agent min:` (whole minutes an agent needs) and `Human ref hours:` (what a human would need, for reference only). `tasks.md` carries a `## Waves` table `| Wave | Tasks | Agent time (min) | Human ref (h) |`: waves run sequentially, tasks inside a wave in parallel, so a wave's agent time is the **maximum** `Agent min` of its tasks and the line `Total agent time (critical path): N min` is the **sum** of the wave times. A bare `Estimated hours:` is not accepted — it is how human effort ends up quoted as if it were agent time.
+**Estimates are agent minutes AND tokens, not human hours (hard rule R1).** Plan with the calibration baselines (`templates/calibration.toon`: roughly 50-75k tokens per one-file task; Low 45k, Medium 62k, High 90k; minutes are REAL wall time: 3-10 min per one-file task, 15-25 min for a coupled task or one running the suite). Each task states `Agent min:`, `Tokens (est):`, `Agent role:` and `Model tier:`; the human reference is DERIVED (Agent min x 3 / 60), never hand-estimated. `tasks.md` carries a `## Waves` table `| Wave | Tasks | Roles | Agent time (min) | Tokens (k) | Human ref (h) |`: waves run sequentially, tasks inside a wave in parallel, so a wave's agent time is the **maximum** `Agent min` of its tasks, its tokens the **sum** of its tasks, and the lines `Total agent time (critical path): N min` and `Total tokens (k): N` are the **sums** over the waves. Organize each wave with specialized agents (role + model tier per task, one file per task, disjoint files per wave). After closing a spec run `aidd calibrate record specs/<id>` to feed the log. A bare `Estimated hours:` is not accepted — it is how human effort ends up quoted as if it were agent time.
+
+**Six planning rules (Step 4).**
+
+| # | Rule |
+|---|---|
+| 1 | ONE owner agent per target file/class, who makes ALL the small changes to it. Two task rows with the same Target file are one task; keep both only with `same owner as T-nn` (the opt-out `check_spec.py` gap G6 understands). One code, one file, one PR is a review-size concern, not an agent split. |
+| 2 | Derive waves from an explicit dependency graph. Only a true dependency (needs another task's output or file) goes in a later wave; everything independent (docs, tests against an interface fixed by `plan.md`, read-only audits of already-stable code) goes in the SAME wave. Target 2-3 waves. |
+| 3 | `Agent min` is REAL wall time, not ideal agent minutes (measured: one-file task 3-10 min, coupled task or one running the suite 15-25 min). |
+| 4 | Subagent tasks run only their own targeted tests; the main agent runs the full suite once per wave. |
+| 5 | After audits, fixes go back to the original owner of each file (SendMessage resume), not to a new agent. |
+| 6 | A fix batch fixes only CONFIRMED medium+ findings; the rest are documented open exceptions. |
 
 **Present the task list as a dry-run and wait for approval before writing any code.** The compact table is what gets reviewed first (code | file | new-or-reuse); the per-task rubric detail is what justifies it. Any mismatch caught here costs one edit instead of a rewritten PR. Never start Step 5 on tasks that weren't approved.
 
 **Approval is the user's, and it is tamper-evident (hard rule R6).** `tasks.md` ends with `Approved: <date> hash:<hash>`, where the hash covers the rest of the file, so any later edit voids the approval and the tasks must be re-presented. On Claude Code, `aidd rules approve specs/[###-feature]` writes that line only after a recorded AskUserQuestion about the tasks, and code-file writes are blocked until it is valid; in other tools, treat the rule as discipline — show the tasks, get an explicit yes, and never write the `Approved:` line yourself.
+
+**One confirmation covers spec, plan and tasks.** Before asking, show a short summary listing the objectives the implementation will achieve with their token/minute cost. Then ask ONE AskUserQuestion with the tag `[tasks:<hash8>]` (option "Approve"). For close and abandon the question text must contain `[spec:<id>]` (options "Yes, close" / "Abandon"). Claude Code does not fire hooks for AskUserQuestion, so the clicks are recovered from the host transcript (rule_gate and prompt_trigger run `sync_ask_answers`), and messages typed while the agent works are recorded from `queued_messages`. Fallback when nothing was recorded: ask the user to type the one-line reply (`Approve [tasks:<hash8>]`, `Yes, close [spec:<id>]`, `Abandon [spec:<id>]`) as a NEW message while the agent is idle. A typed reply starting with `<` or `[` (subagent hand-backs) is never accepted. R9 also protects host transcripts (`.claude/projects/*/*.jsonl`) from agent writes.
 
 ### Step 5 — Implement, one PR at a time, gated
 
@@ -461,7 +543,9 @@ Thread codes into the code itself using the `aidd:CODE` marker convention (see "
 
 **Run `scripts/check_spec.py` on the spec folder first.** Fix what it flags (or, for reused-code checks, cross-reference the Component Index) before the Auditor spends a manual pass on anything the script already caught for free.
 
-**One independent auditor per required domain (hard rule R7).** Required domains: `performance` always; `ui` if the tasks cite `SCREEN-`/`CTL-`/`COMP-`; `backend` if they cite `API-`; `database` if `data-model.md` exists or the tasks mention stored procedures, migrations, `.sql` or a schema. Each is a separate subagent dispatched **after the last code edit** whose description or first 400 chars of prompt name its domain (ui/mockup/screen, backend/api/contract, database/sql/schema, performance/best practice — word-boundary match, and one subagent counts for ONE domain only). On Claude Code, hooks block writing `qa-audit.md` until every required domain has one and refuse to end a session that built code without them (R8); elsewhere it is discipline. When all of it is done, `aidd rules close <spec-id>` records `spec_closed(completed)` (refused while an R6/R7 gap remains or without the user's recorded "Yes, close" answer); `aidd rules abandon <spec-id>` drops a spec on the user's recorded "Abandon" answer.
+**Auditors run on a medium or high model tier, never the lowest**, chosen by the spec's `Risk: low|medium|high` (high = writes to SAP/DB, security, money -> highest tier); haiku does not count (R14).
+
+**One independent auditor per required domain (hard rule R7).** Required domains: `security` and `functional` always (functional with executed evidence, R10); `performance` only when the tasks touch hot paths, the database or the UI; `ui` if the tasks cite `SCREEN-`/`CTL-`/`COMP-`; `backend` if they cite `API-`; `database` if `data-model.md` exists or the tasks mention stored procedures, migrations, `.sql` or a schema. Each is a separate subagent dispatched **after the last code edit** whose description or first 400 chars of prompt name its domain (ui/mockup/screen, backend/api/contract, database/sql/schema, performance/best practice — word-boundary match, and one subagent counts for ONE domain only). On Claude Code, hooks block writing `qa-audit.md` until every required domain has one and refuse to end a session that built code without them (R8); elsewhere it is discipline. When all of it is done, `aidd rules close <spec-id>` records `spec_closed(completed)` (refused while an R6/R7 gap remains or without the user's recorded "Yes, close" answer); `aidd rules abandon <spec-id>` drops a spec on the user's recorded "Abandon" answer.
 
 Copy `templates/qa-audit.md` on the first pass; every later pass appends to the same file. Recompute the overall score (`N/Total = X%` across all mapping rows) and log it as a new revision, not an overwrite:
 
@@ -477,11 +561,11 @@ The delta line is the point: it tells you at a glance whether this pass actually
 
 ### Step 7 — Comprehensive Documentation (handoff)
 
-Copy `templates/comprehensive-documentation.md`. Once a spec converges, assemble its parts into one handoff-quality document — the same genre as a formal process handoff doc: not a re-explanation, a re-assembly of what already exists in `mockup-audit.md`/`plan.md`/`visual-flow.md`/`qa-audit.md`. Fixed sections:
+Copy `templates/comprehensive-documentation.md`. Once a spec converges, assemble its parts into one handoff-quality document — the same genre as a formal process handoff doc: not a re-explanation, a re-assembly of what already exists in `mockup-audit.md`/`plan.md`/`visual-flow.toon`/`qa-audit.md`. Fixed sections:
 
 1. **Objective and scope** — from the `US-nnn` list and their purpose; explicitly state what's out of scope.
 2. **Architecture** — the Screen → Code map from Step 3.
-3. **Formal flow** — the Step 1.5 Mermaid diagrams, one per `US-nnn`, verbatim.
+3. **Formal flow** — the Step 1.5 Flowmap per `US-nnn` (link `visual-flow.html`, paste the generated pseudocode).
 4. **What we have today / What's missing** — pulled directly from the latest `qa-audit.md` revision: ✅ rows under "today", ⚠️/❌/🔄 rows under "missing," each with its evidence pointer. Never re-describe status in new prose — copy the row.
 5. **Verification checklist** — the Definition of Done items, grouped by screen.
 6. **Access, configuration, and working rules** — only if the feature has real prerequisites (credentials, environment flags, endpoints); omit the section entirely rather than leaving it "N/A."
@@ -495,7 +579,7 @@ STATE.md                       # project root, not per-feature — read first, e
 
 specs/[###-feature-name]/
 ├── mockup-audit.md            # Step 1 — screen/component/control/behavior inventory, hash, provenance
-├── visual-flow.md            # Step 1.5 — one Mermaid flowchart per US-nnn
+├── visual-flow.toon            # Step 1.5 — one Flowmap `flow:` block per US-nnn (renders to interactive HTML + pseudocode)
 ├── contracts.md               # [full-stack only] API-nnn endpoints consumed by this feature
 ├── data-model.md              # [only if persisted data changes] entities/relationships
 ├── research.md                # [optional] technology decisions worth recording

@@ -1,0 +1,14 @@
+﻿$ python -m pytest tests/test_aidd_status.py -k TestClose or close_needs or closes_when -v
+============================= test session starts =============================
+platform win32 -- Python 3.12.10, pytest-9.1.1, pluggy-1.6.0 -- C:\Users\jquimis\AppData\Local\Programs\Python\Python312\python.exe
+rootdir: D:\Fuentes\AIDD
+configfile: pyproject.toml
+plugins: anyio-4.14.1
+collecting ... collected 83 items / 80 deselected / 3 selected
+
+tests/test_aidd_status.py::TestRulesClose::test_close_needs_the_exact_label PASSED [ 33%]
+tests/test_aidd_status.py::TestRulesClose::test_close_needs_the_spec_tag PASSED [ 66%]
+tests/test_aidd_status.py::TestRulesClose::test_closes_when_covered_and_status_only_edit_keeps_it_closed PASSED [100%]
+
+====================== 3 passed, 80 deselected in 1.72s =======================
+

@@ -4,6 +4,8 @@ One row = one small PR. Same rubric as the requirements-analysis workflow this b
 format from: classify → estimate → decompose → assign, then present as a dry-run and wait for
 approval before anything gets written.
 
+Tasks reference the single pre-build coherence audit (spec, plan, graph, estimates) that runs before this list is approved; there is no per-edit audit.
+
 **Every task's implementation prompt restates these standards explicitly — a fresh agent doesn't inherit them from context:**
 - **Scope: in and out, both stated explicitly.** In scope = exactly the codes and target file(s) this row names, nothing else. Out of scope = everything else, including an unrelated bug or style issue the agent happens to notice — that's a note back, never a bundled fix. Touching a file this row doesn't name is out of scope even if the change is objectively good.
 - **If anything needed to proceed is missing or ambiguous, the agent stops and reports what's unclear instead of guessing.** A code that doesn't resolve, a schema that isn't defined, a naming case the contract doesn't cover — none of these get a "reasonable" assumption. Report it; don't implement around it.
@@ -19,6 +21,8 @@ approval before anything gets written.
 
 `View / logic` says what the task builds: `VIEW-new` = a new presentation faithful to the mockup (data and logic may come from existing code); `LOGIC` = data/state/behaviour only, no presentation; `VIEW-legacy` = the old view is kept as it is, and only with a written justification (5+ characters) in the task's `Kind:` line. The default for a visual redesign is a new view plus the logic behind it. A task that names a SCREEN/COMP code together with a word like reutiliza, remapea, envuelve, wrap, reuse or rewire must carry the `Kind:` line below (`aidd rules` checks it).
 
+Planning rules: ONE owner agent per Target file (two rows with the same Target file are one task, unless a row says `same owner as T-nn`); waves come from an explicit dependency graph (only true dependencies go in a later wave, everything independent shares a wave, target 2-3); `Agent min` is REAL wall time (one-file task 3-10 min, coupled task or one running the suite 15-25 min); subagents run only their targeted tests and the main agent runs the full suite once per wave; audit fixes go back to the original file owner (SendMessage resume) and fix only CONFIRMED medium+ findings, the rest are documented open exceptions.
+
 Order `COMP-nnn` tasks before any `SCREEN-XX` task that uses them — building a component inline inside the first screen that needs it, then extracting it once a second screen needs the same thing, is a second pass on work already reviewed once.
 
 ## Per-task detail (one block per row above)
@@ -31,13 +35,13 @@ Order `COMP-nnn` tasks before any `SCREEN-XX` task that uses them — building a
 
 **Estimate**
 - Effort: High / Medium / Low
-- Agent min: [whole minutes an AI agent needs to do it — this is what the plan is scheduled on]
+- Agent min: [whole minutes of REAL wall time an AI agent needs — this is what the plan is scheduled on]
 - Human ref hours: [DERIVED = Agent min x 3 / 60 (calibration file), never estimated by hand; reference only, never the schedule]
 - Tokens (est): 60k
 - Agent role: builder   # builder | sql | tests | docs | auditor | mapper
 - Model tier: medium   # medium | high (never lower)
 
-Estimates come from the baselines in adapters/dot-aidd/templates/calibration.toon (about 1-3 min and 50-75k tokens per one-file task). Human ref hours is DERIVED (Agent min x 3 / 60), not estimated by hand.
+Estimates come from the baselines in adapters/dot-aidd/templates/calibration.toon (about 50-75k tokens per one-file task; minutes are real wall time, 3-10 min per one-file task). Human ref hours is DERIVED (Agent min x 3 / 60), not estimated by hand.
 
 **Decompose**
 - Objective: [1 sentence — what it achieves]

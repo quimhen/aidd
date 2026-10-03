@@ -39,6 +39,14 @@ class StopBase(Base):
         self.approved_event(t)
         self.ev("code_edit", path="src/app.py", spec="001-x")
 
+    def close_audits(self):
+        """FR-002: one DISTINCT auditor per required domain (approved_tasks cites COMP-001 => ui + performance,
+        plus security and functional, which are always required)."""
+        self.subagent("Perf", "performance review")
+        self.subagent("UI", "mockup check")
+        self.subagent("Security", "security review")
+        self.subagent("Functional", "functional acceptance review")
+
 
 class TestR8(StopBase):
     def test_blocks_with_checklist_when_unaudited(self):
@@ -52,8 +60,7 @@ class TestR8(StopBase):
     def test_allows_when_closed_properly(self):
         self.implemented()
         self.put(QA, "# qa")
-        self.subagent("Perf", "performance review")
-        self.subagent("UI", "mockup check")
+        self.close_audits()
         r = self.stop()
         self.assertEqual(r.returncode, 0, r.err)
 
@@ -139,17 +146,27 @@ class TestR8(StopBase):
         self.implemented()
         self.assertEqual(self.stop().returncode, 2)
         self.put(QA, "# qa")
-        self.subagent("Perf", "performance review")
-        self.subagent("UI", "mockup check")
+        self.close_audits()
         self.assertEqual(self.stop().returncode, 0)
 
     # ---- B1: open specs, not the (informational) active pointer -----------------------------
     def test_the_active_pointer_alone_creates_no_obligation(self):
         self.put(TASKS, approved_tasks())
+        EV.set_active_spec(self.root, "001-x")                  # pointer only: no approval, no recorded edit
+        self.ev("code_edit", path="src/app.py", spec="001-x")
+        self.assertEqual(self.stop().returncode, 0)
+
+    def test_an_approved_spec_without_recorded_tasks_edit_is_open(self):
+        """FR-004 (spec 006): an `approved` event opens the spec even if the recorder never saw tasks.md."""
+        self.put(TASKS, approved_tasks())
         self.approved_event()
         EV.set_active_spec(self.root, "001-x")
         self.ev("code_edit", path="src/app.py", spec="001-x")
-        self.assertEqual(self.stop().returncode, 0)             # tasks.md was never seen by the recorder => not open
+        r = self.stop()
+        self.assertEqual(r.returncode, 2, r.err)
+        self.assertIn("001-x", r.err)
+        self.close_spec(reason="completed")                     # a closed spec stays closed
+        self.assertEqual(self.stop().returncode, 0)
 
     def test_switching_the_pointer_does_not_hide_an_open_spec(self):
         self.implemented()
