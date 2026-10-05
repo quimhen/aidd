@@ -174,6 +174,60 @@ CONTRACT_TABLE = (
     "| API-001 | `POST /orders` | `{ a }` | `{ b }` | 400 | Bearer | `sp_Create` | /sw | CTL-001 | | |\n")
 
 
+class TestStructuralBanner(unittest.TestCase):
+    """aidd:FR-208 banner: structural-only until verification passed; exit codes unchanged."""
+
+    def _main(self, spec_dir, state=None):
+        import io
+        from unittest import mock
+        import aidd_rules
+        buf = io.StringIO()
+        code = None
+        patches = [mock.patch.object(sys, 'argv', ['check_spec.py', str(spec_dir)]),
+                   mock.patch.object(sys, 'stdout', buf)]
+        if state is not None:
+            patches.append(mock.patch.object(aidd_rules, 'verification_state', return_value=state))
+        for p in patches:
+            p.start()
+        try:
+            check_spec.main()
+        except SystemExit as e:
+            code = e.code
+        finally:
+            for p in patches:
+                p.stop()
+        return code, buf.getvalue()
+
+    def test_clean_spec_prints_structural_banner(self):
+        with tempfile.TemporaryDirectory() as d:
+            code, out = self._main(d)
+            self.assertEqual(code, 0, msg=out)
+            self.assertIn("STRUCTURAL CHECK ONLY - nothing was executed", out)
+            self.assertIn("No mechanical gaps found (structural only)", out)
+
+    def test_passed_verification_prints_execution_line(self):
+        with tempfile.TemporaryDirectory() as d:
+            code, out = self._main(d, {'status': 'passed'})
+            self.assertEqual(code, 0, msg=out)
+            self.assertNotIn("STRUCTURAL CHECK ONLY", out)
+            self.assertIn("Execution evidence", out)
+
+    def test_verification_state_crash_defaults_to_banner(self):
+        from unittest import mock
+        import aidd_rules
+        with tempfile.TemporaryDirectory() as d,                 mock.patch.object(aidd_rules, 'verification_state', side_effect=RuntimeError('x')):
+            code, out = self._main(d)
+            self.assertEqual(code, 0, msg=out)
+            self.assertIn("STRUCTURAL CHECK ONLY", out)
+
+    def test_exit_code_one_with_gaps_keeps_banner(self):
+        with tempfile.TemporaryDirectory() as d:
+            (Path(d) / "tasks.md").write_text("T-01 refers to COMP-999\n", encoding="utf-8")
+            code, out = self._main(d)
+            self.assertEqual(code, 1, msg=out)
+            self.assertIn("STRUCTURAL CHECK ONLY", out)
+
+
 class TestG1Controls(unittest.TestCase):
     def test_action_without_destination_data_states_is_flagged(self):
         md = "## Control inventory\n" + CTL_HDR + \

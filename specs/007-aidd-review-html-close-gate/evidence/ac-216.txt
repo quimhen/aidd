@@ -1,0 +1,54 @@
+AC-216: PASS
+  [PASS] baseline verify passes
+  [PASS] (a) .css/.json/web.config recorded as code_edit (stamped target/active)
+  [PASS] (a) verification becomes stale
+  [PASS] (b) code edit after `started`: stale
+  [PASS] (c) precondition: fresh pass
+  [PASS] (c) tree change with no code_edit: fingerprint differs -> stale
+  [PASS] (c-git) git repo: tracked change w/o code_edit -> fingerprint stale
+  [PASS] (d) first run: stable=false and close refused "tree changed while verification ran"
+  [PASS] (d) second run is stable
+
+$ aidd_status.py rules approve C:\Users\jquimis\AppData\Local\Temp\tmptzlh5soq\specs\F23-eDoc-POS  -> exit 0
+Approved: 2026-10-05 hash:e9a09d9bac61
+approved through answer · gate pointer -> F23-eDoc-POS
+$ aidd_status.py verify C:\Users\jquimis\AppData\Local\Temp\tmptzlh5soq\specs\F23-eDoc-POS  -> exit 0
+PASS row 1: python -m unittest tests.test_ok (exit 0) → evidence/verify-1.txt
+verify_run recorded for F23-eDoc-POS: PASSED (1/1 rows, verify hash 0881d7b7c23f)
+verification_gaps: []
+--> PASS: baseline verify passes
+[hook mark_code_edit.py Edit] rc=0 stdout='' stderr=''
+[hook mark_code_edit.py Edit] rc=0 stdout='' stderr=''
+[hook mark_code_edit.py Edit] rc=0 stdout='' stderr=''
+last code_edit detail: {'path': 'C:\\Users\\jquimis\\AppData\\Local\\Temp\\tmptzlh5soq\\web.config', 'target': 'F23-eDoc-POS', 'active': ''}
+--> PASS: (a) .css/.json/web.config recorded as code_edit (stamped target/active) | [True, True, True]
+verification_gaps: ['A code edit happened after the last verify_run started (verification is stale).', 'The working tree changed since the last verify_run (fingerprint differs).']
+--> PASS: (a) verification becomes stale
+$ aidd_status.py verify C:\Users\jquimis\AppData\Local\Temp\tmptzlh5soq\specs\F23-eDoc-POS  -> exit 0
+PASS row 1: python -m unittest tests.test_ok (exit 0) → evidence/verify-1.txt
+verify_run recorded for F23-eDoc-POS: PASSED (1/1 rows, verify hash 0881d7b7c23f)
+verification_gaps: ['A code edit happened after the last verify_run started (verification is stale).']
+--> PASS: (b) code edit after `started`: stale
+$ aidd_status.py verify C:\Users\jquimis\AppData\Local\Temp\tmptzlh5soq\specs\F23-eDoc-POS  -> exit 0
+PASS row 1: python -m unittest tests.test_ok (exit 0) → evidence/verify-1.txt
+verify_run recorded for F23-eDoc-POS: PASSED (1/1 rows, verify hash 0881d7b7c23f)
+verification_gaps: []
+--> PASS: (c) precondition: fresh pass
+verification_gaps: ['The working tree changed since the last verify_run (fingerprint differs).']
+--> PASS: (c) tree change with no code_edit: fingerprint differs -> stale
+$ aidd_status.py verify C:\Users\jquimis\AppData\Local\Temp\tmptzlh5soq\specs\F23-eDoc-POS  -> exit 0
+PASS row 1: python -m unittest tests.test_ok (exit 0) → evidence/verify-1.txt
+verify_run recorded for F23-eDoc-POS: PASSED (1/1 rows, verify hash 0881d7b7c23f)
+verification_gaps: []
+verification_gaps: ['The working tree changed since the last verify_run (fingerprint differs).']
+--> PASS: (c-git) git repo: tracked change w/o code_edit -> fingerprint stale
+$ aidd_status.py verify C:\Users\jquimis\AppData\Local\Temp\tmptzlh5soq\specs\F23-eDoc-POS  -> exit 1
+PASS row 1: python tools/gen.py (exit 0) → evidence/verify-1.txt
+FAIL the working tree changed while verification ran (a command wrote a file outside specs/); re-run `aidd verify F23-eDoc-POS`.
+verify_run recorded for F23-eDoc-POS: FAILED (1/1 rows, verify hash 8f5140f0c496)
+verification_gaps: ['The last verify_run of F23-eDoc-POS failed.', 'tree changed while verification ran; re-run.', 'The Verification table changed after approval (verify_hash differs from the approved one).']
+--> PASS: (d) first run: stable=false and close refused "tree changed while verification ran"
+$ aidd_status.py verify C:\Users\jquimis\AppData\Local\Temp\tmptzlh5soq\specs\F23-eDoc-POS  -> exit 0
+PASS row 1: python tools/gen.py (exit 0) → evidence/verify-1.txt
+verify_run recorded for F23-eDoc-POS: PASSED (1/1 rows, verify hash 8f5140f0c496)
+--> PASS: (d) second run is stable

@@ -1,0 +1,53 @@
+AC-209: PASS
+  [PASS] approved event has gate 2
+  [PASS] before verify: close refused "no verify_run"
+  [PASS] aidd verify exit 0 and evidence/verify-1.txt saved
+  [PASS] verification passes (no gaps)
+  [PASS] later code_edit: stale
+  [PASS] close refused while stale
+  [PASS] re-running fixes it
+  [PASS] editing evidence/verify-1.txt refused (sha1)
+  [PASS] editing the table afterwards refused (verify_hash)
+
+$ aidd_status.py rules approve C:\Users\jquimis\AppData\Local\Temp\tmpepv5_g5v\specs\F23-eDoc-POS  -> exit 0
+Approved: 2026-10-05 hash:e9a09d9bac61
+approved through answer · gate pointer -> F23-eDoc-POS
+--> PASS: approved event has gate 2
+$ aidd_status.py rules close C:\Users\jquimis\AppData\Local\Temp\tmpepv5_g5v\specs\F23-eDoc-POS  -> exit 1
+FAIL R7 qa-audit.md does not exist (Step 6 not done) → dispatch the independent auditors per required domain and write qa-audit.md.
+FAIL R10 No verify_run recorded for F23-eDoc-POS: the Verification table was never executed. → Run `aidd verify F23-eDoc-POS` (it runs every row and saves evidence/verify-<n>.txt), then close.
+FAIL R7 no distinct functional auditor subagent ran after the last code edit and the last verify_run → dispatch ONE closing auditor whose prompt starts `CLOSING AUDIT [domains: functional, performance, security, ui] [tasks:e9a09d9b] [verify:????????]` (or one auditor per domain), then rewrite qa-audit.md.
+FAIL R7 no distinct performance auditor subagent ran after the last code edit and the last verify_run → dispatch ONE closing auditor whose prompt starts `CLOSING AUDIT [domains: functional, performance, security, ui] [tasks:e9a09d9b] [verify:????????]` (or one auditor per domain), then rewrite qa-audit.md.
+FAIL R7 no distinct security auditor subagent ran after the last code edit and the last verify_run → dispatch ONE closing auditor whose prompt starts `CLOSING AUDIT [domains: functional, performance, security, ui] [tasks:e9a09d9b] [verify:????????]` (or one auditor per domain), then rewrite qa-audit.md.
+FAIL R7 no distinct ui auditor subagent ran after the last code edit and the last verify_run → dispatch ONE closing auditor whose prompt starts `CLOSING AUDIT [domains: functional, performance, security, ui] [tasks:e9a09d9b] [verify:????????]` (or one auditor per domain), then rewrite qa-audit.md.
+Refused: F23-eDoc-POS stays open until these gaps are closed.
+--> PASS: before verify: close refused "no verify_run"
+$ aidd_status.py verify C:\Users\jquimis\AppData\Local\Temp\tmpepv5_g5v\specs\F23-eDoc-POS  -> exit 0
+PASS row 1: python -m unittest tests.test_ok (exit 0) → evidence/verify-1.txt
+verify_run recorded for F23-eDoc-POS: PASSED (1/1 rows, verify hash 0881d7b7c23f)
+--> PASS: aidd verify exit 0 and evidence/verify-1.txt saved
+verification_gaps: []
+--> PASS: verification passes (no gaps)
+verification_gaps: ['A code edit happened after the last verify_run started (verification is stale).']
+--> PASS: later code_edit: stale
+$ aidd_status.py rules close C:\Users\jquimis\AppData\Local\Temp\tmpepv5_g5v\specs\F23-eDoc-POS  -> exit 1
+FAIL R7 qa-audit.md does not exist (Step 6 not done) → dispatch the independent auditors per required domain and write qa-audit.md.
+FAIL R10 A code edit happened after the last verify_run started (verification is stale). → Run `aidd verify F23-eDoc-POS` again after the last code change, then close.
+FAIL R7 no distinct functional auditor subagent ran after the last code edit and the last verify_run → dispatch ONE closing auditor whose prompt starts `CLOSING AUDIT [domains: functional, performance, security, ui] [tasks:e9a09d9b] [verify:0881d7b7]` (or one auditor per domain), then rewrite qa-audit.md.
+FAIL R7 no distinct performance auditor subagent ran after the last code edit and the last verify_run → dispatch ONE closing auditor whose prompt starts `CLOSING AUDIT [domains: functional, performance, security, ui] [tasks:e9a09d9b] [verify:0881d7b7]` (or one auditor per domain), then rewrite qa-audit.md.
+FAIL R7 no distinct security auditor subagent ran after the last code edit and the last verify_run → dispatch ONE closing auditor whose prompt starts `CLOSING AUDIT [domains: functional, performance, security, ui] [tasks:e9a09d9b] [verify:0881d7b7]` (or one auditor per domain), then rewrite qa-audit.md.
+FAIL R7 no distinct ui auditor subagent ran after the last code edit and the last verify_run → dispatch ONE closing auditor whose prompt starts `CLOSING AUDIT [domains: functional, performance, security, ui] [tasks:e9a09d9b] [verify:0881d7b7]` (or one auditor per domain), then rewrite qa-audit.md.
+Refused: F23-eDoc-POS stays open until these gaps are closed.
+--> PASS: close refused while stale
+$ aidd_status.py verify C:\Users\jquimis\AppData\Local\Temp\tmpepv5_g5v\specs\F23-eDoc-POS  -> exit 0
+PASS row 1: python -m unittest tests.test_ok (exit 0) → evidence/verify-1.txt
+verify_run recorded for F23-eDoc-POS: PASSED (1/1 rows, verify hash 0881d7b7c23f)
+verification_gaps: []
+--> PASS: re-running fixes it
+verification_gaps: ['Evidence file of Verification row 1 changed after the run (sha1 differs).']
+--> PASS: editing evidence/verify-1.txt refused (sha1)
+$ aidd_status.py verify C:\Users\jquimis\AppData\Local\Temp\tmpepv5_g5v\specs\F23-eDoc-POS  -> exit 0
+PASS row 1: python -m unittest tests.test_ok (exit 0) → evidence/verify-1.txt
+verify_run recorded for F23-eDoc-POS: PASSED (1/1 rows, verify hash 0881d7b7c23f)
+verification_gaps: ['The Verification table changed after the last verify_run (verify_hash differs).', 'The Verification table changed after approval (verify_hash differs from the approved one).']
+--> PASS: editing the table afterwards refused (verify_hash)

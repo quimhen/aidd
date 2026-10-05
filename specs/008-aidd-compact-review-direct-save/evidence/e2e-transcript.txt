@@ -1,0 +1,14 @@
+[002-aidd-hard-rules] carry-over: edited T-02 only -> pending ['T-02'], carried 18/19, review.md untouched
+[F23-eDoc-POS] carry-over: edited T-02 only -> pending ['T-02'], carried 16/17, review.md untouched
+[F23-eDoc-POS] review: 17 codes, tabs=['summary', 'questions', 'fr', 'tasks', 'verification'], picker_id=aidd-f4ad96e1, CSP hash ok
+[F23-eDoc-POS] partial save: --check exit 2 'STATE=pending approved=8/17 comments=1 stale=no legacy=no tag=[tasks:e589600a]'; --comments -> 1 line
+[F23-eDoc-POS] --wait: STATE=complete approved=17/17 comments=1 stale=no legacy=no tag=[tasks:e589600a]
+[F23-eDoc-POS] approve: refused without consent; accepted with tagged answer source=review+answer
+[002-aidd-hard-rules] review: 19 codes, tabs=['summary', 'questions', 'fr', 'ac', 'tasks', 'verification'], picker_id=aidd-a8f30694, CSP hash ok
+[002-aidd-hard-rules] partial save: --check exit 2 'STATE=pending approved=9/19 comments=1 stale=no legacy=no tag=[tasks:e589600a]'; --comments -> 1 line
+[002-aidd-hard-rules] --wait: STATE=complete approved=19/19 comments=1 stale=no legacy=no tag=[tasks:e589600a]
+[002-aidd-hard-rules] approve: refused without consent; accepted with tagged answer source=review+answer
+[002-aidd-hard-rules] fallbacks: nopicker->download review.md, abort->nothing, other spec->nothing, TypeError retry->fs, double failure->download+status
+[F23-eDoc-POS] fallbacks: nopicker->download review.md, abort->nothing, other spec->nothing, TypeError retry->fs, double failure->download+status
+[002-aidd-hard-rules] --summary 7 lines, nothing written; bare Approve: no page=answer, page+no review.md=refused; 'Aprobar con resumen'=source summary; near miss refused
+[F23-eDoc-POS] --summary 7 lines, nothing written; bare Approve: no page=answer, page+no review.md=refused; 'Aprobar con resumen'=source summary; near miss refused

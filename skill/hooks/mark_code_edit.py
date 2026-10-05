@@ -6,9 +6,9 @@ most recent code-file edit this session (legacy marker) and the AIDD evidence:
     (case-insensitive CANONICAL basename, so PLAN.md / plan.md. / plan.md::$DATA / a/../plan.md,
     8.3 and junction forms all count); for tasks.md it stores the current approval_hash as `hash`.
     It NEVER emits `approved{spec,hash}`: only verified paths (rule_gate, `aidd rules approve`) do;
-  * `code_edit{path}` for code files, in EVERY project root above the file.
+  * `code_edit{path,target,active}` for R6-gated files (is_r6_gated, not is_code_file), in EVERY project root above the file.
 `.aidd/active_spec` is only maintained as an informational pointer; gates use open_specs().
-`code_edit` carries no spec attribution. The PowerShell/Bash tools (tool_input.command) are tolerated
+`code_edit` carries target=<gate pointer> and active=<informational pointer> (aidd:FR-209). The PowerShell/Bash tools (tool_input.command) are tolerated
 but record nothing here: a shell command's file writes cannot be attributed reliably (documented limit).
 Always exits 0 — non-dict payloads / non-string fields are tolerated (hook_error recorded).
 """
@@ -16,7 +16,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-from _common import read_event, write_timestamp, is_code_file  # noqa: E402
+from _common import read_event, write_timestamp, is_code_file, is_r6_gated  # noqa: E402
 
 SPEC_FILES = {'spec.md', 'plan.md', 'tasks.md', 'mockup-audit.md', 'contracts.md', 'data-model.md'}
 MAX_TASKS_BYTES = 2 * 1024 * 1024
@@ -104,10 +104,25 @@ try:  # evidence recorder
                 if _ev.append(_r, _sid, 'spec_edit', path=str(_fp), spec=_sp, file=_base, **_extra) is False:
                     _lost('spec_edit', _fp)
                 _ev.set_active_spec(_r, _sp)  # informational pointer only
-        elif is_code_file(_fp):
-            for _r in _roots:
-                if _ev.append(_r, _sid, 'code_edit', path=str(_fp)) is False:   # no spec attribution (D1)
-                    _lost('code_edit', _fp)
+        else:
+            # aidd:FR-209 the R6 predicate (deny-list: .css/.json/.html/web.config are code,
+            # .md and specs/ are not) replaces is_code_file here; is_code_file stays for require_aidd.
+            try:
+                _canon = _ev.canon_path(_p)
+                _outer = _ev.rel_to_root(_p, _roots[-1])
+                _gated = is_r6_gated(_canon, _outer)
+            except Exception:
+                _gated = False
+            if _gated:
+                for _r in _roots:
+                    _stamp = {}
+                    try:  # a failed pointer read (or an older library) never loses the base event
+                        _stamp['target'] = _ev.get_gate_spec(_r) or ''
+                        _stamp['active'] = _ev.get_active_spec(_r) or ''
+                    except Exception:
+                        _stamp = {}
+                    if _ev.append(_r, _sid, 'code_edit', path=str(_fp), **_stamp) is False:
+                        _lost('code_edit', _fp)
 except Exception as _e:
     try:
         _ev.record_hook_error(_cwd, _sid, 'mark_code_edit', _e)

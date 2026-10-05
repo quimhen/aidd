@@ -82,11 +82,17 @@ class TestCloseApprovedOnlySpec(tas.EvBase):
                               capture_output=True, text=True, encoding="utf-8")
 
     def _approved_without_spec_edit(self):
+        """Approved through the real CLI, then the `approved` event is rewritten as a pre-007 one (no
+        `gate`): these cases cover the LEGACY close path (spec 007 AC-208)."""
         tmp, root, d = tas.make_project()
         self.prompt(root)
         self.answer(root, self.aq(d, "Approve these tasks?"), "Approve")
         r = tas.run_script("rules", "approve", str(d), cwd=root)
         self.assertEqual(r.returncode, 0, r.stdout)
+        self.assertEqual(tas.ev.latest_approved(root, "001-x").get("gate"), 2)
+        tas.tick()
+        tas.ev.append_approved(root, "s1", "001-x", tas.aidd_rules.approval_hash(
+            (d / "tasks.md").read_text(encoding="utf-8")))                   # newest approval: legacy shape
         tas.backdate(d / "tasks.md", 50)
         self.assertEqual(tas.ev.events(root, kind="spec_edit"), [])        # the edit was never recorded
         return tmp, root, d
@@ -156,6 +162,42 @@ class TestCloseApprovedOnlySpec(tas.EvBase):
             r = self.aidd("rules", "close", "001-x", cwd=root)
             self.assertEqual(r.returncode, 1)
             self.assertIn("not an open spec", r.stdout)
+
+
+class TestSpec007ThroughCli(tas.Spec007Base):
+    """Spec 007: `aidd verify`, `aidd rules activate` and `aidd status --refresh` through the real CLI
+    (aidd/cli.py forwards to aidd_status.py) with numeric and non-numeric ids, relative and absolute."""
+
+    def aidd(self, *args, cwd):
+        env = dict(os.environ, PYTHONPATH=str(REPO_ROOT), PYTHONIOENCODING="utf-8")
+        return subprocess.run([sys.executable, "-m", "aidd.cli", *args], cwd=str(cwd), env=env,
+                              capture_output=True, text=True, encoding="utf-8")
+
+    def test_activate_verify_and_refresh(self):
+        for sid in tas.IDS:
+            for form in ("id", "relative", "absolute"):
+                with self.subTest(sid=sid, form=form):
+                    tmp, root, d = self.project(sid)
+                    with tmp:
+                        arg = {"id": sid, "relative": f"specs/{sid}", "absolute": str(d)}[form]
+                        r = self.aidd("rules", "activate", arg, cwd=root)
+                        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+                        self.assertEqual(tas.ev.get_gate_spec(root), sid)
+                        r = self.aidd("verify", arg, cwd=root)
+                        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+                        self.assertTrue((d / "evidence" / "verify-1.txt").is_file())
+                        self.assertTrue(tas.ev.latest_verify_run(root, sid)["ok"])
+                        r = self.aidd("status", "--refresh", cwd=root)
+                        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+                        self.assertIn(f"gate pointer: {sid}", r.stdout)
+                        self.assertIn("verification passed (1 command(s))", r.stdout)
+
+    def test_cli_exit_codes_are_forwarded(self):
+        tmp, root, d = self.project("F23-eDoc-POS", spec=tas.spec_with_rows([("python src/billing.py", "exit 0")]))
+        with tmp:
+            self.assertEqual(self.aidd("verify", "F23-eDoc-POS", cwd=root).returncode, 1)   # output too short
+            self.assertEqual(self.aidd("rules", "activate", "999-none", cwd=root).returncode, 1)
+            self.assertEqual(self.aidd("verify", "999-none", cwd=root).returncode, 1)
 
 
 if __name__ == "__main__":

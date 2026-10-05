@@ -1,0 +1,45 @@
+AC-210: PASS
+  [PASS] full header, sonnet, 4000 chars: uncovered = none
+  [PASS] only security named: functional (and performance) stay uncovered
+  [PASS] haiku: does NOT count
+  [PASS] phase=pre: does NOT count
+  [PASS] stale [tasks:] tag: does NOT count
+  [PASS] wrong [verify:] tag: does NOT count
+  [PASS] result_chars 20: does NOT count
+  [PASS] no result_chars: does NOT count
+  [PASS] header not on the first line: does NOT count
+  [PASS] closing auditor older than verify_run refused (gate 2)
+  [PASS] legacy per-domain auditors still cover
+  [PASS] close refuses when qa-audit.md lacks a domain row or the tool_use_id
+  [PASS] with all rows and the tool_use_id: no closing-audit gap
+
+$ aidd_status.py rules approve C:\Users\jquimis\AppData\Local\Temp\tmp_2a7uory\specs\F23-eDoc-POS  -> exit 0
+Approved: 2026-10-05 hash:e9a09d9bac61
+approved through answer · gate pointer -> F23-eDoc-POS
+required domains (fixture): ['functional', 'performance', 'security', 'ui']
+$ aidd_status.py verify C:\Users\jquimis\AppData\Local\Temp\tmp_2a7uory\specs\F23-eDoc-POS  -> exit 0
+PASS row 1: python -m unittest tests.test_ok (exit 0) → evidence/verify-1.txt
+verify_run recorded for F23-eDoc-POS: PASSED (1/1 rows, verify hash 0881d7b7c23f)
+full header, sonnet, 4000 chars -> []
+--> PASS: full header, sonnet, 4000 chars: uncovered = none
+only security named -> ['functional', 'performance', 'ui']
+--> PASS: only security named: functional (and performance) stay uncovered
+haiku -> ['functional', 'performance', 'security', 'ui']
+--> PASS: haiku: does NOT count
+phase=pre -> ['functional', 'performance', 'security', 'ui']
+--> PASS: phase=pre: does NOT count
+stale [tasks:] tag -> ['performance', 'security', 'ui']
+--> PASS: stale [tasks:] tag: does NOT count
+wrong [verify:] tag -> ['performance', 'security', 'ui']
+--> PASS: wrong [verify:] tag: does NOT count
+result_chars 20 -> ['performance', 'security', 'ui']
+--> PASS: result_chars 20: does NOT count
+no result_chars -> ['performance', 'security', 'ui']
+--> PASS: no result_chars: does NOT count
+header not on the first line -> ['performance', 'security', 'ui']
+--> PASS: header not on the first line: does NOT count
+--> PASS: closing auditor older than verify_run refused (gate 2)
+--> PASS: legacy per-domain auditors still cover
+closing_audit_gaps (missing functional row + tool_use_id): ['qa-audit.md has no checklist row for the functional domain of the closing audit.', 'qa-audit.md has no checklist row for the performance domain of the closing audit.', 'qa-audit.md has no checklist row for the ui domain of the closing audit.', "qa-audit.md does not cite the closing auditor's tool_use_id (toolu_XYZ)."]
+--> PASS: close refuses when qa-audit.md lacks a domain row or the tool_use_id
+--> PASS: with all rows and the tool_use_id: no closing-audit gap | []

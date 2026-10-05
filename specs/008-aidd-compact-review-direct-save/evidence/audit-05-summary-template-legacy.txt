@@ -1,0 +1,24 @@
+== AC-302 template-only spec
+order ['SUMMARY', 'Q1', 'Q2', 'Q3', 'Q4', 'Q5', 'Q6', 'Q7', 'Q8', 'Q9', 'Q10', 'Q11', 'Q12', 'CTL-001', 'T-01', 'T-02'] tabs [('summary', 1), ('questions', 12), ('screens', 1), ('tasks', 2)]
+warnings []
+nonstd header order ['SUMMARY', 'FR-001', 'FR-002'] warnings [{'tab': 'fr', 'text': 'FR: 1 coded row skipped: FR-4.1'}, {'tab': 'summary', 'text': 'tasks.md: the file has content but no reviewable item was found (0 items)'}]
+== AC-304 summary written / absent / empty, determinism
+written source spec.md#executive-summary objective obj scope alc risks len 400 risks tail RR... counts {'fr': 32, 'ac': 0, 'edge_ac': 0, 'screens': 0, 'comps': 0, 'ctls': 0, 'apis': 0, 'tasks': 86, 'questions': 7, 'unanswered': 0} min 229 tok 5010 det True
+absent source generated objective Let a cashier sell at the counter with mixed payment methods scope  risks len 0 risks tail  counts {'fr': 32, 'ac': 0, 'edge_ac': 0, 'screens': 0, 'comps': 0, 'ctls': 0, 'apis': 0, 'tasks': 86, 'questions': 7, 'unanswered': 0} min 229 tok 5010 det True
+empty source generated objective Let a cashier sell at the counter with mixed payment methods scope  risks len 0 risks tail  counts {'fr': 32, 'ac': 0, 'edge_ac': 0, 'screens': 0, 'comps': 0, 'ctls': 0, 'apis': 0, 'tasks': 86, 'questions': 7, 'unanswered': 0} min 229 tok 5010 det True
+== AC-305 F23 questions
+  Q1 unanswered False | Which module/area of the system? | None | spec.md
+  Q2 unanswered False | New development or modification of something exist | None | spec.md
+  Q3 unanswered False | Does it involve an external service, API, or integ | None | spec.md
+  Q4 unanswered False | Who is requesting it? (role/profile, not necessari | None | spec.md
+  Q5 unanswered False | Dependencies on other modules or active developmen | None | spec.md
+  Q6 unanswered False | Business objective (1 sentence — what it achieves  | None | spec.md
+  Q7 unanswered False | Expected visual fidelity level (if there's a mocku | None | spec.md
+ with optional align: ['Q1', 'Q2', 'Q3', 'Q4', 'Q5', 'Q6', 'Q7', 'Q8', 'Q9']
+== AC-313 template + legacy spec
+ headings ['## Minimum Requirements Checklist (fill before Step 3 starts)', '## Executive summary', '## Pipeline route', '## Visual debt']
+ check_content template: []
+ check_content legacy 006: [] has ES False
+== AC-316 (d) no page + review.md
+  no review.html: run aidd review <spec> [] 0 False False
+ parse_review garbage never raises: ['missing front matter (first line must be ---)'] False

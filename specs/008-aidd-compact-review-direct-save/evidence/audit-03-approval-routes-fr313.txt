@@ -1,0 +1,62 @@
+===== AC-327 on F23-eDoc-POS (no review.html)
+  (1) 'Aprobar con resumen'        approve rc=0 sources=['summary']  approved through summary · gate pointer -> F23-eDoc-POS
+  (1) 'Aprobar con resumen'        gate blocked=False sources=['summary']
+  (1b) ' Aprobar con resumen '      approve rc=0 sources=['summary']  approved through summary · gate pointer -> F23-eDoc-POS
+  (1b) ' Aprobar con resumen '      gate blocked=False sources=['summary']
+  (2) 'aprobar con resumen'        approve rc=1 sources=[]  Inferred session: s1. If that is not this window's session, have the user type a short mes
+  (2) 'aprobar con resumen'        gate blocked=True sources=[]
+  (3) 'Aprobar con resumem'        approve rc=1 sources=[]  Inferred session: s1. If that is not this window's session, have the user type a short mes
+  (3) 'Aprobar con resumem'        gate blocked=True sources=[]
+  (4) 'Aprobar con resumen ya'     approve rc=1 sources=[]  Inferred session: s1. If that is not this window's session, have the user type a short mes
+  (4) 'Aprobar con resumen ya'     gate blocked=True sources=[]
+  (5) 'Aprobar con resumen'        approve rc=1 sources=[]  Inferred session: s1. If that is not this window's session, have the user type a short mes
+  (5) 'Aprobar con resumen'        gate blocked=True sources=[]
+  (6) 'Aprobar con resumen'        approve rc=1 sources=[]  Inferred session: s1. If that is not this window's session, have the user type a short mes
+  (6) 'Aprobar con resumen'        gate blocked=True sources=[]
+  (7) 'Aprobar con resumen'        approve rc=1 sources=[]  Inferred session: s1. If that is not this window's session, have the user type a short mes
+  (7) 'Aprobar con resumen'        gate blocked=True sources=[]
+  (8) typed approve rc=1 sources=[]
+  (8) typed gate blocked=True sources=[]
+  regression bare Approve no page: rc=0 sources=['answer']
+  summary then newer No: rc=1 sources=[]
+===== AC-327 on F28-DB-Unification-Sync (no review.html)
+  (1) 'Aprobar con resumen'        approve rc=0 sources=['summary']  approved through summary · gate pointer -> F28-DB-Unification-Sync
+  (1) 'Aprobar con resumen'        gate blocked=False sources=['summary']
+  (1b) ' Aprobar con resumen '      approve rc=0 sources=['summary']  approved through summary · gate pointer -> F28-DB-Unification-Sync
+  (1b) ' Aprobar con resumen '      gate blocked=False sources=['summary']
+  (2) 'aprobar con resumen'        approve rc=1 sources=[]  Inferred session: s1. If that is not this window's session, have the user type a short mes
+  (2) 'aprobar con resumen'        gate blocked=True sources=[]
+  (3) 'Aprobar con resumem'        approve rc=1 sources=[]  Inferred session: s1. If that is not this window's session, have the user type a short mes
+  (3) 'Aprobar con resumem'        gate blocked=True sources=[]
+  (4) 'Aprobar con resumen ya'     approve rc=1 sources=[]  Inferred session: s1. If that is not this window's session, have the user type a short mes
+  (4) 'Aprobar con resumen ya'     gate blocked=True sources=[]
+  (5) 'Aprobar con resumen'        approve rc=1 sources=[]  Inferred session: s1. If that is not this window's session, have the user type a short mes
+  (5) 'Aprobar con resumen'        gate blocked=True sources=[]
+  (6) 'Aprobar con resumen'        approve rc=1 sources=[]  Inferred session: s1. If that is not this window's session, have the user type a short mes
+  (6) 'Aprobar con resumen'        gate blocked=True sources=[]
+  (7) 'Aprobar con resumen'        approve rc=1 sources=[]  Inferred session: s1. If that is not this window's session, have the user type a short mes
+  (7) 'Aprobar con resumen'        gate blocked=True sources=[]
+  (8) typed approve rc=1 sources=[]
+  (8) typed gate blocked=True sources=[]
+  regression bare Approve no page: rc=0 sources=['answer']
+  summary then newer No: rc=1 sources=[]
+APPROVE_LABEL regression: [('Approve', True), ('Aprobar', True), ('Aprobado', True), ('Aprobar las tareas', True), ('Aprobar con resumen', False), ('aprobar con resumen', False), ('Aprobar  con resumen ya', False), ('APROBAR CON RESUMEN', False)]
+rule_gate APPROVE_LABEL: [('Approve', True), ('Aprobar con resumen', False), ('aprobar con resumem', False), ('Aprobar las tareas', True)]
+===== AC-328 stale / current page + summary label (F28)
+  stale page_current=False approve rc=0 sources=['summary'] html untouched=True review.md=False
+  stale gate blocked=False sources=['summary']
+  current page_current=True approve rc=0 sources=['summary'] html untouched=True review.md=False
+  current gate blocked=False sources=['summary']
+===== AC-329 current page, bare Approve, no complete review.md
+  F28-DB-Unification-Sync approve rc=1 sources=[] Refused: a review exists for F28-DB-Unification-Sync (specs/F28-DB-Unification-Sync/review.html is current): c
+  F28-DB-Unification-Sync gate blocked=True sources=[]
+  F23-eDoc-POS approve rc=1 sources=[] Refused: a review exists for F23-eDoc-POS (specs/F23-eDoc-POS/review.html is current): complete it. Cause: no 
+  F23-eDoc-POS gate blocked=True sources=[]
+===== AC-310 complete review.md: alone refused; answer after md approves; answer before re-save refused
+  alone: 1 Refused: review.md is complete; the owner must confirm: answer the question tagged `[tasks:473e244c]
+  answer after md: 0 ['review+answer'] ['note: FR-001: a note']
+  answer before re-save: 1 []
+  typed approve tag: 0 ['review+prompt']
+  gate review+answer: blocked= False ['review+answer']
+===== AC-330 agent-forged text
+  forged texts, question only: 1 []

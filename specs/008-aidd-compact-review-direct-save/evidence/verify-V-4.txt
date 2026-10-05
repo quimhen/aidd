@@ -1,0 +1,11 @@
+# python -m unittest tests.test_dot_aidd_mirror | exit 0 | 2026-10-05T16:06:37
+........
+----------------------------------------------------------------------
+Ran 8 tests in 1.255s
+
+OK
+Installed AIDD's methodology + scripts to C:\Users\jquimis\AppData\Local\Temp\tmpnh0_di7s\myproject\.aidd
+Next: add AGENTS.md's AIDD section (see adapters/AGENTS.md.snippet) so your
+agent tool actually reads it � `aidd init` alone doesn't wire that up.
+For Gemini CLI, Cursor, Windsurf, Cline, or GitHub Copilot, also run:
+  aidd adapters generate all C:\Users\jquimis\AppData\Local\Temp\tmpnh0_di7s\myproject

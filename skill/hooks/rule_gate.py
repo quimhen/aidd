@@ -8,8 +8,11 @@ One process instead of four. For file-writing tools, in order:
          the agent, EXCEPT `.aidd/memory/**`
   2. the three legacy gates, in-process (require_aidd, require_independent_audit,
      require_graph_coherence_audit — fail-closed for specs/<id>/plan.md|tasks.md), fed the CANONICAL path
-  3. code gate (R6/R4): a write to any file except the non-code deny-list (D11) is BLOCKED while ANY open spec (open_specs(), every project root above the file) has a
-     missing/invalid tasks approval or open visual debt. `.aidd/active_spec` is informational only (B1)
+  1b. FR-204: `specs/<any-id>/review.md` and `review.html` are owner-only (USER_ONLY_SPEC_FILES), whatever the id
+  3. code gate (R6/R4, FR-201): a write to any file except the non-code deny-list (D11) is BLOCKED while the GATE
+     TARGET spec (aidd_evidence.gate_target_specs: the `.aidd/gate_spec` pointer, else the only open spec, else the
+     open spec with the newest plan/tasks edit, else ambiguous) has a missing/invalid tasks approval or open visual
+     debt. The gate reads `.aidd/gate_spec` and NEVER `.aidd/active_spec` (informational only, D1); both are R9-protected
   4. content rules (R1-R4 structure) on spec.md / tasks.md, evaluated on the WOULD-BE content (Write =>
      content; Edit/MultiEdit => edits applied to the file): only NEW violations block, except a
      whole-file Write of spec.md/tasks.md (any violation blocks); files > 2 MB are rejected unscanned (M-dos)
@@ -51,9 +54,13 @@ import sys
 HOOKS_DIR = os.path.dirname(os.path.abspath(__file__))
 SCRIPTS_DIR = os.path.join(os.path.dirname(HOOKS_DIR), 'scripts')
 
-BASH_MARKERS = ('.aidd', 'events.toon', 'active_spec', 'evidence', 'aidd_', 'specs', 'tasks.md', 'aidd-hooks')
+# aidd:FR-204 review.md / review.html are markers too: `echo x > review.md` run with cwd = specs/<id>/ names no other one
+BASH_MARKERS = ('.aidd', 'events.toon', 'active_spec', 'evidence', 'aidd_', 'specs', 'tasks.md', 'aidd-hooks',
+                'review.md', 'review.html')
 SHELL_TOOLS = ('Bash', 'PowerShell')
-APPROVE_LABEL = r'^(approve|aprobar|aprobado)\b'
+# aidd:FR-313 same negative lookahead as aidd_status.APPROVE_LABEL: a label starting `aprobar con resum...` never
+# matches the generic tagged-answer route (only the exact label, through `_summary_answer`, mints source=summary)
+APPROVE_LABEL = r'^(approve|aprobar|aprobado)\b(?!\s+con\s+resum)'
 APPROVAL_TOPIC = r'approv|aprob'
 # files under specs/X/ that stay writable while visual debt is open (they are how debt is resolved)
 DEBT_EXEMPT = {'spec.md', 'mockup-audit.md'}
@@ -71,6 +78,15 @@ R9_BASH_MESSAGE = ('aidd R9 (Bash/PowerShell): this command writes, deletes, mov
                    'the user. Note: this Bash check is lexical - obfuscated forms (variables, globs, base64, a '
                    'separate script) are NOT detected, and Bash edits of code files are not gated; do not rely on '
                    'that. (Owner-only override: AIDD_RULES=warn|off in settings.json env.)')
+# aidd:FR-204 aidd:AC-207
+REVIEW_MESSAGE = ('aidd R6 (review): `specs/<id>/review.html` is generated only by `aidd review <spec_dir>` and '
+                  '`specs/<id>/review.md` is the OWNER\'s answer (the page saves it itself); the agent may not write, '
+                  'copy, move or delete either of them.\nNext action: run `aidd review specs/<id>` to (re)generate the '
+                  'page, then `aidd review specs/<id> --wait` in the background (the owner presses `Aprobar y guardar` '
+                  'on the page); when it returns, ask the owner ONE question with the tag `[tasks:<hash8>]` and run '
+                  '`aidd rules approve specs/<id>`. Agents never read review.md/review.html: they only run '
+                  '`aidd review <spec> --check`, `--wait` or `--comments`. '
+                  '(Owner-only override: AIDD_RULES=warn|off in settings.json env.)')
 
 
 # ----------------------------------------------------------------------------- utils
@@ -223,14 +239,25 @@ def _counting_subs(ev, root, session):
     return [e for e in ev.events(root, session, 'subagent') if rules._subagent_counts(e)]
 
 
+def _r5_mode(rules):
+    """aidd:FR-206 'advisory' (default) | 'strict'. An older aidd_rules without r5_audit_mode keeps the old
+    (strict) behaviour; a crash of the reader is treated the same way (fail closed on the demand)."""
+    f = getattr(rules, 'r5_audit_mode', None)
+    try:
+        return f() if callable(f) else 'strict'
+    except Exception:
+        return 'strict'
+
+
 def _r5_tasks(ev, d, root, session):
+    """R5 before tasks.md: plan.md exists, find_spec ran and (strict only, FR-206) a pre-build audit ran."""
     out = []
     plan = d / 'plan.md'
     if _mtime(plan) is None:
         out.append(_v('R5', 'plan.md does not exist.', f'Write specs/{d.name}/plan.md (Step 3) before tasks.md.'))
     else:
         _, rules = _libs()
-        if not rules.pre_build_audit_done(ev, root, session, d):
+        if _r5_mode(rules) == 'strict' and not rules.pre_build_audit_done(ev, root, session, d):
             out.append(_v('R5', 'No pre-build coherence audit: no independent subagent ran after the last edit '
                                 'of spec.md/plan.md/tasks.md (or the last graph rebuild).',
                           'Dispatch ONE pre-build coherence auditor subagent (medium or high tier, never haiku) '
@@ -278,7 +305,10 @@ def _approval_gate(ev, rules, d, root, session, new_text, cur_text):
     """R6 / D3: a well-formed `Approved:` line edit must (a) change nothing else
     (approval_hash(current) == approval_hash(would-be)), (b) carry exactly that hash, and (c) follow an
     AFFIRMATIVE user answer (pairs anchored on a recorded question that OFFERED an Approve option) newer
-    than the last change of tasks.md."""
+    than the last change of tasks.md.
+    aidd:FR-204 (spec 007): also (d) a valid `## Verification` (rules.check_verification) and (e) when a review
+    page exists, a COMPLETE review_state AND a consent act newer than review.md (tagged answer or tagged prompt;
+    never a TTY, never review.md alone). Mints `approved` with rules.approval_evidence (gate 2)."""
     new_lines = _approved_lines(new_text)
     cur_lines = _approved_lines(cur_text or '')
     line = rules.approval_line(new_text)
@@ -299,9 +329,64 @@ def _approval_gate(ev, rules, d, root, session, new_text, cur_text):
                    f'Write "Approved: <date> hash:{h_new}" exactly (or run `aidd rules approve <spec_dir>`).')]
     since = _tasks_last_change(ev, root, d, d.name)
     tag = f'[tasks:{h_new[:8]}]'
-    if _affirm(ev, root, session, since, tag):
-        # N1: PreToolUse is the trusted point - the gate itself mints the `approved` event (mark_code_edit does not)
-        ev.append_approved(root, session, d.name, h_new)
+    # aidd:FR-204 aidd:FR-205 a new approval needs a valid `## Verification` in spec.md (legacy approvals are untouched)
+    spec_t = _read(d / 'spec.md', rules.MAX_CHARS * 2) or ''
+    vv = rules.check_verification(spec_t, root)
+    if vv:
+        return vv
+    try:
+        rs = _review_lib().review_state(d)
+    except Exception as e:      # fail closed: without the review reader the review state is unknown
+        return [_v('R6', f'The review state of specs/{d.name} cannot be read ({type(e).__name__}: aidd_review.py '
+                         'missing or broken next to the hook).',
+                   'Reinstall the aidd skill (hooks and scripts together), then retry.')]
+    if not isinstance(rs, dict):
+        rs = {}
+    if not str(rs.get('reason') or '').startswith('too many items'):
+        # aidd:FR-313 the owner's exact-label waiver of the review page: checked FIRST (before the complete branch
+        # and so before _review_page_blocks_answer), only through the hook-recorded answer; the gate mints the event
+        summary = _summary_answer(ev, root, session, since, tag)
+        if summary:
+            ev.append_approved(root, session, d.name, h_new,
+                               **rules.approval_evidence(spec_t, 'summary', consent_ts=summary.get('ts')))
+            return []
+    if rs.get('complete'):
+        # aidd:FR-204 aidd:AC-205 review = content, consent = trust root: review.md alone is NEVER enough
+        lo = max(since, _num(rs.get('mtime')))
+        kind, cts = None, None
+        ans = _affirm(ev, root, session, lo, tag)
+        if ans:
+            kind, cts = 'answer', ans.get('ts')
+        else:
+            pc = _prompt_consent(ev, root, session, tag, lo)
+            if pc:
+                kind, cts = 'prompt', pc.get('ts')
+        if kind:
+            # N1: PreToolUse is the trusted point - the gate itself mints the `approved` event (mark_code_edit does not)
+            ev.append_approved(root, session, d.name, h_new,
+                               **rules.approval_evidence(spec_t, f'review+{kind}', review_sha1=rs.get('sha1') or None,
+                                                         consent_ts=cts))
+            return []
+        return [_v('R6', f'review.md is complete; the owner must confirm: answer the question tagged {tag} or type '
+                         f'`approve {tag}` (a consent act newer than review.md, recorded in this session, is required; '
+                         'review.md alone is never an approval).',
+                   f'Run `aidd review specs/{d.name} --wait` in the background; when it returns, ask the owner ONE '
+                   f'question with AskUserQuestion: the question text MUST include the tag {tag} and offer an '
+                   f'option labelled "Approve" (typing `approve {tag}` stays a fallback). Then add the '
+                   '"Approved: <date> hash:<hash>" line (or run `aidd rules approve <spec_dir>`).')]
+    if _review_page_blocks_answer(d, rs):
+        # aidd:FR-204 a review page exists for this spec: the plain answer route is refused until it is completed
+        why = str(rs.get('reason') or 'the review is not complete')
+        return [_v('R6', f'A review exists for specs/{d.name} (review.html): complete it. {why}.',
+                   f'Run `aidd review specs/{d.name}` if the page is stale (or a legacy review.md needs regenerating), '
+                   f'then `aidd review specs/{d.name} --wait` in the background: the owner checks the sections and '
+                   'presses `Aprobar y guardar`, the page saves review.md itself; when it returns, ask ONE question '
+                   f'tagged {tag} (with an "Approve" option) or the owner types `approve {tag}`.')]
+    ans = _affirm(ev, root, session, since, tag)
+    if ans:
+        # aidd:FR-204 no review page (never generated, or sources over the cap): the answer-only route
+        ev.append_approved(root, session, d.name, h_new,
+                           **rules.approval_evidence(spec_t, 'answer', consent_ts=ans.get('ts')))
         return []
     return [_v('R6', 'Approval of tasks.md is the user\'s: there is no AFFIRMATIVE user answer to an '
                      f'"approve the tasks" question carrying the tag {tag} (with an Approve option) recorded in this '
@@ -310,7 +395,59 @@ def _approval_gate(ev, rules, d, root, session, new_text, cur_text):
                f'Present the tasks to the user with AskUserQuestion: the question text MUST include the tag {tag} '
                '(it identifies exactly this version of tasks.md) and it MUST offer an option labelled "Approve". '
                'Wait for their answer, then add the "Approved: <date> hash:<hash>" line (or run '
-               '`aidd rules approve <spec_dir>`).')]
+               f'`aidd rules approve <spec_dir>`). Preferred: `aidd review specs/{d.name}` builds the review page '
+               f'the owner checks and answers (then consent: the tagged answer or `approve {tag}`).')]
+
+
+def _summary_answer(ev, root, session, since, tag):
+    """aidd:FR-313 Thin delegate to aidd_status._summary_answer (the one definition of the exact-label route).
+    ANY import or call error returns None (fail closed: no summary route, the other routes decide)."""
+    try:
+        if SCRIPTS_DIR not in sys.path:
+            sys.path.insert(0, SCRIPTS_DIR)
+        import aidd_status
+        return aidd_status._summary_answer(ev, root, session, since, tag)
+    except Exception:
+        return None
+
+
+def _review_lib():
+    if SCRIPTS_DIR not in sys.path:
+        sys.path.insert(0, SCRIPTS_DIR)
+    import aidd_review
+    return aidd_review
+
+
+def _num(x):
+    try:
+        return float(x or 0.0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _prompt_consent(ev, root, session, tag, since):
+    """aidd:FR-204 consent (b): a hook-recorded user prompt carrying the tag and an approve word. None on error."""
+    try:
+        return _review_lib().prompt_consent(ev, root, session, tag, since)
+    except Exception:
+        return None
+
+
+def _review_page_blocks_answer(d, rs):
+    """aidd:FR-204 True when a review page exists (current OR stale: a hash/digest mismatch voids the review and
+    asks for `aidd review` again) and the sources are within the cap. The answer-only route stays only when no
+    page was ever generated or the sources are over MAX_REVIEW_SOURCE_CHARS (AC-217).
+    aidd:FR-307 A spec the compact page cannot show (`too many items`) always blocks, with or without a page."""
+    if str(rs.get('reason') or '').startswith('too many items'):
+        return True
+    if rs.get('page_current'):
+        return True
+    if str(rs.get('reason') or '').startswith('source too large'):
+        return False
+    try:
+        return (d / 'review.html').is_file()
+    except OSError:
+        return True
 
 
 def _qa_gate(ev, rules, d, root, session):
@@ -362,44 +499,97 @@ def _approved_recorded(ev, root, sid, h):
     return False
 
 
+MAX_AMBIGUOUS_IDS = 5
+_HOW_TEXT = {'pointer': 'the gate pointer .aidd/gate_spec names it',
+             'only': 'it is the only open spec',
+             'inferred': 'it has the newest plan.md/tasks.md edit of the open specs (no gate pointer set)',
+             'all': 'every open spec is checked (older aidd_evidence without gate_target_specs)'}
+
+
+def _gate_targets(ev, root):
+    """aidd:FR-201 (ids, ambiguous, how) for one root. Falls back to EVERY open spec (the pre-007 behaviour,
+    how='all') when the library predates gate_target_specs or returns an unexpected shape."""
+    try:
+        ids, ambiguous, how = ev.gate_target_specs(root)
+        return list(ids or []), bool(ambiguous), str(how or '')
+    except (AttributeError, TypeError, ValueError):
+        pass
+    try:
+        return list(ev.open_specs(root)), False, 'all'
+    except Exception:
+        return [], False, 'none'
+
+
+def _ambiguous_violation(ev, root):
+    """aidd:FR-201 aidd:AC-202 ONE violation listing the open ids (first 5, then 'and N more')."""
+    try:
+        opened = list(ev.open_specs(root))
+    except Exception:
+        opened = []
+    shown = ', '.join(opened[:MAX_AMBIGUOUS_IDS]) or '?'
+    more = len(opened) - MAX_AMBIGUOUS_IDS
+    if more > 0:
+        shown += f' and {more} more'
+    first = opened[0] if opened else '<id>'
+    return _v('R6', f'Code edits are blocked: {len(opened)} specs are open ({shown}), no gate pointer is set and '
+                    'none can be inferred (no open spec has a recorded plan.md/tasks.md edit), so the gate target '
+                    'is ambiguous.',
+              f'Choose the spec this work belongs to: run `aidd rules activate <id>` (for example '
+              f'`aidd rules activate {first}`); `aidd rules approve <id>` also activates the spec it approves. '
+              'If a spec was dropped, ask the user and run `aidd rules abandon <id>`.')
+
+
+def _target_violation(ev, rules, root, sid, how):
+    """aidd:FR-201 at most ONE R6 violation for the gate target `sid`, naming it, `how` and the unblock path."""
+    d = root / 'specs' / sid
+    tasks = _read(d / 'tasks.md', rules.MAX_CHARS * 2)
+    why = _HOW_TEXT.get(how, how or 'gate target')
+    unblock = (f'Unblock: `aidd review specs/{sid}`, then `aidd review specs/{sid} --wait` in the background (the '
+               f'owner presses `Aprobar y guardar` on the page, which saves review.md); ask ONE tagged question, then '
+               f'`aidd rules approve specs/{sid}` with the owner\'s consent; or, if this work belongs to another '
+               'spec, `aidd rules activate <other>`. If the spec is finished or dropped, ask the user and run '
+               f'`aidd rules close {sid}` / `aidd rules abandon {sid}`.')
+    head = f'Code edits are blocked: gate target spec {sid} (chosen by {how}: {why})'
+    if tasks is None:
+        return _v('R6', f'{head} has no tasks.md. Step 4 missing: write tasks.md, then get approval.',
+                  f'Write specs/{sid}/tasks.md (Step 4: small-PR tasks with Agent min / Human ref hours), then get '
+                  f'it approved. {unblock}')
+    if not rules.approval_valid(tasks):
+        return _v('R6', f'{head} has no valid tasks approval (missing, duplicated, or tasks.md changed after it was '
+                        'approved).',
+                  'Present the tasks to the owner (review page, or AskUserQuestion with an "Approve" option), wait '
+                  f'for their consent, then add/refresh the "Approved: <date> hash:<hash>" line in '
+                  f'specs/{sid}/tasks.md. {unblock}')
+    if not _approved_recorded(ev, root, sid, rules.approval_hash(tasks)):
+        return _v('R6', f'{head}: the approval line in specs/{sid}/tasks.md was not recorded by a hook (no approved '
+                        'event for the current hash) - it was probably written outside Write/Edit.',
+                  f'Get the owner\'s consent again, then write the Approved: line with the Edit tool. {unblock}')
+    return None
+
+
 def _code_gate(ev, rules, roots):
-    """B1/D9/D3: blocked while ANY open spec in ANY project root above the file has no tasks.md, no valid
-    approval hash, no hook-recorded approval for the CURRENT hash, or open visual debt. Never reads the
-    informational active_spec pointer."""
+    """aidd:FR-201 R6/R4 per spec: in every project root above the file ONLY the gate target spec(s)
+    (ev.gate_target_specs: `.aidd/gate_spec` pointer -> only open spec -> newest plan/tasks edit -> ambiguous)
+    are checked for a missing tasks.md, an invalid approval, no hook-recorded approval for the CURRENT hash, or
+    open visual debt. Ambiguous -> ONE violation listing the open ids and `aidd rules activate <id>`. The gate reads
+    `.aidd/gate_spec` and NEVER the informational `.aidd/active_spec` (D1); both are R9-protected."""
     out, seen = [], set()
     for root in roots:
-        try:
-            ids = ev.open_specs(root)
-        except Exception:
-            ids = []
+        ids, ambiguous, how = _gate_targets(ev, root)
+        if ambiguous:
+            key = (str(root), '<ambiguous>')
+            if key not in seen:
+                seen.add(key)
+                out.append(_ambiguous_violation(ev, root))
+            continue
         for sid in ids:
-            d = root / 'specs' / sid
-            tasks = _read(d / 'tasks.md', rules.MAX_CHARS * 2)
-            key = (str(root), sid.lower())
+            key = (str(root), str(sid).lower())
             if key in seen:
                 continue
             seen.add(key)
-            if tasks is None:
-                out.append(_v('R6', f'Code edits are blocked: open spec {sid} has no tasks.md. Step 4 missing: write '
-                                    'tasks.md, then get approval.',
-                              f'Write specs/{sid}/tasks.md (Step 4: small-PR tasks with Agent min / Human ref hours), '
-                              'present it to the user (AskUserQuestion with an "Approve" option) and add the '
-                              '"Approved:" line. If the spec was dropped, ask the user and run '
-                              f'`aidd rules abandon {sid}`.'))
-            elif not rules.approval_valid(tasks):
-                out.append(_v('R6', f'Code edits are blocked: open spec {sid} has no valid tasks approval (missing, '
-                                    'duplicated, or tasks.md changed after it was approved).',
-                              'Present the tasks to the user (AskUserQuestion with an "Approve" option), wait for '
-                              f'their answer, then add/refresh the "Approved: <date> hash:<hash>" line in '
-                              f'specs/{sid}/tasks.md (or run `aidd rules approve specs/{sid}`). If the spec is '
-                              f'finished or dropped, ask the user and run `aidd rules close {sid}` / '
-                              f'`aidd rules abandon {sid}`.'))
-            elif not _approved_recorded(ev, root, sid, rules.approval_hash(tasks)):
-                out.append(_v('R6', f'Code edits are blocked: the approval line in specs/{sid}/tasks.md was not '
-                                    'recorded by a hook (no approved event for the current hash) - it was probably '
-                                    'written outside Write/Edit.',
-                              'Ask the user to approve (AskUserQuestion with an "Approve" option), then write the '
-                              f'Approved: line with the Edit tool or run `aidd rules approve specs/{sid}`.'))
+            v = _target_violation(ev, rules, root, sid, how)
+            if v:
+                out.append(v)
             out += _debt_violations(rules, root, sid)
     return out
 
@@ -478,6 +668,10 @@ def _decide_path(event, ti, fp):
     # (1) R9
     if _protected(ev, cp, segs):
         return True, R9_MESSAGE
+
+    # (1b) aidd:FR-204 aidd:AC-207 owner-only review artifacts, any spec id, after canonicalisation
+    if C.is_user_only_spec_file(cp):
+        return True, REVIEW_MESSAGE
 
     # (2) legacy gates, in-process, on the canonical path
     import require_aidd
@@ -780,18 +974,293 @@ def _prot_tok(tok, ctx_aidd, cwd_prot):
     return False
 
 
-def _specs_tok(tok):
-    """D8: a path token pointing INTO a specs/ tree (specs/..., or .../specs/<NNN-id>/...)."""
-    t = tok.lower().replace('\\', '/').strip('"\'` ')
+REVIEW_FILE_NAMES = ('review.md', 'review.html')
+
+
+def _guarded_leaves():
+    """Leaves under specs/<any-id>/ that the shell may never write: the spec artifacts + the owner-only review files."""
+    import _common as C
+    return set(C.SPEC_ARTIFACT_NAMES) | set(REVIEW_FILE_NAMES)
+
+
+def _tok_norm(tok):
+    """Lowercased, `/`-separated, quote-stripped token with a `-Flag:` prefix removed ('' = not a path)."""
+    t = _unquote(tok.lower().replace('\\', '/')).strip()
     if t.startswith('-') and ':' in t[:30]:
         t = t.split(':', 1)[1]
     if not t or t.startswith('-'):
+        return ''
+    return t
+
+
+def _is_abs(t):
+    return t.startswith('/') or t.startswith('~') or ':' in t[:3]
+
+
+def _unescape(text):
+    """Bash backslash escapes removed (`rev\\iew.html` -> `review.html`, `\\\\` -> `\\`) (closing audit 007 R-2).
+    Only a second READING of a token: a Windows path keeps its `\\` -> `/` reading as well."""
+    import re
+    return re.sub(r'\\(.)', r'\1', text, flags=re.S)
+
+
+def _leaf_variants(tok):
+    """The leaf name of a token as the shell may read it: the `/`-normalised one and the unescaped one."""
+    out = set()
+    a = _tok_norm(tok)
+    if a:
+        out.add(_norm_comp(a.rstrip('/').split('/')[-1]))
+    b = _unquote(_unescape(tok.lower())).strip()
+    if b and not b.startswith('-'):
+        out.add(_norm_comp(b.rstrip('/').split('/')[-1]))
+    out.discard('')
+    return out
+
+
+def _is_numeric_id(seg):
+    return len(seg) > 3 and seg[:3].isdigit() and seg[3] == '-'
+
+
+def _specs_tok(tok, cwd_specs=False, cwd_abs=None):
+    """D8: a path token pointing INTO a specs/ tree (specs/..., or .../specs/<NNN-id>/...).
+    aidd:FR-204 also ANY path with a `specs/<segment>/` pair whose leaf is a spec artifact (spec.md, plan.md,
+    tasks.md, ...) or review.md / review.html, for ANY id, numeric or not (`D:/proj/specs/F23-eDoc-POS/tasks.md`).
+    A RELATIVE token is resolved against the tracked shell cwd `cwd_abs` (hook cwd + every `cd`) and counts when
+    it lands in `<project root>/specs/<id>/<artifact>` (closing audit 007 N-1: the root-relative path decides, so
+    a project under a folder named `specs`, or `tests/specs`, is not a spec). With no known cwd, `cwd_specs`
+    (an earlier `cd specs/...`) makes a relative artifact leaf count (`cd specs/F23-eDoc-POS && echo x > spec.md`)."""
+    t = _tok_norm(tok)
+    if not t:
         return False
     segs = [_norm_comp(x) for x in t.split('/') if x and x != '.']
+    if not segs:
+        return False
+    leaves = _guarded_leaves()
     for i, x in enumerate(segs):
         if x == 'specs':
             nxt = segs[i + 1] if i + 1 < len(segs) else ''
-            if i == 0 or (len(nxt) > 3 and nxt[:3].isdigit() and nxt[3] == '-'):
+            if i == 0 or _is_numeric_id(nxt):
+                return True
+            if segs[-1] in leaves and i + 2 < len(segs) and nxt:
+                if _is_abs(t):                         # N-1: decide on the ROOT-relative path when a root exists
+                    p = _abs_path(tok)
+                    rel = _locate(p) if p else None
+                    if rel is not None and not (len(rel) >= 3 and rel[0] == 'specs'):
+                        return False                   # `<tmp>/specs/proj/plan.md`: a project under "specs"
+                return True
+    if _is_abs(t):
+        return False
+    if cwd_abs:
+        p = _abs_path(tok, cwd_abs)
+        rel = _locate(p) if p else None
+        if rel is None:
+            return False
+        return len(rel) >= 3 and rel[0] == 'specs' and (rel[-1] in leaves or bool(_leaf_variants(tok) & leaves))
+    if cwd_specs and (_leaf_variants(tok) & leaves):
+        return True
+    return False
+
+
+def _path_in_specs(path):
+    """LEXICAL fallback only (no project root on disk): the path has a `specs` segment followed by another one."""
+    t = _tok_norm(path)
+    if not t:
+        return False
+    segs = [_norm_comp(x) for x in t.split('/') if x]
+    return any(x == 'specs' and i + 1 < len(segs) for i, x in enumerate(segs))
+
+
+_PROJECT_MARKERS = frozenset({'.git', 'src', 'build', 'dist', 'node_modules', 'package.json', 'pyproject.toml',
+                              'setup.py', 'cargo.toml', 'go.mod', 'pom.xml', '.claude', '.vscode', 'makefile',
+                              'requirements.txt', 'tests', 'lib', '.gitignore'})
+
+
+def _nested_project(d):
+    """closing audit 007 N-1: `<root>/specs/<name>` is really a PROJECT living under a folder named specs
+    (`<tmp>/specs/proj`), not a spec folder: a non-numeric name, no spec artifact inside, and a project marker
+    (src/, .git, package.json, ...). A missing folder or any doubt counts as a spec (stays guarded)."""
+    try:
+        if _is_numeric_id(d.name.lower()) or not d.is_dir():
+            return False
+        names = {n.lower() for n in os.listdir(d)[:500]}
+        if names & _guarded_leaves():
+            return False
+        return bool(names & _PROJECT_MARKERS) or any(n.endswith(('.sln', '.csproj')) for n in names)
+    except Exception:
+        return False
+
+
+def _abs_path(tok, base=None):
+    """Absolute normalised native path of a path token / `cd` target (relative ones joined to `base`), else None
+    (a variable, a glob, `-`, or a relative token with no base)."""
+    import re
+    t = _unquote(tok).strip()
+    if t.startswith('-') and ':' in t[:30]:
+        t = t.split(':', 1)[1]
+    if not t or t.startswith('-') or any(c in t for c in '$*?[{`%'):
+        return None
+    t = t.replace('\\', '/')
+    if t.startswith('~'):
+        t = os.path.expanduser(t)
+    if os.name == 'nt' and re.match(r'^/[a-zA-Z](/|$)', t):
+        t = t[1] + ':/' + t[3:]                           # Git bash /d/proj -> d:/proj
+    if os.path.isabs(t) or re.match(r'^[a-zA-Z]:', t):
+        return os.path.normpath(t)
+    if base:
+        return os.path.normpath(os.path.join(base, t))
+    return None
+
+
+def _locate(p):
+    """closing audit 007 N-1: the lowercased segments of absolute path `p` RELATIVE TO ITS PROJECT ROOT
+    (CLAUDE_PROJECT_DIR when `p` lies under it, else the nearest ancestor with specs/ or .aidd/, re-rooted at a
+    nested project under a folder named specs). No root on disk: the segments after the last `specs` segment
+    (lexical fallback, prefixed with 'specs'), or [] when there is none."""
+    from pathlib import Path
+    try:
+        ev = _ev()
+        root, trusted = None, False
+        env_root = os.environ.get('CLAUDE_PROJECT_DIR')
+        if env_root and ev.rel_to_root(p, env_root) is not None:
+            root, trusted = Path(env_root), True
+        if root is None:
+            root = ev.known_root(p)
+        if root is None:
+            segs = [_norm_comp(x) for x in p.replace('\\', '/').split('/') if x]
+            idx = [i for i, x in enumerate(segs) if x == 'specs']
+            return segs[idx[-1]:] if idx else []
+        rel = ev.rel_to_root(p, root)
+        if rel is None:
+            return None
+        raw = [x for x in rel.split('/') if x]
+        segs = [_norm_comp(x) for x in raw]
+        if not trusted and len(segs) >= 2 and segs[0] == 'specs' and _nested_project(Path(root) / raw[0] / raw[1]):
+            return segs[2:]
+        return segs
+    except Exception:
+        return None
+
+
+def _in_spec_dir(rel):
+    """Root-relative segments of a DIRECTORY that sits at or under specs/<id>/."""
+    return bool(rel) and len(rel) >= 2 and rel[0] == 'specs'
+
+
+def _chdir(ctx, target):
+    """aidd:FR-204 F-1 / N-1: track the shell cwd through `cd` (relative and absolute) and recompute whether it
+    sits inside specs/<id>/ from the ROOT-RELATIVE path; a `cd ..` out of the spec clears the flag."""
+    base = ctx.get('cwd_abs')
+    p = _abs_path(target, base)
+    if p is not None:
+        ctx['cwd_abs'] = p
+        inside = _in_spec_dir(_locate(p))
+    else:
+        t = _tok_norm(target)
+        segs = [_norm_comp(x) for x in t.split('/') if x and x != '.'] if t else []
+        ctx['cwd_abs'] = None                          # unknown from here on: the lexical rules take over
+        if not segs:
+            inside = ctx.get('cwd_specs', False)
+        elif _is_abs(t):
+            inside = _path_in_specs(t)
+        elif '..' in segs:
+            inside = False
+        elif segs[0] == 'specs':
+            inside = True
+        else:
+            inside = ctx.get('cwd_specs', False)
+    ctx['cwd_specs'] = inside
+    if inside:
+        ctx['cwd_specs_seen'] = True
+
+
+_REVIEW_NAME_RE = r'(?<![\w.-])review\.(?:md|html)(?![\w-])'
+_QUOTE_CHARS = '"\'`'
+
+
+def _unquote(text):
+    """Remove shell quote / escape characters so `rev''iew.md`, `"review".md` and PowerShell `rev`iew.md`
+    read as the name the shell will actually use."""
+    return ''.join(c for c in text if c not in _QUOTE_CHARS)
+
+
+def _readings(low):
+    """The two readings of a (lowercased) command text for NAME matching: Windows (`\\` is a path separator)
+    and bash (`\\x` is an escaped `x`, closing audit 007 R-2: `rm rev\\iew.html` deletes review.html)."""
+    return (_unquote(low.replace('\\', '/')), _unquote(_unescape(low)))
+
+
+def _names_artifact(low):
+    """The (lowercased) text names a spec artifact leaf (spec.md, plan.md, tasks.md, ...) after quote removal."""
+    import re
+    import _common as C
+    alt = '|'.join(re.escape(n) for n in sorted(C.SPEC_ARTIFACT_NAMES))
+    return any(re.search(r'(?<![\w.-])(?:%s)(?![\w-])' % alt, r) for r in _readings(low))
+
+
+def _names_review(low, words=(), cwd_specs=False, cwd_abs=None):
+    """aidd:FR-204 aidd:AC-207 the command names review.md / review.html: literally (after quote removal, in the
+    Windows or the bash-escape reading) or through a glob / brace token (`review.*`, `revie?.html`,
+    `review.{md,html}`) that matches one of them. A glob with no literal name part (`*`, `*.md`) counts only
+    inside specs/<id>/: a relative token is resolved against the tracked cwd `cwd_abs` (root-relative, N-1);
+    with no known cwd, `cwd_specs` or a `specs` segment in the token's own path decides. So `rm build/*`
+    elsewhere is not mistaken for a review deletion."""
+    import re
+    import fnmatch
+    if any(re.search(_REVIEW_NAME_RE, r) for r in _readings(low)):
+        return True
+    for w in words:
+        for path in {_unquote(w.lower().replace('\\', '/')).rstrip('/'), _unquote(_unescape(w.lower())).rstrip('/')}:
+            leaf = path.split('/')[-1]
+            if not leaf or not any(c in leaf for c in '*?[{'):
+                continue
+            pat = re.sub(r'\{[^{}]*\}', '*', leaf)
+            if not any(fnmatch.fnmatchcase(n, pat) for n in REVIEW_FILE_NAMES):
+                continue
+            literal = re.sub(r'\[[^\]]*\]|[*?]', '', pat.split('.')[0])
+            if literal:
+                return True
+            dirs = [x for x in path.split('/')[:-1] if x]
+            if (cwd_abs or _is_abs(path)) and not any(c in ''.join(dirs) for c in '*?[{$'):
+                head = path.rsplit('/', 1)[0] if '/' in path else '.'
+                p = _abs_path(head or '/', cwd_abs)
+                rel = _locate(p) if p is not None else None
+                if rel is not None:
+                    if _in_spec_dir(rel):
+                        return True
+                    continue
+            if cwd_specs or 'specs' in [_norm_comp(x) for x in dirs]:
+                return True
+    return False
+_REVIEW_VERBS = _DELETERS | _MOVERS | _WRITERS | _COPIERS | {'sed', 'perl', 'awk', 'gawk', 'truncate'}
+_INLINE_FLAGS = ('-c', '-e', '/c', '/k', '-command', '-encodedcommand', '-enc', '-ec', '--eval', '-p', '-r')
+
+
+def _runs_aidd_review(words):
+    """`python .../aidd_review.py ...` (the sanctioned generator) as one segment's words."""
+    return bool(words) and _name(words[0]) in _INTERPRETERS and any(
+        w.replace('\\', '/').split('/')[-1].lower() == 'aidd_review.py' for w in words[1:4])
+
+
+def _review_write(cmd, low, ctx, segs, verbs):
+    """aidd:FR-204 aidd:AC-207 TEXT-LEVEL rule: the command names review.md / review.html ANYWHERE (any id, absolute
+    or relative, after `cd`) and writes (redirection), runs a script writer, uses a mover / copier / writer /
+    deleter verb or an interpreter with an inline script. The `aidd` verb and `python .../aidd_review.py` are
+    exempt only when nothing is redirected. Lexical by design (a separate script file is not seen); quotes are
+    removed and glob / brace tokens are matched against the two names first (F-3)."""
+    if not _names_review(low, [w for toks in segs for w in toks], ctx.get('cwd_specs', False), ctx.get('cwd_abs')):
+        return False
+    seg_words = [[t for t in toks if not _is_redirect_out(t)] for toks in segs]
+    sanctioned = all(not w or _name(w[0]) == 'aidd' or _runs_aidd_review(w) for w in seg_words)
+    if sanctioned and not ctx.get('writes'):
+        return False
+    if ctx.get('writes') or _script_write(low) or '<<' in cmd:
+        return True
+    vs = set(verbs)
+    if vs & _REVIEW_VERBS:
+        return True
+    if vs & _INTERPRETERS:
+        for w in seg_words:
+            if w and _name(w[0]) in _INTERPRETERS and any(a.lower() in _INLINE_FLAGS for a in w[1:]):
                 return True
     return False
 
@@ -886,6 +1355,8 @@ def _shell_block(cmd, ctx, depth=0):
     all_words = _expand_words([w for toks in segs for w in toks])
     verbs = []
     for toks in segs:
+        cwd_specs = ctx.get('cwd_specs', False)     # F-1: the shell sits inside specs/<id>/ (hook cwd or an earlier cd)
+        cwd_abs = ctx.get('cwd_abs')                # N-1: the tracked shell cwd (None = unknown, lexical rules)
         # redirects first: they apply whatever the command is
         for i, t in enumerate(toks):
             if _is_redirect_out(t) and i + 1 < len(toks):
@@ -893,7 +1364,7 @@ def _shell_block(cmd, ctx, depth=0):
                 if tgt.startswith('&') or _name(tgt) in ('nul', 'null'):
                     continue
                 ctx['writes'] = True
-                if _prot_tok(tgt, ctx_aidd, cwd_prot) or _specs_tok(tgt):
+                if _prot_tok(tgt, ctx_aidd, cwd_prot) or _specs_tok(tgt, cwd_specs, cwd_abs):
                     return True
         words = [t for t in toks if not _is_redirect_out(t)]
         k = 0
@@ -910,15 +1381,21 @@ def _shell_block(cmd, ctx, depth=0):
         args = words[k + 1:]
 
         def hit(a):
-            return _prot_tok(a, ctx_aidd, cwd_prot) or (verb not in ('mkdir', 'md') and _specs_tok(a))
+            return _prot_tok(a, ctx_aidd, cwd_prot) or (verb not in ('mkdir', 'md') and _specs_tok(a, cwd_specs, cwd_abs))
         prot_args = [a for a in args if hit(a)]
         pos = [a for a in args if not a.startswith('-') and not (a.startswith('/') and len(a) <= 3)]
         if verb == 'aidd':
             continue                                           # the sanctioned writer
         if verb in _CHDIRS:
-            if any(_prot_tok(a, ctx_aidd, cwd_prot) for a in args if not a.startswith('-')):
+            targets = [a for a in args if not a.startswith('-')]
+            if any(_prot_tok(a, ctx_aidd, cwd_prot) for a in targets):
                 cwd_prot = True                                # later relative names resolve inside .aidd/
+            for a in targets:
+                _chdir(ctx, a)                                 # F-1 / N-1: root-relative, set AND cleared on every cd
             continue
+        if verb in _REVIEW_VERBS and args and _names_review('', args, cwd_specs, cwd_abs):
+            ctx['review_named'] = True
+            return True                                        # F-3: `rm *` / `rm *.html` while THIS segment sits in specs/<id>/
         if (verb in _DELETERS or verb in _MOVERS) and not pos and (
                 ctx_aidd or 'specs' in lown or 'aidd-hooks' in lown):
             return True                                        # `gci .aidd | ri` - the targets come from the pipeline
@@ -978,6 +1455,11 @@ def _shell_block(cmd, ctx, depth=0):
         return True                                            # Set-Content (Join-Path $x 'aidd') - path built in pieces
     if 'tasks.md' in low and 'approved' in low and (ctx.get('writes') or _script_write(low)):
         return True                                            # forging the approval line through the shell
+    if _review_write(cmd, low, ctx, segs, verbs):
+        return True                                            # aidd:FR-204 forging / deleting the owner's review
+    if ctx.get('cwd_specs_seen') and _names_artifact(low) and (
+            _script_write(low) or (scripty and any(t in low for t in _WRITE_API))):
+        return True                                            # F-1: `cd specs/<id> && python -c "open('spec.md','w')"`
     if mention:
         if any(f in lown for f in _FORM_SUBSTR):
             return True
@@ -990,8 +1472,8 @@ def _shell_block(cmd, ctx, depth=0):
 
 def _needs_check(low, cwd):
     """Cheap pre-check (no imports): can this command text / cwd matter at all?"""
-    if any(m in low for m in BASH_MARKERS) or '.aidd' in cwd.lower():
-        return True
+    if any(m in low for m in BASH_MARKERS) or '.aidd' in cwd.lower() or 'specs' in cwd.lower():
+        return True                                            # F-1: cwd inside specs/ makes `> spec.md` matter
     if 'join-path' in low and 'aidd' in low:
         return True
     if '.jsonl' in low and '.claude' in low:
@@ -1013,8 +1495,17 @@ def _decide_bash(event, ti):
         for i, s in enumerate(segs):
             if s == '.aidd' and (segs[i + 1] if i + 1 < len(segs) else None) != 'memory':
                 cwd_prot = True
-    ctx = {'aidd': False, 'cwd_prot': cwd_prot, 'writes': False}
+    cwd_abs = _abs_path(cwd) if cwd else None
+    if cwd_abs:                                                # N-1: root-relative, not "any `specs` segment"
+        in_specs = _in_spec_dir(_locate(cwd_abs))
+    else:
+        in_specs = bool(cwd) and _path_in_specs(cwd)
+    ctx = {'aidd': False, 'cwd_prot': cwd_prot, 'writes': False, 'cwd_specs': in_specs, 'cwd_specs_seen': in_specs,
+           'cwd_abs': cwd_abs}
     if _shell_block(cmd, ctx):
+        if ctx.get('review_named') or _names_review(low, [w for toks in _tokenize(cmd) for w in toks],
+                                                    ctx.get('cwd_specs_seen', False)):
+            return True, R9_BASH_MESSAGE + '\n' + REVIEW_MESSAGE
         return True, R9_BASH_MESSAGE
     return False, ''
 
@@ -1040,6 +1531,49 @@ def _record_error(event, err):
         ev = _ev()
         cwd = C.str_field(event, 'cwd') or os.getcwd()
         ev.record_hook_error(cwd, C.session_of(event), 'rule_gate', repr(err))
+    except Exception:
+        pass
+
+
+def _override_root(event):
+    """The KNOWN project root of the event (file path first, then cwd), or None: never a guess."""
+    import _common as C
+    ev = _ev()
+    ti = C.tool_input_of(event)
+    cwd = C.str_field(event, 'cwd')
+    starts = []
+    if event.get('tool_name') not in SHELL_TOOLS:
+        for fp in _paths(ti):
+            try:
+                starts.append(os.path.dirname(str(ev.real_path(fp, cwd or None))))
+            except Exception:
+                continue
+    if cwd:
+        starts.append(cwd)
+    for s in starts:
+        try:
+            r = ev.known_root(s)
+            if r is not None:
+                return r
+        except Exception:
+            continue
+    return None
+
+
+def _record_override(event, msg):
+    """aidd:FR-208 aidd:AC-214 AIDD_RULES=warn: every would-be block appends rules_override{hook, mode, rules}
+    (project kind, only with a known root). Best effort: never raises, never changes the exit code."""
+    try:
+        import re
+        if HOOKS_DIR not in sys.path:
+            sys.path.insert(0, HOOKS_DIR)
+        root = _override_root(event)
+        if root is None:
+            return
+        import _common as C
+        rules_hit = sorted(set(re.findall(r'\baidd (R[0-9]+(?:/R[0-9]+)*|content)\b', msg or '')))
+        _ev().append(root, C.session_of(event), 'rules_override', hook='rule_gate', mode='warn',
+                     rules=rules_hit)
     except Exception:
         pass
 
@@ -1188,6 +1722,7 @@ def main():
     if blocked:
         if mode == 'warn':
             _emit('[AIDD_RULES=warn, not blocking] ' + msg)
+            _record_override(event, msg)
             sys.exit(0)
         _emit(msg)
         sys.exit(2)

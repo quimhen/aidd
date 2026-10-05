@@ -1,0 +1,48 @@
+delta-F3: PASS
+  [PASS] F-3: glob / brace / quote-split review.* writes and deletes are blocked
+  [PASS] F-3 controls: rm build/*, rm src/*.html, cat review.md, aidd review stay allowed
+
+[bash] 'cd specs/F23-eDoc-POS && rm review.*' cwd=root rc=2
+[bash] 'cd specs/F23-eDoc-POS && rm revie?.html' cwd=root rc=2
+[bash] 'cd specs/F23-eDoc-POS && rm review.{md,html}' cwd=root rc=2
+[bash] "cd specs/F23-eDoc-POS && echo x > rev''iew.md" cwd=root rc=2
+[bash] 'cd specs/F23-eDoc-POS && echo x > "review".md' cwd=root rc=2
+[bash] 'cd specs/F23-eDoc-POS && rm "rev"iew.html' cwd=root rc=2
+[bash] "cd specs/F23-eDoc-POS && rm 'review.html'" cwd=root rc=2
+[bash] 'cd specs/F23-eDoc-POS && rm [r]eview.html' cwd=root rc=2
+[bash] 'cd specs/F23-eDoc-POS && rm ?eview.html' cwd=root rc=2
+[bash] 'cd specs/F23-eDoc-POS && rm *.html' cwd=root rc=2
+[bash] 'cd specs/F23-eDoc-POS && rm *' cwd=root rc=2
+[bash] 'cd specs/F23-eDoc-POS && Remove-Item review.*' cwd=root rc=2
+[bash] 'cd specs/F23-eDoc-POS && rm -- review.html' cwd=root rc=2
+[bash] 'cd specs/F23-eDoc-POS && mv review.html x.html' cwd=root rc=2
+[bash] 'cd specs/F23-eDoc-POS && rm rev*' cwd=root rc=2
+[bash] 'cd specs/F23-eDoc-POS && rm r*.md' cwd=root rc=2
+[bash] 'cd specs/F23-eDoc-POS && cp /tmp/x revi""ew.md' cwd=root rc=2
+[bash] 'cd specs/F23-eDoc-POS && rm rev`iew.html' cwd=root rc=2
+[bash] 'rm C:/Users/jquimis/AppData/Local/Temp/tmpqcc3tpf2/specs/F23-eDoc-POS/review.*' cwd=root rc=2
+[bash] 'rm C:/Users/jquimis/AppData/Local/Temp/tmpqcc3tpf2/specs/*/review.html' cwd=root rc=2
+[bash] 'rm specs/*/review.*' cwd=root rc=2
+[bash] 'rm specs/F23-eDoc-POS/revie?.md' cwd=root rc=2
+[bash] "rm specs/F23-eDoc-POS/'review'.html" cwd=root rc=2
+[bash] 'rm review.*' cwd=C:\Users\jquimis\AppData\Local\Temp\tmpqcc3tpf2\specs\F23-eDoc-POS rc=2
+[bash] 'rm revie?.html' cwd=C:\Users\jquimis\AppData\Local\Temp\tmpqcc3tpf2\specs\F23-eDoc-POS rc=2
+[bash] "echo x > rev''iew.md" cwd=C:\Users\jquimis\AppData\Local\Temp\tmpqcc3tpf2\specs\F23-eDoc-POS rc=2
+[bash] 'rm *.md' cwd=C:\Users\jquimis\AppData\Local\Temp\tmpqcc3tpf2\specs\F23-eDoc-POS rc=2
+--> PASS: F-3: glob / brace / quote-split review.* writes and deletes are blocked | []
+[bash] 'rm build/*' cwd=root rc=0
+[bash] 'rm src/*.html' cwd=root rc=0
+[bash] 'cat specs/F23-eDoc-POS/review.md' cwd=root rc=0
+[bash] 'cd specs/F23-eDoc-POS && cat review.md' cwd=root rc=0
+[bash] 'cd specs/F23-eDoc-POS && ls *' cwd=root rc=0
+[bash] 'aidd review F23-eDoc-POS' cwd=root rc=0
+[bash] 'aidd review --check F23-eDoc-POS' cwd=root rc=0
+[bash] 'rm -rf dist/*.md' cwd=root rc=0
+--> PASS: F-3 controls: rm build/*, rm src/*.html, cat review.md, aidd review stay allowed | []
+RESIDUAL PROBE rc=0 | cd specs/F23-eDoc-POS && rm rev\iew.html
+RESIDUAL PROBE rc=2 | cd specs/F23-eDoc-POS && rm $(echo review.html)
+RESIDUAL PROBE rc=2 | cd specs/F23-eDoc-POS && rm `echo revie`w.html
+RESIDUAL PROBE rc=2 | cd specs/F23-eDoc-POS && find . -name "review.*" -delete
+RESIDUAL PROBE rc=2 | cd specs/F23-eDoc-POS && ls | grep revi | xargs rm
+RESIDUAL PROBE rc=0 | cd specs/F23-eDoc-POS && X=review; rm $X.html
+RESIDUAL PROBE rc=2 | cd specs/F23-eDoc-POS && rm re{v,}iew.html

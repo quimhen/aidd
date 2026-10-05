@@ -1,0 +1,42 @@
+AC-211: PASS
+  [PASS] default (advisory): plan.md without a Mapper allowed
+  [PASS] strict: plan.md without a Mapper blocked
+  [PASS] default: post-rebuild plan.md write allowed (graph-coherence dispatch branch skipped)
+  [PASS] strict: post-rebuild write blocked
+  [PASS] aidd status reports the mapper state
+  [PASS] no find_spec in session blocks (mode=advisory)
+  [PASS] no find_spec in session blocks (mode=strict)
+  [PASS] [Proposed row blocks (mode=advisory)
+  [PASS] [Proposed row blocks (mode=strict)
+  [PASS] unverifiable user quote blocks (mode=advisory)
+  [PASS] unverifiable user quote blocks (mode=strict)
+
+[gate Write specs/001-x/plan.md] rc=0 stderr=''
+--> PASS: default (advisory): plan.md without a Mapper allowed
+[gate Write specs/001-x/plan.md] rc=2 stderr='aidd R5: blocking plan.md: the chain order is not satisfied.\n  - [R5] No independent subagent (Mapper/Alignment) ran after the first draft of spec.md.\n    Next action: Dispatch a Mapper/Alignment subagent (Agent tool) over spec.md before writing plan.md.\n(Owner override: AIDD_RULES=warn|off)'
+--> PASS: strict: plan.md without a Mapper blocked
+[gate Write specs/001-x/plan.md] rc=0 stderr=''
+--> PASS: default: post-rebuild plan.md write allowed (graph-coherence dispatch branch skipped)
+[gate Write specs/001-x/plan.md] rc=2 stderr="aidd: blocking this write to plan.md/tasks.md. The spec graph (find_spec.py's US-nnn->SCREEN-XX->COMP-nnn->CTL-nnn->API-nnn index) was rebuilt this session, but no independent subagent (Agent/Task tool) has been dispatched since. Dispatch a Graph Coherence Auditor first — a fresh/general-purpose subagent, scoped to just the spec(s) find_spec.py reported as changed, checking for orphaned codes, contradictory relationships, or stale edges the mechanical parse could have gotten wrong — then write plan.md/tasks.md reflecting a verified graph, not a rebuilt-but-unchecked one."
+--> PASS: strict: post-rebuild write blocked
+$ aidd_status.py status specs/001-x  -> exit 0
+001-x [not open]  Route: -1/0/1/1.5/2/3/4 run   Align: 0 proposed · Mapper ✔ · Graph ✘
+Tasks: no tasks.md yet · Waves: 0 · critical path n/a   Build: 0 code edits · Auditors: functional ✘ security ✘
+Visual debt open: 0 (blocking this spec: 0) · qa-audit.md: no
+User answers recorded (AskUserQuestion answered): 0 — no approval/close/abandon is possible until the user answers a question · questions asked: 0
+Stop blocks: none
+Hook errors: 0
+gate pointer: none (the code gate infers its target)
+--> PASS: aidd status reports the mapper state
+[gate Write specs/001-x/plan.md] rc=2 stderr="aidd R5: blocking this write to plan.md. No find_spec run is recorded in this session, so the plan/tasks would not be built on the spec graph. Next action: run `python <aidd skill>/scripts/find_spec.py <spec keywords>` through the Bash tool (the recorder only counts a command that actually RUNS find_spec.py - `echo find_spec.py`, grep or cat do not count; the UserPromptSubmit hook's own run does), have the Graph Coherence Auditor subagent check it if the index was rebuilt, then retry this write."
+--> PASS: no find_spec in session blocks (mode=advisory)
+[gate Write specs/001-x/plan.md] rc=2 stderr="aidd R5: blocking this write to plan.md. No find_spec run is recorded in this session, so the plan/tasks would not be built on the spec graph. Next action: run `python <aidd skill>/scripts/find_spec.py <spec keywords>` through the Bash tool (the recorder only counts a command that actually RUNS find_spec.py - `echo find_spec.py`, grep or cat do not count; the UserPromptSubmit hook's own run does), have the Graph Coherence Auditor subagent check it if the index was rebuilt, then retry this write."
+--> PASS: no find_spec in session blocks (mode=strict)
+[gate Write specs/001-x/plan.md] rc=2 stderr='aidd R5: blocking plan.md: the chain order is not satisfied.\n  - [R5] 1 checklist row(s) are still [Proposed — unconfirmed]; planning is blocked.\n    Next action: Ask the user (AskUserQuestion) to confirm each Proposed answer, then replace its Source with user — "<their words, 3+ words>" and drop "Proposed" everywhere in the row.\n(Owner override: AIDD_RULES=warn|off)'
+--> PASS: [Proposed row blocks (mode=advisory)
+[gate Write specs/001-x/plan.md] rc=2 stderr='aidd R5: blocking plan.md: the chain order is not satisfied.\n  - [R5] 1 checklist row(s) are still [Proposed — unconfirmed]; planning is blocked.\n    Next action: Ask the user (AskUserQuestion) to confirm each Proposed answer, then replace its Source with user — "<their words, 3+ words>" and drop "Proposed" everywhere in the row.\n  - [R5] No independent subagent (Mapper/Alignment) ran after the first draft of spec.md.\n    Next action: Dispatch a Mapper/Alignment subagent (Agent tool) over spec.md before writing plan.md.\n(Owner override: AIDD_RULES=warn|off)'
+--> PASS: [Proposed row blocks (mode=strict)
+[gate Write specs/001-x/plan.md] rc=2 stderr='aidd R5: blocking plan.md: the chain order is not satisfied.\n  - [R5] Quote not found in any recorded user prompt/answer: "el usuario dijo algo que nunca dijo".\n    Next action: Quote the user\'s exact words from a prompt written AFTER spec.md was first drafted (5+ words), or ask the user (AskUserQuestion) and quote their answer verbatim (2+ words).\n(Owner override: AIDD_RULES=warn|off)'
+--> PASS: unverifiable user quote blocks (mode=advisory)
+[gate Write specs/001-x/plan.md] rc=2 stderr='aidd R5: blocking plan.md: the chain order is not satisfied.\n  - [R5] Quote not found in any recorded user prompt/answer: "el usuario dijo algo que nunca dijo".\n    Next action: Quote the user\'s exact words from a prompt written AFTER spec.md was first drafted (5+ words), or ask the user (AskUserQuestion) and quote their answer verbatim (2+ words).\n  - [R5] No independent subagent (Mapper/Alignment) ran after the first draft of spec.md.\n    Next action: Dispatch a Mapper/Alignment subagent (Agent tool) over spec.md before writing plan.md.\n(Owner override: AIDD_RULES=warn|off)'
+--> PASS: unverifiable user quote blocks (mode=strict)

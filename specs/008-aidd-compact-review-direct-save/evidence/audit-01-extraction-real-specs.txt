@@ -1,0 +1,27 @@
+== F28-DB-Unification-Sync: 175 codes, extract 49.5 ms
+  tabs: [('summary', 1), ('questions', 52), ('fr', 30), ('ac', 17), ('api', 21), ('tasks', 49), ('verification', 5)]
+  per prefix: {'SUMMARY': 1, 'Q': 12, 'D': 40, 'FR': 30, 'AC': 17, 'API': 21, 'T': 49, 'V': 5}
+  review_state 13.0 ms reason='review.md is older than review.html: review the current page and Send again' legacy=False fmt=headings-v1 page_fmt=headings-v1
+   STATE=pending approved=104/105 comments=0 stale=no legacy=no tag=[tasks:5c3cbb5b]
+== F23-eDoc-POS: 247 codes, extract 28.7 ms
+  tabs: [('summary', 1), ('questions', 7), ('fr', 32), ('screens', 104), ('api', 17), ('tasks', 86)]
+  per prefix: {'SUMMARY': 1, 'Q': 7, 'FR': 32, 'SCREEN': 3, 'COMP': 8, 'CTL': 93, 'API': 17, 'T': 86}
+  WARN screens | 15 repeated codes skipped (first row wins): SCREEN-21, SCREEN-22
+  WARN ac | 29 acceptance rows without an AC code are not reviewable: Mixed payment sale; Payment one cent s...; Consumer final at...; Cash count at the...; Held sale retention; Prorated return; Return threshold; Terminal point not...; ...
+  WARN questions | 14 decision rows without a D code are not reviewable: C1, C2, C3; C5; C6; C9; C10; C11; C12; C13, D18; ...
+  review_state 36.4 ms reason='no review.html: run aidd review <spec>' legacy=False fmt=None page_fmt=None
+   STATE=stale approved=0/0 comments=0 stale=yes legacy=no tag=[tasks:473e244c]
+== F13-eDoc-Emission-Engine: 191 codes, extract 28.4 ms
+  tabs: [('summary', 1), ('questions', 10), ('fr', 29), ('ac', 33), ('api', 18), ('tasks', 100)]
+  per prefix: {'SUMMARY': 1, 'Q': 7, 'D': 3, 'FR': 29, 'AC': 33, 'API': 18, 'T': 100}
+  WARN questions | 8 decision rows without a D code are not reviewable: C3; §6; §6; §6b; §8c; C14, C17; C18; —
+  WARN summary | mockup-audit.md: the file has content but no reviewable item was found (0 items)
+  review_state 37.2 ms reason='no review.html: run aidd review <spec>' legacy=False fmt=None page_fmt=None
+   STATE=stale approved=0/0 comments=0 stale=yes legacy=no tag=[tasks:218e7097]
+== F15-eDoc-Backoffice-Web: 727 codes, extract 135.0 ms
+  tabs: [('summary', 1), ('questions', 12), ('fr', 27), ('ac', 57), ('screens', 219), ('api', 23), ('tasks', 388)]
+  per prefix: {'SUMMARY': 1, 'Q': 8, 'D': 4, 'FR': 27, 'AC': 57, 'SCREEN': 10, 'COMP': 34, 'CTL': 175, 'API': 23, 'T': 388}
+  WARN screens | 11 repeated codes skipped (first row wins): SCREEN-01, SCREEN-02, SCREEN-03, SCREEN-04, SCREEN-07, SCREEN-08
+  WARN questions | 8 decision rows without a D code are not reviewable: C1, C2, C3; C4; C14, C17; C18; E-1, E-2, E-3; —; —; —
+  review_state 201.3 ms reason='no review.html: run aidd review <spec>' legacy=False fmt=None page_fmt=None
+   STATE=stale approved=0/0 comments=0 stale=yes legacy=no tag=[tasks:8754a3bb]

@@ -1,0 +1,36 @@
+# delta audit probe 3: F23 with a blanked checklist answer; docs correction (finding 5) with an R1-valid tasks.md
+=== AC-305 F23 copy with the Q4 answer blanked (AC: "one may have a blank answer")
+  blanked row: | Who is requesting it? (role/profile, not necessarily the name) |  | repo — docs/b1SyncLink.eDoc/propuesta-implementacion.html "Cajero vende en el punto de ven
+generate: exit=0 stdout='wrote: C:\\Users\\jquimis\\AppData\\Local\\Temp\\claude\\D--Fuentes-AIDD\\0f143e53-0037-424b-ad64-ed0094e98386\\scratchpad\\dA\\runs\\f23_blank\\specs\\F23-eDoc-POS\\review.html\nfile:///C:/Users/jquimis/AppData/Local/Temp/claude/D--Fuentes-AIDD/0f143e53-0037-424b-ad64-ed0094e98386/scratchpad/dA/runs/f23_blank/specs/F23-eDoc-POS/review.html' stderr='warning: spec.md has no "## Verification" section. Fix: Add "## Verification" to spec.md as | # | Command | Expected | Covers | with at least one row that runs the project\'s own tests (e.g. `python -m unittest discover -s tests`, `dotnet te'
+  Q1 unanswered=False ans='Point-of-sale mode of b1SyncLink.eDoc: payment met'
+  Q2 unanswered=False ans='New development on top of the F12 tables, plus add'
+  Q3 unanswered=False ans="Only the project's own Supabase (PostgREST/RPC, Po"
+  Q4 unanswered=True ans='pending - resolve in Align'
+  Q5 unanswered=False ans='Upstream per the roadmap graph (arrows F20 --> F23'
+  Q6 unanswered=False ans='Let a cashier sell at the counter with mixed payme'
+  Q7 unanswered=False ans='Exact. Each screen is built new, faithful to its a'
+  summary Open decisions: ['Open decisions: Who is requesting it? (role/profile, not necessarily the name)']
+
+
+=== docs correction (finding 5): no page -> only too many items refuses; oversize keeps answer route
+-- oversize: spec.md chars 410440
+  generate: exit=1 stdout='' stderr='aidd review: spec.md is 410440 chars (limit 400000): split the spec'
+  review.html written: False
+  --check: exit=3 stdout='STATE=stale approved=0/0 comments=0 stale=yes legacy=no tag=[tasks:297ff1b9]'
+  --wait: exit=3 stdout='STATE=stale approved=0/0 comments=0 stale=yes legacy=no tag=[tasks:297ff1b9]'
+  aidd rules approve after bare tagged answer: exit=0 stdout='Approved: 2026-10-05 hash:297ff1b9745e\napproved through answer · gate pointer -> 099-oversize'
+  approved events after cmd_approve: ['answer']
+  rule_gate blocks Approved: edit after bare answer: True
+  approved events after rule_gate: ['answer']
+-- toomany: spec.md chars 69164
+  generate: exit=1 stdout='' stderr='aidd review: too many items (2004 > 2000): split the spec or run aidd review <spec> --full'
+  review.html written: False
+  --check: exit=3 stdout='STATE=too_many_items approved=0/2004 comments=0 stale=yes legacy=no tag=[tasks:297ff1b9]'
+  --wait: exit=3 stdout='STATE=too_many_items approved=0/2004 comments=0 stale=yes legacy=no tag=[tasks:297ff1b9]'
+  aidd rules approve after bare tagged answer: exit=1 stdout='Refused: a review is required for 089-toomany and the compact page cannot show it. Cause: too many items (2004 > 2000): split the spec or run aidd review <spec> --full.\nFix: run `aidd review specs/089-toomany --wait` in the background (it prints one STATE line and nothing else; the owner opens specs/089-toomany/review.html, checks the sections and presses `Aprobar y guardar`: the page saves review'
+  approved events after cmd_approve: []
+  rule_gate blocks Approved: edit after bare answer: True
+  approved events after rule_gate: []
+  --check with a compact page present: exit=3 stdout='STATE=too_many_items approved=0/2004 comments=0 stale=yes legacy=no tag=[tasks:297ff1b9]'
+  --wait with a compact page present: exit=3 stdout='STATE=too_many_items approved=0/2004 comments=0 stale=yes legacy=no tag=[tasks:297ff1b9]'
+  --check with a blob-less page (finding 6, low, not in scope): exit=3 stdout='STATE=stale approved=0/2004 comments=0 stale=yes legacy=no tag=[tasks:297ff1b9]'

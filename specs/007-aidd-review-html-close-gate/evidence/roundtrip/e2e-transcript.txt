@@ -1,0 +1,12 @@
+review: 121 reviewable sections, CSP hash ok
+review.md built by buildReviewMd under node v24.14.0
+approve without consent: REFUSED
+approve with tagged answer: OK source=review+answer gate=2 pointer=F13-eDoc-Emission-Engine
+review --check after approve: exit 0
+review.md: present
+valid: true
+hash_ok: true
+digest_ok: true
+fresh: true
+page_current: true
+complete: true

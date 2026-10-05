@@ -1,0 +1,15 @@
+.
+----------------------------------------------------------------------
+Ran 1 test in 1.428s
+
+OK
+002-aidd-hard-rules rc 2 | echo x > C:/Users/jquimis/AppData/Local/Temp/tmp5mv3dsvg/specs/002-aidd-hard-rules/tasks.md
+002-aidd-hard-rules rc 2 | cp /tmp/t.md C:/Users/jquimis/AppData/Local/Temp/tmp5mv3dsvg/specs/002-aidd-hard-rules/plan.md
+002-aidd-hard-rules rc 2 | echo x > specs/002-aidd-hard-rules/tasks.md
+002-aidd-hard-rules rc 0 | cd specs/002-aidd-hard-rules && echo x > spec.md
+002-aidd-hard-rules rc 2 | echo "Approved: 2026-10-05 hash:abc" >> C:/Users/jquimis/AppData/Local/Temp/tmp5mv3dsvg/specs/002-aidd-hard-rules/tasks.md
+F23-eDoc-POS rc 0 | echo x > C:/Users/jquimis/AppData/Local/Temp/tmp5mv3dsvg/specs/F23-eDoc-POS/tasks.md
+F23-eDoc-POS rc 0 | cp /tmp/t.md C:/Users/jquimis/AppData/Local/Temp/tmp5mv3dsvg/specs/F23-eDoc-POS/plan.md
+F23-eDoc-POS rc 2 | echo x > specs/F23-eDoc-POS/tasks.md
+F23-eDoc-POS rc 0 | cd specs/F23-eDoc-POS && echo x > spec.md
+F23-eDoc-POS rc 2 | echo "Approved: 2026-10-05 hash:abc" >> C:/Users/jquimis/AppData/Local/Temp/tmp5mv3dsvg/specs/F23-eDoc-POS/tasks.md

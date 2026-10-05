@@ -1,0 +1,17 @@
+synthetic log: 27 specs, 5000 events appended in 25.2s; project log size 613855 bytes
+rule_gate code write [HEAD (pre-007)]: median 436 ms, max 728 ms, rc=0
+rule_gate code write [working tree (007)]: median 251 ms, max 437 ms, rc=0
+mark_code_edit [HEAD (pre-007)]: median 144 ms, max 187 ms
+mark_code_edit [working tree (007)]: median 162 ms, max 259 ms
+stop_gate (warn, no budget use) [HEAD (pre-007)]: median 237 ms, max 240 ms
+stop_gate (warn, no budget use) [working tree (007)]: median 345 ms, max 383 ms
+gate_target_specs (pointer) in-process: 36.0 ms/call
+gate_target_specs (inferred scan) in-process: 66.6 ms/call -> (['F02-eDoc-Spec-2'], False, 'inferred')
+open_specs alone: 36.3 ms/call
+last_code_edit_ts: 27.8 ms/call
+worktree_fingerprint(D:/Fuentes/AIDD, git) = 14a7014cd189cb9a in 899 ms
+worktree_fingerprint(large non-git dir) = None in 8001 ms (None = over cap/budget)
+F13-like tasks.md bytes: 69114 | reviewable keys: 155
+generate (first): 77 ms, wrote=True, html 144712 bytes
+generate (idempotent): 27 ms, wrote=False
+review_state: 12 ms/call

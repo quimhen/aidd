@@ -371,5 +371,24 @@ class TestR12(unittest.TestCase):
                 self.assertFalse(got & {'R12'}, f'{p}: {got}')
 
 
+class TestR10LegacyUnaffectedBySpec007(_Dirs):
+    """Spec 007 (FR-205/FR-207): the Verification table is enforced only at new approvals and at the
+    close of `gate: 2` specs; the static path (check_spec_dir / check_qa) never demands it."""
+
+    def test_static_spec_dir_never_demands_verification(self):
+        (self.spec / 'spec.md').write_text('# Spec\n\nlegacy, no Verification table\n', encoding='utf-8')
+        (self.spec / 'qa-audit.md').write_text(qa([('SCREEN-01', '✅')],
+                                                  [('SCREEN-01', 'screenshot', 'evidence/home.png', 'agent')]),
+                                               encoding='utf-8')
+        vs = R.check_spec_dir(self.spec, root=self.root, static_only=True)
+        self.assertFalse([v for v in vs if 'Verification' in v['message']], vs)
+        self.assertEqual(hits(vs, 'R10'), [])
+
+    def test_verification_violations_are_r10(self):
+        vs = R.check_verification('# Spec\n', self.root)
+        self.assertEqual(rules(vs), {'R10'})
+        self.assertIn('R10', R.RULE_IDS)
+
+
 if __name__ == '__main__':
     unittest.main()

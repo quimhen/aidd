@@ -1,0 +1,14 @@
+AC-217: PASS
+  [PASS] aidd review exits non-zero naming tasks.md and the size, writes nothing
+  [PASS] review_state: source too large, complete false
+  [PASS] approve falls back to the answer-only route (source answer, gate 2)
+
+tasks.md chars: 459544 check_content: []
+$ aidd_review.py C:\Users\jquimis\AppData\Local\Temp\tmppvzimwn1\specs\F23-eDoc-POS  -> exit 1
+aidd review: tasks.md is 459544 chars (limit 400000): split the spec
+--> PASS: aidd review exits non-zero naming tasks.md and the size, writes nothing
+--> PASS: review_state: source too large, complete false | source too large: tasks.md
+$ aidd_status.py rules approve C:\Users\jquimis\AppData\Local\Temp\tmppvzimwn1\specs\F23-eDoc-POS  -> exit 0
+Approved: 2026-10-05 hash:ba8996204a4b
+approved through answer · gate pointer -> F23-eDoc-POS
+--> PASS: approve falls back to the answer-only route (source answer, gate 2) | {'gate': 2, 'source': 'answer', 'verify_hash': '342e585a1bf3', 'consent_ts': 1791213086.945, 'spec': 'F23-eDoc-POS', 'hash': 'ba8996204a4b', 'ts': 1791213087.187}

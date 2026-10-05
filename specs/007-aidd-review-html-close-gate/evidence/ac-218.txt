@@ -1,0 +1,41 @@
+AC-218: PASS
+  [PASS] rejected at approval: 'python -c "pass"'
+  [PASS] rejected at approval: 'python --version'
+  [PASS] rejected at approval: 'cmd /c exit 0'
+  [PASS] rejected at approval: 'sh -c true'
+  [PASS] rejected at approval: 'python -c "print(\'PASS\')"'
+  [PASS] rejected at approval: 'python tests/x.py'
+  [PASS] `unittest discover -s <empty dir>` accepted at approval
+  [PASS] aidd verify marks it failed (exit 5 on this Python; output heuristic says "zero tests ran" for 3.10/3.11 exit 0)
+  [PASS] Verification rendered in the highlighted mandatory section
+  [PASS] "Approve all" JS skips data-mandatory sections (static read)
+
+--> PASS: rejected at approval: 'python -c "pass"' | inline code (python -c) is not a test: run a test runner, a test file or a script of the project
+--> PASS: rejected at approval: 'python --version' | neither a known test runner with its manifest (dotnet test, npm test, pytest, python -m unittest, cargo/go/mvn/gradle test, msbuild) nor an invocation of an existing project file
+--> PASS: rejected at approval: 'cmd /c exit 0' | inline code (cmd /c) is not a test: run a test runner, a test file or a script of the project
+--> PASS: rejected at approval: 'sh -c true' | inline code (sh -c) is not a test: run a test runner, a test file or a script of the project
+--> PASS: rejected at approval: 'python -c "print(\'PASS\')"' | inline code (python -c) is not a test: run a test runner, a test file or a script of the project
+--> PASS: rejected at approval: 'python tests/x.py' | neither a known test runner with its manifest (dotnet test, npm test, pytest, python -m unittest, cargo/go/mvn/gradle test, msbuild) nor an invocation of an existing project file
+extra lint probe 'python -Bc "pass"' -> inline code (python -Bc) is not a test: run a test runner, a test file or a script of the project
+extra lint probe 'python3.11 -c pass' -> inline code (python3.11 -c) is not a test: run a test runner, a test file or a script of the project
+extra lint probe 'bash -lc true' -> inline code (bash -lc) is not a test: run a test runner, a test file or a script of the project
+extra lint probe 'node --eval=1' -> inline code (node --eval=1) is not a test: run a test runner, a test file or a script of the project
+extra lint probe 'pwsh -Command 1' -> inline code (pwsh -Command) is not a test: run a test runner, a test file or a script of the project
+extra lint probe 'cmd.exe /C ver' -> inline code (cmd /C) is not a test: run a test runner, a test file or a script of the project
+extra lint probe 'python - < src/cart.py' -> inline code (python -) is not a test: run a test runner, a test file or a script of the project
+extra lint probe 'py -3 -c 1' -> inline code (py -c) is not a test: run a test runner, a test file or a script of the project
+--> PASS: `unittest discover -s <empty dir>` accepted at approval
+$ aidd_status.py rules approve C:\Users\jquimis\AppData\Local\Temp\tmp6mjcwgfn\specs\F23-eDoc-POS  -> exit 0
+Approved: 2026-10-05 hash:e9a09d9bac61
+approved through answer · gate pointer -> F23-eDoc-POS
+$ aidd_status.py verify C:\Users\jquimis\AppData\Local\Temp\tmp6mjcwgfn\specs\F23-eDoc-POS  -> exit 1
+FAIL row 1: python -m unittest discover -s emptydir (exit 5) → evidence/verify-1.txt
+verify_run recorded for F23-eDoc-POS: FAILED (0/1 rows, verify hash 00d106f31b4e)
+verify_output_problem(evidence) -> zero tests ran | python 3.12.10
+--> PASS: aidd verify marks it failed (exit 5 on this Python; output heuristic says "zero tests ran" for 3.10/3.11 exit 0)
+$ aidd_review.py C:\Users\jquimis\AppData\Local\Temp\tmp6mjcwgfn\specs\F23-eDoc-POS  -> exit 0
+wrote: C:\Users\jquimis\AppData\Local\Temp\tmp6mjcwgfn\specs\F23-eDoc-POS\review.html
+file:///C:/Users/jquimis/AppData/Local/Temp/tmp6mjcwgfn/specs/F23-eDoc-POS/review.html
+verification section tag: <section class="aidd-section mandatory" data-key="spec/verification" data-source="spec" data-level="2" data-mandatory="1">
+--> PASS: Verification rendered in the highlighted mandatory section
+--> PASS: "Approve all" JS skips data-mandatory sections (static read)

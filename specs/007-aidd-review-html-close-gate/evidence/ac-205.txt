@@ -1,0 +1,58 @@
+AC-205: PASS
+  [PASS] complete review.md downloaded after review.html
+  [PASS] only review.md, no TTY: REFUSED with the owner-consent message
+  [PASS] "do not approve <tag>" prompt does not count
+  [PASS] tagged prompt without an approve word does not count
+  [PASS] prompt `approve <tag>` newer than review.md: approves
+  [PASS] approved{gate:2, source:review+prompt, consent_ts, verify_hash, review_sha1}
+  [PASS] activates F23 (gate pointer)
+  [PASS] comment on a checked heading printed as a note
+  [PASS] tagged AskUserQuestion Approve answer: approves with source review+answer
+  [PASS] _tty_confirm: non-TTY -> False
+  [PASS] _tty_confirm: TTY + typed tag -> True
+  [PASS] _tty_confirm: TTY + wrong text -> False
+  [PASS] TTY with the typed tag: source review+tty
+
+$ aidd_review.py C:\Users\jquimis\AppData\Local\Temp\tmpphr8i6c4\specs\F23-eDoc-POS  -> exit 0
+wrote: C:\Users\jquimis\AppData\Local\Temp\tmpphr8i6c4\specs\F23-eDoc-POS\review.html
+file:///C:/Users/jquimis/AppData/Local/Temp/tmpphr8i6c4/specs/F23-eDoc-POS/review.html
+review_state: {'present': True, 'valid': True, 'hash_ok': True, 'digest_ok': True, 'fresh': True, 'page_current': True, 'complete': True, 'reason': ''}
+--> PASS: complete review.md downloaded after review.html
+$ aidd_status.py rules approve C:\Users\jquimis\AppData\Local\Temp\tmpphr8i6c4\specs\F23-eDoc-POS  -> exit 1
+Refused: review.md is complete; the owner must confirm: answer the question tagged `[tasks:e9a09d9b]` or type `approve [tasks:e9a09d9b]`.
+Inferred session: s-test-4b8de641. If that is not this window's session, have the user type a short message in this window, then run the command again (in the normal case the caller marker written by the hook picks this window's session).
+--> PASS: only review.md, no TTY: REFUSED with the owner-consent message
+$ aidd_status.py rules approve C:\Users\jquimis\AppData\Local\Temp\tmpphr8i6c4\specs\F23-eDoc-POS  -> exit 1
+Refused: review.md is complete; the owner must confirm: answer the question tagged `[tasks:e9a09d9b]` or type `approve [tasks:e9a09d9b]`.
+Inferred session: s-test-4b8de641. If that is not this window's session, have the user type a short message in this window, then run the command again (in the normal case the caller marker written by the hook picks this window's session).
+--> PASS: "do not approve <tag>" prompt does not count
+$ aidd_status.py rules approve C:\Users\jquimis\AppData\Local\Temp\tmpphr8i6c4\specs\F23-eDoc-POS  -> exit 1
+Refused: review.md is complete; the owner must confirm: answer the question tagged `[tasks:e9a09d9b]` or type `approve [tasks:e9a09d9b]`.
+Inferred session: s-test-4b8de641. If that is not this window's session, have the user type a short message in this window, then run the command again (in the normal case the caller marker written by the hook picks this window's session).
+--> PASS: tagged prompt without an approve word does not count
+$ aidd_status.py rules approve C:\Users\jquimis\AppData\Local\Temp\tmpphr8i6c4\specs\F23-eDoc-POS  -> exit 0
+Approved: 2026-10-05 hash:e9a09d9bac61
+approved through review+prompt · gate pointer -> F23-eDoc-POS
+note: spec/minimum-requirements-checklist: please rename this section
+approved event: {'gate': 2, 'source': 'review+prompt', 'verify_hash': '342e585a1bf3', 'consent_ts': 1791213101.206, 'review_sha1': '8b18f46f872412ad15202168dcefe64aefa15aec', 'spec': 'F23-eDoc-POS', 'hash': 'e9a09d9bac61', 'ts': 1791213101.328}
+--> PASS: prompt `approve <tag>` newer than review.md: approves
+--> PASS: approved{gate:2, source:review+prompt, consent_ts, verify_hash, review_sha1}
+--> PASS: activates F23 (gate pointer)
+--> PASS: comment on a checked heading printed as a note
+$ aidd_review.py C:\Users\jquimis\AppData\Local\Temp\tmpphr8i6c4\specs\F22-eDoc-Pricing  -> exit 0
+wrote: C:\Users\jquimis\AppData\Local\Temp\tmpphr8i6c4\specs\F22-eDoc-Pricing\review.html
+file:///C:/Users/jquimis/AppData/Local/Temp/tmpphr8i6c4/specs/F22-eDoc-Pricing/review.html
+$ aidd_status.py rules approve C:\Users\jquimis\AppData\Local\Temp\tmpphr8i6c4\specs\F22-eDoc-Pricing  -> exit 0
+Approved: 2026-10-05 hash:e9a09d9bac61
+approved through review+answer · gate pointer -> F22-eDoc-Pricing
+--> PASS: tagged AskUserQuestion Approve answer: approves with source review+answer | {'gate': 2, 'source': 'review+answer', 'verify_hash': '342e585a1bf3', 'consent_ts': 1791213101.521, 'review_sha1': 'fdcb6f8073c04a7c759583c8dcffc4a73f80373a', 'spec': 'F22-eDoc-Pricing', 'hash': 'e9a09d9bac61', 'ts': 1791213101.699}
+$ aidd_review.py C:\Users\jquimis\AppData\Local\Temp\tmpphr8i6c4\specs\F21-eDoc-Inventory  -> exit 0
+wrote: C:\Users\jquimis\AppData\Local\Temp\tmpphr8i6c4\specs\F21-eDoc-Inventory\review.html
+file:///C:/Users/jquimis/AppData/Local/Temp/tmpphr8i6c4/specs/F21-eDoc-Inventory/review.html
+--> PASS: _tty_confirm: non-TTY -> False
+--> PASS: _tty_confirm: TTY + typed tag -> True
+--> PASS: _tty_confirm: TTY + wrong text -> False
+in-process cmd_approve (TTY injected): 0 Approved: 2026-10-05 hash:7cef4e41b582
+approved through review+tty · gate pointer -> F21-eDoc-Inventory
+
+--> PASS: TTY with the typed tag: source review+tty | {'gate': 2, 'source': 'review+tty', 'verify_hash': '342e585a1bf3', 'consent_ts': 1791213101.8624184, 'review_sha1': '81a5bdcccf2d28e05a2f41bf8c7a988e0193e64b', 'spec': 'F21-eDoc-Inventory', 'hash': '7cef4e41b582', 'ts': 1791213101.864}

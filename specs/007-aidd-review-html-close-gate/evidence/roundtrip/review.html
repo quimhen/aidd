@@ -1,0 +1,685 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; script-src 'sha256-rlWzPURNiSd4VPvz2B+iTnW92X6v8r0ID1Zx9t2/VNc='; base-uri 'none'; form-action 'none'">
+<title>Review - Review F13-eDoc-Emission-Engine</title>
+<style>
+:root{--bg:#fff;--fg:#1d2430;--muted:#5b6678;--line:#d5dae3;--card:#f6f8fb;--accent:#1f5fbf;--ok:#1b7f3b;--warn-bg:#fff4d6;--warn-line:#d9a400;--mand-bg:#fff0f0;--mand-line:#c0392b;--code:#eef1f6}
+@media (prefers-color-scheme:dark){:root{--bg:#14181f;--fg:#e4e8ef;--muted:#9aa5b8;--line:#2f3846;--card:#1c222c;--accent:#6fa3ef;--ok:#52c27a;--warn-bg:#3a3017;--warn-line:#b38a00;--mand-bg:#3a1c1c;--mand-line:#e0675a;--code:#232b37}}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;min-width:360px}
+header.top{position:sticky;top:0;z-index:5;background:var(--card);border-bottom:1px solid var(--line);padding:8px 16px}
+header.top h1{font-size:1.1rem;margin:0 0 4px;overflow-wrap:anywhere}
+.meta{color:var(--muted);font-size:.85rem;display:flex;flex-wrap:wrap;gap:4px 16px}
+.bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:8px}
+button{font:inherit;padding:6px 12px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--fg);cursor:pointer}
+button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+button:focus-visible,textarea:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+#aidd-progress{font-weight:600}
+main{padding:16px;max-width:960px;margin:0 auto}
+section[data-key]{border-top:1px solid var(--line);padding-top:8px;margin-top:16px}
+section.mandatory{background:var(--mand-bg);border:2px solid var(--mand-line);border-radius:8px;padding:8px 12px}
+section.checked>.review-ctl .lbl{color:var(--ok)}
+.review-ctl{background:var(--card);border:1px solid var(--line);border-radius:6px;padding:8px;margin:8px 0}
+.review-ctl label{display:block;font-weight:600}
+.review-ctl textarea{width:100%;min-height:3.5em;margin-top:6px;font:inherit;background:var(--bg);color:var(--fg);border:1px solid var(--line);border-radius:4px;padding:6px}
+.filebar{margin:16px 0 0;padding:8px;background:var(--card);border:1px solid var(--line);border-radius:6px;display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.filebar b{overflow-wrap:anywhere}
+.warn{background:var(--warn-bg);border:1px solid var(--warn-line);border-radius:6px;padding:8px 12px;margin:8px 16px}
+#aidd-sent{background:var(--warn-bg);border:2px solid var(--warn-line);border-radius:8px;padding:12px;margin:12px 16px}
+code{background:var(--code);padding:1px 4px;border-radius:3px;overflow-wrap:anywhere}
+pre{background:var(--code);padding:8px;border-radius:6px;overflow-x:auto;max-width:100%}
+table{border-collapse:collapse;display:block;max-width:100%;overflow-x:auto}
+th,td{border:1px solid var(--line);padding:4px 8px;text-align:left;vertical-align:top}
+img{max-width:100%;height:auto}
+blockquote{margin:8px 0;padding:0 12px;border-left:3px solid var(--line);color:var(--muted)}
+h1,h2,h3,h4,p,li{overflow-wrap:anywhere}
+.hidden{display:none}
+@media print{header.top{position:static}.review-ctl textarea{border:1px solid #000}}
+</style>
+</head>
+<body>
+<header class="top" id="aidd-root" data-spec="F13-eDoc-Emission-Engine" data-tasks-hash="e589600a50a0" data-tasks-hash8="e589600a" data-sources-digest="240ef53f2c45" data-generated="2026-10-05">
+<h1>Review F13-eDoc-Emission-Engine</h1>
+<div class="meta"><span>spec F13-eDoc-Emission-Engine</span><span>tasks hash e589600a</span><span>generated 2026-10-05</span><span id="aidd-progress" aria-live="polite"></span></div>
+<div class="bar" id="aidd-bar"></div>
+</header>
+<noscript><div class="warn">This page needs JavaScript to record your review. Without it: read the sections below, then create <code>review.md</code> by hand under the spec folder (front matter with spec, tasks_hash, sources_digest, approved; then one <code>## section-key</code> block per section with <code>- [x] Approved</code> and comment lines starting with <code>&gt; </code>) and answer with <code>approve [tasks:e589600a]</code>.</div></noscript>
+<div id="aidd-sent" class="hidden" role="status"></div>
+<main id="aidd-main">
+<article class="aidd-source" data-source="spec" id="src-spec"><div class="aidd-source-title">spec.md</div>
+<h1>F13-eDoc-Emission-Engine</h1>
+<section class="aidd-section" data-key="spec/minimum-requirements-checklist" data-source="spec" data-level="2">
+<h2>Minimum Requirements Checklist</h2>
+<div class="aidd-table"><table><thead><tr><th>Question</th><th>Answer</th><th>Source</th><th>If unanswered</th></tr></thead><tbody><tr><td>Which module/area of the system?</td><td>billing</td><td>repo — src/billing.py:1</td><td>ask</td></tr><tr><td>New development or modification of something existing?</td><td>modification</td><td>repo — src/billing.py:1</td><td>ask</td></tr><tr><td>Does it involve an external service, API, or integration?</td><td>no</td><td>repo — src/billing.py:1</td><td>ask</td></tr><tr><td>Who is requesting it? (role/profile, not necessarily the name)</td><td>accounting</td><td>user — &quot;only the invoices screen&quot;</td><td>ask</td></tr><tr><td>Dependencies on other modules or active developments?</td><td>none</td><td>repo — src/billing.py:1</td><td>ask</td></tr><tr><td>Business objective (1 sentence — what it achieves and why)</td><td>invoices</td><td>repo — src/billing.py:1</td><td>ask</td></tr><tr><td>Expected visual fidelity level (if there&#x27;s a mockup): exact | functional behavior only</td><td>functional</td><td>repo — src/billing.py:1</td><td>ask</td></tr></tbody></table></div>
+</section>
+<section class="aidd-section" data-key="spec/pipeline-route" data-source="spec" data-level="2">
+<h2>Pipeline route</h2>
+<div class="aidd-table"><table><thead><tr><th>Step</th><th>Status</th><th>Reason</th><th>Confirmation</th></tr></thead><tbody><tr><td>-1</td><td>run</td><td></td><td></td></tr><tr><td>0</td><td>waived</td><td>backend only</td><td>user — &quot;no mockup for this one&quot;</td></tr><tr><td>1</td><td>waived</td><td>backend only</td><td>user — &quot;no mockup for this one&quot;</td></tr><tr><td>1.5</td><td>waived</td><td>backend only</td><td>user — &quot;no mockup for this one&quot;</td></tr><tr><td>2</td><td>run</td><td></td><td></td></tr><tr><td>3</td><td>run</td><td></td><td></td></tr><tr><td>4</td><td>run</td><td></td><td></td></tr></tbody></table></div>
+</section>
+<section class="aidd-section mandatory" data-key="spec/verification" data-source="spec" data-level="2" data-mandatory="1">
+<h2>Verification</h2>
+<div class="aidd-table"><table><thead><tr><th>#</th><th>Command</th><th>Expected</th><th>Covers</th></tr></thead><tbody><tr><td>1</td><td><code>python src/check.py</code></td><td>exit 0</td><td>FR-001</td></tr></tbody></table></div>
+</section>
+<section class="aidd-section" data-key="spec/spec-section-00" data-source="spec" data-level="2">
+<h2>Spec section 00</h2>
+<p>Body of Spec 0.</p>
+</section>
+<section class="aidd-section" data-key="spec/spec-detail-00" data-source="spec" data-level="3">
+<h3>Spec detail 00</h3>
+<p>More.</p>
+</section>
+<section class="aidd-section" data-key="spec/spec-section-01" data-source="spec" data-level="2">
+<h2>Spec section 01</h2>
+<p>Body of Spec 1.</p>
+</section>
+<section class="aidd-section" data-key="spec/spec-detail-01" data-source="spec" data-level="3">
+<h3>Spec detail 01</h3>
+<p>More.</p>
+</section>
+<section class="aidd-section" data-key="spec/spec-section-02" data-source="spec" data-level="2">
+<h2>Spec section 02</h2>
+<p>Body of Spec 2.</p>
+</section>
+<section class="aidd-section" data-key="spec/spec-detail-02" data-source="spec" data-level="3">
+<h3>Spec detail 02</h3>
+<p>More.</p>
+</section>
+<section class="aidd-section" data-key="spec/spec-section-03" data-source="spec" data-level="2">
+<h2>Spec section 03</h2>
+<p>Body of Spec 3.</p>
+</section>
+<section class="aidd-section" data-key="spec/spec-detail-03" data-source="spec" data-level="3">
+<h3>Spec detail 03</h3>
+<p>More.</p>
+</section>
+<section class="aidd-section" data-key="spec/spec-section-04" data-source="spec" data-level="2">
+<h2>Spec section 04</h2>
+<p>Body of Spec 4.</p>
+</section>
+<section class="aidd-section" data-key="spec/spec-detail-04" data-source="spec" data-level="3">
+<h3>Spec detail 04</h3>
+<p>More.</p>
+</section>
+<section class="aidd-section" data-key="spec/spec-section-05" data-source="spec" data-level="2">
+<h2>Spec section 05</h2>
+<p>Body of Spec 5.</p>
+</section>
+<section class="aidd-section" data-key="spec/spec-detail-05" data-source="spec" data-level="3">
+<h3>Spec detail 05</h3>
+<p>More.</p>
+</section>
+<section class="aidd-section" data-key="spec/spec-section-06" data-source="spec" data-level="2">
+<h2>Spec section 06</h2>
+<p>Body of Spec 6.</p>
+</section>
+<section class="aidd-section" data-key="spec/spec-detail-06" data-source="spec" data-level="3">
+<h3>Spec detail 06</h3>
+<p>More.</p>
+</section>
+<section class="aidd-section" data-key="spec/spec-section-07" data-source="spec" data-level="2">
+<h2>Spec section 07</h2>
+<p>Body of Spec 7.</p>
+</section>
+<section class="aidd-section" data-key="spec/spec-detail-07" data-source="spec" data-level="3">
+<h3>Spec detail 07</h3>
+<p>More.</p>
+</section>
+<section class="aidd-section" data-key="spec/spec-section-08" data-source="spec" data-level="2">
+<h2>Spec section 08</h2>
+<p>Body of Spec 8.</p>
+</section>
+<section class="aidd-section" data-key="spec/spec-detail-08" data-source="spec" data-level="3">
+<h3>Spec detail 08</h3>
+<p>More.</p>
+</section>
+<section class="aidd-section" data-key="spec/spec-section-09" data-source="spec" data-level="2">
+<h2>Spec section 09</h2>
+<p>Body of Spec 9.</p>
+</section>
+<section class="aidd-section" data-key="spec/spec-detail-09" data-source="spec" data-level="3">
+<h3>Spec detail 09</h3>
+<p>More.</p>
+</section>
+<section class="aidd-section" data-key="spec/spec-section-10" data-source="spec" data-level="2">
+<h2>Spec section 10</h2>
+<p>Body of Spec 10.</p>
+</section>
+<section class="aidd-section" data-key="spec/spec-detail-10" data-source="spec" data-level="3">
+<h3>Spec detail 10</h3>
+<p>More.</p>
+</section>
+<section class="aidd-section" data-key="spec/spec-section-11" data-source="spec" data-level="2">
+<h2>Spec section 11</h2>
+<p>Body of Spec 11.</p>
+</section>
+<section class="aidd-section" data-key="spec/spec-detail-11" data-source="spec" data-level="3">
+<h3>Spec detail 11</h3>
+<p>More.</p>
+</section>
+<section class="aidd-section" data-key="spec/spec-section-12" data-source="spec" data-level="2">
+<h2>Spec section 12</h2>
+<p>Body of Spec 12.</p>
+</section>
+<section class="aidd-section" data-key="spec/spec-detail-12" data-source="spec" data-level="3">
+<h3>Spec detail 12</h3>
+<p>More.</p>
+</section>
+<section class="aidd-section" data-key="spec/spec-section-13" data-source="spec" data-level="2">
+<h2>Spec section 13</h2>
+<p>Body of Spec 13.</p>
+</section>
+<section class="aidd-section" data-key="spec/spec-detail-13" data-source="spec" data-level="3">
+<h3>Spec detail 13</h3>
+<p>More.</p>
+</section>
+<section class="aidd-section" data-key="spec/spec-section-14" data-source="spec" data-level="2">
+<h2>Spec section 14</h2>
+<p>Body of Spec 14.</p>
+</section>
+<section class="aidd-section" data-key="spec/spec-detail-14" data-source="spec" data-level="3">
+<h3>Spec detail 14</h3>
+<p>More.</p>
+</section>
+<section class="aidd-section" data-key="spec/spec-section-15" data-source="spec" data-level="2">
+<h2>Spec section 15</h2>
+<p>Body of Spec 15.</p>
+</section>
+<section class="aidd-section" data-key="spec/spec-detail-15" data-source="spec" data-level="3">
+<h3>Spec detail 15</h3>
+<p>More.</p>
+</section>
+<section class="aidd-section" data-key="spec/spec-section-16" data-source="spec" data-level="2">
+<h2>Spec section 16</h2>
+<p>Body of Spec 16.</p>
+</section>
+<section class="aidd-section" data-key="spec/spec-detail-16" data-source="spec" data-level="3">
+<h3>Spec detail 16</h3>
+<p>More.</p>
+</section>
+<section class="aidd-section" data-key="spec/spec-section-17" data-source="spec" data-level="2">
+<h2>Spec section 17</h2>
+<p>Body of Spec 17.</p>
+</section>
+<section class="aidd-section" data-key="spec/spec-detail-17" data-source="spec" data-level="3">
+<h3>Spec detail 17</h3>
+<p>More.</p>
+</section>
+<section class="aidd-section" data-key="spec/spec-section-18" data-source="spec" data-level="2">
+<h2>Spec section 18</h2>
+<p>Body of Spec 18.</p>
+</section>
+<section class="aidd-section" data-key="spec/spec-detail-18" data-source="spec" data-level="3">
+<h3>Spec detail 18</h3>
+<p>More.</p>
+</section>
+<section class="aidd-section" data-key="spec/spec-section-19" data-source="spec" data-level="2">
+<h2>Spec section 19</h2>
+<p>Body of Spec 19.</p>
+</section>
+<section class="aidd-section" data-key="spec/spec-detail-19" data-source="spec" data-level="3">
+<h3>Spec detail 19</h3>
+<p>More.</p>
+</section>
+</article>
+<article class="aidd-source" data-source="plan" id="src-plan"><div class="aidd-source-title">plan.md</div>
+<h1>Plan</h1>
+<section class="aidd-section" data-key="plan/plan-section-00" data-source="plan" data-level="2">
+<h2>Plan section 00</h2>
+<p>Body of Plan 0.</p>
+</section>
+<section class="aidd-section" data-key="plan/plan-detail-00" data-source="plan" data-level="3">
+<h3>Plan detail 00</h3>
+<p>More.</p>
+</section>
+<section class="aidd-section" data-key="plan/plan-section-01" data-source="plan" data-level="2">
+<h2>Plan section 01</h2>
+<p>Body of Plan 1.</p>
+</section>
+<section class="aidd-section" data-key="plan/plan-detail-01" data-source="plan" data-level="3">
+<h3>Plan detail 01</h3>
+<p>More.</p>
+</section>
+<section class="aidd-section" data-key="plan/plan-section-02" data-source="plan" data-level="2">
+<h2>Plan section 02</h2>
+<p>Body of Plan 2.</p>
+</section>
+<section class="aidd-section" data-key="plan/plan-detail-02" data-source="plan" data-level="3">
+<h3>Plan detail 02</h3>
+<p>More.</p>
+</section>
+<section class="aidd-section" data-key="plan/plan-section-03" data-source="plan" data-level="2">
+<h2>Plan section 03</h2>
+<p>Body of Plan 3.</p>
+</section>
+<section class="aidd-section" data-key="plan/plan-detail-03" data-source="plan" data-level="3">
+<h3>Plan detail 03</h3>
+<p>More.</p>
+</section>
+<section class="aidd-section" data-key="plan/plan-section-04" data-source="plan" data-level="2">
+<h2>Plan section 04</h2>
+<p>Body of Plan 4.</p>
+</section>
+<section class="aidd-section" data-key="plan/plan-detail-04" data-source="plan" data-level="3">
+<h3>Plan detail 04</h3>
+<p>More.</p>
+</section>
+<section class="aidd-section" data-key="plan/plan-section-05" data-source="plan" data-level="2">
+<h2>Plan section 05</h2>
+<p>Body of Plan 5.</p>
+</section>
+<section class="aidd-section" data-key="plan/plan-detail-05" data-source="plan" data-level="3">
+<h3>Plan detail 05</h3>
+<p>More.</p>
+</section>
+<section class="aidd-section" data-key="plan/plan-section-06" data-source="plan" data-level="2">
+<h2>Plan section 06</h2>
+<p>Body of Plan 6.</p>
+</section>
+<section class="aidd-section" data-key="plan/plan-detail-06" data-source="plan" data-level="3">
+<h3>Plan detail 06</h3>
+<p>More.</p>
+</section>
+<section class="aidd-section" data-key="plan/plan-section-07" data-source="plan" data-level="2">
+<h2>Plan section 07</h2>
+<p>Body of Plan 7.</p>
+</section>
+<section class="aidd-section" data-key="plan/plan-detail-07" data-source="plan" data-level="3">
+<h3>Plan detail 07</h3>
+<p>More.</p>
+</section>
+<section class="aidd-section" data-key="plan/plan-section-08" data-source="plan" data-level="2">
+<h2>Plan section 08</h2>
+<p>Body of Plan 8.</p>
+</section>
+<section class="aidd-section" data-key="plan/plan-detail-08" data-source="plan" data-level="3">
+<h3>Plan detail 08</h3>
+<p>More.</p>
+</section>
+<section class="aidd-section" data-key="plan/plan-section-09" data-source="plan" data-level="2">
+<h2>Plan section 09</h2>
+<p>Body of Plan 9.</p>
+</section>
+<section class="aidd-section" data-key="plan/plan-detail-09" data-source="plan" data-level="3">
+<h3>Plan detail 09</h3>
+<p>More.</p>
+</section>
+<section class="aidd-section" data-key="plan/plan-section-10" data-source="plan" data-level="2">
+<h2>Plan section 10</h2>
+<p>Body of Plan 10.</p>
+</section>
+<section class="aidd-section" data-key="plan/plan-detail-10" data-source="plan" data-level="3">
+<h3>Plan detail 10</h3>
+<p>More.</p>
+</section>
+<section class="aidd-section" data-key="plan/plan-section-11" data-source="plan" data-level="2">
+<h2>Plan section 11</h2>
+<p>Body of Plan 11.</p>
+</section>
+<section class="aidd-section" data-key="plan/plan-detail-11" data-source="plan" data-level="3">
+<h3>Plan detail 11</h3>
+<p>More.</p>
+</section>
+<section class="aidd-section" data-key="plan/plan-section-12" data-source="plan" data-level="2">
+<h2>Plan section 12</h2>
+<p>Body of Plan 12.</p>
+</section>
+<section class="aidd-section" data-key="plan/plan-detail-12" data-source="plan" data-level="3">
+<h3>Plan detail 12</h3>
+<p>More.</p>
+</section>
+<section class="aidd-section" data-key="plan/plan-section-13" data-source="plan" data-level="2">
+<h2>Plan section 13</h2>
+<p>Body of Plan 13.</p>
+</section>
+<section class="aidd-section" data-key="plan/plan-detail-13" data-source="plan" data-level="3">
+<h3>Plan detail 13</h3>
+<p>More.</p>
+</section>
+<section class="aidd-section" data-key="plan/plan-section-14" data-source="plan" data-level="2">
+<h2>Plan section 14</h2>
+<p>Body of Plan 14.</p>
+</section>
+<section class="aidd-section" data-key="plan/plan-detail-14" data-source="plan" data-level="3">
+<h3>Plan detail 14</h3>
+<p>More.</p>
+</section>
+<section class="aidd-section" data-key="plan/plan-section-15" data-source="plan" data-level="2">
+<h2>Plan section 15</h2>
+<p>Body of Plan 15.</p>
+</section>
+<section class="aidd-section" data-key="plan/plan-detail-15" data-source="plan" data-level="3">
+<h3>Plan detail 15</h3>
+<p>More.</p>
+</section>
+<section class="aidd-section" data-key="plan/plan-section-16" data-source="plan" data-level="2">
+<h2>Plan section 16</h2>
+<p>Body of Plan 16.</p>
+</section>
+<section class="aidd-section" data-key="plan/plan-detail-16" data-source="plan" data-level="3">
+<h3>Plan detail 16</h3>
+<p>More.</p>
+</section>
+<section class="aidd-section" data-key="plan/plan-section-17" data-source="plan" data-level="2">
+<h2>Plan section 17</h2>
+<p>Body of Plan 17.</p>
+</section>
+<section class="aidd-section" data-key="plan/plan-detail-17" data-source="plan" data-level="3">
+<h3>Plan detail 17</h3>
+<p>More.</p>
+</section>
+</article>
+<article class="aidd-source" data-source="tasks" id="src-tasks"><div class="aidd-source-title">tasks.md</div>
+<h1>Tasks</h1>
+<section class="aidd-section" data-key="tasks/waves" data-source="tasks" data-level="2">
+<h2>Waves</h2>
+<div class="aidd-table"><table><thead><tr><th>Wave</th><th>Tasks</th><th>Roles</th><th>Agent time (min)</th><th>Tokens (k)</th><th>Human ref (h)</th></tr></thead><tbody><tr><td>1</td><td>T-01, T-02</td><td>builder</td><td>20</td><td>150</td><td>4</td></tr><tr><td>2</td><td>T-03</td><td>tests</td><td>15</td><td>80</td><td>2</td></tr></tbody></table></div>
+<p>Total agent time (critical path): 35 min<br>
+Total tokens (k): 230</p>
+</section>
+<section class="aidd-section" data-key="tasks/t-01" data-source="tasks" data-level="3">
+<h3>T-01</h3>
+<ul><li>Agent min: 10</li><li>Human ref hours: 2</li><li>Tokens (est): 60k</li><li>Agent role: builder</li><li>Model tier: medium</li><li>Status: todo</li></ul>
+</section>
+<section class="aidd-section" data-key="tasks/t-02" data-source="tasks" data-level="3">
+<h3>T-02</h3>
+<ul><li>Agent min: 20</li><li>Human ref hours: 2</li><li>Tokens (est): 90k</li><li>Agent role: builder</li><li>Model tier: medium</li></ul>
+</section>
+<section class="aidd-section" data-key="tasks/t-03" data-source="tasks" data-level="3">
+<h3>T-03</h3>
+<ul><li>Agent min: 15</li><li>Human ref hours: 2</li><li>Tokens (est): 80k</li><li>Agent role: tests</li><li>Model tier: medium</li></ul>
+</section>
+</article>
+<article class="aidd-source" data-source="mockup-audit" id="src-mockup-audit"><div class="aidd-source-title">mockup-audit.md</div>
+<h1>Mockup audit</h1>
+<section class="aidd-section" data-key="mockup-audit/audit-section-00" data-source="mockup-audit" data-level="2">
+<h2>Audit section 00</h2>
+<p>Body of Audit 0.</p>
+</section>
+<section class="aidd-section" data-key="mockup-audit/audit-detail-00" data-source="mockup-audit" data-level="3">
+<h3>Audit detail 00</h3>
+<p>More.</p>
+</section>
+<section class="aidd-section" data-key="mockup-audit/audit-section-01" data-source="mockup-audit" data-level="2">
+<h2>Audit section 01</h2>
+<p>Body of Audit 1.</p>
+</section>
+<section class="aidd-section" data-key="mockup-audit/audit-detail-01" data-source="mockup-audit" data-level="3">
+<h3>Audit detail 01</h3>
+<p>More.</p>
+</section>
+<section class="aidd-section" data-key="mockup-audit/audit-section-02" data-source="mockup-audit" data-level="2">
+<h2>Audit section 02</h2>
+<p>Body of Audit 2.</p>
+</section>
+<section class="aidd-section" data-key="mockup-audit/audit-detail-02" data-source="mockup-audit" data-level="3">
+<h3>Audit detail 02</h3>
+<p>More.</p>
+</section>
+<section class="aidd-section" data-key="mockup-audit/audit-section-03" data-source="mockup-audit" data-level="2">
+<h2>Audit section 03</h2>
+<p>Body of Audit 3.</p>
+</section>
+<section class="aidd-section" data-key="mockup-audit/audit-detail-03" data-source="mockup-audit" data-level="3">
+<h3>Audit detail 03</h3>
+<p>More.</p>
+</section>
+<section class="aidd-section" data-key="mockup-audit/audit-section-04" data-source="mockup-audit" data-level="2">
+<h2>Audit section 04</h2>
+<p>Body of Audit 4.</p>
+</section>
+<section class="aidd-section" data-key="mockup-audit/audit-detail-04" data-source="mockup-audit" data-level="3">
+<h3>Audit detail 04</h3>
+<p>More.</p>
+</section>
+<section class="aidd-section" data-key="mockup-audit/audit-section-05" data-source="mockup-audit" data-level="2">
+<h2>Audit section 05</h2>
+<p>Body of Audit 5.</p>
+</section>
+<section class="aidd-section" data-key="mockup-audit/audit-detail-05" data-source="mockup-audit" data-level="3">
+<h3>Audit detail 05</h3>
+<p>More.</p>
+</section>
+<section class="aidd-section" data-key="mockup-audit/audit-section-06" data-source="mockup-audit" data-level="2">
+<h2>Audit section 06</h2>
+<p>Body of Audit 6.</p>
+</section>
+<section class="aidd-section" data-key="mockup-audit/audit-detail-06" data-source="mockup-audit" data-level="3">
+<h3>Audit detail 06</h3>
+<p>More.</p>
+</section>
+<section class="aidd-section" data-key="mockup-audit/audit-section-07" data-source="mockup-audit" data-level="2">
+<h2>Audit section 07</h2>
+<p>Body of Audit 7.</p>
+</section>
+<section class="aidd-section" data-key="mockup-audit/audit-detail-07" data-source="mockup-audit" data-level="3">
+<h3>Audit detail 07</h3>
+<p>More.</p>
+</section>
+<section class="aidd-section" data-key="mockup-audit/audit-section-08" data-source="mockup-audit" data-level="2">
+<h2>Audit section 08</h2>
+<p>Body of Audit 8.</p>
+</section>
+<section class="aidd-section" data-key="mockup-audit/audit-detail-08" data-source="mockup-audit" data-level="3">
+<h3>Audit detail 08</h3>
+<p>More.</p>
+</section>
+<section class="aidd-section" data-key="mockup-audit/audit-section-09" data-source="mockup-audit" data-level="2">
+<h2>Audit section 09</h2>
+<p>Body of Audit 9.</p>
+</section>
+<section class="aidd-section" data-key="mockup-audit/audit-detail-09" data-source="mockup-audit" data-level="3">
+<h3>Audit detail 09</h3>
+<p>More.</p>
+</section>
+</article>
+<article class="aidd-source" data-source="contracts" id="src-contracts"><div class="aidd-source-title">contracts.md</div>
+<h1>Contracts</h1>
+<section class="aidd-section" data-key="contracts/contract-section-00" data-source="contracts" data-level="2">
+<h2>Contract section 00</h2>
+<p>Body of Contract 0.</p>
+</section>
+<section class="aidd-section" data-key="contracts/contract-detail-00" data-source="contracts" data-level="3">
+<h3>Contract detail 00</h3>
+<p>More.</p>
+</section>
+<section class="aidd-section" data-key="contracts/contract-section-01" data-source="contracts" data-level="2">
+<h2>Contract section 01</h2>
+<p>Body of Contract 1.</p>
+</section>
+<section class="aidd-section" data-key="contracts/contract-detail-01" data-source="contracts" data-level="3">
+<h3>Contract detail 01</h3>
+<p>More.</p>
+</section>
+<section class="aidd-section" data-key="contracts/contract-section-02" data-source="contracts" data-level="2">
+<h2>Contract section 02</h2>
+<p>Body of Contract 2.</p>
+</section>
+<section class="aidd-section" data-key="contracts/contract-detail-02" data-source="contracts" data-level="3">
+<h3>Contract detail 02</h3>
+<p>More.</p>
+</section>
+<section class="aidd-section" data-key="contracts/contract-section-03" data-source="contracts" data-level="2">
+<h2>Contract section 03</h2>
+<p>Body of Contract 3.</p>
+</section>
+<section class="aidd-section" data-key="contracts/contract-detail-03" data-source="contracts" data-level="3">
+<h3>Contract detail 03</h3>
+<p>More.</p>
+</section>
+<section class="aidd-section" data-key="contracts/contract-section-04" data-source="contracts" data-level="2">
+<h2>Contract section 04</h2>
+<p>Body of Contract 4.</p>
+</section>
+<section class="aidd-section" data-key="contracts/contract-detail-04" data-source="contracts" data-level="3">
+<h3>Contract detail 04</h3>
+<p>More.</p>
+</section>
+<section class="aidd-section" data-key="contracts/contract-section-05" data-source="contracts" data-level="2">
+<h2>Contract section 05</h2>
+<p>Body of Contract 5.</p>
+</section>
+<section class="aidd-section" data-key="contracts/contract-detail-05" data-source="contracts" data-level="3">
+<h3>Contract detail 05</h3>
+<p>More.</p>
+</section>
+<section class="aidd-section" data-key="contracts/contract-section-06" data-source="contracts" data-level="2">
+<h2>Contract section 06</h2>
+<p>Body of Contract 6.</p>
+</section>
+<section class="aidd-section" data-key="contracts/contract-detail-06" data-source="contracts" data-level="3">
+<h3>Contract detail 06</h3>
+<p>More.</p>
+</section>
+<section class="aidd-section" data-key="contracts/contract-section-07" data-source="contracts" data-level="2">
+<h2>Contract section 07</h2>
+<p>Body of Contract 7.</p>
+</section>
+<section class="aidd-section" data-key="contracts/contract-detail-07" data-source="contracts" data-level="3">
+<h3>Contract detail 07</h3>
+<p>More.</p>
+</section>
+<section class="aidd-section" data-key="contracts/contract-section-08" data-source="contracts" data-level="2">
+<h2>Contract section 08</h2>
+<p>Body of Contract 8.</p>
+</section>
+<section class="aidd-section" data-key="contracts/contract-detail-08" data-source="contracts" data-level="3">
+<h3>Contract detail 08</h3>
+<p>More.</p>
+</section>
+</article>
+</main>
+<script type="application/json" id="aidd-data">{"spec": "F13-eDoc-Emission-Engine", "tasks_hash": "e589600a50a0", "sources_digest": "240ef53f2c45", "tasks_hash8": "e589600a", "generated": "2026-10-05", "keys": [{"key": "spec/minimum-requirements-checklist", "source": "spec", "level": 2, "text": "Minimum Requirements Checklist", "mandatory": false}, {"key": "spec/pipeline-route", "source": "spec", "level": 2, "text": "Pipeline route", "mandatory": false}, {"key": "spec/verification", "source": "spec", "level": 2, "text": "Verification", "mandatory": true}, {"key": "spec/spec-section-00", "source": "spec", "level": 2, "text": "Spec section 00", "mandatory": false}, {"key": "spec/spec-detail-00", "source": "spec", "level": 3, "text": "Spec detail 00", "mandatory": false}, {"key": "spec/spec-section-01", "source": "spec", "level": 2, "text": "Spec section 01", "mandatory": false}, {"key": "spec/spec-detail-01", "source": "spec", "level": 3, "text": "Spec detail 01", "mandatory": false}, {"key": "spec/spec-section-02", "source": "spec", "level": 2, "text": "Spec section 02", "mandatory": false}, {"key": "spec/spec-detail-02", "source": "spec", "level": 3, "text": "Spec detail 02", "mandatory": false}, {"key": "spec/spec-section-03", "source": "spec", "level": 2, "text": "Spec section 03", "mandatory": false}, {"key": "spec/spec-detail-03", "source": "spec", "level": 3, "text": "Spec detail 03", "mandatory": false}, {"key": "spec/spec-section-04", "source": "spec", "level": 2, "text": "Spec section 04", "mandatory": false}, {"key": "spec/spec-detail-04", "source": "spec", "level": 3, "text": "Spec detail 04", "mandatory": false}, {"key": "spec/spec-section-05", "source": "spec", "level": 2, "text": "Spec section 05", "mandatory": false}, {"key": "spec/spec-detail-05", "source": "spec", "level": 3, "text": "Spec detail 05", "mandatory": false}, {"key": "spec/spec-section-06", "source": "spec", "level": 2, "text": "Spec section 06", "mandatory": false}, {"key": "spec/spec-detail-06", "source": "spec", "level": 3, "text": "Spec detail 06", "mandatory": false}, {"key": "spec/spec-section-07", "source": "spec", "level": 2, "text": "Spec section 07", "mandatory": false}, {"key": "spec/spec-detail-07", "source": "spec", "level": 3, "text": "Spec detail 07", "mandatory": false}, {"key": "spec/spec-section-08", "source": "spec", "level": 2, "text": "Spec section 08", "mandatory": false}, {"key": "spec/spec-detail-08", "source": "spec", "level": 3, "text": "Spec detail 08", "mandatory": false}, {"key": "spec/spec-section-09", "source": "spec", "level": 2, "text": "Spec section 09", "mandatory": false}, {"key": "spec/spec-detail-09", "source": "spec", "level": 3, "text": "Spec detail 09", "mandatory": false}, {"key": "spec/spec-section-10", "source": "spec", "level": 2, "text": "Spec section 10", "mandatory": false}, {"key": "spec/spec-detail-10", "source": "spec", "level": 3, "text": "Spec detail 10", "mandatory": false}, {"key": "spec/spec-section-11", "source": "spec", "level": 2, "text": "Spec section 11", "mandatory": false}, {"key": "spec/spec-detail-11", "source": "spec", "level": 3, "text": "Spec detail 11", "mandatory": false}, {"key": "spec/spec-section-12", "source": "spec", "level": 2, "text": "Spec section 12", "mandatory": false}, {"key": "spec/spec-detail-12", "source": "spec", "level": 3, "text": "Spec detail 12", "mandatory": false}, {"key": "spec/spec-section-13", "source": "spec", "level": 2, "text": "Spec section 13", "mandatory": false}, {"key": "spec/spec-detail-13", "source": "spec", "level": 3, "text": "Spec detail 13", "mandatory": false}, {"key": "spec/spec-section-14", "source": "spec", "level": 2, "text": "Spec section 14", "mandatory": false}, {"key": "spec/spec-detail-14", "source": "spec", "level": 3, "text": "Spec detail 14", "mandatory": false}, {"key": "spec/spec-section-15", "source": "spec", "level": 2, "text": "Spec section 15", "mandatory": false}, {"key": "spec/spec-detail-15", "source": "spec", "level": 3, "text": "Spec detail 15", "mandatory": false}, {"key": "spec/spec-section-16", "source": "spec", "level": 2, "text": "Spec section 16", "mandatory": false}, {"key": "spec/spec-detail-16", "source": "spec", "level": 3, "text": "Spec detail 16", "mandatory": false}, {"key": "spec/spec-section-17", "source": "spec", "level": 2, "text": "Spec section 17", "mandatory": false}, {"key": "spec/spec-detail-17", "source": "spec", "level": 3, "text": "Spec detail 17", "mandatory": false}, {"key": "spec/spec-section-18", "source": "spec", "level": 2, "text": "Spec section 18", "mandatory": false}, {"key": "spec/spec-detail-18", "source": "spec", "level": 3, "text": "Spec detail 18", "mandatory": false}, {"key": "spec/spec-section-19", "source": "spec", "level": 2, "text": "Spec section 19", "mandatory": false}, {"key": "spec/spec-detail-19", "source": "spec", "level": 3, "text": "Spec detail 19", "mandatory": false}, {"key": "plan/plan-section-00", "source": "plan", "level": 2, "text": "Plan section 00", "mandatory": false}, {"key": "plan/plan-detail-00", "source": "plan", "level": 3, "text": "Plan detail 00", "mandatory": false}, {"key": "plan/plan-section-01", "source": "plan", "level": 2, "text": "Plan section 01", "mandatory": false}, {"key": "plan/plan-detail-01", "source": "plan", "level": 3, "text": "Plan detail 01", "mandatory": false}, {"key": "plan/plan-section-02", "source": "plan", "level": 2, "text": "Plan section 02", "mandatory": false}, {"key": "plan/plan-detail-02", "source": "plan", "level": 3, "text": "Plan detail 02", "mandatory": false}, {"key": "plan/plan-section-03", "source": "plan", "level": 2, "text": "Plan section 03", "mandatory": false}, {"key": "plan/plan-detail-03", "source": "plan", "level": 3, "text": "Plan detail 03", "mandatory": false}, {"key": "plan/plan-section-04", "source": "plan", "level": 2, "text": "Plan section 04", "mandatory": false}, {"key": "plan/plan-detail-04", "source": "plan", "level": 3, "text": "Plan detail 04", "mandatory": false}, {"key": "plan/plan-section-05", "source": "plan", "level": 2, "text": "Plan section 05", "mandatory": false}, {"key": "plan/plan-detail-05", "source": "plan", "level": 3, "text": "Plan detail 05", "mandatory": false}, {"key": "plan/plan-section-06", "source": "plan", "level": 2, "text": "Plan section 06", "mandatory": false}, {"key": "plan/plan-detail-06", "source": "plan", "level": 3, "text": "Plan detail 06", "mandatory": false}, {"key": "plan/plan-section-07", "source": "plan", "level": 2, "text": "Plan section 07", "mandatory": false}, {"key": "plan/plan-detail-07", "source": "plan", "level": 3, "text": "Plan detail 07", "mandatory": false}, {"key": "plan/plan-section-08", "source": "plan", "level": 2, "text": "Plan section 08", "mandatory": false}, {"key": "plan/plan-detail-08", "source": "plan", "level": 3, "text": "Plan detail 08", "mandatory": false}, {"key": "plan/plan-section-09", "source": "plan", "level": 2, "text": "Plan section 09", "mandatory": false}, {"key": "plan/plan-detail-09", "source": "plan", "level": 3, "text": "Plan detail 09", "mandatory": false}, {"key": "plan/plan-section-10", "source": "plan", "level": 2, "text": "Plan section 10", "mandatory": false}, {"key": "plan/plan-detail-10", "source": "plan", "level": 3, "text": "Plan detail 10", "mandatory": false}, {"key": "plan/plan-section-11", "source": "plan", "level": 2, "text": "Plan section 11", "mandatory": false}, {"key": "plan/plan-detail-11", "source": "plan", "level": 3, "text": "Plan detail 11", "mandatory": false}, {"key": "plan/plan-section-12", "source": "plan", "level": 2, "text": "Plan section 12", "mandatory": false}, {"key": "plan/plan-detail-12", "source": "plan", "level": 3, "text": "Plan detail 12", "mandatory": false}, {"key": "plan/plan-section-13", "source": "plan", "level": 2, "text": "Plan section 13", "mandatory": false}, {"key": "plan/plan-detail-13", "source": "plan", "level": 3, "text": "Plan detail 13", "mandatory": false}, {"key": "plan/plan-section-14", "source": "plan", "level": 2, "text": "Plan section 14", "mandatory": false}, {"key": "plan/plan-detail-14", "source": "plan", "level": 3, "text": "Plan detail 14", "mandatory": false}, {"key": "plan/plan-section-15", "source": "plan", "level": 2, "text": "Plan section 15", "mandatory": false}, {"key": "plan/plan-detail-15", "source": "plan", "level": 3, "text": "Plan detail 15", "mandatory": false}, {"key": "plan/plan-section-16", "source": "plan", "level": 2, "text": "Plan section 16", "mandatory": false}, {"key": "plan/plan-detail-16", "source": "plan", "level": 3, "text": "Plan detail 16", "mandatory": false}, {"key": "plan/plan-section-17", "source": "plan", "level": 2, "text": "Plan section 17", "mandatory": false}, {"key": "plan/plan-detail-17", "source": "plan", "level": 3, "text": "Plan detail 17", "mandatory": false}, {"key": "tasks/waves", "source": "tasks", "level": 2, "text": "Waves", "mandatory": false}, {"key": "tasks/t-01", "source": "tasks", "level": 3, "text": "T-01", "mandatory": false}, {"key": "tasks/t-02", "source": "tasks", "level": 3, "text": "T-02", "mandatory": false}, {"key": "tasks/t-03", "source": "tasks", "level": 3, "text": "T-03", "mandatory": false}, {"key": "mockup-audit/audit-section-00", "source": "mockup-audit", "level": 2, "text": "Audit section 00", "mandatory": false}, {"key": "mockup-audit/audit-detail-00", "source": "mockup-audit", "level": 3, "text": "Audit detail 00", "mandatory": false}, {"key": "mockup-audit/audit-section-01", "source": "mockup-audit", "level": 2, "text": "Audit section 01", "mandatory": false}, {"key": "mockup-audit/audit-detail-01", "source": "mockup-audit", "level": 3, "text": "Audit detail 01", "mandatory": false}, {"key": "mockup-audit/audit-section-02", "source": "mockup-audit", "level": 2, "text": "Audit section 02", "mandatory": false}, {"key": "mockup-audit/audit-detail-02", "source": "mockup-audit", "level": 3, "text": "Audit detail 02", "mandatory": false}, {"key": "mockup-audit/audit-section-03", "source": "mockup-audit", "level": 2, "text": "Audit section 03", "mandatory": false}, {"key": "mockup-audit/audit-detail-03", "source": "mockup-audit", "level": 3, "text": "Audit detail 03", "mandatory": false}, {"key": "mockup-audit/audit-section-04", "source": "mockup-audit", "level": 2, "text": "Audit section 04", "mandatory": false}, {"key": "mockup-audit/audit-detail-04", "source": "mockup-audit", "level": 3, "text": "Audit detail 04", "mandatory": false}, {"key": "mockup-audit/audit-section-05", "source": "mockup-audit", "level": 2, "text": "Audit section 05", "mandatory": false}, {"key": "mockup-audit/audit-detail-05", "source": "mockup-audit", "level": 3, "text": "Audit detail 05", "mandatory": false}, {"key": "mockup-audit/audit-section-06", "source": "mockup-audit", "level": 2, "text": "Audit section 06", "mandatory": false}, {"key": "mockup-audit/audit-detail-06", "source": "mockup-audit", "level": 3, "text": "Audit detail 06", "mandatory": false}, {"key": "mockup-audit/audit-section-07", "source": "mockup-audit", "level": 2, "text": "Audit section 07", "mandatory": false}, {"key": "mockup-audit/audit-detail-07", "source": "mockup-audit", "level": 3, "text": "Audit detail 07", "mandatory": false}, {"key": "mockup-audit/audit-section-08", "source": "mockup-audit", "level": 2, "text": "Audit section 08", "mandatory": false}, {"key": "mockup-audit/audit-detail-08", "source": "mockup-audit", "level": 3, "text": "Audit detail 08", "mandatory": false}, {"key": "mockup-audit/audit-section-09", "source": "mockup-audit", "level": 2, "text": "Audit section 09", "mandatory": false}, {"key": "mockup-audit/audit-detail-09", "source": "mockup-audit", "level": 3, "text": "Audit detail 09", "mandatory": false}, {"key": "contracts/contract-section-00", "source": "contracts", "level": 2, "text": "Contract section 00", "mandatory": false}, {"key": "contracts/contract-detail-00", "source": "contracts", "level": 3, "text": "Contract detail 00", "mandatory": false}, {"key": "contracts/contract-section-01", "source": "contracts", "level": 2, "text": "Contract section 01", "mandatory": false}, {"key": "contracts/contract-detail-01", "source": "contracts", "level": 3, "text": "Contract detail 01", "mandatory": false}, {"key": "contracts/contract-section-02", "source": "contracts", "level": 2, "text": "Contract section 02", "mandatory": false}, {"key": "contracts/contract-detail-02", "source": "contracts", "level": 3, "text": "Contract detail 02", "mandatory": false}, {"key": "contracts/contract-section-03", "source": "contracts", "level": 2, "text": "Contract section 03", "mandatory": false}, {"key": "contracts/contract-detail-03", "source": "contracts", "level": 3, "text": "Contract detail 03", "mandatory": false}, {"key": "contracts/contract-section-04", "source": "contracts", "level": 2, "text": "Contract section 04", "mandatory": false}, {"key": "contracts/contract-detail-04", "source": "contracts", "level": 3, "text": "Contract detail 04", "mandatory": false}, {"key": "contracts/contract-section-05", "source": "contracts", "level": 2, "text": "Contract section 05", "mandatory": false}, {"key": "contracts/contract-detail-05", "source": "contracts", "level": 3, "text": "Contract detail 05", "mandatory": false}, {"key": "contracts/contract-section-06", "source": "contracts", "level": 2, "text": "Contract section 06", "mandatory": false}, {"key": "contracts/contract-detail-06", "source": "contracts", "level": 3, "text": "Contract detail 06", "mandatory": false}, {"key": "contracts/contract-section-07", "source": "contracts", "level": 2, "text": "Contract section 07", "mandatory": false}, {"key": "contracts/contract-detail-07", "source": "contracts", "level": 3, "text": "Contract detail 07", "mandatory": false}, {"key": "contracts/contract-section-08", "source": "contracts", "level": 2, "text": "Contract section 08", "mandatory": false}, {"key": "contracts/contract-detail-08", "source": "contracts", "level": 3, "text": "Contract detail 08", "mandatory": false}], "sources": [{"name": "spec.md", "present": true}, {"name": "plan.md", "present": true}, {"name": "tasks.md", "present": true}, {"name": "mockup-audit.md", "present": true}, {"name": "contracts.md", "present": true}], "prior": {}, "prior_approved": false, "verification_problems": []}</script>
+<script id="aidd-js">
+'use strict';
+/* aidd:FR-203 pure serializer: the review.md grammar of plan.md. No DOM access. */
+function oneLine(v) { return String(v == null ? '' : v).replace(/[\r\n]+/g, ' ').trim(); }
+function buildReviewMd(data) {
+  var d = data || {};
+  var secs = d.sections || {};
+  var keys = Array.isArray(d.keys) ? d.keys : Object.keys(secs);
+  var all = keys.length > 0;
+  var blocks = [];
+  keys.forEach(function (k) {
+    var s = secs[k] || {};
+    var on = s.approved === true;
+    if (!on) all = false;
+    var b = '## ' + String(k).replace(/\s+/g, '-') + '\n- [' + (on ? 'x' : ' ') + '] Approved';
+    var c = String(s.comment == null ? '' : s.comment).replace(/\r\n?/g, '\n').replace(/\s+$/, '');
+    if (c) b += '\n' + c.split('\n').map(function (l) { return '> ' + l; }).join('\n');
+    blocks.push(b);
+  });
+  var head = ['---', 'spec: ' + oneLine(d.spec), 'tasks_hash: ' + oneLine(d.tasks_hash),
+    'sources_digest: ' + oneLine(d.sources_digest), 'approved: ' + (all ? 'true' : 'false')];
+  if (d.generated) head.push('generated: ' + oneLine(d.generated));
+  if (d.reviewed) head.push('reviewed: ' + oneLine(d.reviewed));
+  head.push('---');
+  return head.join('\n') + '\n' + blocks.join('\n') + (blocks.length ? '\n' : '');
+}
+if (typeof module !== 'undefined' && module.exports) { module.exports = { buildReviewMd: buildReviewMd }; }
+
+/* DOM wiring: only in a browser. data goes in through textContent only. */
+if (typeof document !== 'undefined') {
+  (function () {
+    var root = document.getElementById('aidd-root');
+    var A = function (n) { return (root && root.getAttribute(n)) || ''; };
+    var meta = { spec: A('data-spec'), tasks_hash: A('data-tasks-hash'), hash8: A('data-tasks-hash8'),
+      sources_digest: A('data-sources-digest'), generated: A('data-generated') };
+    var store = 'aidd-review:' + meta.spec + ':' + meta.tasks_hash + ':' + meta.sources_digest;
+    var prior = {};
+    try { var raw = JSON.parse(document.getElementById('aidd-data').textContent || '{}'); prior = (raw && raw.prior) || {}; } catch (e) { prior = {}; }
+    try { var saved = window.localStorage.getItem(store); if (saved) prior = JSON.parse(saved) || prior; } catch (e) { /* storage may be blocked */ }
+
+    var sections = Array.prototype.slice.call(document.querySelectorAll('section[data-key]'));
+    var state = {}, boxes = {};
+    function mk(tag, text, cls) { var e = document.createElement(tag); if (text) e.textContent = text; if (cls) e.className = cls; return e; }
+    function persist() { try { window.localStorage.setItem(store, JSON.stringify(state)); } catch (e) { /* ignore */ } }
+    function refresh() {
+      var n = 0;
+      sections.forEach(function (s) {
+        var k = s.getAttribute('data-key'), on = state[k].approved === true;
+        if (on) n++;
+        boxes[k].checked = on;
+        s.classList.toggle('checked', on);
+      });
+      document.getElementById('aidd-progress').textContent = n + ' / ' + sections.length + ' approved';
+      persist();
+    }
+    sections.forEach(function (s) {
+      var k = s.getAttribute('data-key'), p = prior[k] || {};
+      state[k] = { approved: p.approved === true, comment: typeof p.comment === 'string' ? p.comment : '' };
+      var ctl = mk('div', '', 'review-ctl'), lab = mk('label', '', ''), cb = mk('input'), t = mk('span', ' Approved', 'lbl');
+      cb.type = 'checkbox'; lab.appendChild(cb); lab.appendChild(t);
+      var ta = mk('textarea'); ta.setAttribute('aria-label', 'Comment for ' + k); ta.value = state[k].comment;
+      ctl.appendChild(lab); ctl.appendChild(ta);
+      var h = s.firstElementChild;
+      s.insertBefore(ctl, h ? h.nextSibling : null);
+      cb.addEventListener('change', function () { state[k].approved = cb.checked; refresh(); });
+      ta.addEventListener('input', function () { state[k].comment = ta.value; persist(); });
+      boxes[k] = cb;
+    });
+
+    function setGroup(prefix, on) {   /* skips data-mandatory sections (FR-203) */
+      sections.forEach(function (s) {
+        var k = s.getAttribute('data-key');
+        if (s.hasAttribute('data-mandatory')) return;
+        if (prefix === '' || k.indexOf(prefix) === 0) state[k].approved = on;
+      });
+      refresh();
+    }
+    var bar = document.getElementById('aidd-bar'), seen = {};
+    var all = mk('button', 'Approve all (except mandatory)'); all.type = 'button';
+    all.addEventListener('click', function () { setGroup('', true); });
+    bar.appendChild(all);
+    var send = mk('button', 'Send', 'primary'); send.type = 'button'; bar.appendChild(send);
+    sections.forEach(function (s) {
+      var k = s.getAttribute('data-key'), f = k.split('/')[0];
+      if (seen[f]) return;
+      seen[f] = 1;
+      var row = mk('div', '', 'filebar'); row.appendChild(mk('b', f));
+      var b = mk('button', 'Check all in ' + f); b.type = 'button';
+      b.addEventListener('click', function () { setGroup(f + '/', true); });
+      var u = mk('button', 'Uncheck all'); u.type = 'button';
+      u.addEventListener('click', function () { setGroup(f + '/', false); });
+      row.appendChild(b); row.appendChild(u);
+      s.parentNode.insertBefore(row, s);
+    });
+
+    function stamp() {
+      var d = new Date(), z = function (n) { return (n < 10 ? '0' : '') + n; };
+      return d.getFullYear() + '-' + z(d.getMonth() + 1) + '-' + z(d.getDate()) + 'T' + z(d.getHours()) + ':' + z(d.getMinutes()) + ':' + z(d.getSeconds());
+    }
+    send.addEventListener('click', function () {
+      var text = buildReviewMd({ spec: meta.spec, tasks_hash: meta.tasks_hash, sources_digest: meta.sources_digest,
+        generated: meta.generated, reviewed: stamp(), keys: sections.map(function (s) { return s.getAttribute('data-key'); }), sections: state });
+      var note = document.getElementById('aidd-sent');
+      note.textContent = '';
+      var line = 'approve [tasks:' + meta.hash8 + ']';
+      try {
+        var url = URL.createObjectURL(new Blob([text], { type: 'text/markdown' }));
+        var a = document.createElement('a'); a.href = url; a.download = 'review.md';
+        document.body.appendChild(a); a.click(); document.body.removeChild(a);
+        setTimeout(function () { URL.revokeObjectURL(url); }, 4000);
+        note.appendChild(mk('p', 'review.md downloaded. Move it into specs/' + meta.spec + '/ (replace any previous review.md). Then give your consent to the agent by pasting this line, or by answering the tagged question:'));
+      } catch (e) {
+        note.appendChild(mk('p', 'The download was blocked. Copy the text below into specs/' + meta.spec + '/review.md, then give your consent with the line after it.'));
+        var box = mk('textarea'); box.readOnly = true; box.value = text; box.style.width = '100%'; box.style.minHeight = '8em'; note.appendChild(box);
+      }
+      note.appendChild(mk('code', line));
+      var cp = mk('button', 'Copy consent line'); cp.type = 'button';
+      cp.addEventListener('click', function () {
+        try { navigator.clipboard.writeText(line); cp.textContent = 'Copied'; } catch (e) { cp.textContent = 'Select and copy the line manually'; }
+      });
+      note.appendChild(cp);
+      note.classList.remove('hidden');
+      note.scrollIntoView();
+    });
+    refresh();
+  })();
+}
+</script>
+</body>
+</html>

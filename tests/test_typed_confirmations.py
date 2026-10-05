@@ -212,5 +212,94 @@ class TestStaleAbandon(Base):
         return d
 
 
+class TestTtyConfirm(unittest.TestCase):
+    """Spec 007 FR-204 consent route (c): the owner types the tag on an interactive terminal."""
+    TAG = "[tasks:abcd1234]"
+
+    def test_typed_tag_or_approve_tag_on_a_tty_confirms(self):
+        for typed in ("approve [tasks:abcd1234]", "  Approve   [TASKS:ABCD1234] ", "[tasks:abcd1234]"):
+            self.assertTrue(st._tty_confirm(self.TAG, isatty=True, reader=lambda _p, t=typed: t), typed)
+
+    def test_anything_else_does_not_confirm(self):
+        for typed in ("", "yes", "approve", "approve [tasks:ffffffff]", "do not approve [tasks:abcd1234]"):
+            self.assertFalse(st._tty_confirm(self.TAG, isatty=True, reader=lambda _p, t=typed: t), typed)
+
+    def test_no_tty_never_prompts(self):
+        def boom(_p):
+            raise AssertionError("must not prompt without a TTY")
+        self.assertFalse(st._tty_confirm(self.TAG, isatty=False, reader=boom))
+        self.assertFalse(st._tty_confirm(self.TAG, isatty=lambda: False, reader=boom))
+
+    def test_eof_interrupt_and_errors_are_a_no(self):
+        for exc in (EOFError, KeyboardInterrupt, OSError):
+            def reader(_p, e=exc):
+                raise e()
+            self.assertFalse(st._tty_confirm(self.TAG, isatty=True, reader=reader))
+
+    def test_default_requires_both_stdin_and_stdout_ttys(self):
+        class Fake:
+            def __init__(self, tty):
+                self.tty = tty
+
+            def isatty(self):
+                return self.tty
+        from unittest import mock
+        for i, o in ((True, False), (False, True)):
+            with mock.patch.object(sys, "stdin", Fake(i)), mock.patch.object(sys, "stdout", Fake(o)):
+                self.assertFalse(st._tty_confirm(self.TAG, reader=lambda _p: "approve [tasks:abcd1234]"))
+        with mock.patch.object(sys, "stdin", Fake(True)), mock.patch.object(sys, "stdout", Fake(True)):
+            self.assertTrue(st._tty_confirm(self.TAG, reader=lambda _p: "approve [tasks:abcd1234]"))
+
+
+class TestConsentOrder(Base):
+    """Spec 007 FR-204 `_consent`: answer -> prompt -> TTY, each newer than review.md and tasks.md."""
+    TAG = "[tasks:abcd1234]"
+
+    def setUp(self):
+        super().setUp()
+        self.d = self.root / "specs" / "F23-eDoc-POS"
+        self.d.mkdir(parents=True)
+        (self.d / "tasks.md").write_text("# Tasks\n", encoding="utf-8")
+        t = time.time() - 100
+        os.utime(self.d / "tasks.md", (t, t))
+        self.rs = {"mtime": time.time() - 50}
+
+    def consent(self, tty=False):
+        return st._consent(ev, self.root, "s1", self.d, self.TAG, self.rs, tty=lambda _t: tty)
+
+    def test_answer_first(self):
+        self.answer(f"Approve these tasks? {self.TAG}", "Approve")
+        self.prompt(f"ok I approve it {self.TAG}")
+        self.assertEqual(self.consent(tty=True)[0], "answer")
+
+    def test_prompt_second_and_typed_label_counts_as_prompt(self):
+        self.prompt(f"ok I approve it {self.TAG}")
+        self.assertEqual(self.consent(tty=True)[0], "prompt")
+        self.prompt(f"Approve {self.TAG}")
+        self.assertEqual(self.consent()[0], "prompt")
+
+    def test_tty_last(self):
+        kind, ts = self.consent(tty=True)
+        self.assertEqual(kind, "tty")
+        self.assertGreater(ts, self.rs["mtime"])
+        self.assertIsNone(self.consent(tty=False))
+
+    def test_acts_older_than_review_md_do_not_count(self):
+        self.answer(f"Approve these tasks? {self.TAG}", "Approve")
+        self.prompt(f"ok I approve it {self.TAG}")
+        self.rs = {"mtime": time.time() + 30}
+        self.assertIsNone(self.consent())
+
+    def test_other_session_and_negation_do_not_count(self):
+        self.prompt(f"ok I approve it {self.TAG}", session="s-other")
+        self.prompt(f"no, do not approve {self.TAG}")
+        self.assertIsNone(self.consent())
+
+    def test_tty_callable_crash_is_a_no(self):
+        def boom(_t):
+            raise RuntimeError("x")
+        self.assertIsNone(st._consent(ev, self.root, "s1", self.d, self.TAG, self.rs, tty=boom))
+
+
 if __name__ == "__main__":
     unittest.main()

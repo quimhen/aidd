@@ -1,0 +1,31 @@
+AC-213: PASS
+  [PASS] 006: first lines say STRUCTURAL CHECK ONLY - nothing was executed
+  [PASS] exit code unchanged semantics (0 or 1)
+  [PASS] with a passed verify_run: execution-evidence line instead of the banner
+
+$ check_spec.py specs/006 -> exit 0 
+ aidd spec check — D:\Fuentes\AIDD\specs\006-aidd-phased-audits-attribution
+============================================================
+STRUCTURAL CHECK ONLY - nothing was executed. 0 gaps here does NOT mean the spec works.
+Plan: ~64 min, ~1675k tokens (derived human ref ~3.2 h)
+No mechanical gaps found (structural only). (This does not check screenshots, business logic, or anything requiring judgment — that's still the Auditor's job.)
+
+--> PASS: 006: first lines say STRUCTURAL CHECK ONLY - nothing was executed
+--> PASS: exit code unchanged semantics (0 or 1)
+$ aidd_status.py rules approve C:\Users\jquimis\AppData\Local\Temp\tmpqok_ke2s\specs\F23-eDoc-POS  -> exit 0
+Approved: 2026-10-05 hash:e9a09d9bac61
+approved through answer · gate pointer -> F23-eDoc-POS
+$ aidd_status.py verify C:\Users\jquimis\AppData\Local\Temp\tmpqok_ke2s\specs\F23-eDoc-POS  -> exit 0
+PASS row 1: python -m unittest tests.test_ok (exit 0) → evidence/verify-1.txt
+verify_run recorded for F23-eDoc-POS: PASSED (1/1 rows, verify hash 0881d7b7c23f)
+$ check_spec.py (passed verify_run) -> exit 1 
+ aidd spec check — C:\Users\jquimis\AppData\Local\Temp\tmpqok_ke2s\specs\F23-eDoc-POS
+============================================================
+Execution evidence: the spec's Verification commands have a passed run (see `aidd status`). This check itself is still structural.
+Plan: ~50 min, ~100k tokens (derived human ref ~2.5 h)
+1. Codes cited in tasks.md but not found in mockup-audit.md/contracts.md: COMP-001 — either the audit is missing them or they're typos.
+2. G2 spec.md: no `## Acceptance cases` table (| Case | Real data (id) | Expected | Edge? |) — write the real-data cases, including edge ones, before building.
+
+2 gap(s) found.
+
+--> PASS: with a passed verify_run: execution-evidence line instead of the banner

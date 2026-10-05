@@ -1,0 +1,382 @@
+delta-F1: PASS
+  [PASS] F-1: every write/delete of tasks/plan/spec/review.* for 4 ids (abs, backslash, relative after cd/pushd/Set-Location, hook cwd) is blocked
+  [PASS] F-1 controls: reads / unrelated writes stay allowed
+
+[bash] 'echo x > C:/Users/jquimis/AppData/Local/Temp/tmpqdl8oqoz/specs/002-aidd-hard-rules/tasks.md' cwd=root rc=2
+[bash] 'echo x >> C:\\Users\\jquimis\\AppData\\Local\\Temp\\tmpqdl8oqoz\\specs\\002-aidd-hard-rules\\tasks.md' cwd=root rc=2
+[bash] 'cp /tmp/t.md C:/Users/jquimis/AppData/Local/Temp/tmpqdl8oqoz/specs/002-aidd-hard-rules/tasks.md' cwd=root rc=2
+[bash] 'mv /tmp/t.md C:/Users/jquimis/AppData/Local/Temp/tmpqdl8oqoz/specs/002-aidd-hard-rules/tasks.md' cwd=root rc=2
+[bash] 'rm C:/Users/jquimis/AppData/Local/Temp/tmpqdl8oqoz/specs/002-aidd-hard-rules/tasks.md' cwd=root rc=2
+[bash] 'sed -i s/a/b/ C:/Users/jquimis/AppData/Local/Temp/tmpqdl8oqoz/specs/002-aidd-hard-rules/tasks.md' cwd=root rc=2
+[bash] 'Set-Content -Path C:\\Users\\jquimis\\AppData\\Local\\Temp\\tmpqdl8oqoz\\specs\\002-aidd-hard-rules\\tasks.md -Value x' cwd=root rc=2
+[bash] 'echo x | tee C:/Users/jquimis/AppData/Local/Temp/tmpqdl8oqoz/specs/002-aidd-hard-rules/tasks.md' cwd=root rc=2
+[bash] 'cd specs/002-aidd-hard-rules && echo x > tasks.md' cwd=root rc=2
+[bash] 'cd specs/002-aidd-hard-rules/ && echo x > ./tasks.md' cwd=root rc=2
+[bash] 'cd C:/Users/jquimis/AppData/Local/Temp/tmpqdl8oqoz/specs/002-aidd-hard-rules && rm tasks.md' cwd=root rc=2
+[bash] 'pushd specs/002-aidd-hard-rules; cp /tmp/t tasks.md' cwd=root rc=2
+[bash] 'Set-Location specs\\002-aidd-hard-rules; Set-Content tasks.md x' cwd=root rc=2
+[bash] 'cd specs/002-aidd-hard-rules && echo x | tee tasks.md' cwd=root rc=2
+[bash] 'cd specs && cd 002-aidd-hard-rules && echo x > tasks.md' cwd=root rc=2
+[bash] 'cd specs/002-aidd-hard-rules && python -c "open(\'tasks.md\',\'w\').write(\'x\')"' cwd=root rc=2
+[bash] 'echo x > tasks.md' cwd=C:\Users\jquimis\AppData\Local\Temp\tmpqdl8oqoz\specs\002-aidd-hard-rules rc=2
+[bash] 'rm tasks.md' cwd=C:\Users\jquimis\AppData\Local\Temp\tmpqdl8oqoz\specs\002-aidd-hard-rules rc=2
+[bash] 'echo x > C:/Users/jquimis/AppData/Local/Temp/tmpqdl8oqoz/specs/002-aidd-hard-rules/plan.md' cwd=root rc=2
+[bash] 'echo x >> C:\\Users\\jquimis\\AppData\\Local\\Temp\\tmpqdl8oqoz\\specs\\002-aidd-hard-rules\\plan.md' cwd=root rc=2
+[bash] 'cp /tmp/t.md C:/Users/jquimis/AppData/Local/Temp/tmpqdl8oqoz/specs/002-aidd-hard-rules/plan.md' cwd=root rc=2
+[bash] 'mv /tmp/t.md C:/Users/jquimis/AppData/Local/Temp/tmpqdl8oqoz/specs/002-aidd-hard-rules/plan.md' cwd=root rc=2
+[bash] 'rm C:/Users/jquimis/AppData/Local/Temp/tmpqdl8oqoz/specs/002-aidd-hard-rules/plan.md' cwd=root rc=2
+[bash] 'sed -i s/a/b/ C:/Users/jquimis/AppData/Local/Temp/tmpqdl8oqoz/specs/002-aidd-hard-rules/plan.md' cwd=root rc=2
+[bash] 'Set-Content -Path C:\\Users\\jquimis\\AppData\\Local\\Temp\\tmpqdl8oqoz\\specs\\002-aidd-hard-rules\\plan.md -Value x' cwd=root rc=2
+[bash] 'echo x | tee C:/Users/jquimis/AppData/Local/Temp/tmpqdl8oqoz/specs/002-aidd-hard-rules/plan.md' cwd=root rc=2
+[bash] 'cd specs/002-aidd-hard-rules && echo x > plan.md' cwd=root rc=2
+[bash] 'cd specs/002-aidd-hard-rules/ && echo x > ./plan.md' cwd=root rc=2
+[bash] 'cd C:/Users/jquimis/AppData/Local/Temp/tmpqdl8oqoz/specs/002-aidd-hard-rules && rm plan.md' cwd=root rc=2
+[bash] 'pushd specs/002-aidd-hard-rules; cp /tmp/t plan.md' cwd=root rc=2
+[bash] 'Set-Location specs\\002-aidd-hard-rules; Set-Content plan.md x' cwd=root rc=2
+[bash] 'cd specs/002-aidd-hard-rules && echo x | tee plan.md' cwd=root rc=2
+[bash] 'cd specs && cd 002-aidd-hard-rules && echo x > plan.md' cwd=root rc=2
+[bash] 'cd specs/002-aidd-hard-rules && python -c "open(\'plan.md\',\'w\').write(\'x\')"' cwd=root rc=2
+[bash] 'echo x > plan.md' cwd=C:\Users\jquimis\AppData\Local\Temp\tmpqdl8oqoz\specs\002-aidd-hard-rules rc=2
+[bash] 'rm plan.md' cwd=C:\Users\jquimis\AppData\Local\Temp\tmpqdl8oqoz\specs\002-aidd-hard-rules rc=2
+[bash] 'echo x > C:/Users/jquimis/AppData/Local/Temp/tmpqdl8oqoz/specs/002-aidd-hard-rules/spec.md' cwd=root rc=2
+[bash] 'echo x >> C:\\Users\\jquimis\\AppData\\Local\\Temp\\tmpqdl8oqoz\\specs\\002-aidd-hard-rules\\spec.md' cwd=root rc=2
+[bash] 'cp /tmp/t.md C:/Users/jquimis/AppData/Local/Temp/tmpqdl8oqoz/specs/002-aidd-hard-rules/spec.md' cwd=root rc=2
+[bash] 'mv /tmp/t.md C:/Users/jquimis/AppData/Local/Temp/tmpqdl8oqoz/specs/002-aidd-hard-rules/spec.md' cwd=root rc=2
+[bash] 'rm C:/Users/jquimis/AppData/Local/Temp/tmpqdl8oqoz/specs/002-aidd-hard-rules/spec.md' cwd=root rc=2
+[bash] 'sed -i s/a/b/ C:/Users/jquimis/AppData/Local/Temp/tmpqdl8oqoz/specs/002-aidd-hard-rules/spec.md' cwd=root rc=2
+[bash] 'Set-Content -Path C:\\Users\\jquimis\\AppData\\Local\\Temp\\tmpqdl8oqoz\\specs\\002-aidd-hard-rules\\spec.md -Value x' cwd=root rc=2
+[bash] 'echo x | tee C:/Users/jquimis/AppData/Local/Temp/tmpqdl8oqoz/specs/002-aidd-hard-rules/spec.md' cwd=root rc=2
+[bash] 'cd specs/002-aidd-hard-rules && echo x > spec.md' cwd=root rc=2
+[bash] 'cd specs/002-aidd-hard-rules/ && echo x > ./spec.md' cwd=root rc=2
+[bash] 'cd C:/Users/jquimis/AppData/Local/Temp/tmpqdl8oqoz/specs/002-aidd-hard-rules && rm spec.md' cwd=root rc=2
+[bash] 'pushd specs/002-aidd-hard-rules; cp /tmp/t spec.md' cwd=root rc=2
+[bash] 'Set-Location specs\\002-aidd-hard-rules; Set-Content spec.md x' cwd=root rc=2
+[bash] 'cd specs/002-aidd-hard-rules && echo x | tee spec.md' cwd=root rc=2
+[bash] 'cd specs && cd 002-aidd-hard-rules && echo x > spec.md' cwd=root rc=2
+[bash] 'cd specs/002-aidd-hard-rules && python -c "open(\'spec.md\',\'w\').write(\'x\')"' cwd=root rc=2
+[bash] 'echo x > spec.md' cwd=C:\Users\jquimis\AppData\Local\Temp\tmpqdl8oqoz\specs\002-aidd-hard-rules rc=2
+[bash] 'rm spec.md' cwd=C:\Users\jquimis\AppData\Local\Temp\tmpqdl8oqoz\specs\002-aidd-hard-rules rc=2
+[bash] 'echo x > C:/Users/jquimis/AppData/Local/Temp/tmpqdl8oqoz/specs/002-aidd-hard-rules/review.md' cwd=root rc=2
+[bash] 'echo x >> C:\\Users\\jquimis\\AppData\\Local\\Temp\\tmpqdl8oqoz\\specs\\002-aidd-hard-rules\\review.md' cwd=root rc=2
+[bash] 'cp /tmp/t.md C:/Users/jquimis/AppData/Local/Temp/tmpqdl8oqoz/specs/002-aidd-hard-rules/review.md' cwd=root rc=2
+[bash] 'mv /tmp/t.md C:/Users/jquimis/AppData/Local/Temp/tmpqdl8oqoz/specs/002-aidd-hard-rules/review.md' cwd=root rc=2
+[bash] 'rm C:/Users/jquimis/AppData/Local/Temp/tmpqdl8oqoz/specs/002-aidd-hard-rules/review.md' cwd=root rc=2
+[bash] 'sed -i s/a/b/ C:/Users/jquimis/AppData/Local/Temp/tmpqdl8oqoz/specs/002-aidd-hard-rules/review.md' cwd=root rc=2
+[bash] 'Set-Content -Path C:\\Users\\jquimis\\AppData\\Local\\Temp\\tmpqdl8oqoz\\specs\\002-aidd-hard-rules\\review.md -Value x' cwd=root rc=2
+[bash] 'echo x | tee C:/Users/jquimis/AppData/Local/Temp/tmpqdl8oqoz/specs/002-aidd-hard-rules/review.md' cwd=root rc=2
+[bash] 'cd specs/002-aidd-hard-rules && echo x > review.md' cwd=root rc=2
+[bash] 'cd specs/002-aidd-hard-rules/ && echo x > ./review.md' cwd=root rc=2
+[bash] 'cd C:/Users/jquimis/AppData/Local/Temp/tmpqdl8oqoz/specs/002-aidd-hard-rules && rm review.md' cwd=root rc=2
+[bash] 'pushd specs/002-aidd-hard-rules; cp /tmp/t review.md' cwd=root rc=2
+[bash] 'Set-Location specs\\002-aidd-hard-rules; Set-Content review.md x' cwd=root rc=2
+[bash] 'cd specs/002-aidd-hard-rules && echo x | tee review.md' cwd=root rc=2
+[bash] 'cd specs && cd 002-aidd-hard-rules && echo x > review.md' cwd=root rc=2
+[bash] 'cd specs/002-aidd-hard-rules && python -c "open(\'review.md\',\'w\').write(\'x\')"' cwd=root rc=2
+[bash] 'echo x > review.md' cwd=C:\Users\jquimis\AppData\Local\Temp\tmpqdl8oqoz\specs\002-aidd-hard-rules rc=2
+[bash] 'rm review.md' cwd=C:\Users\jquimis\AppData\Local\Temp\tmpqdl8oqoz\specs\002-aidd-hard-rules rc=2
+[bash] 'echo x > C:/Users/jquimis/AppData/Local/Temp/tmpqdl8oqoz/specs/002-aidd-hard-rules/review.html' cwd=root rc=2
+[bash] 'echo x >> C:\\Users\\jquimis\\AppData\\Local\\Temp\\tmpqdl8oqoz\\specs\\002-aidd-hard-rules\\review.html' cwd=root rc=2
+[bash] 'cp /tmp/t.md C:/Users/jquimis/AppData/Local/Temp/tmpqdl8oqoz/specs/002-aidd-hard-rules/review.html' cwd=root rc=2
+[bash] 'mv /tmp/t.md C:/Users/jquimis/AppData/Local/Temp/tmpqdl8oqoz/specs/002-aidd-hard-rules/review.html' cwd=root rc=2
+[bash] 'rm C:/Users/jquimis/AppData/Local/Temp/tmpqdl8oqoz/specs/002-aidd-hard-rules/review.html' cwd=root rc=2
+[bash] 'sed -i s/a/b/ C:/Users/jquimis/AppData/Local/Temp/tmpqdl8oqoz/specs/002-aidd-hard-rules/review.html' cwd=root rc=2
+[bash] 'Set-Content -Path C:\\Users\\jquimis\\AppData\\Local\\Temp\\tmpqdl8oqoz\\specs\\002-aidd-hard-rules\\review.html -Value x' cwd=root rc=2
+[bash] 'echo x | tee C:/Users/jquimis/AppData/Local/Temp/tmpqdl8oqoz/specs/002-aidd-hard-rules/review.html' cwd=root rc=2
+[bash] 'cd specs/002-aidd-hard-rules && echo x > review.html' cwd=root rc=2
+[bash] 'cd specs/002-aidd-hard-rules/ && echo x > ./review.html' cwd=root rc=2
+[bash] 'cd C:/Users/jquimis/AppData/Local/Temp/tmpqdl8oqoz/specs/002-aidd-hard-rules && rm review.html' cwd=root rc=2
+[bash] 'pushd specs/002-aidd-hard-rules; cp /tmp/t review.html' cwd=root rc=2
+[bash] 'Set-Location specs\\002-aidd-hard-rules; Set-Content review.html x' cwd=root rc=2
+[bash] 'cd specs/002-aidd-hard-rules && echo x | tee review.html' cwd=root rc=2
+[bash] 'cd specs && cd 002-aidd-hard-rules && echo x > review.html' cwd=root rc=2
+[bash] 'cd specs/002-aidd-hard-rules && python -c "open(\'review.html\',\'w\').write(\'x\')"' cwd=root rc=2
+[bash] 'echo x > review.html' cwd=C:\Users\jquimis\AppData\Local\Temp\tmpqdl8oqoz\specs\002-aidd-hard-rules rc=2
+[bash] 'rm review.html' cwd=C:\Users\jquimis\AppData\Local\Temp\tmpqdl8oqoz\specs\002-aidd-hard-rules rc=2
+[bash] 'echo x > C:/Users/jquimis/AppData/Local/Temp/tmpqdl8oqoz/specs/F23-eDoc-POS/tasks.md' cwd=root rc=2
+[bash] 'echo x >> C:\\Users\\jquimis\\AppData\\Local\\Temp\\tmpqdl8oqoz\\specs\\F23-eDoc-POS\\tasks.md' cwd=root rc=2
+[bash] 'cp /tmp/t.md C:/Users/jquimis/AppData/Local/Temp/tmpqdl8oqoz/specs/F23-eDoc-POS/tasks.md' cwd=root rc=2
+[bash] 'mv /tmp/t.md C:/Users/jquimis/AppData/Local/Temp/tmpqdl8oqoz/specs/F23-eDoc-POS/tasks.md' cwd=root rc=2
+[bash] 'rm C:/Users/jquimis/AppData/Local/Temp/tmpqdl8oqoz/specs/F23-eDoc-POS/tasks.md' cwd=root rc=2
+[bash] 'sed -i s/a/b/ C:/Users/jquimis/AppData/Local/Temp/tmpqdl8oqoz/specs/F23-eDoc-POS/tasks.md' cwd=root rc=2
+[bash] 'Set-Content -Path C:\\Users\\jquimis\\AppData\\Local\\Temp\\tmpqdl8oqoz\\specs\\F23-eDoc-POS\\tasks.md -Value x' cwd=root rc=2
+[bash] 'echo x | tee C:/Users/jquimis/AppData/Local/Temp/tmpqdl8oqoz/specs/F23-eDoc-POS/tasks.md' cwd=root rc=2
+[bash] 'cd specs/F23-eDoc-POS && echo x > tasks.md' cwd=root rc=2
+[bash] 'cd specs/F23-eDoc-POS/ && echo x > ./tasks.md' cwd=root rc=2
+[bash] 'cd C:/Users/jquimis/AppData/Local/Temp/tmpqdl8oqoz/specs/F23-eDoc-POS && rm tasks.md' cwd=root rc=2
+[bash] 'pushd specs/F23-eDoc-POS; cp /tmp/t tasks.md' cwd=root rc=2
+[bash] 'Set-Location specs\\F23-eDoc-POS; Set-Content tasks.md x' cwd=root rc=2
+[bash] 'cd specs/F23-eDoc-POS && echo x | tee tasks.md' cwd=root rc=2
+[bash] 'cd specs && cd F23-eDoc-POS && echo x > tasks.md' cwd=root rc=2
+[bash] 'cd specs/F23-eDoc-POS && python -c "open(\'tasks.md\',\'w\').write(\'x\')"' cwd=root rc=2
+[bash] 'echo x > tasks.md' cwd=C:\Users\jquimis\AppData\Local\Temp\tmpqdl8oqoz\specs\F23-eDoc-POS rc=2
+[bash] 'rm tasks.md' cwd=C:\Users\jquimis\AppData\Local\Temp\tmpqdl8oqoz\specs\F23-eDoc-POS rc=2
+[bash] 'echo x > C:/Users/jquimis/AppData/Local/Temp/tmpqdl8oqoz/specs/F23-eDoc-POS/plan.md' cwd=root rc=2
+[bash] 'echo x >> C:\\Users\\jquimis\\AppData\\Local\\Temp\\tmpqdl8oqoz\\specs\\F23-eDoc-POS\\plan.md' cwd=root rc=2
+[bash] 'cp /tmp/t.md C:/Users/jquimis/AppData/Local/Temp/tmpqdl8oqoz/specs/F23-eDoc-POS/plan.md' cwd=root rc=2
+[bash] 'mv /tmp/t.md C:/Users/jquimis/AppData/Local/Temp/tmpqdl8oqoz/specs/F23-eDoc-POS/plan.md' cwd=root rc=2
+[bash] 'rm C:/Users/jquimis/AppData/Local/Temp/tmpqdl8oqoz/specs/F23-eDoc-POS/plan.md' cwd=root rc=2
+[bash] 'sed -i s/a/b/ C:/Users/jquimis/AppData/Local/Temp/tmpqdl8oqoz/specs/F23-eDoc-POS/plan.md' cwd=root rc=2
+[bash] 'Set-Content -Path C:\\Users\\jquimis\\AppData\\Local\\Temp\\tmpqdl8oqoz\\specs\\F23-eDoc-POS\\plan.md -Value x' cwd=root rc=2
+[bash] 'echo x | tee C:/Users/jquimis/AppData/Local/Temp/tmpqdl8oqoz/specs/F23-eDoc-POS/plan.md' cwd=root rc=2
+[bash] 'cd specs/F23-eDoc-POS && echo x > plan.md' cwd=root rc=2
+[bash] 'cd specs/F23-eDoc-POS/ && echo x > ./plan.md' cwd=root rc=2
+[bash] 'cd C:/Users/jquimis/AppData/Local/Temp/tmpqdl8oqoz/specs/F23-eDoc-POS && rm plan.md' cwd=root rc=2
+[bash] 'pushd specs/F23-eDoc-POS; cp /tmp/t plan.md' cwd=root rc=2
+[bash] 'Set-Location specs\\F23-eDoc-POS; Set-Content plan.md x' cwd=root rc=2
+[bash] 'cd specs/F23-eDoc-POS && echo x | tee plan.md' cwd=root rc=2
+[bash] 'cd specs && cd F23-eDoc-POS && echo x > plan.md' cwd=root rc=2
+[bash] 'cd specs/F23-eDoc-POS && python -c "open(\'plan.md\',\'w\').write(\'x\')"' cwd=root rc=2
+[bash] 'echo x > plan.md' cwd=C:\Users\jquimis\AppData\Local\Temp\tmpqdl8oqoz\specs\F23-eDoc-POS rc=2
+[bash] 'rm plan.md' cwd=C:\Users\jquimis\AppData\Local\Temp\tmpqdl8oqoz\specs\F23-eDoc-POS rc=2
+[bash] 'echo x > C:/Users/jquimis/AppData/Local/Temp/tmpqdl8oqoz/specs/F23-eDoc-POS/spec.md' cwd=root rc=2
+[bash] 'echo x >> C:\\Users\\jquimis\\AppData\\Local\\Temp\\tmpqdl8oqoz\\specs\\F23-eDoc-POS\\spec.md' cwd=root rc=2
+[bash] 'cp /tmp/t.md C:/Users/jquimis/AppData/Local/Temp/tmpqdl8oqoz/specs/F23-eDoc-POS/spec.md' cwd=root rc=2
+[bash] 'mv /tmp/t.md C:/Users/jquimis/AppData/Local/Temp/tmpqdl8oqoz/specs/F23-eDoc-POS/spec.md' cwd=root rc=2
+[bash] 'rm C:/Users/jquimis/AppData/Local/Temp/tmpqdl8oqoz/specs/F23-eDoc-POS/spec.md' cwd=root rc=2
+[bash] 'sed -i s/a/b/ C:/Users/jquimis/AppData/Local/Temp/tmpqdl8oqoz/specs/F23-eDoc-POS/spec.md' cwd=root rc=2
+[bash] 'Set-Content -Path C:\\Users\\jquimis\\AppData\\Local\\Temp\\tmpqdl8oqoz\\specs\\F23-eDoc-POS\\spec.md -Value x' cwd=root rc=2
+[bash] 'echo x | tee C:/Users/jquimis/AppData/Local/Temp/tmpqdl8oqoz/specs/F23-eDoc-POS/spec.md' cwd=root rc=2
+[bash] 'cd specs/F23-eDoc-POS && echo x > spec.md' cwd=root rc=2
+[bash] 'cd specs/F23-eDoc-POS/ && echo x > ./spec.md' cwd=root rc=2
+[bash] 'cd C:/Users/jquimis/AppData/Local/Temp/tmpqdl8oqoz/specs/F23-eDoc-POS && rm spec.md' cwd=root rc=2
+[bash] 'pushd specs/F23-eDoc-POS; cp /tmp/t spec.md' cwd=root rc=2
+[bash] 'Set-Location specs\\F23-eDoc-POS; Set-Content spec.md x' cwd=root rc=2
+[bash] 'cd specs/F23-eDoc-POS && echo x | tee spec.md' cwd=root rc=2
+[bash] 'cd specs && cd F23-eDoc-POS && echo x > spec.md' cwd=root rc=2
+[bash] 'cd specs/F23-eDoc-POS && python -c "open(\'spec.md\',\'w\').write(\'x\')"' cwd=root rc=2
+[bash] 'echo x > spec.md' cwd=C:\Users\jquimis\AppData\Local\Temp\tmpqdl8oqoz\specs\F23-eDoc-POS rc=2
+[bash] 'rm spec.md' cwd=C:\Users\jquimis\AppData\Local\Temp\tmpqdl8oqoz\specs\F23-eDoc-POS rc=2
+[bash] 'echo x > C:/Users/jquimis/AppData/Local/Temp/tmpqdl8oqoz/specs/F23-eDoc-POS/review.md' cwd=root rc=2
+[bash] 'echo x >> C:\\Users\\jquimis\\AppData\\Local\\Temp\\tmpqdl8oqoz\\specs\\F23-eDoc-POS\\review.md' cwd=root rc=2
+[bash] 'cp /tmp/t.md C:/Users/jquimis/AppData/Local/Temp/tmpqdl8oqoz/specs/F23-eDoc-POS/review.md' cwd=root rc=2
+[bash] 'mv /tmp/t.md C:/Users/jquimis/AppData/Local/Temp/tmpqdl8oqoz/specs/F23-eDoc-POS/review.md' cwd=root rc=2
+[bash] 'rm C:/Users/jquimis/AppData/Local/Temp/tmpqdl8oqoz/specs/F23-eDoc-POS/review.md' cwd=root rc=2
+[bash] 'sed -i s/a/b/ C:/Users/jquimis/AppData/Local/Temp/tmpqdl8oqoz/specs/F23-eDoc-POS/review.md' cwd=root rc=2
+[bash] 'Set-Content -Path C:\\Users\\jquimis\\AppData\\Local\\Temp\\tmpqdl8oqoz\\specs\\F23-eDoc-POS\\review.md -Value x' cwd=root rc=2
+[bash] 'echo x | tee C:/Users/jquimis/AppData/Local/Temp/tmpqdl8oqoz/specs/F23-eDoc-POS/review.md' cwd=root rc=2
+[bash] 'cd specs/F23-eDoc-POS && echo x > review.md' cwd=root rc=2
+[bash] 'cd specs/F23-eDoc-POS/ && echo x > ./review.md' cwd=root rc=2
+[bash] 'cd C:/Users/jquimis/AppData/Local/Temp/tmpqdl8oqoz/specs/F23-eDoc-POS && rm review.md' cwd=root rc=2
+[bash] 'pushd specs/F23-eDoc-POS; cp /tmp/t review.md' cwd=root rc=2
+[bash] 'Set-Location specs\\F23-eDoc-POS; Set-Content review.md x' cwd=root rc=2
+[bash] 'cd specs/F23-eDoc-POS && echo x | tee review.md' cwd=root rc=2
+[bash] 'cd specs && cd F23-eDoc-POS && echo x > review.md' cwd=root rc=2
+[bash] 'cd specs/F23-eDoc-POS && python -c "open(\'review.md\',\'w\').write(\'x\')"' cwd=root rc=2
+[bash] 'echo x > review.md' cwd=C:\Users\jquimis\AppData\Local\Temp\tmpqdl8oqoz\specs\F23-eDoc-POS rc=2
+[bash] 'rm review.md' cwd=C:\Users\jquimis\AppData\Local\Temp\tmpqdl8oqoz\specs\F23-eDoc-POS rc=2
+[bash] 'echo x > C:/Users/jquimis/AppData/Local/Temp/tmpqdl8oqoz/specs/F23-eDoc-POS/review.html' cwd=root rc=2
+[bash] 'echo x >> C:\\Users\\jquimis\\AppData\\Local\\Temp\\tmpqdl8oqoz\\specs\\F23-eDoc-POS\\review.html' cwd=root rc=2
+[bash] 'cp /tmp/t.md C:/Users/jquimis/AppData/Local/Temp/tmpqdl8oqoz/specs/F23-eDoc-POS/review.html' cwd=root rc=2
+[bash] 'mv /tmp/t.md C:/Users/jquimis/AppData/Local/Temp/tmpqdl8oqoz/specs/F23-eDoc-POS/review.html' cwd=root rc=2
+[bash] 'rm C:/Users/jquimis/AppData/Local/Temp/tmpqdl8oqoz/specs/F23-eDoc-POS/review.html' cwd=root rc=2
+[bash] 'sed -i s/a/b/ C:/Users/jquimis/AppData/Local/Temp/tmpqdl8oqoz/specs/F23-eDoc-POS/review.html' cwd=root rc=2
+[bash] 'Set-Content -Path C:\\Users\\jquimis\\AppData\\Local\\Temp\\tmpqdl8oqoz\\specs\\F23-eDoc-POS\\review.html -Value x' cwd=root rc=2
+[bash] 'echo x | tee C:/Users/jquimis/AppData/Local/Temp/tmpqdl8oqoz/specs/F23-eDoc-POS/review.html' cwd=root rc=2
+[bash] 'cd specs/F23-eDoc-POS && echo x > review.html' cwd=root rc=2
+[bash] 'cd specs/F23-eDoc-POS/ && echo x > ./review.html' cwd=root rc=2
+[bash] 'cd C:/Users/jquimis/AppData/Local/Temp/tmpqdl8oqoz/specs/F23-eDoc-POS && rm review.html' cwd=root rc=2
+[bash] 'pushd specs/F23-eDoc-POS; cp /tmp/t review.html' cwd=root rc=2
+[bash] 'Set-Location specs\\F23-eDoc-POS; Set-Content review.html x' cwd=root rc=2
+[bash] 'cd specs/F23-eDoc-POS && echo x | tee review.html' cwd=root rc=2
+[bash] 'cd specs && cd F23-eDoc-POS && echo x > review.html' cwd=root rc=2
+[bash] 'cd specs/F23-eDoc-POS && python -c "open(\'review.html\',\'w\').write(\'x\')"' cwd=root rc=2
+[bash] 'echo x > review.html' cwd=C:\Users\jquimis\AppData\Local\Temp\tmpqdl8oqoz\specs\F23-eDoc-POS rc=2
+[bash] 'rm review.html' cwd=C:\Users\jquimis\AppData\Local\Temp\tmpqdl8oqoz\specs\F23-eDoc-POS rc=2
+[bash] 'echo x > C:/Users/jquimis/AppData/Local/Temp/tmpqdl8oqoz/specs/F13-eDoc-Emission-Engine/tasks.md' cwd=root rc=2
+[bash] 'echo x >> C:\\Users\\jquimis\\AppData\\Local\\Temp\\tmpqdl8oqoz\\specs\\F13-eDoc-Emission-Engine\\tasks.md' cwd=root rc=2
+[bash] 'cp /tmp/t.md C:/Users/jquimis/AppData/Local/Temp/tmpqdl8oqoz/specs/F13-eDoc-Emission-Engine/tasks.md' cwd=root rc=2
+[bash] 'mv /tmp/t.md C:/Users/jquimis/AppData/Local/Temp/tmpqdl8oqoz/specs/F13-eDoc-Emission-Engine/tasks.md' cwd=root rc=2
+[bash] 'rm C:/Users/jquimis/AppData/Local/Temp/tmpqdl8oqoz/specs/F13-eDoc-Emission-Engine/tasks.md' cwd=root rc=2
+[bash] 'sed -i s/a/b/ C:/Users/jquimis/AppData/Local/Temp/tmpqdl8oqoz/specs/F13-eDoc-Emission-Engine/tasks.md' cwd=root rc=2
+[bash] 'Set-Content -Path C:\\Users\\jquimis\\AppData\\Local\\Temp\\tmpqdl8oqoz\\specs\\F13-eDoc-Emission-Engine\\tasks.md -Value x' cwd=root rc=2
+[bash] 'echo x | tee C:/Users/jquimis/AppData/Local/Temp/tmpqdl8oqoz/specs/F13-eDoc-Emission-Engine/tasks.md' cwd=root rc=2
+[bash] 'cd specs/F13-eDoc-Emission-Engine && echo x > tasks.md' cwd=root rc=2
+[bash] 'cd specs/F13-eDoc-Emission-Engine/ && echo x > ./tasks.md' cwd=root rc=2
+[bash] 'cd C:/Users/jquimis/AppData/Local/Temp/tmpqdl8oqoz/specs/F13-eDoc-Emission-Engine && rm tasks.md' cwd=root rc=2
+[bash] 'pushd specs/F13-eDoc-Emission-Engine; cp /tmp/t tasks.md' cwd=root rc=2
+[bash] 'Set-Location specs\\F13-eDoc-Emission-Engine; Set-Content tasks.md x' cwd=root rc=2
+[bash] 'cd specs/F13-eDoc-Emission-Engine && echo x | tee tasks.md' cwd=root rc=2
+[bash] 'cd specs && cd F13-eDoc-Emission-Engine && echo x > tasks.md' cwd=root rc=2
+[bash] 'cd specs/F13-eDoc-Emission-Engine && python -c "open(\'tasks.md\',\'w\').write(\'x\')"' cwd=root rc=2
+[bash] 'echo x > tasks.md' cwd=C:\Users\jquimis\AppData\Local\Temp\tmpqdl8oqoz\specs\F13-eDoc-Emission-Engine rc=2
+[bash] 'rm tasks.md' cwd=C:\Users\jquimis\AppData\Local\Temp\tmpqdl8oqoz\specs\F13-eDoc-Emission-Engine rc=2
+[bash] 'echo x > C:/Users/jquimis/AppData/Local/Temp/tmpqdl8oqoz/specs/F13-eDoc-Emission-Engine/plan.md' cwd=root rc=2
+[bash] 'echo x >> C:\\Users\\jquimis\\AppData\\Local\\Temp\\tmpqdl8oqoz\\specs\\F13-eDoc-Emission-Engine\\plan.md' cwd=root rc=2
+[bash] 'cp /tmp/t.md C:/Users/jquimis/AppData/Local/Temp/tmpqdl8oqoz/specs/F13-eDoc-Emission-Engine/plan.md' cwd=root rc=2
+[bash] 'mv /tmp/t.md C:/Users/jquimis/AppData/Local/Temp/tmpqdl8oqoz/specs/F13-eDoc-Emission-Engine/plan.md' cwd=root rc=2
+[bash] 'rm C:/Users/jquimis/AppData/Local/Temp/tmpqdl8oqoz/specs/F13-eDoc-Emission-Engine/plan.md' cwd=root rc=2
+[bash] 'sed -i s/a/b/ C:/Users/jquimis/AppData/Local/Temp/tmpqdl8oqoz/specs/F13-eDoc-Emission-Engine/plan.md' cwd=root rc=2
+[bash] 'Set-Content -Path C:\\Users\\jquimis\\AppData\\Local\\Temp\\tmpqdl8oqoz\\specs\\F13-eDoc-Emission-Engine\\plan.md -Value x' cwd=root rc=2
+[bash] 'echo x | tee C:/Users/jquimis/AppData/Local/Temp/tmpqdl8oqoz/specs/F13-eDoc-Emission-Engine/plan.md' cwd=root rc=2
+[bash] 'cd specs/F13-eDoc-Emission-Engine && echo x > plan.md' cwd=root rc=2
+[bash] 'cd specs/F13-eDoc-Emission-Engine/ && echo x > ./plan.md' cwd=root rc=2
+[bash] 'cd C:/Users/jquimis/AppData/Local/Temp/tmpqdl8oqoz/specs/F13-eDoc-Emission-Engine && rm plan.md' cwd=root rc=2
+[bash] 'pushd specs/F13-eDoc-Emission-Engine; cp /tmp/t plan.md' cwd=root rc=2
+[bash] 'Set-Location specs\\F13-eDoc-Emission-Engine; Set-Content plan.md x' cwd=root rc=2
+[bash] 'cd specs/F13-eDoc-Emission-Engine && echo x | tee plan.md' cwd=root rc=2
+[bash] 'cd specs && cd F13-eDoc-Emission-Engine && echo x > plan.md' cwd=root rc=2
+[bash] 'cd specs/F13-eDoc-Emission-Engine && python -c "open(\'plan.md\',\'w\').write(\'x\')"' cwd=root rc=2
+[bash] 'echo x > plan.md' cwd=C:\Users\jquimis\AppData\Local\Temp\tmpqdl8oqoz\specs\F13-eDoc-Emission-Engine rc=2
+[bash] 'rm plan.md' cwd=C:\Users\jquimis\AppData\Local\Temp\tmpqdl8oqoz\specs\F13-eDoc-Emission-Engine rc=2
+[bash] 'echo x > C:/Users/jquimis/AppData/Local/Temp/tmpqdl8oqoz/specs/F13-eDoc-Emission-Engine/spec.md' cwd=root rc=2
+[bash] 'echo x >> C:\\Users\\jquimis\\AppData\\Local\\Temp\\tmpqdl8oqoz\\specs\\F13-eDoc-Emission-Engine\\spec.md' cwd=root rc=2
+[bash] 'cp /tmp/t.md C:/Users/jquimis/AppData/Local/Temp/tmpqdl8oqoz/specs/F13-eDoc-Emission-Engine/spec.md' cwd=root rc=2
+[bash] 'mv /tmp/t.md C:/Users/jquimis/AppData/Local/Temp/tmpqdl8oqoz/specs/F13-eDoc-Emission-Engine/spec.md' cwd=root rc=2
+[bash] 'rm C:/Users/jquimis/AppData/Local/Temp/tmpqdl8oqoz/specs/F13-eDoc-Emission-Engine/spec.md' cwd=root rc=2
+[bash] 'sed -i s/a/b/ C:/Users/jquimis/AppData/Local/Temp/tmpqdl8oqoz/specs/F13-eDoc-Emission-Engine/spec.md' cwd=root rc=2
+[bash] 'Set-Content -Path C:\\Users\\jquimis\\AppData\\Local\\Temp\\tmpqdl8oqoz\\specs\\F13-eDoc-Emission-Engine\\spec.md -Value x' cwd=root rc=2
+[bash] 'echo x | tee C:/Users/jquimis/AppData/Local/Temp/tmpqdl8oqoz/specs/F13-eDoc-Emission-Engine/spec.md' cwd=root rc=2
+[bash] 'cd specs/F13-eDoc-Emission-Engine && echo x > spec.md' cwd=root rc=2
+[bash] 'cd specs/F13-eDoc-Emission-Engine/ && echo x > ./spec.md' cwd=root rc=2
+[bash] 'cd C:/Users/jquimis/AppData/Local/Temp/tmpqdl8oqoz/specs/F13-eDoc-Emission-Engine && rm spec.md' cwd=root rc=2
+[bash] 'pushd specs/F13-eDoc-Emission-Engine; cp /tmp/t spec.md' cwd=root rc=2
+[bash] 'Set-Location specs\\F13-eDoc-Emission-Engine; Set-Content spec.md x' cwd=root rc=2
+[bash] 'cd specs/F13-eDoc-Emission-Engine && echo x | tee spec.md' cwd=root rc=2
+[bash] 'cd specs && cd F13-eDoc-Emission-Engine && echo x > spec.md' cwd=root rc=2
+[bash] 'cd specs/F13-eDoc-Emission-Engine && python -c "open(\'spec.md\',\'w\').write(\'x\')"' cwd=root rc=2
+[bash] 'echo x > spec.md' cwd=C:\Users\jquimis\AppData\Local\Temp\tmpqdl8oqoz\specs\F13-eDoc-Emission-Engine rc=2
+[bash] 'rm spec.md' cwd=C:\Users\jquimis\AppData\Local\Temp\tmpqdl8oqoz\specs\F13-eDoc-Emission-Engine rc=2
+[bash] 'echo x > C:/Users/jquimis/AppData/Local/Temp/tmpqdl8oqoz/specs/F13-eDoc-Emission-Engine/review.md' cwd=root rc=2
+[bash] 'echo x >> C:\\Users\\jquimis\\AppData\\Local\\Temp\\tmpqdl8oqoz\\specs\\F13-eDoc-Emission-Engine\\review.md' cwd=root rc=2
+[bash] 'cp /tmp/t.md C:/Users/jquimis/AppData/Local/Temp/tmpqdl8oqoz/specs/F13-eDoc-Emission-Engine/review.md' cwd=root rc=2
+[bash] 'mv /tmp/t.md C:/Users/jquimis/AppData/Local/Temp/tmpqdl8oqoz/specs/F13-eDoc-Emission-Engine/review.md' cwd=root rc=2
+[bash] 'rm C:/Users/jquimis/AppData/Local/Temp/tmpqdl8oqoz/specs/F13-eDoc-Emission-Engine/review.md' cwd=root rc=2
+[bash] 'sed -i s/a/b/ C:/Users/jquimis/AppData/Local/Temp/tmpqdl8oqoz/specs/F13-eDoc-Emission-Engine/review.md' cwd=root rc=2
+[bash] 'Set-Content -Path C:\\Users\\jquimis\\AppData\\Local\\Temp\\tmpqdl8oqoz\\specs\\F13-eDoc-Emission-Engine\\review.md -Value x' cwd=root rc=2
+[bash] 'echo x | tee C:/Users/jquimis/AppData/Local/Temp/tmpqdl8oqoz/specs/F13-eDoc-Emission-Engine/review.md' cwd=root rc=2
+[bash] 'cd specs/F13-eDoc-Emission-Engine && echo x > review.md' cwd=root rc=2
+[bash] 'cd specs/F13-eDoc-Emission-Engine/ && echo x > ./review.md' cwd=root rc=2
+[bash] 'cd C:/Users/jquimis/AppData/Local/Temp/tmpqdl8oqoz/specs/F13-eDoc-Emission-Engine && rm review.md' cwd=root rc=2
+[bash] 'pushd specs/F13-eDoc-Emission-Engine; cp /tmp/t review.md' cwd=root rc=2
+[bash] 'Set-Location specs\\F13-eDoc-Emission-Engine; Set-Content review.md x' cwd=root rc=2
+[bash] 'cd specs/F13-eDoc-Emission-Engine && echo x | tee review.md' cwd=root rc=2
+[bash] 'cd specs && cd F13-eDoc-Emission-Engine && echo x > review.md' cwd=root rc=2
+[bash] 'cd specs/F13-eDoc-Emission-Engine && python -c "open(\'review.md\',\'w\').write(\'x\')"' cwd=root rc=2
+[bash] 'echo x > review.md' cwd=C:\Users\jquimis\AppData\Local\Temp\tmpqdl8oqoz\specs\F13-eDoc-Emission-Engine rc=2
+[bash] 'rm review.md' cwd=C:\Users\jquimis\AppData\Local\Temp\tmpqdl8oqoz\specs\F13-eDoc-Emission-Engine rc=2
+[bash] 'echo x > C:/Users/jquimis/AppData/Local/Temp/tmpqdl8oqoz/specs/F13-eDoc-Emission-Engine/review.html' cwd=root rc=2
+[bash] 'echo x >> C:\\Users\\jquimis\\AppData\\Local\\Temp\\tmpqdl8oqoz\\specs\\F13-eDoc-Emission-Engine\\review.html' cwd=root rc=2
+[bash] 'cp /tmp/t.md C:/Users/jquimis/AppData/Local/Temp/tmpqdl8oqoz/specs/F13-eDoc-Emission-Engine/review.html' cwd=root rc=2
+[bash] 'mv /tmp/t.md C:/Users/jquimis/AppData/Local/Temp/tmpqdl8oqoz/specs/F13-eDoc-Emission-Engine/review.html' cwd=root rc=2
+[bash] 'rm C:/Users/jquimis/AppData/Local/Temp/tmpqdl8oqoz/specs/F13-eDoc-Emission-Engine/review.html' cwd=root rc=2
+[bash] 'sed -i s/a/b/ C:/Users/jquimis/AppData/Local/Temp/tmpqdl8oqoz/specs/F13-eDoc-Emission-Engine/review.html' cwd=root rc=2
+[bash] 'Set-Content -Path C:\\Users\\jquimis\\AppData\\Local\\Temp\\tmpqdl8oqoz\\specs\\F13-eDoc-Emission-Engine\\review.html -Value x' cwd=root rc=2
+[bash] 'echo x | tee C:/Users/jquimis/AppData/Local/Temp/tmpqdl8oqoz/specs/F13-eDoc-Emission-Engine/review.html' cwd=root rc=2
+[bash] 'cd specs/F13-eDoc-Emission-Engine && echo x > review.html' cwd=root rc=2
+[bash] 'cd specs/F13-eDoc-Emission-Engine/ && echo x > ./review.html' cwd=root rc=2
+[bash] 'cd C:/Users/jquimis/AppData/Local/Temp/tmpqdl8oqoz/specs/F13-eDoc-Emission-Engine && rm review.html' cwd=root rc=2
+[bash] 'pushd specs/F13-eDoc-Emission-Engine; cp /tmp/t review.html' cwd=root rc=2
+[bash] 'Set-Location specs\\F13-eDoc-Emission-Engine; Set-Content review.html x' cwd=root rc=2
+[bash] 'cd specs/F13-eDoc-Emission-Engine && echo x | tee review.html' cwd=root rc=2
+[bash] 'cd specs && cd F13-eDoc-Emission-Engine && echo x > review.html' cwd=root rc=2
+[bash] 'cd specs/F13-eDoc-Emission-Engine && python -c "open(\'review.html\',\'w\').write(\'x\')"' cwd=root rc=2
+[bash] 'echo x > review.html' cwd=C:\Users\jquimis\AppData\Local\Temp\tmpqdl8oqoz\specs\F13-eDoc-Emission-Engine rc=2
+[bash] 'rm review.html' cwd=C:\Users\jquimis\AppData\Local\Temp\tmpqdl8oqoz\specs\F13-eDoc-Emission-Engine rc=2
+[bash] 'echo x > C:/Users/jquimis/AppData/Local/Temp/tmpqdl8oqoz/specs/login_v2/tasks.md' cwd=root rc=2
+[bash] 'echo x >> C:\\Users\\jquimis\\AppData\\Local\\Temp\\tmpqdl8oqoz\\specs\\login_v2\\tasks.md' cwd=root rc=2
+[bash] 'cp /tmp/t.md C:/Users/jquimis/AppData/Local/Temp/tmpqdl8oqoz/specs/login_v2/tasks.md' cwd=root rc=2
+[bash] 'mv /tmp/t.md C:/Users/jquimis/AppData/Local/Temp/tmpqdl8oqoz/specs/login_v2/tasks.md' cwd=root rc=2
+[bash] 'rm C:/Users/jquimis/AppData/Local/Temp/tmpqdl8oqoz/specs/login_v2/tasks.md' cwd=root rc=2
+[bash] 'sed -i s/a/b/ C:/Users/jquimis/AppData/Local/Temp/tmpqdl8oqoz/specs/login_v2/tasks.md' cwd=root rc=2
+[bash] 'Set-Content -Path C:\\Users\\jquimis\\AppData\\Local\\Temp\\tmpqdl8oqoz\\specs\\login_v2\\tasks.md -Value x' cwd=root rc=2
+[bash] 'echo x | tee C:/Users/jquimis/AppData/Local/Temp/tmpqdl8oqoz/specs/login_v2/tasks.md' cwd=root rc=2
+[bash] 'cd specs/login_v2 && echo x > tasks.md' cwd=root rc=2
+[bash] 'cd specs/login_v2/ && echo x > ./tasks.md' cwd=root rc=2
+[bash] 'cd C:/Users/jquimis/AppData/Local/Temp/tmpqdl8oqoz/specs/login_v2 && rm tasks.md' cwd=root rc=2
+[bash] 'pushd specs/login_v2; cp /tmp/t tasks.md' cwd=root rc=2
+[bash] 'Set-Location specs\\login_v2; Set-Content tasks.md x' cwd=root rc=2
+[bash] 'cd specs/login_v2 && echo x | tee tasks.md' cwd=root rc=2
+[bash] 'cd specs && cd login_v2 && echo x > tasks.md' cwd=root rc=2
+[bash] 'cd specs/login_v2 && python -c "open(\'tasks.md\',\'w\').write(\'x\')"' cwd=root rc=2
+[bash] 'echo x > tasks.md' cwd=C:\Users\jquimis\AppData\Local\Temp\tmpqdl8oqoz\specs\login_v2 rc=2
+[bash] 'rm tasks.md' cwd=C:\Users\jquimis\AppData\Local\Temp\tmpqdl8oqoz\specs\login_v2 rc=2
+[bash] 'echo x > C:/Users/jquimis/AppData/Local/Temp/tmpqdl8oqoz/specs/login_v2/plan.md' cwd=root rc=2
+[bash] 'echo x >> C:\\Users\\jquimis\\AppData\\Local\\Temp\\tmpqdl8oqoz\\specs\\login_v2\\plan.md' cwd=root rc=2
+[bash] 'cp /tmp/t.md C:/Users/jquimis/AppData/Local/Temp/tmpqdl8oqoz/specs/login_v2/plan.md' cwd=root rc=2
+[bash] 'mv /tmp/t.md C:/Users/jquimis/AppData/Local/Temp/tmpqdl8oqoz/specs/login_v2/plan.md' cwd=root rc=2
+[bash] 'rm C:/Users/jquimis/AppData/Local/Temp/tmpqdl8oqoz/specs/login_v2/plan.md' cwd=root rc=2
+[bash] 'sed -i s/a/b/ C:/Users/jquimis/AppData/Local/Temp/tmpqdl8oqoz/specs/login_v2/plan.md' cwd=root rc=2
+[bash] 'Set-Content -Path C:\\Users\\jquimis\\AppData\\Local\\Temp\\tmpqdl8oqoz\\specs\\login_v2\\plan.md -Value x' cwd=root rc=2
+[bash] 'echo x | tee C:/Users/jquimis/AppData/Local/Temp/tmpqdl8oqoz/specs/login_v2/plan.md' cwd=root rc=2
+[bash] 'cd specs/login_v2 && echo x > plan.md' cwd=root rc=2
+[bash] 'cd specs/login_v2/ && echo x > ./plan.md' cwd=root rc=2
+[bash] 'cd C:/Users/jquimis/AppData/Local/Temp/tmpqdl8oqoz/specs/login_v2 && rm plan.md' cwd=root rc=2
+[bash] 'pushd specs/login_v2; cp /tmp/t plan.md' cwd=root rc=2
+[bash] 'Set-Location specs\\login_v2; Set-Content plan.md x' cwd=root rc=2
+[bash] 'cd specs/login_v2 && echo x | tee plan.md' cwd=root rc=2
+[bash] 'cd specs && cd login_v2 && echo x > plan.md' cwd=root rc=2
+[bash] 'cd specs/login_v2 && python -c "open(\'plan.md\',\'w\').write(\'x\')"' cwd=root rc=2
+[bash] 'echo x > plan.md' cwd=C:\Users\jquimis\AppData\Local\Temp\tmpqdl8oqoz\specs\login_v2 rc=2
+[bash] 'rm plan.md' cwd=C:\Users\jquimis\AppData\Local\Temp\tmpqdl8oqoz\specs\login_v2 rc=2
+[bash] 'echo x > C:/Users/jquimis/AppData/Local/Temp/tmpqdl8oqoz/specs/login_v2/spec.md' cwd=root rc=2
+[bash] 'echo x >> C:\\Users\\jquimis\\AppData\\Local\\Temp\\tmpqdl8oqoz\\specs\\login_v2\\spec.md' cwd=root rc=2
+[bash] 'cp /tmp/t.md C:/Users/jquimis/AppData/Local/Temp/tmpqdl8oqoz/specs/login_v2/spec.md' cwd=root rc=2
+[bash] 'mv /tmp/t.md C:/Users/jquimis/AppData/Local/Temp/tmpqdl8oqoz/specs/login_v2/spec.md' cwd=root rc=2
+[bash] 'rm C:/Users/jquimis/AppData/Local/Temp/tmpqdl8oqoz/specs/login_v2/spec.md' cwd=root rc=2
+[bash] 'sed -i s/a/b/ C:/Users/jquimis/AppData/Local/Temp/tmpqdl8oqoz/specs/login_v2/spec.md' cwd=root rc=2
+[bash] 'Set-Content -Path C:\\Users\\jquimis\\AppData\\Local\\Temp\\tmpqdl8oqoz\\specs\\login_v2\\spec.md -Value x' cwd=root rc=2
+[bash] 'echo x | tee C:/Users/jquimis/AppData/Local/Temp/tmpqdl8oqoz/specs/login_v2/spec.md' cwd=root rc=2
+[bash] 'cd specs/login_v2 && echo x > spec.md' cwd=root rc=2
+[bash] 'cd specs/login_v2/ && echo x > ./spec.md' cwd=root rc=2
+[bash] 'cd C:/Users/jquimis/AppData/Local/Temp/tmpqdl8oqoz/specs/login_v2 && rm spec.md' cwd=root rc=2
+[bash] 'pushd specs/login_v2; cp /tmp/t spec.md' cwd=root rc=2
+[bash] 'Set-Location specs\\login_v2; Set-Content spec.md x' cwd=root rc=2
+[bash] 'cd specs/login_v2 && echo x | tee spec.md' cwd=root rc=2
+[bash] 'cd specs && cd login_v2 && echo x > spec.md' cwd=root rc=2
+[bash] 'cd specs/login_v2 && python -c "open(\'spec.md\',\'w\').write(\'x\')"' cwd=root rc=2
+[bash] 'echo x > spec.md' cwd=C:\Users\jquimis\AppData\Local\Temp\tmpqdl8oqoz\specs\login_v2 rc=2
+[bash] 'rm spec.md' cwd=C:\Users\jquimis\AppData\Local\Temp\tmpqdl8oqoz\specs\login_v2 rc=2
+[bash] 'echo x > C:/Users/jquimis/AppData/Local/Temp/tmpqdl8oqoz/specs/login_v2/review.md' cwd=root rc=2
+[bash] 'echo x >> C:\\Users\\jquimis\\AppData\\Local\\Temp\\tmpqdl8oqoz\\specs\\login_v2\\review.md' cwd=root rc=2
+[bash] 'cp /tmp/t.md C:/Users/jquimis/AppData/Local/Temp/tmpqdl8oqoz/specs/login_v2/review.md' cwd=root rc=2
+[bash] 'mv /tmp/t.md C:/Users/jquimis/AppData/Local/Temp/tmpqdl8oqoz/specs/login_v2/review.md' cwd=root rc=2
+[bash] 'rm C:/Users/jquimis/AppData/Local/Temp/tmpqdl8oqoz/specs/login_v2/review.md' cwd=root rc=2
+[bash] 'sed -i s/a/b/ C:/Users/jquimis/AppData/Local/Temp/tmpqdl8oqoz/specs/login_v2/review.md' cwd=root rc=2
+[bash] 'Set-Content -Path C:\\Users\\jquimis\\AppData\\Local\\Temp\\tmpqdl8oqoz\\specs\\login_v2\\review.md -Value x' cwd=root rc=2
+[bash] 'echo x | tee C:/Users/jquimis/AppData/Local/Temp/tmpqdl8oqoz/specs/login_v2/review.md' cwd=root rc=2
+[bash] 'cd specs/login_v2 && echo x > review.md' cwd=root rc=2
+[bash] 'cd specs/login_v2/ && echo x > ./review.md' cwd=root rc=2
+[bash] 'cd C:/Users/jquimis/AppData/Local/Temp/tmpqdl8oqoz/specs/login_v2 && rm review.md' cwd=root rc=2
+[bash] 'pushd specs/login_v2; cp /tmp/t review.md' cwd=root rc=2
+[bash] 'Set-Location specs\\login_v2; Set-Content review.md x' cwd=root rc=2
+[bash] 'cd specs/login_v2 && echo x | tee review.md' cwd=root rc=2
+[bash] 'cd specs && cd login_v2 && echo x > review.md' cwd=root rc=2
+[bash] 'cd specs/login_v2 && python -c "open(\'review.md\',\'w\').write(\'x\')"' cwd=root rc=2
+[bash] 'echo x > review.md' cwd=C:\Users\jquimis\AppData\Local\Temp\tmpqdl8oqoz\specs\login_v2 rc=2
+[bash] 'rm review.md' cwd=C:\Users\jquimis\AppData\Local\Temp\tmpqdl8oqoz\specs\login_v2 rc=2
+[bash] 'echo x > C:/Users/jquimis/AppData/Local/Temp/tmpqdl8oqoz/specs/login_v2/review.html' cwd=root rc=2
+[bash] 'echo x >> C:\\Users\\jquimis\\AppData\\Local\\Temp\\tmpqdl8oqoz\\specs\\login_v2\\review.html' cwd=root rc=2
+[bash] 'cp /tmp/t.md C:/Users/jquimis/AppData/Local/Temp/tmpqdl8oqoz/specs/login_v2/review.html' cwd=root rc=2
+[bash] 'mv /tmp/t.md C:/Users/jquimis/AppData/Local/Temp/tmpqdl8oqoz/specs/login_v2/review.html' cwd=root rc=2
+[bash] 'rm C:/Users/jquimis/AppData/Local/Temp/tmpqdl8oqoz/specs/login_v2/review.html' cwd=root rc=2
+[bash] 'sed -i s/a/b/ C:/Users/jquimis/AppData/Local/Temp/tmpqdl8oqoz/specs/login_v2/review.html' cwd=root rc=2
+[bash] 'Set-Content -Path C:\\Users\\jquimis\\AppData\\Local\\Temp\\tmpqdl8oqoz\\specs\\login_v2\\review.html -Value x' cwd=root rc=2
+[bash] 'echo x | tee C:/Users/jquimis/AppData/Local/Temp/tmpqdl8oqoz/specs/login_v2/review.html' cwd=root rc=2
+[bash] 'cd specs/login_v2 && echo x > review.html' cwd=root rc=2
+[bash] 'cd specs/login_v2/ && echo x > ./review.html' cwd=root rc=2
+[bash] 'cd C:/Users/jquimis/AppData/Local/Temp/tmpqdl8oqoz/specs/login_v2 && rm review.html' cwd=root rc=2
+[bash] 'pushd specs/login_v2; cp /tmp/t review.html' cwd=root rc=2
+[bash] 'Set-Location specs\\login_v2; Set-Content review.html x' cwd=root rc=2
+[bash] 'cd specs/login_v2 && echo x | tee review.html' cwd=root rc=2
+[bash] 'cd specs && cd login_v2 && echo x > review.html' cwd=root rc=2
+[bash] 'cd specs/login_v2 && python -c "open(\'review.html\',\'w\').write(\'x\')"' cwd=root rc=2
+[bash] 'echo x > review.html' cwd=C:\Users\jquimis\AppData\Local\Temp\tmpqdl8oqoz\specs\login_v2 rc=2
+[bash] 'rm review.html' cwd=C:\Users\jquimis\AppData\Local\Temp\tmpqdl8oqoz\specs\login_v2 rc=2
+F-1 bypasses still allowed (should be empty): []
+--> PASS: F-1: every write/delete of tasks/plan/spec/review.* for 4 ids (abs, backslash, relative after cd/pushd/Set-Location, hook cwd) is blocked | []
+[bash] 'cat specs/F23-eDoc-POS/tasks.md' cwd=root rc=0
+[bash] 'ls specs/F23-eDoc-POS' cwd=root rc=0
+[bash] 'cd specs/F23-eDoc-POS && cat tasks.md' cwd=root rc=0
+[bash] 'echo x > notes.txt' cwd=root rc=0
+[bash] 'cd src && echo x > app.py' cwd=root rc=0
+[bash] 'git diff specs/F23-eDoc-POS/tasks.md' cwd=root rc=0
+[bash] 'python skill/scripts/aidd_status.py status specs/F23-eDoc-POS' cwd=root rc=0
+--> PASS: F-1 controls: reads / unrelated writes stay allowed | []
+RESIDUAL PROBE rc=0 | cp /tmp/tasks.md C:/Users/jquimis/AppData/Local/Temp/tmpqdl8oqoz/specs/F23-eDoc-POS/
+RESIDUAL PROBE rc=0 | mv /tmp/tasks.md C:/Users/jquimis/AppData/Local/Temp/tmpqdl8oqoz/specs/F23-eDoc-POS/
+RESIDUAL PROBE rc=2 | cp /tmp/tasks.md C:/Users/jquimis/AppData/Local/Temp/tmpqdl8oqoz/specs/002-aidd-hard-rules/
+RESIDUAL PROBE rc=0 | cd specs/F23-eDoc-POS && cp /tmp/tasks.md .
+RESIDUAL PROBE rc=0 | cd sp*/F23-eDoc-POS && echo x > tasks.md
+RESIDUAL PROBE rc=0 | cd specs/F23-eDoc-POS && echo x > tas*.md
+RESIDUAL PROBE rc=0 | D=specs/F23-eDoc-POS; echo x > $D/tasks.md
+RESIDUAL PROBE rc=2 | git -C specs/F23-eDoc-POS checkout tasks.md

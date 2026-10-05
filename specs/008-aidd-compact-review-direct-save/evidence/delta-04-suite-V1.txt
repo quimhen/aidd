@@ -1,0 +1,12 @@
+# delta audit V-1 in a scratch copy of the repo (python -m unittest discover -s tests)
+# first run: the copy lacked catalog/ and commands/ -> 4 environment-only failures (marketplace, generate_adapters); rerun with them copied: OK
+ERROR: test_hotfix_report_installs_cleanly (test_marketplace.TestRealCatalog.test_hotfix_report_installs_cleanly)
+FAIL: test_skips_existing_without_force (test_generate_adapters.TestGenerate.test_skips_existing_without_force)
+FAIL: test_every_real_source_command_parses (test_generate_adapters.TestParseSource.test_every_real_source_command_parses)
+FAIL: test_shipped_catalog_loads_and_has_no_conflicts (test_marketplace.TestRealCatalog.test_shipped_catalog_loads_and_has_no_conflicts)
+Ran 1751 tests in 595.129s
+FAILED (failures=3, errors=1, skipped=1)
+exit=1
+
+# rerun: tests.test_marketplace tests.test_generate_adapters -> Ran 31 tests, OK
+# targeted: tests.test_aidd_review tests.test_dot_aidd_mirror -> Ran 67 tests, OK (TestRealModules.test_ac317_states_and_exits_both_ids ok, test_constants_match_contract ok)

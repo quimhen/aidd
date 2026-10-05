@@ -1,0 +1,3 @@
+Ran 1518 tests in 768.722s
+OK
+exit=0

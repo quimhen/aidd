@@ -1,0 +1,157 @@
+# python -m unittest discover -s tests | exit 0 | 2026-10-05T16:02:26
+..........................aidd-memory: warning: C:\Users\jquimis\AppData\Local\Temp\tmp5dburtj0\.aidd\memory\project.toon:4: skipped malformed row
+....aidd-memory: warning: C:\Users\jquimis\AppData\Local\Temp\tmpmom6dkbx\.aidd\memory\bad.toon:5: skipped unparseable line
+aidd-memory: warning: C:\Users\jquimis\AppData\Local\Temp\tmpmom6dkbx\.aidd\memory\bad.toon:6: skipped unparseable line
+aidd-memory: warning: C:\Users\jquimis\AppData\Local\Temp\tmpmom6dkbx\.aidd\memory\bad.toon:7: skipped unparseable line
+...................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................  ! az boards work-item create failed: boom
+.....  ! az boards work-item show failed: boom
+.  ! az boards work-item update failed: boom
+........  ! Bitbucket issue create failed: HTTP 403 — no access
+.  ! Bitbucket issue create failed: no route to host
+....  ! Bitbucket get_status failed: HTTP 404
+.  ! Bitbucket get_status: could not extract an issue id from 'no-id-here'
+.  ! Bitbucket link_pr failed: HTTP 403 — no access
+.....  ! gh issue create failed: boom
+.....  ! gh issue view failed: boom
+..  ! gh issue comment failed: boom
+...............................................................skip (exists): C:\Users\jquimis\AppData\Local\Temp\tmpug5f0yq9\.gemini\commands\aidd-align.toml
+skip (exists): C:\Users\jquimis\AppData\Local\Temp\tmpug5f0yq9\.gemini\commands\aidd-audit.toml
+skip (exists): C:\Users\jquimis\AppData\Local\Temp\tmpug5f0yq9\.gemini\commands\aidd-build.toml
+skip (exists): C:\Users\jquimis\AppData\Local\Temp\tmpug5f0yq9\.gemini\commands\aidd-converge.toml
+skip (exists): C:\Users\jquimis\AppData\Local\Temp\tmpug5f0yq9\.gemini\commands\aidd-doc.toml
+skip (exists): C:\Users\jquimis\AppData\Local\Temp\tmpug5f0yq9\.gemini\commands\aidd-plan.toml
+skip (exists): C:\Users\jquimis\AppData\Local\Temp\tmpug5f0yq9\.gemini\commands\aidd-scope.toml
+skip (exists): C:\Users\jquimis\AppData\Local\Temp\tmpug5f0yq9\.gemini\commands\aidd-tasks.toml
+..................................................................................................................................................skip (exists): C:\Users\jquimis\AppData\Local\Temp\tmp9xvsc1_x\.github\workflows\aidd.yml
+...Not a directory: \path\does\not\exist\at\all
+.Unknown target 'not-a-real-target'. Available: github, azure-devops.
+..................Failed to link the PR to T-01 — see message above.
+...--pr-url is required together with --apply
+..No tracker ref found for T-01 in C:\Users\jquimis\AppData\Local\Temp\tmpcwqvabef\.aidd-issues.json — has it been synced with tasks_to_issues.py --apply yet?
+............................................................................................................................................................................................................................................................................................................................................................................................................................................................................Not found: \no\such\tasks.md
+..................warning: tasks.md has no 'Nonexistent Column' column — skipped
+...........................................................................
+----------------------------------------------------------------------
+Ran 1751 tests in 420.605s
+
+OK
+Installed AIDD's methodology + scripts to C:\Users\jquimis\AppData\Local\Temp\tmpkna_l_v4\myproject\.aidd
+Next: add AGENTS.md's AIDD section (see adapters/AGENTS.md.snippet) so your
+agent tool actually reads it — `aidd init` alone doesn't wire that up.
+For Gemini CLI, Cursor, Windsurf, Cline, or GitHub Copilot, also run:
+  aidd adapters generate all C:\Users\jquimis\AppData\Local\Temp\tmpkna_l_v4\myproject
+[timing] mark_code_edit avg spawn+run 761 ms
+Available CI targets:
+  github         github-actions-aidd.yml      -> .github\workflows\aidd.yml
+  azure-devops   azure-pipelines-aidd.yml     -> azure-pipelines-aidd.yml
+
+aidd CI installer — copies one of skill/templates/ci/*.yml into a project's
+conventional CI path.
+
+This is opt-in, on purpose: unlike `aidd init` (which just copies a local
+methodology bundle a project already asked for), installing a CI file adds
+*shared, always-on* state — a workflow that will run on every teammate's PR
+the moment it lands on the default branch. That's a decision a project
+should make explicitly, one command at a time; nothing in AIDD writes this
+file on its own, and no other command chains into calling this one for you.
+
+Mirrors skill/scripts/generate_adapters.py's shape deliberately (same
+--list, same positional-args-plus-flag CLI, same exit codes) — this is the
+same kind of idempotent-overwrite copy, just one file instead of eight
+per-target renders:
+
+Usage:
+    python install_ci.py --list
+    python install_ci.py <github|azure-devops> [project-root] [--force]
+
+Targets:
+    github        -> <project-root>/.github/workflows/aidd.yml
+    azure-devops  -> <project-root>/azure-pipelines-aidd.yml
+
+    azure-devops installs as azure-pipelines-aidd.yml, deliberately NOT
+    azure-pipelines.yml — a project may already have its own
+    azure-pipelines.yml for other build/release purposes, and this file is
+    meant to be wired up as its own, separate pipeline definition in Azure
+    DevOps (Pipelines -> New pipeline -> pick this file) rather than
+    silently overwriting whatever that project's existing top-level
+    pipeline already does.
+
+Exit code 0 = done (file written, or already existed and --force wasn't
+passed — that is a skip, not an error). Exit code 2 = usage error or
+unknown target.
+
+wrote C:\Users\jquimis\AppData\Local\Temp\tmpyzlo2ig2\.github\workflows\aidd.yml
+This runs on every PR from now on — commit it deliberately, and add any required secrets (GITHUB_TOKEN is automatic; AZURE_DEVOPS_EXT_PAT is not).
+Installed/updated hooks: SessionStart, PostToolUse, PreToolUse, UserPromptSubmit, PostToolUse, PostToolUse, PostToolUse, SessionStart, PostToolUse, Stop, PreToolUse, PreToolUse
+Written to C:\Users\jquimis\AppData\Local\Temp\tmpvwszx_54\settings.json
+Restart Claude Code sessions for the change to take effect.
+Installed/updated hooks: SessionStart, PostToolUse, PreToolUse, UserPromptSubmit, PostToolUse, PostToolUse, PostToolUse, SessionStart, PostToolUse, Stop, PreToolUse, PreToolUse, PreToolUse
+Written to C:\Users\jquimis\AppData\Local\Temp\tmpu_c58977\settings.json
+Restart Claude Code sessions for the change to take effect.
+Already installed — no changes made.
+Upgraded (new matcher / timeout): Stop
+Installed/updated hooks: SessionStart, PostToolUse, PreToolUse, UserPromptSubmit, PostToolUse, PostToolUse, PostToolUse, SessionStart, PostToolUse, PreToolUse, PreToolUse
+Written to C:\Users\jquimis\AppData\Local\Temp\tmp9jatl1u3\settings.json
+Restart Claude Code sessions for the change to take effect.
+Installed/updated hooks: SessionStart, PostToolUse, PreToolUse, UserPromptSubmit, PostToolUse, PostToolUse, PostToolUse, SessionStart, PostToolUse, Stop, PreToolUse, PreToolUse, PreToolUse
+Written to C:\Users\jquimis\AppData\Local\Temp\tmprw8hu0lc\settings.json
+Restart Claude Code sessions for the change to take effect.
+Installed/updated hooks: SessionStart, PostToolUse, PreToolUse, UserPromptSubmit, PostToolUse, PostToolUse, PostToolUse, SessionStart, PostToolUse, Stop, PreToolUse, PreToolUse
+Written to C:\Users\jquimis\AppData\Local\Temp\tmpduxd43h7\settings.json
+Restart Claude Code sessions for the change to take effect.
+Installed/updated hooks: PreToolUse
+Written to C:\Users\jquimis\AppData\Local\Temp\tmpduxd43h7\settings.json
+Restart Claude Code sessions for the change to take effect.
+Already installed — no changes made.
+Installed/updated hooks: SessionStart, PostToolUse, PreToolUse, UserPromptSubmit, PostToolUse, PostToolUse, PostToolUse, SessionStart, PostToolUse, Stop, PreToolUse, PreToolUse
+Written to C:\Users\jquimis\AppData\Local\Temp\tmp0qkro793\settings.json
+Restart Claude Code sessions for the change to take effect.
+Already installed — no changes made.
+WARNING: C:\Users\jquimis\AppData\Local\Temp\tmpmdyjzt0f\settings.json exists but isn't valid JSON — not touching it. Fix or back it up, then re-run this installer.
+Migrated: removed 3 old aidd gate entries (require_aidd.py, require_independent_audit.py, require_graph_coherence_audit.py) — replaced by rule_gate.py.
+Installed/updated hooks: SessionStart, PostToolUse, PreToolUse, UserPromptSubmit, PostToolUse, PostToolUse, PostToolUse, SessionStart, PostToolUse, Stop, PreToolUse, PreToolUse
+Written to C:\Users\jquimis\AppData\Local\Temp\tmpu5a_sswp\settings.json
+Restart Claude Code sessions for the change to take effect.
+Already installed — no changes made.
+Installed/updated hooks: SessionStart, PostToolUse, PreToolUse, UserPromptSubmit, PostToolUse, PostToolUse, PostToolUse, SessionStart, PostToolUse, Stop, PreToolUse, PreToolUse
+Written to C:\Users\jquimis\AppData\Local\Temp\tmpnfd7ux_9\settings.json
+Restart Claude Code sessions for the change to take effect.
+Upgraded (new matcher / timeout): PreToolUse, PostToolUse
+Installed/updated hooks: SessionStart, PostToolUse, UserPromptSubmit, PostToolUse, PostToolUse, SessionStart, PostToolUse, Stop, PreToolUse, PreToolUse
+Written to C:\Users\jquimis\AppData\Local\Temp\tmpxpcrm87r\settings.json
+Restart Claude Code sessions for the change to take effect.
+Already installed — no changes made.
+Installed/updated hooks: SessionStart, PostToolUse, PreToolUse, UserPromptSubmit, PostToolUse, PostToolUse, PostToolUse, SessionStart, PostToolUse, Stop, PreToolUse, PreToolUse
+Written to C:\Users\jquimis\AppData\Local\Temp\tmprrh_yjys\settings.json
+Restart Claude Code sessions for the change to take effect.
+Already installed — no changes made.
+Installed/updated hooks: SessionStart, PostToolUse, PreToolUse, UserPromptSubmit, PostToolUse, PostToolUse, PostToolUse, SessionStart, PostToolUse, Stop, PreToolUse, PreToolUse
+Written to C:\Users\jquimis\AppData\Local\Temp\tmp9qfxyy8k\settings.json
+Restart Claude Code sessions for the change to take effect.
+Already installed — no changes made.
+Upgraded (new matcher / timeout): PreToolUse, PostToolUse
+Installed/updated hooks: SessionStart, PostToolUse, UserPromptSubmit, PostToolUse, PostToolUse, SessionStart, PostToolUse, Stop, PreToolUse, PreToolUse
+Written to C:\Users\jquimis\AppData\Local\Temp\tmpc6i2lo04\settings.json
+Restart Claude Code sessions for the change to take effect.
+Already installed — no changes made.
+Linked T-02 (https://github.com/x/y/issues/2) -> https://github.com/x/y/pull/9, and wrote it into C:\Users\jquimis\AppData\Local\Temp\tmpwoodzche\tasks.md's Tracker ref column.
+Linked T-01 (https://github.com/x/y/issues/1) -> https://github.com/x/y/pull/5, and wrote it into C:\Users\jquimis\AppData\Local\Temp\tmpr84kg0uj\tasks.md's Tracker ref column.
+Would link T-01 (https://github.com/x/y/issues/1) to (a PR URL, once known). Re-run with --pr-url <url> --apply to actually link it.
+
+[timing, median of 15] bare python 52 ms | irrelevant file 149 ms | spec file (tasks.md) 127 ms | code file 124 ms | Bash irrelevant 99 ms | Bash relevant 244 ms
+Syncing status for C:\Users\jquimis\AppData\Local\Temp\tmpz14krik1\tasks.md (github):
+============================================================
+Task       tasks.md        tracker
+T-01       open         -> closed
+
+C:\Users\jquimis\AppData\Local\Temp\tmpz14krik1\tasks.md updated.
+Syncing status for C:\Users\jquimis\AppData\Local\Temp\tmpvd517ydz\tasks.md (github):
+============================================================
+Task       tasks.md        tracker
+T-01       open         -> closed
+T-02       open         == open
+
+C:\Users\jquimis\AppData\Local\Temp\tmpvd517ydz\tasks.md updated.
+No tracker refs found in C:\Users\jquimis\AppData\Local\Temp\tmpm4obi6gl\.aidd-issues.json — nothing to sync. Run tasks_to_issues.py --apply first.
+No tracker refs found in C:\Users\jquimis\AppData\Local\Temp\tmpgnv3bepi\.aidd-issues.json — nothing to sync. Run tasks_to_issues.py --apply first.
+Provider 'github' has no get_status() (contract v1 only) — nothing to sync, skipping.

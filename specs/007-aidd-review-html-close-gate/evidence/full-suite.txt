@@ -1,0 +1,4 @@
+$ python -m unittest discover -s tests (working tree, 2026-10-05)
+Ran 1500 tests in 318.346s
+OK
+EXIT=0

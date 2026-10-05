@@ -1,0 +1,573 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; script-src 'sha256-z3/jGhebujiQvtf3VetdJnOk9lVwKVEK/bcgNdpjSns='; base-uri 'none'; form-action 'none'">
+<title>Review - Review 002-aidd-hard-rules</title>
+<!-- aidd:FR-303 aidd:FR-305 aidd:FR-310 aidd:FR-311 aidd:FR-312 compact tabbed review page (spec 008) -->
+<style>
+:root{--bg:#fff;--fg:#1d2430;--muted:#5b6678;--line:#d5dae3;--card:#f6f8fb;--accent:#1f5fbf;--ok:#1b7f3b;--warn-bg:#fff4d6;--warn-line:#d9a400;--mand-bg:#fff0f0;--mand-line:#c0392b;--code:#eef1f6;--sel:#e3ecfa}
+@media (prefers-color-scheme:dark){:root{--bg:#14181f;--fg:#e4e8ef;--muted:#9aa5b8;--line:#2f3846;--card:#1c222c;--accent:#6fa3ef;--ok:#52c27a;--warn-bg:#3a3017;--warn-line:#b38a00;--mand-bg:#3a1c1c;--mand-line:#e0675a;--code:#232b37;--sel:#22324a}}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;min-width:360px}
+header.top{position:sticky;top:0;z-index:5;background:var(--card);border-bottom:1px solid var(--line);padding:8px 16px}
+header.top h1{font-size:1.1rem;margin:0 0 4px;overflow-wrap:anywhere}
+.meta{color:var(--muted);font-size:.85rem;display:flex;flex-wrap:wrap;gap:4px 16px}
+.bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:8px}
+button{font:inherit;min-height:44px;padding:6px 12px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--fg);cursor:pointer}
+button[disabled]{opacity:.55;cursor:not-allowed}
+button.primary{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+button:focus-visible,input:focus-visible,textarea:focus-visible,summary:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+#aidd-progress{font-weight:600}
+#aidd-alert:empty,#aidd-status:empty{display:none}
+#aidd-alert{background:var(--mand-bg);border:2px solid var(--mand-line);border-radius:6px;padding:8px 12px;margin-top:8px;font-weight:600;overflow-wrap:anywhere}
+#aidd-status{background:var(--warn-bg);border:1px solid var(--warn-line);border-radius:6px;padding:8px 12px;margin-top:8px;overflow-wrap:anywhere}
+#aidd-status p{margin:4px 0}
+#aidd-status textarea{width:100%;min-height:8em;font:13px/1.4 ui-monospace,Consolas,monospace;background:var(--bg);color:var(--fg);border:1px solid var(--line)}
+.tabs{display:flex;gap:4px;overflow-x:auto;white-space:nowrap;margin-top:8px;padding-bottom:2px;-webkit-overflow-scrolling:touch}
+[role="tab"]{flex:0 0 auto;border-radius:6px 6px 0 0;border-bottom:3px solid transparent}
+[role="tab"][aria-selected="true"]{background:var(--sel);border-bottom-color:var(--accent);font-weight:600}
+[role="tab"] .badge{display:inline-block;margin-left:6px;padding:0 6px;border-radius:9px;background:var(--code);font-size:.8rem;font-weight:400}
+[role="tab"] .badge.done{background:var(--ok);color:#fff}
+main{padding:16px;max-width:960px;margin:0 auto}
+[role="tabpanel"]{padding:0}
+[role="tabpanel"] > h2{font-size:1.05rem;margin:0 0 8px}
+.tabbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:0 0 12px}
+.tabbar .why{color:var(--muted);font-size:.9rem}
+.carry{color:var(--muted);margin:0 0 12px;overflow-wrap:anywhere}
+.aidd-warn{background:var(--warn-bg);border:1px solid var(--warn-line);border-radius:6px;padding:8px 12px 8px 28px;margin:0 0 12px}
+.aidd-item{display:grid;grid-template-columns:44px 1fr;gap:0 8px;align-items:start;border-top:1px solid var(--line);padding:8px 0}
+.aidd-item > .ck{grid-row:1 / span 6;display:flex;align-items:center;justify-content:center;min-width:44px;min-height:44px;cursor:pointer}
+.aidd-item > .ck input{width:22px;height:22px;margin:0;cursor:pointer}
+.aidd-item > *:not(.ck){grid-column:2}
+.aidd-item .code{font-weight:700;font-family:ui-monospace,Consolas,monospace;overflow-wrap:anywhere}
+.aidd-item .txt,.aidd-item .ans,.aidd-item .src{overflow-wrap:anywhere}
+.aidd-item .src{color:var(--muted);font-size:.85rem}
+.aidd-item.checked .code{color:var(--ok)}
+.aidd-item[data-mandatory]{background:var(--mand-bg);border-left:4px solid var(--mand-line);padding-left:4px}
+.aidd-item[data-unanswered] .ans,.aidd-item[data-edge] .code{color:var(--mand-line)}
+.aidd-item .aidd-c{width:100%;min-height:44px;margin-top:4px;font:inherit;background:var(--bg);color:var(--fg);border:1px solid var(--line);border-radius:4px;padding:6px}
+.aidd-item.focus{outline:2px solid var(--accent);outline-offset:2px}
+details.fallback{margin:16px 0 0;padding:8px 12px;background:var(--card);border:1px solid var(--line);border-radius:6px}
+details.fallback summary{cursor:pointer;min-height:44px;display:flex;align-items:center}
+.warn{background:var(--warn-bg);border:1px solid var(--warn-line);border-radius:6px;padding:8px 12px;margin:8px 16px}
+code{background:var(--code);padding:1px 4px;border-radius:3px;overflow-wrap:anywhere}
+a{color:var(--accent);overflow-wrap:anywhere}
+h1,h2,h3,p,li{overflow-wrap:anywhere}
+@media print{header.top{position:static}.tabs,.tabbar,#aidd-approve{display:none}[role="tabpanel"],[role="tabpanel"][hidden]{display:block!important;margin-bottom:16px}.aidd-item{break-inside:avoid}.aidd-item .aidd-c{border:1px solid #000}}
+</style>
+</head>
+<body>
+<header class="top" id="aidd-root" data-spec="002-aidd-hard-rules" data-tasks-hash="e589600a50a0" data-tasks-hash8="e589600a" data-sources-digest="7cb4a3b5c94b" data-generated="2026-10-05">
+<h1>Review 002-aidd-hard-rules</h1>
+<div class="meta"><span>spec 002-aidd-hard-rules</span><span>tasks hash e589600a</span><span>generated 2026-10-05</span><span id="aidd-progress" aria-live="polite"></span></div>
+<div class="bar"><button type="button" id="aidd-approve" class="primary">Guardar progreso</button></div>
+<div id="aidd-alert" role="alert"></div>
+<div id="aidd-status" role="status" aria-live="polite"></div>
+<div class="tabs" id="aidd-tablist" role="tablist" aria-label="Secciones"></div>
+</header>
+<noscript><div class="warn">This page needs JavaScript to record your review. Without it: read the items below, then create <code>review.md</code> by hand in specs/002-aidd-hard-rules/ with a front matter (<code>spec</code>, <code>tasks_hash</code>, <code>sources_digest</code>, <code>format: codes-v2</code>, <code>approved</code>) between two <code>---</code> lines, then one line per code: <code>- [x] FR-301</code> when approved or <code>- [ ] FR-301</code> when not, each optionally followed by one comment line starting with <code>&gt; </code>; then answer with <code>approve [tasks:e589600a]</code>.</div></noscript>
+<main id="aidd-main">
+<section role="tabpanel" id="tab-summary" data-tab="summary" aria-label="Resumen">
+<p class="aidd-srclink"><a href="spec.md" rel="noopener noreferrer" target="_blank">spec.md</a></p>
+<div class="aidd-item" data-code="SUMMARY" data-mandatory="1"><span class="code">SUMMARY</span><span class="txt">invoices</span><span class="fld" data-field="Cost">Cost: 35 min / 230k tokens</span><span class="src">spec.md</span></div>
+</section>
+<section role="tabpanel" id="tab-questions" data-tab="questions" aria-label="Preguntas">
+<p class="aidd-srclink"><a href="spec.md" rel="noopener noreferrer" target="_blank">spec.md</a></p>
+<div class="aidd-item" data-code="Q1"><span class="code">Q1</span><span class="txt">Which module/area of the system?</span><span class="fld" data-field="Answer">Answer: billing</span><span class="fld" data-field="Source">Source: repo — src/billing.py:1</span><span class="src">spec.md</span></div>
+<div class="aidd-item" data-code="Q2"><span class="code">Q2</span><span class="txt">New development or modification of something existing?</span><span class="fld" data-field="Answer">Answer: modification</span><span class="fld" data-field="Source">Source: repo — src/billing.py:1</span><span class="src">spec.md</span></div>
+<div class="aidd-item" data-code="Q3"><span class="code">Q3</span><span class="txt">Does it involve an external service, API, or integration?</span><span class="fld" data-field="Answer">Answer: no</span><span class="fld" data-field="Source">Source: repo — src/billing.py:1</span><span class="src">spec.md</span></div>
+<div class="aidd-item" data-code="Q4"><span class="code">Q4</span><span class="txt">Who is requesting it? (role/profile, not necessarily the name)</span><span class="fld" data-field="Answer">Answer: accounting</span><span class="fld" data-field="Source">Source: user — &quot;only the invoices screen&quot;</span><span class="src">spec.md</span></div>
+<div class="aidd-item" data-code="Q5"><span class="code">Q5</span><span class="txt">Dependencies on other modules or active developments?</span><span class="fld" data-field="Answer">Answer: none</span><span class="fld" data-field="Source">Source: repo — src/billing.py:1</span><span class="src">spec.md</span></div>
+<div class="aidd-item" data-code="Q6"><span class="code">Q6</span><span class="txt">Business objective (1 sentence — what it achieves and why)</span><span class="fld" data-field="Answer">Answer: invoices</span><span class="fld" data-field="Source">Source: repo — src/billing.py:1</span><span class="src">spec.md</span></div>
+<div class="aidd-item" data-code="Q7"><span class="code">Q7</span><span class="txt">Expected visual fidelity level (if there&#x27;s a mockup): exact | functional behavior only</span><span class="fld" data-field="Answer">Answer: functional</span><span class="fld" data-field="Source">Source: repo — src/billing.py:1</span><span class="src">spec.md</span></div>
+</section>
+<section role="tabpanel" id="tab-fr" data-tab="fr" aria-label="Requisitos">
+<p class="aidd-srclink"><a href="spec.md" rel="noopener noreferrer" target="_blank">spec.md</a></p>
+<div class="aidd-item" data-code="FR-001"><span class="code">FR-001</span><span class="txt">Billing totals are computed per invoice</span><span class="src">spec.md</span></div>
+<div class="aidd-item" data-code="FR-002"><span class="code">FR-002</span><span class="txt">The invoices screen lists the open invoices</span><span class="src">spec.md</span></div>
+<div class="aidd-item" data-code="FR-003"><span class="code">FR-003</span><span class="txt">Voided invoices are excluded</span><span class="src">spec.md</span></div>
+</section>
+<section role="tabpanel" id="tab-ac" data-tab="ac" aria-label="Casos">
+<p class="aidd-srclink"><a href="spec.md" rel="noopener noreferrer" target="_blank">spec.md</a></p>
+<div class="aidd-item" data-code="AC-01"><span class="code">AC-01</span><span class="txt">One invoice</span><span class="fld" data-field="Expected">Expected: total equals the line sum</span><span class="src">spec.md</span></div>
+<div class="aidd-item" data-code="AC-02"><span class="code">AC-02</span><span class="txt">Voided invoice</span><span class="fld" data-field="Expected">Expected: not listed</span><span class="src">spec.md</span></div>
+</section>
+<section role="tabpanel" id="tab-tasks" data-tab="tasks" aria-label="Tareas">
+<p class="aidd-srclink"><a href="tasks.md" rel="noopener noreferrer" target="_blank">tasks.md</a></p>
+<div class="aidd-item" data-code="T-01"><span class="code">T-01</span><span class="txt">- Agent min: 10</span><span class="fld" data-field="Minutes">Minutes: 10</span><span class="fld" data-field="Tokens">Tokens: 60k</span><span class="src">tasks.md</span></div>
+<div class="aidd-item" data-code="T-02"><span class="code">T-02</span><span class="txt">- Agent min: 20</span><span class="fld" data-field="Minutes">Minutes: 20</span><span class="fld" data-field="Tokens">Tokens: 90k</span><span class="src">tasks.md</span></div>
+<div class="aidd-item" data-code="T-03"><span class="code">T-03</span><span class="txt">- Agent min: 15</span><span class="fld" data-field="Minutes">Minutes: 15</span><span class="fld" data-field="Tokens">Tokens: 80k</span><span class="src">tasks.md</span></div>
+</section>
+<section role="tabpanel" id="tab-verification" data-tab="verification" aria-label="Verificación">
+<p class="aidd-srclink"><a href="spec.md" rel="noopener noreferrer" target="_blank">spec.md</a></p>
+<div class="aidd-item" data-code="V-1" data-mandatory="1"><span class="code">V-1</span><span class="txt">python src/check.py</span><span class="fld" data-field="Expected">Expected: exit 0</span><span class="fld" data-field="Covers">Covers: FR-001</span><span class="src">spec.md</span></div>
+<div class="aidd-item" data-code="V-2" data-mandatory="1"><span class="code">V-2</span><span class="txt">python src/check.py</span><span class="fld" data-field="Expected">Expected: contains: totals</span><span class="fld" data-field="Covers">Covers: FR-002</span><span class="src">spec.md</span></div>
+<div class="aidd-item" data-code="V-3" data-mandatory="1"><span class="code">V-3</span><span class="txt">python src/check.py</span><span class="fld" data-field="Expected">Expected: exit 0</span><span class="fld" data-field="Covers">Covers: FR-003</span><span class="src">spec.md</span></div>
+</section>
+<details class="fallback"><summary>Fallback: typed consent</summary><p>Only if the direct save and the download both fail: put review.md in the spec folder by hand, then paste this line to the agent:</p><p><code>approve [tasks:e589600a]</code></p></details>
+</main>
+<script type="application/json" id="aidd-data">{"spec": "002-aidd-hard-rules", "tasks_hash": "e589600a50a0", "sources_digest": "7cb4a3b5c94b", "tasks_hash8": "e589600a", "generated": "2026-10-05", "picker_id": "aidd-a8f30694", "format": "codes-v2", "warnings": [], "tabs": [{"id": "summary", "label": "Resumen", "items": [{"code": "SUMMARY", "kind": "summary", "text": "invoices", "fields": {"Cost": "35 min / 230k tokens"}, "edge": false, "unanswered": false, "mandatory": true, "source": "spec.md"}]}, {"id": "questions", "label": "Preguntas", "items": [{"code": "Q1", "kind": "question", "text": "Which module/area of the system?", "fields": {"Answer": "billing", "Source": "repo \u2014 src/billing.py:1"}, "edge": false, "unanswered": false, "mandatory": false, "source": "spec.md"}, {"code": "Q2", "kind": "question", "text": "New development or modification of something existing?", "fields": {"Answer": "modification", "Source": "repo \u2014 src/billing.py:1"}, "edge": false, "unanswered": false, "mandatory": false, "source": "spec.md"}, {"code": "Q3", "kind": "question", "text": "Does it involve an external service, API, or integration?", "fields": {"Answer": "no", "Source": "repo \u2014 src/billing.py:1"}, "edge": false, "unanswered": false, "mandatory": false, "source": "spec.md"}, {"code": "Q4", "kind": "question", "text": "Who is requesting it? (role/profile, not necessarily the name)", "fields": {"Answer": "accounting", "Source": "user \u2014 \"only the invoices screen\""}, "edge": false, "unanswered": false, "mandatory": false, "source": "spec.md"}, {"code": "Q5", "kind": "question", "text": "Dependencies on other modules or active developments?", "fields": {"Answer": "none", "Source": "repo \u2014 src/billing.py:1"}, "edge": false, "unanswered": false, "mandatory": false, "source": "spec.md"}, {"code": "Q6", "kind": "question", "text": "Business objective (1 sentence \u2014 what it achieves and why)", "fields": {"Answer": "invoices", "Source": "repo \u2014 src/billing.py:1"}, "edge": false, "unanswered": false, "mandatory": false, "source": "spec.md"}, {"code": "Q7", "kind": "question", "text": "Expected visual fidelity level (if there's a mockup): exact | functional behavior only", "fields": {"Answer": "functional", "Source": "repo \u2014 src/billing.py:1"}, "edge": false, "unanswered": false, "mandatory": false, "source": "spec.md"}]}, {"id": "fr", "label": "Requisitos", "items": [{"code": "FR-001", "kind": "fr", "text": "Billing totals are computed per invoice", "fields": {}, "edge": false, "unanswered": false, "mandatory": false, "source": "spec.md"}, {"code": "FR-002", "kind": "fr", "text": "The invoices screen lists the open invoices", "fields": {}, "edge": false, "unanswered": false, "mandatory": false, "source": "spec.md"}, {"code": "FR-003", "kind": "fr", "text": "Voided invoices are excluded", "fields": {}, "edge": false, "unanswered": false, "mandatory": false, "source": "spec.md"}]}, {"id": "ac", "label": "Casos", "items": [{"code": "AC-01", "kind": "ac", "text": "One invoice", "fields": {"Expected": "total equals the line sum"}, "edge": false, "unanswered": false, "mandatory": false, "source": "spec.md"}, {"code": "AC-02", "kind": "ac", "text": "Voided invoice", "fields": {"Expected": "not listed"}, "edge": false, "unanswered": false, "mandatory": false, "source": "spec.md"}]}, {"id": "tasks", "label": "Tareas", "items": [{"code": "T-01", "kind": "task", "text": "- Agent min: 10", "fields": {"Minutes": "10", "Tokens": "60k"}, "edge": false, "unanswered": false, "mandatory": false, "source": "tasks.md"}, {"code": "T-02", "kind": "task", "text": "- Agent min: 20", "fields": {"Minutes": "20", "Tokens": "90k"}, "edge": false, "unanswered": false, "mandatory": false, "source": "tasks.md"}, {"code": "T-03", "kind": "task", "text": "- Agent min: 15", "fields": {"Minutes": "15", "Tokens": "80k"}, "edge": false, "unanswered": false, "mandatory": false, "source": "tasks.md"}]}, {"id": "verification", "label": "Verificaci\u00f3n", "items": [{"code": "V-1", "kind": "verification", "text": "python src/check.py", "fields": {"Expected": "exit 0", "Covers": "FR-001"}, "edge": false, "unanswered": false, "mandatory": true, "source": "spec.md"}, {"code": "V-2", "kind": "verification", "text": "python src/check.py", "fields": {"Expected": "contains: totals", "Covers": "FR-002"}, "edge": false, "unanswered": false, "mandatory": true, "source": "spec.md"}, {"code": "V-3", "kind": "verification", "text": "python src/check.py", "fields": {"Expected": "exit 0", "Covers": "FR-003"}, "edge": false, "unanswered": false, "mandatory": true, "source": "spec.md"}]}], "codes": ["SUMMARY", "Q1", "Q2", "Q3", "Q4", "Q5", "Q6", "Q7", "FR-001", "FR-002", "FR-003", "AC-01", "AC-02", "T-01", "T-02", "T-03", "V-1", "V-2", "V-3"], "digests": {"SUMMARY": "42da1a36", "Q1": "0adf2e4d", "Q2": "5ba7e044", "Q3": "3f0e6961", "Q4": "27397a9d", "Q5": "ac775da0", "Q6": "31108321", "Q7": "c65e5c38", "FR-001": "73a18463", "FR-002": "fa7469fb", "FR-003": "e3374656", "AC-01": "89114fa1", "AC-02": "4142554a", "T-01": "95c589b2", "T-02": "d7959066", "T-03": "c639c6e9", "V-1": "750d535d", "V-2": "27d2dffb", "V-3": "94b05d00"}, "links": {"summary": "spec.md", "questions": "spec.md", "fr": "spec.md", "ac": "spec.md", "tasks": "tasks.md", "verification": "spec.md"}, "prior": {}, "carry": {"carried": 0, "total": 19, "pending": ["SUMMARY", "Q1", "Q2", "Q3", "Q4", "Q5", "Q6", "Q7", "FR-001", "FR-002", "FR-003", "AC-01", "AC-02", "T-01", "T-02", "T-03", "V-1", "V-2", "V-3"]}, "summary": {"objective": "invoices", "scope": "", "cost": "35 min / 230k tokens", "risks": "", "open_decisions": [], "counts": {"fr": 3, "ac": 2, "edge_ac": 0, "screens": 0, "comps": 0, "ctls": 0, "apis": 0, "tasks": 3, "questions": 7, "unanswered": 0}, "minutes": 35, "tokens_k": 230, "source": "generated"}, "verification_problems": []}</script>
+<script id="aidd-js">
+'use strict';
+/* aidd:FR-303 aidd:FR-304 aidd:FR-305 aidd:FR-310 aidd:FR-311 aidd:FR-312
+   Pure helpers first (exported for node, no DOM access), DOM wiring last.
+   No dynamic code, no HTML string injection, no inline handlers, no external URL: data reaches the page through textContent only. */
+var CODE_RE_SRC = '^(SUMMARY|Q\\d{1,3}|D\\d{1,3}(?:-?[a-z])?|V-\\d{1,3}|(?:FR|AC|T)-\\d{1,4}(?:-?[a-z])?|(?:API|COMP|CTL|SCREEN)-\\d{1,5}(?:-?[a-z])?)$';
+var CODE_RX = new RegExp(CODE_RE_SRC);
+var MAX_COMMENT = 500;
+var MAX_GROUPS = 12;
+var MAX_PAGE_CHARS = 32 * 1024 * 1024;
+var TAB_ORDER = ['summary', 'questions', 'fr', 'ac', 'screens', 'api', 'tasks', 'verification'];
+var TAB_LABELS = { summary: 'Resumen', questions: 'Preguntas', fr: 'Requisitos', ac: 'Casos', screens: 'Pantallas',
+  api: 'API', tasks: 'Tareas', verification: 'Verificaci\u00f3n' };
+var PREFIX_TAB = { Q: 'questions', D: 'questions', FR: 'fr', AC: 'ac', SCREEN: 'screens', COMP: 'screens', CTL: 'screens',
+  API: 'api', T: 'tasks', V: 'verification' };
+var DATA_TAG = '<scr' + 'ipt type="application/json" id="aidd-data">';
+
+function isCode(c) { return typeof c === 'string' && CODE_RX.test(c); }
+function oneLine(v) {
+  return String(v == null ? '' : v).replace(/[\u0000-\u001f\u007f\u2028\u2029]/g, ' ').replace(/\s+/g, ' ').trim();
+}
+function tabOf(code) {
+  if (code === 'SUMMARY') return 'summary';
+  var m = /^([A-Z]+)/.exec(code);
+  return (m && Object.prototype.hasOwnProperty.call(PREFIX_TAB, m[1])) ? PREFIX_TAB[m[1]] : 'summary';
+}
+function codeList(data) {
+  var d = data || {}, raw = Array.isArray(d.codes) ? d.codes : Object.keys((d.items && typeof d.items === 'object') ? d.items : {});
+  var seen = {}, out = [];
+  raw.forEach(function (c) { if (isCode(c) && !seen[c]) { seen[c] = 1; out.push(c); } });
+  return out;
+}
+function isChecked(checked, c) {
+  if (!checked) return false;
+  if (Array.isArray(checked)) return checked.indexOf(c) >= 0;
+  if (!Object.prototype.hasOwnProperty.call(checked, c)) return false;
+  var v = checked[c];
+  return v === true || (!!v && typeof v === 'object' && v.approved === true);
+}
+/* consecutive codes of one prefix without suffix -> V-1..V-5 (aidd:FR-310) */
+function compressCodes(codes) {
+  var runs = [], cur = null;
+  (codes || []).forEach(function (c) {
+    var m = /^([A-Z]+-?)(\d+)$/.exec(c), n = m ? parseInt(m[2], 10) : NaN;
+    if (cur && m && cur.prefix === m[1] && n === cur.last + 1) { cur.end = c; cur.last = n; return; }
+    if (cur) runs.push(cur);
+    cur = { start: c, end: c, prefix: m ? m[1] : null, last: m ? n : NaN };
+    if (!m) { runs.push(cur); cur = null; }
+  });
+  if (cur) runs.push(cur);
+  return runs.map(function (r) { return r.start === r.end ? r.start : r.start + '..' + r.end; });
+}
+/* aidd:FR-310 'Falta: <Tab> <ranges>; ...' in tab order, at most MAX_GROUPS groups then '+N more' */
+function missingSummary(data, checked) {
+  var byTab = {};
+  codeList(data).forEach(function (c) {
+    if (isChecked(checked, c)) return;
+    var t = tabOf(c);
+    (byTab[t] = byTab[t] || []).push(c);
+  });
+  var parts = [], used = 0, total = 0;
+  TAB_ORDER.forEach(function (t) {
+    if (!byTab[t]) return;
+    var runs = compressCodes(byTab[t]);
+    total += runs.length;
+    var take = runs.slice(0, Math.max(0, MAX_GROUPS - used));
+    used += take.length;
+    if (take.length) parts.push(TAB_LABELS[t] + ' ' + take.join(', '));
+  });
+  if (!total) return '';
+  return 'Falta: ' + parts.join('; ') + (total > used ? '; +' + (total - used) + ' more' : '');
+}
+/* aidd:FR-304 the codes-v2 grammar; {text, skipped}: codes not matching CODE_RE_SRC are dropped and counted */
+function buildReviewMdEx(data) {
+  var d = data || {}, items = (d.items && typeof d.items === 'object') ? d.items : {};
+  var dig = (d.digests && typeof d.digests === 'object') ? d.digests : {};
+  var raw = Array.isArray(d.codes) ? d.codes : Object.keys(items);
+  var seen = {}, lines = [], skipped = 0, all = true, n = 0;
+  raw.forEach(function (c) {
+    if (!isCode(c) || seen[c]) { skipped++; return; }
+    seen[c] = 1; n++;
+    var it = Object.prototype.hasOwnProperty.call(items, c) ? items[c] : null;
+    var on = !!it && typeof it === 'object' && it.approved === true;
+    if (!on) all = false;
+    var dg = Object.prototype.hasOwnProperty.call(dig, c) ? dig[c] : null;
+    lines.push('- [' + (on ? 'x' : ' ') + '] ' + c + ((typeof dg === 'string' && /^[0-9a-f]{8}$/.test(dg)) ? ' @' + dg : ''));
+    var cm = (it && typeof it === 'object') ? oneLine(it.comment).slice(0, MAX_COMMENT).trim() : '';
+    if (cm) lines.push('> ' + cm);
+  });
+  var head = ['---', 'spec: ' + oneLine(d.spec), 'tasks_hash: ' + oneLine(d.tasks_hash),
+    'sources_digest: ' + oneLine(d.sources_digest), 'format: codes-v2', 'approved: ' + ((all && n > 0) ? 'true' : 'false')];
+  if (d.generated) head.push('generated: ' + oneLine(d.generated));
+  if (d.reviewed) head.push('reviewed: ' + oneLine(d.reviewed));
+  head.push('---');
+  return { text: head.join('\n') + '\n' + lines.join('\n') + (lines.length ? '\n' : ''), skipped: skipped };
+}
+function buildReviewMd(data) { return buildReviewMdEx(data).text; }
+/* FNV-1a 32-bit, hex, 8 chars */
+function fnv1a(s) {
+  var h = 0x811c9dc5, str = String(s == null ? '' : s);
+  for (var i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; }
+  return ('00000000' + h.toString(16)).slice(-8);
+}
+/* aidd:FR-305 picker id: always 1..32 chars of [A-Za-z0-9_-], never the raw slug */
+function pickerId(data) {
+  var d = data || {};
+  var id = typeof d.picker_id === 'string' ? d.picker_id.replace(/[^A-Za-z0-9_-]/g, '').slice(0, 32) : '';
+  return id || ('aidd-' + fnv1a(d.spec));
+}
+/* the aidd-data blob of a review.html text, by a bounded string search (no DOM) */
+function blobOf(text) {
+  try {
+    if (typeof text !== 'string' || text.length > MAX_PAGE_CHARS) return null;
+    var i = text.indexOf(DATA_TAG);
+    if (i < 0) return null;
+    var s = i + DATA_TAG.length, e = text.indexOf('</' + 'script>', s);
+    if (e < 0) return null;
+    var o = JSON.parse(text.slice(s, e));
+    return (o && typeof o === 'object' && !Array.isArray(o)) ? o : null;
+  } catch (err) { return null; }
+}
+/* aidd:FR-305 the picked folder is THIS spec's folder: same spec AND same tasks_hash */
+function folderMatches(text, data) {
+  var b = blobOf(text), d = data || {};
+  return !!b && typeof b.spec === 'string' && b.spec !== '' && b.spec === d.spec &&
+    typeof b.tasks_hash === 'string' && b.tasks_hash !== '' && b.tasks_hash === d.tasks_hash;
+}
+
+/* ---- saving (aidd:FR-305): File System Access, then download, then copy ---- */
+var CTX = { data: null, w: null, status: null };
+function say(ctx, msg) { try { if (ctx && typeof ctx.status === 'function') ctx.status(String(msg)); } catch (e) { /* ui only */ } }
+function errName(e) { return oneLine((e && e.name) || 'Error').slice(0, 60) || 'Error'; }
+function settle(p, ms) {
+  return new Promise(function (res) {
+    var done = false;
+    var t = setTimeout(function () { if (!done) { done = true; res(null); } }, ms);
+    if (t && typeof t.unref === 'function') t.unref();
+    Promise.resolve(p).then(function (v) { if (!done) { done = true; clearTimeout(t); res(v); } },
+      function () { if (!done) { done = true; clearTimeout(t); res(null); } });
+  });
+}
+function idbCall(w, mode, key, val) {   /* any IndexedDB error means "no memory", never a failure */
+  return settle(new Promise(function (res) {
+    try {
+      if (!w || typeof w.indexedDB === 'undefined' || !w.indexedDB) { res(null); return; }
+      var rq = w.indexedDB.open('aidd-review', 1);
+      rq.addEventListener('upgradeneeded', function () { try { rq.result.createObjectStore('h'); } catch (e) { /* exists */ } });
+      rq.addEventListener('error', function () { res(null); });
+      rq.addEventListener('blocked', function () { res(null); });
+      rq.addEventListener('success', function () {
+        try {
+          var db = rq.result, st = db.transaction('h', mode).objectStore('h');
+          var op = mode === 'readwrite' ? st.put(val, key) : st.get(key);
+          op.addEventListener('success', function () { res(mode === 'readwrite' ? true : (op.result || null)); try { db.close(); } catch (e) { /* closed */ } });
+          op.addEventListener('error', function () { res(null); });
+        } catch (e) { res(null); }
+      });
+    } catch (e) { res(null); }
+  }), 1500);
+}
+async function readText(dir, name) {
+  try {
+    var fh = await dir.getFileHandle(name);
+    var f = await fh.getFile();
+    if (typeof f.size === 'number' && f.size > MAX_PAGE_CHARS) return null;
+    return await f.text();
+  } catch (e) { return null; }
+}
+async function checkFolder(dir, data) {
+  var text = await readText(dir, 'review.html');
+  if (text == null) return { ok: false, owner: null };
+  return { ok: folderMatches(text, data), owner: blobOf(text) };
+}
+function mismatchMessage(owner, spec) {
+  var pick = ': pick specs/' + spec + '/';
+  if (owner && typeof owner.spec === 'string' && owner.spec) {
+    return 'This folder belongs to ' + oneLine(owner.spec).slice(0, 80) + '/' + (oneLine(owner.tasks_hash).slice(0, 8) || '?') + pick;
+  }
+  return 'This folder belongs to no review of this spec (no matching review.html)' + pick;
+}
+async function rememberedFolder(w, data) {
+  try {
+    var h = await idbCall(w, 'readonly', String(data.spec || ''));
+    if (!h || typeof h.queryPermission !== 'function') return null;
+    var p = await h.queryPermission({ mode: 'readwrite' });
+    if (p !== 'granted' && typeof h.requestPermission === 'function') p = await h.requestPermission({ mode: 'readwrite' });
+    if (p !== 'granted') return null;
+    var chk = await checkFolder(h, data);   /* the remembered handle is re-validated too */
+    return chk.ok ? h : null;
+  } catch (e) { return null; }
+}
+async function pickFolder(w, data) {
+  try {
+    return { dir: await w.showDirectoryPicker({ id: pickerId(data), mode: 'readwrite' }) };
+  } catch (e) {
+    if (errName(e) === 'AbortError') return { abort: true };
+  }
+  try {   /* one retry without the id option (Chromium rejects a bad id with TypeError) */
+    return { dir: await w.showDirectoryPicker({ mode: 'readwrite' }) };
+  } catch (e2) {
+    if (errName(e2) === 'AbortError') return { abort: true };
+    return { fail: errName(e2) };
+  }
+}
+async function writeAndVerify(dir, text) {
+  var fh = await dir.getFileHandle('review.md', { create: true });
+  var ws = await fh.createWritable();
+  try { await ws.write(text); await ws.close(); } catch (e) { try { await ws.abort(); } catch (e2) { /* already closed */ } throw e; }
+  var back = await (await fh.getFile()).text();
+  return back === text;
+}
+function downloadReview(text, w) {
+  try {
+    var doc = w && w.document;
+    if (!doc || typeof w.Blob !== 'function' || !w.URL || typeof w.URL.createObjectURL !== 'function') return false;
+    var url = w.URL.createObjectURL(new w.Blob([text], { type: 'application/octet-stream' }));
+    var a = doc.createElement('a');
+    a.href = url; a.download = 'review.md'; a.rel = 'noopener';
+    doc.body.appendChild(a); a.click(); doc.body.removeChild(a);
+    var t = setTimeout(function () { try { w.URL.revokeObjectURL(url); } catch (e) { /* gone */ } }, 4000);
+    if (t && typeof t.unref === 'function') t.unref();
+    return true;
+  } catch (e) { return false; }
+}
+function fallback(text, ctx, w, spec, why) {
+  if (downloadReview(text, w)) {
+    say(ctx, 'review.md downloaded: if the browser renamed it, save it over specs/' + spec + '/review.md');
+    return { ok: true, method: 'download', reason: why };
+  }
+  return { ok: false, method: 'copy', reason: why };
+}
+async function saveReview(text, ctx) {
+  ctx = ctx || CTX;
+  var w = ctx.w || (typeof window !== 'undefined' ? window : null);
+  var data = ctx.data || {}, spec = oneLine(data.spec);
+  if (w && typeof w.showDirectoryPicker === 'function') {
+    var dir = await rememberedFolder(w, data);
+    if (!dir) {
+      var p = await pickFolder(w, data);
+      if (p.abort) return { ok: false, method: 'cancelled', reason: 'cancelled' };   /* silent; the download is offered */
+      if (p.fail) {
+        say(ctx, 'Folder picker failed (' + p.fail + '): using the download instead');
+        return fallback(text, ctx, w, spec, 'picker-failed');
+      }
+      var chk = await checkFolder(p.dir, data);
+      if (!chk.ok) { say(ctx, mismatchMessage(chk.owner, spec)); return { ok: false, method: 'mismatch', reason: 'mismatch' }; }
+      dir = p.dir;
+      await idbCall(w, 'readwrite', String(data.spec || ''), dir);
+    }
+    try {
+      var old = await readText(dir, 'review.md');
+      var oh = old ? /^tasks_hash: *([0-9a-f]{1,64})\s*$/m.exec(old) : null;
+      if (oh && oh[1] !== data.tasks_hash) say(ctx, 'Replacing a review.md saved for another tasks hash (' + oh[1].slice(0, 8) + ').');
+      if (await writeAndVerify(dir, text)) return { ok: true, method: 'fs', reason: '' };
+      say(ctx, 'The saved review.md did not read back identical: using the download instead');
+    } catch (e) {
+      say(ctx, 'Could not write review.md (' + errName(e) + '): using the download instead');
+    }
+    return fallback(text, ctx, w, spec, 'write-failed');
+  }
+  return fallback(text, ctx, w, spec, 'no-api');
+}
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = { CODE_RE_SRC: CODE_RE_SRC, buildReviewMd: buildReviewMd, buildReviewMdEx: buildReviewMdEx,
+    missingSummary: missingSummary, compressCodes: compressCodes, pickerId: pickerId, folderMatches: folderMatches,
+    saveReview: saveReview, downloadReview: downloadReview, TAB_LABELS: TAB_LABELS };
+}
+
+/* ---- DOM wiring: only in a browser ---- */
+if (typeof document !== 'undefined' && typeof window !== 'undefined') {
+  (function () {
+    var root = document.getElementById('aidd-root');
+    var A = function (n) { return (root && root.getAttribute(n)) || ''; };
+    var data = {};
+    try { data = JSON.parse(document.getElementById('aidd-data').textContent || '{}') || {}; } catch (e) { data = {}; }
+    if (typeof data !== 'object' || Array.isArray(data)) data = {};
+    var meta = { spec: A('data-spec'), tasks_hash: A('data-tasks-hash'), hash8: A('data-tasks-hash8'),
+      sources_digest: A('data-sources-digest'), generated: A('data-generated') };
+    var digests = (data.digests && typeof data.digests === 'object') ? data.digests : {};
+    var prior = (data.prior && typeof data.prior === 'object') ? data.prior : {};
+    var store = 'aidd-review:' + meta.spec + ':' + meta.tasks_hash + ':' + meta.sources_digest;
+    var tabStore = 'aidd-review-tab:' + meta.spec;
+    var saved = null;
+    try { var raw = window.localStorage.getItem(store); if (raw) saved = JSON.parse(raw); } catch (e) { saved = null; }
+    if (!saved || typeof saved !== 'object') saved = {};
+
+    var alertEl = document.getElementById('aidd-alert'), statusEl = document.getElementById('aidd-status');
+    var btn = document.getElementById('aidd-approve'), progress = document.getElementById('aidd-progress');
+    var tablist = document.getElementById('aidd-tablist');
+    function mk(tag, text, cls) { var e = document.createElement(tag); if (text) e.textContent = text; if (cls) e.className = cls; return e; }
+    function status(msg) { statusEl.appendChild(mk('p', msg)); }
+    CTX.data = { spec: meta.spec, tasks_hash: meta.tasks_hash, picker_id: data.picker_id };
+    CTX.w = window; CTX.status = status;
+
+    var panels = Array.prototype.slice.call(document.querySelectorAll('section[role="tabpanel"][data-tab]'));
+    var labelOf = {};
+    (Array.isArray(data.tabs) ? data.tabs : []).forEach(function (t) { if (t && typeof t.id === 'string' && typeof t.label === 'string') labelOf[t.id] = t.label; });
+    var state = {}, order = [], itemEl = {}, boxes = {}, tabOfCode = {}, tabCodes = {}, tabs = [];
+    function persist() { try { window.localStorage.setItem(store, JSON.stringify(state)); } catch (e) { /* storage may be blocked */ } }
+
+    panels.forEach(function (panel) {
+      var id = panel.getAttribute('data-tab');
+      tabCodes[id] = [];
+      Array.prototype.slice.call(panel.querySelectorAll('.aidd-item[data-code]')).forEach(function (el) {
+        var c = el.getAttribute('data-code');
+        if (!isCode(c) || state[c]) return;   /* never a reviewable code, never twice */
+        var src = Object.prototype.hasOwnProperty.call(saved, c) ? saved[c] : (Object.prototype.hasOwnProperty.call(prior, c) ? prior[c] : null);
+        state[c] = { approved: !!src && src.approved === true, comment: (src && typeof src.comment === 'string') ? src.comment.slice(0, 200) : '' };
+        order.push(c); itemEl[c] = el; tabOfCode[c] = id; tabCodes[id].push(c);
+        var lab = mk('label', '', 'ck'), cb = mk('input');
+        cb.type = 'checkbox'; cb.setAttribute('aria-label', 'Aprobar ' + c); cb.checked = state[c].approved;
+        lab.appendChild(cb);
+        el.insertBefore(lab, el.firstChild);
+        var inp = mk('input', '', 'aidd-c');
+        inp.type = 'text'; inp.setAttribute('maxlength', '200'); inp.setAttribute('aria-label', 'Comentario ' + c);
+        inp.placeholder = 'Comentario (opcional)'; inp.value = state[c].comment;
+        el.appendChild(inp);
+        cb.addEventListener('change', function () { state[c].approved = cb.checked; refresh(); });
+        inp.addEventListener('input', function () { state[c].comment = inp.value.slice(0, 200); persist(); });
+        boxes[c] = cb;
+      });
+    });
+
+    function tabLabel(id, panel) { return TAB_LABELS[id] || labelOf[id] || (panel && panel.getAttribute('aria-label')) || id; }
+    function checkedMap() { var m = {}; order.forEach(function (c) { m[c] = state[c].approved === true; }); return m; }
+    function countDone(list) { var n = 0; list.forEach(function (c) { if (state[c].approved) n++; }); return n; }
+
+    /* tabs: roving tabindex, Left/Right/Home/End, #tab-<id> deep link, last tab remembered per session */
+    panels.forEach(function (panel) {
+      var id = panel.getAttribute('data-tab');
+      var b = mk('button', tabLabel(id, panel));
+      b.type = 'button'; b.id = 'tabbtn-' + id;
+      b.setAttribute('role', 'tab'); b.setAttribute('aria-controls', panel.id || ('tab-' + id));
+      b.setAttribute('aria-selected', 'false'); b.tabIndex = -1;
+      var badge = mk('span', '', 'badge'); b.appendChild(badge);
+      panel.setAttribute('aria-labelledby', b.id); panel.tabIndex = 0;
+      tablist.appendChild(b);
+      tabs.push({ id: id, btn: b, panel: panel, badge: badge });
+      b.addEventListener('click', function () { select(id, true); });
+      b.addEventListener('keydown', function (ev) {
+        var i = indexOf(id), j = -1;
+        if (ev.key === 'ArrowRight') j = (i + 1) % tabs.length;
+        else if (ev.key === 'ArrowLeft') j = (i - 1 + tabs.length) % tabs.length;
+        else if (ev.key === 'Home') j = 0;
+        else if (ev.key === 'End') j = tabs.length - 1;
+        if (j < 0) return;
+        ev.preventDefault(); select(tabs[j].id, true); tabs[j].btn.focus();
+      });
+      /* per-tab bulk control: checks only this tab, never data-mandatory (aidd:FR-310 aidd:FR-311) */
+      var bar = mk('div', '', 'tabbar'), bulk = mk('button', 'Aprobar todo en esta pesta\u00f1a');
+      bulk.type = 'button';
+      bar.appendChild(bulk);
+      if (id === 'verification') {
+        bulk.disabled = true;
+        bar.appendChild(mk('span', 'Cada verificaci\u00f3n se marca a mano: confirma que el comando y lo esperado son correctos.', 'why'));
+      } else {
+        bulk.addEventListener('click', function () {
+          tabCodes[id].forEach(function (c) {
+            if (c === 'SUMMARY' || c.indexOf('V-') === 0 || itemEl[c].hasAttribute('data-mandatory')) return;
+            state[c].approved = true;
+          });
+          refresh();
+        });
+      }
+      var first = panel.firstElementChild;
+      if (first && first.tagName === 'H2') first = first.nextElementSibling;
+      while (first && first.classList && first.classList.contains('aidd-warn')) first = first.nextElementSibling;
+      panel.insertBefore(bar, first || null);
+      if (id === 'summary') {   /* aidd:FR-312 carry-over line */
+        var cr = (data.carry && typeof data.carry === 'object') ? data.carry : null;
+        if (cr) {
+          var pend = Array.isArray(cr.pending) ? cr.pending.filter(isCode) : [];
+          var runs = compressCodes(pend);
+          var txt = runs.length > MAX_GROUPS ? runs.slice(0, MAX_GROUPS).join(', ') + ' +' + (runs.length - MAX_GROUPS) + ' more' : runs.join(', ');
+          panel.insertBefore(mk('p', 'Arrastrados ' + (Number(cr.carried) || 0) + ' de ' + (Number(cr.total) || 0) + '; pendientes: ' + (txt || 'none'), 'carry'), bar);
+        }
+      }
+    });
+    function indexOf(id) { for (var i = 0; i < tabs.length; i++) if (tabs[i].id === id) return i; return 0; }
+    function select(id, remember) {
+      tabs.forEach(function (t) {
+        var on = t.id === id;
+        t.btn.setAttribute('aria-selected', on ? 'true' : 'false');
+        t.btn.tabIndex = on ? 0 : -1;
+        t.panel.hidden = !on;
+      });
+      if (remember) { try { window.sessionStorage.setItem(tabStore, id); } catch (e) { /* storage may be blocked */ } }
+    }
+
+    function refresh() {
+      var done = countDone(order), total = order.length;
+      order.forEach(function (c) { boxes[c].checked = state[c].approved; itemEl[c].classList.toggle('checked', state[c].approved); });
+      tabs.forEach(function (t) {
+        var list = tabCodes[t.id], n = countDone(list);
+        t.badge.textContent = n + '/' + list.length;
+        t.badge.classList.toggle('done', list.length > 0 && n === list.length);
+      });
+      progress.textContent = done + ' / ' + total;
+      btn.textContent = (total > 0 && done === total) ? 'Aprobar y guardar' : 'Guardar progreso';
+      persist();
+    }
+
+    function stamp() {
+      var d = new Date(), z = function (n) { return (n < 10 ? '0' : '') + n; };
+      return d.getFullYear() + '-' + z(d.getMonth() + 1) + '-' + z(d.getDate()) + 'T' + z(d.getHours()) + ':' + z(d.getMinutes()) + ':' + z(d.getSeconds());
+    }
+    function offer(text, label) {
+      var b = mk('button', label); b.type = 'button';
+      b.addEventListener('click', function () { if (!downloadReview(text, window)) copyBox(text); });
+      statusEl.appendChild(b);
+    }
+    function copyBox(text) {
+      status('The download was blocked. Copy the text below into specs/' + meta.spec + '/review.md:');
+      var box = mk('textarea'); box.readOnly = true; box.value = text; statusEl.appendChild(box);
+    }
+
+    btn.addEventListener('click', function () {
+      var total = order.length, done = countDone(order), complete = total > 0 && done === total;
+      var built = buildReviewMdEx({ spec: meta.spec, tasks_hash: meta.tasks_hash, sources_digest: meta.sources_digest,
+        generated: meta.generated, reviewed: stamp(), codes: order, digests: digests, items: state });
+      alertEl.textContent = ''; statusEl.textContent = '';
+      var saving = saveReview(built.text, CTX);   /* permission and picker run first in the click handler */
+      if (!complete) {
+        alertEl.textContent = missingSummary({ codes: order }, checkedMap());
+        for (var i = 0; i < order.length; i++) {
+          var c = order[i];
+          if (state[c].approved) continue;
+          select(tabOfCode[c], true);
+          itemEl[c].classList.add('focus');
+          try { itemEl[c].scrollIntoView({ block: 'center' }); } catch (e) { /* old browser */ }
+          try { boxes[c].focus({ preventScroll: true }); } catch (e) { boxes[c].focus(); }
+          break;
+        }
+      }
+      saving.then(function (r) {
+        var res = r || { ok: false, method: 'copy' };
+        if (res.method === 'fs') {
+          status(complete ? 'Saved to specs/' + meta.spec + '/review.md. Nothing else to do: the agent is waiting and will ask you once.'
+            : 'Saved to specs/' + meta.spec + '/review.md.');
+        } else if (res.method === 'cancelled' || res.method === 'mismatch') {
+          offer(built.text, 'Descargar review.md');
+        } else if (res.method === 'copy') {
+          copyBox(built.text);
+        }
+        if (!complete && res.method !== 'cancelled' && res.method !== 'mismatch') {
+          status('Progreso guardado (' + done + '/' + total + '): no es una aprobaci\u00f3n');
+        }
+      }, function () { copyBox(built.text); });
+    });
+
+    var start = '';
+    try { if (window.location && /^#tab-[A-Za-z0-9_-]+$/.test(window.location.hash)) start = window.location.hash.slice(5); } catch (e) { start = ''; }
+    if (!start) { try { start = window.sessionStorage.getItem(tabStore) || ''; } catch (e) { start = ''; } }
+    var known = tabs.some(function (t) { return t.id === start; });
+    if (tabs.length) select(known ? start : tabs[0].id, false);
+    refresh();
+  })();
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,32 @@
+FAIL: test_ac317_states_and_exits_both_ids (test_aidd_review.TestRealModules.test_ac317_states_and_exits_both_ids)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\jquimis\AppData\Local\Temp\claude\D--Fuentes-AIDD\0f143e53-0037-424b-ad64-ed0094e98386\scratchpad\repo\tests\test_aidd_review.py", line 1263, in test_ac317_states_and_exits_both_ids
+    self.assertEqual(r.stdout.splitlines(), ["FR-001: SENTINEL-COMMENT / - [x] FR-002", "T-02: split"])
+AssertionError: Lists differ: ['FR-001: SENTINEL-COMMENT - [x] FR-002', 'T-02: split'] != ['FR-001: SENTINEL-COMMENT / - [x] FR-002', 'T-02: split']
+
+First differing element 0:
+'FR-001: SENTINEL-COMMENT - [x] FR-002'
+'FR-001: SENTINEL-COMMENT / - [x] FR-002'
+
+- ['FR-001: SENTINEL-COMMENT - [x] FR-002', 'T-02: split']
++ ['FR-001: SENTINEL-COMMENT / - [x] FR-002', 'T-02: split']
+?                            ++
+
+
+======================================================================
+FAIL: test_constants_match_contract (test_aidd_review.TestRealModules.test_constants_match_contract)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\jquimis\AppData\Local\Temp\claude\D--Fuentes-AIDD\0f143e53-0037-424b-ad64-ed0094e98386\scratchpad\repo\tests\test_aidd_review.py", line 1241, in test_constants_match_contract
+    self.assertEqual(items.CODE_RE.pattern, CODE_RE_SRC)
+AssertionError: '^(SU[53 chars]R|AC|T)-\\d{1,4}(?:-?[a-z])?|(?:API|COMP|CTL|S[25 chars])?)$' != '^(SU[53 chars]R|AC|API|COMP|CTL|SCREEN|T)-\\d{1,4}(?:-?[a-z])?)$'
+- ^(SUMMARY|Q\d{1,3}|D\d{1,3}(?:-?[a-z])?|V-\d{1,3}|(?:FR|AC|T)-\d{1,4}(?:-?[a-z])?|(?:API|COMP|CTL|SCREEN)-\d{1,5}(?:-?[a-z])?)$
++ ^(SUMMARY|Q\d{1,3}|D\d{1,3}(?:-?[a-z])?|V-\d{1,3}|(?:FR|AC|API|COMP|CTL|SCREEN|T)-\d{1,4}(?:-?[a-z])?)$
+
+
+----------------------------------------------------------------------
+Ran 1747 tests in 495.165s
+
+FAILED (failures=2)
+(run: python -m unittest discover -s tests on a byte-identical scratch copy of the repo, 2026-10-05)

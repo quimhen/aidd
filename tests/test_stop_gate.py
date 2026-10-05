@@ -191,23 +191,107 @@ class TestR8(StopBase):
         self.close_spec(reason="completed")
         self.assertEqual(self.stop().returncode, 0)
 
-    def test_two_open_specs_both_count_and_abandoning_one_leaves_the_other(self):
+    def _second_spec(self, target="002-y"):
+        """001-x implemented (unstamped edit) + 002-y approved with an edit ATTRIBUTED to it (target stamp)."""
         (self.root / "specs" / "002-y").mkdir()
         self.implemented()
         t = approved_tasks()
         self.put("specs/002-y/tasks.md", t)
         self.open_spec("002-y")
         self.ev("approved", spec="002-y", hash=R.approval_hash(t))
-        self.ev("code_edit", path="src/b.py", spec="002-y")
+        self.ev("code_edit", path="src/b.py", target=target)
+
+    def test_two_open_specs_only_the_gate_target_blocks_the_other_is_reminded(self):
+        """aidd:FR-206 aidd:AC-212 pointer on 001-x: blocks naming only 001-x; 002-y is in the once-only reminder;
+        close 001-x -> 002-y is the only open spec and blocks; no pointer + two open -> no block, both listed."""
+        self._second_spec()
+        EV.activate_spec(self.root, "001-x")
         r = self.stop()
-        self.assertEqual(r.returncode, 2)
-        self.assertIn("001-x", r.err)
-        self.assertIn("002-y", r.err)
+        self.assertEqual(r.returncode, 2, r.err)
+        self.assertIn("spec 001-x not closed", r.err)
+        self.assertNotIn("spec 002-y not closed", r.err)
+        self.assertIn("spec 002-y is approved and has 1 code edit(s) with no closing audit", r.err)
+        self.assertIn("CLOSING AUDIT [domains:", r.err)
+        self.assertIn("aidd verify 001-x", r.err)
         self.close_spec("001-x")
         r = self.stop()
-        self.assertEqual(r.returncode, 2)
+        self.assertEqual(r.returncode, 2, r.err)
         self.assertNotIn("spec 001-x", r.err)
-        self.assertIn("spec 002-y", r.err)
+        self.assertIn("spec 002-y not closed", r.err)
+
+    def test_scoping_three_open_specs_pointer_on_one_edits_on_another(self):
+        """aidd:FR-206 target 001-x has only an edit attributed to 003-z: 001-x is clean, 003-z is reminded."""
+        (self.root / "specs" / "003-z").mkdir()
+        (self.root / "specs" / "002-y").mkdir()
+        t = approved_tasks()
+        self.put(TASKS, t, age=100)
+        self.open_spec()
+        self.approved_event(t)
+        for sp in ("002-y", "003-z"):
+            self.put(f"specs/{sp}/tasks.md", t)
+            self.open_spec(sp)
+            self.ev("approved", spec=sp, hash=R.approval_hash(t))
+        EV.activate_spec(self.root, "001-x")
+        self.ev("code_edit", path="src/z.py", target="003-z")
+        r = self.stop()
+        self.assertEqual(r.returncode, 0, r.err)
+        self.assertIn("spec 003-z is approved and has 1 code edit(s)", json.loads(r.out)["systemMessage"])
+        self.assertNotIn("002-y", r.out)
+
+    def test_reminder_is_printed_once_per_session(self):
+        self._second_spec()
+        EV.activate_spec(self.root, "001-x")
+        self.close_spec("001-x")
+        (self.root / "specs" / "003-z").mkdir()
+        t = approved_tasks()
+        self.put("specs/003-z/tasks.md", t)
+        self.open_spec("003-z")
+        self.ev("approved", spec="003-z", hash=R.approval_hash(t))
+        # gate target is inferred (newest tasks edit = 003-z, no edits): 002-y has attributed edits -> reminded
+        self.ev("code_edit", path="src/c.py", target="002-y")
+        first = self.stop(session="S1")
+        second = self.stop(session="S1")
+        other = self.stop(session="S2")
+        self.assertEqual((first.returncode, second.returncode, other.returncode), (0, 0, 0))
+        self.assertIn("systemMessage", first.out)
+        self.assertEqual(second.out.strip(), "")
+        self.assertIn("systemMessage", other.out)
+        self.assertEqual(len(self.events("stop_reminder")), 2)
+
+    def test_ambiguous_gate_target_blocks_nothing_and_lists_both(self):
+        """aidd:FR-206 ambiguous target (patched: the real inference rarely yields it) -> no block, both listed
+        (unstamped edits count for every spec when there is no target)."""
+        (self.root / "specs" / "002-y").mkdir()
+        self.implemented()
+        t = approved_tasks()
+        self.put("specs/002-y/tasks.md", t)
+        self.open_spec("002-y")
+        self.ev("approved", spec="002-y", hash=R.approval_hash(t))
+        self.ev("code_edit", path="src/b.py")
+        ev, _rules = stop_gate._libs()
+        with mock.patch.object(ev, "gate_target_specs", return_value=([], True, "ambiguous")):
+            blocked, msg = stop_gate.evaluate({"session_id": self.session, "cwd": str(self.root)})
+        self.assertFalse(blocked)
+        self.assertIn("spec 001-x", msg)
+        self.assertIn("spec 002-y", msg)
+
+    def test_stop_blocks_env_sets_the_budget_and_invalid_falls_back_to_3(self):
+        self.implemented()
+        self.assertEqual([self.stop(env={"AIDD_STOP_BLOCKS": "1"}).returncode for _ in range(2)], [2, 0])
+
+    def test_stop_blocks_env_invalid_falls_back_to_3(self):
+        self.implemented()
+        codes = [self.stop(env={"AIDD_STOP_BLOCKS": "abc"}).returncode for _ in range(4)]
+        self.assertEqual(codes, [2, 2, 2, 0])
+
+    def test_warn_and_off_record_rules_override_before_returning(self):
+        """aidd:FR-208 aidd:AC-214"""
+        self.implemented()
+        self.stop(env={"AIDD_RULES": "warn"})
+        self.stop(env={"AIDD_RULES": "off"})
+        modes = sorted(e["detail"]["mode"] for e in self.events("rules_override")
+                       if e["detail"].get("hook") == "stop_gate")
+        self.assertEqual(modes, ["off", "warn"])
 
     # ---- M7: approval time comes from the approved event, never mtime -----------------------
     def test_m7_hash_neutral_rewrite_does_not_reset_the_obligation(self):

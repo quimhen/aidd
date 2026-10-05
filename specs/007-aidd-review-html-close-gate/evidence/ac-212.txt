@@ -1,0 +1,2139 @@
+AC-212: PASS
+  [PASS] --refresh: branch/last commit/dirty/untracked
+  [PASS] --refresh: untracked under specs/F23-eDoc-POS/
+  [PASS] --refresh: "14 pending"
+  [PASS] --refresh: gate pointer + effective AIDD_RULES
+  [PASS] --refresh: review and verification state per spec
+  [PASS] --json adds "derived"
+  [PASS] non-git directory prints `git: unavailable`, exit 0
+  [PASS] without --refresh: still prints, plus the pointer line
+
+$ aidd_status.py status --refresh  -> exit 0
+Open specs: F13-eDoc-Emission-Engine (approval pending), F14-eDoc-A (approval pending), F15-eDoc-B (approval pending), F16-eDoc-C (approval pending), F17-eDoc-D (approval pending), F18-eDoc-E (approval pending), F19-eDoc-F (approval pending), F20-eDoc-G (approval pending), F21-eDoc-Inventory (approval pending), F22-eDoc-Pricing (approval pending), F23-eDoc-POS (approval pending), F24-eDoc-Traceability (approval pending), F26-eDoc-Tax-Catalogs (approval pending), F27-Correction-Backlog (approval pending)
+F13-eDoc-Emission-Engine [OPEN]  Route: -1/0/1/1.5/2/3/4 run   Align: 0 proposed · 6 unverified quote(s) · Mapper ✘ · Graph ✘
+Tasks: approval pending ✘ · Waves: 2 · critical path 50 min · ~50 min, ~100k tokens   Build: 0 code edits · Auditors: functional ✘ performance ✘ security ✘ ui ✘
+Visual debt open: 0 (blocking this spec: 0) · qa-audit.md: no
+Review: no page · Verification: never-run (1 command(s)) · gate legacy
+  WHY blocked: Code edits are BLOCKED while this open spec has no valid tasks approval (run `aidd review F13-eDoc-Emission-Engine` and have the owner review it, or ask the user with AskUserQuestion offering the option "Approve"; then `aidd rules approve`).
+  WHY blocked: R6 tasks.md has no valid "Approved: YYYY-MM-DD hash:<12hex>" line (approval pending). → Present the tasks to the user (AskUserQuestion), then run `aidd rules approve <spec_dir>`.
+  WHY blocked: R5 Quote not found in any recorded user prompt/answer: "es el modulo de checkout". → Quote the user's exact words from a prompt written AFTER spec.md was first drafted (5+ words), or ask the user (AskUserQuestion) and quote their answer verbatim (2+ words).
+  WHY blocked: R5 No find_spec run recorded in this session. → Run `python skill/scripts/find_spec.py` (Step -1) before planning.
+  WHY blocked: R5 tasks.md exists but plan.md does not. → Write plan.md (Step 3) before tasks.md.
+F14-eDoc-A [OPEN]  Route: -1/0/1/1.5/2/3/4 run   Align: 0 proposed · 6 unverified quote(s) · Mapper ✘ · Graph ✘
+Tasks: approval pending ✘ · Waves: 2 · critical path 50 min · ~50 min, ~100k tokens   Build: 0 code edits · Auditors: functional ✘ performance ✘ security ✘ ui ✘
+Visual debt open: 0 (blocking this spec: 0) · qa-audit.md: no
+Review: no page · Verification: never-run (1 command(s)) · gate legacy
+  WHY blocked: Code edits are BLOCKED while this open spec has no valid tasks approval (run `aidd review F14-eDoc-A` and have the owner review it, or ask the user with AskUserQuestion offering the option "Approve"; then `aidd rules approve`).
+  WHY blocked: R6 tasks.md has no valid "Approved: YYYY-MM-DD hash:<12hex>" line (approval pending). → Present the tasks to the user (AskUserQuestion), then run `aidd rules approve <spec_dir>`.
+  WHY blocked: R5 Quote not found in any recorded user prompt/answer: "es el modulo de checkout". → Quote the user's exact words from a prompt written AFTER spec.md was first drafted (5+ words), or ask the user (AskUserQuestion) and quote their answer verbatim (2+ words).
+  WHY blocked: R5 No find_spec run recorded in this session. → Run `python skill/scripts/find_spec.py` (Step -1) before planning.
+  WHY blocked: R5 tasks.md exists but plan.md does not. → Write plan.md (Step 3) before tasks.md.
+F15-eDoc-B [OPEN]  Route: -1/0/1/1.5/2/3/4 run   Align: 0 proposed · 6 unverified quote(s) · Mapper ✘ · Graph ✘
+Tasks: approval pending ✘ · Waves: 2 · critical path 50 min · ~50 min, ~100k tokens   Build: 0 code edits · Auditors: functional ✘ performance ✘ security ✘ ui ✘
+Visual debt open: 0 (blocking this spec: 0) · qa-audit.md: no
+Review: no page · Verification: never-run (1 command(s)) · gate legacy
+  WHY blocked: Code edits are BLOCKED while this open spec has no valid tasks approval (run `aidd review F15-eDoc-B` and have the owner review it, or ask the user with AskUserQuestion offering the option "Approve"; then `aidd rules approve`).
+  WHY blocked: R6 tasks.md has no valid "Approved: YYYY-MM-DD hash:<12hex>" line (approval pending). → Present the tasks to the user (AskUserQuestion), then run `aidd rules approve <spec_dir>`.
+  WHY blocked: R5 Quote not found in any recorded user prompt/answer: "es el modulo de checkout". → Quote the user's exact words from a prompt written AFTER spec.md was first drafted (5+ words), or ask the user (AskUserQuestion) and quote their answer verbatim (2+ words).
+  WHY blocked: R5 No find_spec run recorded in this session. → Run `python skill/scripts/find_spec.py` (Step -1) before planning.
+  WHY blocked: R5 tasks.md exists but plan.md does not. → Write plan.md (Step 3) before tasks.md.
+F16-eDoc-C [OPEN]  Route: -1/0/1/1.5/2/3/4 run   Align: 0 proposed · 6 unverified quote(s) · Mapper ✘ · Graph ✘
+Tasks: approval pending ✘ · Waves: 2 · critical path 50 min · ~50 min, ~100k tokens   Build: 0 code edits · Auditors: functional ✘ performance ✘ security ✘ ui ✘
+Visual debt open: 0 (blocking this spec: 0) · qa-audit.md: no
+Review: no page · Verification: never-run (1 command(s)) · gate legacy
+  WHY blocked: Code edits are BLOCKED while this open spec has no valid tasks approval (run `aidd review F16-eDoc-C` and have the owner review it, or ask the user with AskUserQuestion offering the option "Approve"; then `aidd rules approve`).
+  WHY blocked: R6 tasks.md has no valid "Approved: YYYY-MM-DD hash:<12hex>" line (approval pending). → Present the tasks to the user (AskUserQuestion), then run `aidd rules approve <spec_dir>`.
+  WHY blocked: R5 Quote not found in any recorded user prompt/answer: "es el modulo de checkout". → Quote the user's exact words from a prompt written AFTER spec.md was first drafted (5+ words), or ask the user (AskUserQuestion) and quote their answer verbatim (2+ words).
+  WHY blocked: R5 No find_spec run recorded in this session. → Run `python skill/scripts/find_spec.py` (Step -1) before planning.
+  WHY blocked: R5 tasks.md exists but plan.md does not. → Write plan.md (Step 3) before tasks.md.
+F17-eDoc-D [OPEN]  Route: -1/0/1/1.5/2/3/4 run   Align: 0 proposed · 6 unverified quote(s) · Mapper ✘ · Graph ✘
+Tasks: approval pending ✘ · Waves: 2 · critical path 50 min · ~50 min, ~100k tokens   Build: 0 code edits · Auditors: functional ✘ performance ✘ security ✘ ui ✘
+Visual debt open: 0 (blocking this spec: 0) · qa-audit.md: no
+Review: no page · Verification: never-run (1 command(s)) · gate legacy
+  WHY blocked: Code edits are BLOCKED while this open spec has no valid tasks approval (run `aidd review F17-eDoc-D` and have the owner review it, or ask the user with AskUserQuestion offering the option "Approve"; then `aidd rules approve`).
+  WHY blocked: R6 tasks.md has no valid "Approved: YYYY-MM-DD hash:<12hex>" line (approval pending). → Present the tasks to the user (AskUserQuestion), then run `aidd rules approve <spec_dir>`.
+  WHY blocked: R5 Quote not found in any recorded user prompt/answer: "es el modulo de checkout". → Quote the user's exact words from a prompt written AFTER spec.md was first drafted (5+ words), or ask the user (AskUserQuestion) and quote their answer verbatim (2+ words).
+  WHY blocked: R5 No find_spec run recorded in this session. → Run `python skill/scripts/find_spec.py` (Step -1) before planning.
+  WHY blocked: R5 tasks.md exists but plan.md does not. → Write plan.md (Step 3) before tasks.md.
+F18-eDoc-E [OPEN]  Route: -1/0/1/1.5/2/3/4 run   Align: 0 proposed · 6 unverified quote(s) · Mapper ✘ · Graph ✘
+Tasks: approval pending ✘ · Waves: 2 · critical path 50 min · ~50 min, ~100k tokens   Build: 0 code edits · Auditors: functional ✘ performance ✘ security ✘ ui ✘
+Visual debt open: 0 (blocking this spec: 0) · qa-audit.md: no
+Review: no page · Verification: never-run (1 command(s)) · gate legacy
+  WHY blocked: Code edits are BLOCKED while this open spec has no valid tasks approval (run `aidd review F18-eDoc-E` and have the owner review it, or ask the user with AskUserQuestion offering the option "Approve"; then `aidd rules approve`).
+  WHY blocked: R6 tasks.md has no valid "Approved: YYYY-MM-DD hash:<12hex>" line (approval pending). → Present the tasks to the user (AskUserQuestion), then run `aidd rules approve <spec_dir>`.
+  WHY blocked: R5 Quote not found in any recorded user prompt/answer: "es el modulo de checkout". → Quote the user's exact words from a prompt written AFTER spec.md was first drafted (5+ words), or ask the user (AskUserQuestion) and quote their answer verbatim (2+ words).
+  WHY blocked: R5 No find_spec run recorded in this session. → Run `python skill/scripts/find_spec.py` (Step -1) before planning.
+  WHY blocked: R5 tasks.md exists but plan.md does not. → Write plan.md (Step 3) before tasks.md.
+F19-eDoc-F [OPEN]  Route: -1/0/1/1.5/2/3/4 run   Align: 0 proposed · 6 unverified quote(s) · Mapper ✘ · Graph ✘
+Tasks: approval pending ✘ · Waves: 2 · critical path 50 min · ~50 min, ~100k tokens   Build: 0 code edits · Auditors: functional ✘ performance ✘ security ✘ ui ✘
+Visual debt open: 0 (blocking this spec: 0) · qa-audit.md: no
+Review: no page · Verification: never-run (1 command(s)) · gate legacy
+  WHY blocked: Code edits are BLOCKED while this open spec has no valid tasks approval (run `aidd review F19-eDoc-F` and have the owner review it, or ask the user with AskUserQuestion offering the option "Approve"; then `aidd rules approve`).
+  WHY blocked: R6 tasks.md has no valid "Approved: YYYY-MM-DD hash:<12hex>" line (approval pending). → Present the tasks to the user (AskUserQuestion), then run `aidd rules approve <spec_dir>`.
+  WHY blocked: R5 Quote not found in any recorded user prompt/answer: "es el modulo de checkout". → Quote the user's exact words from a prompt written AFTER spec.md was first drafted (5+ words), or ask the user (AskUserQuestion) and quote their answer verbatim (2+ words).
+  WHY blocked: R5 No find_spec run recorded in this session. → Run `python skill/scripts/find_spec.py` (Step -1) before planning.
+  WHY blocked: R5 tasks.md exists but plan.md does not. → Write plan.md (Step 3) before tasks.md.
+F20-eDoc-G [OPEN]  Route: -1/0/1/1.5/2/3/4 run   Align: 0 proposed · 6 unverified quote(s) · Mapper ✘ · Graph ✘
+Tasks: approval pending ✘ · Waves: 2 · critical path 50 min · ~50 min, ~100k tokens   Build: 0 code edits · Auditors: functional ✘ performance ✘ security ✘ ui ✘
+Visual debt open: 0 (blocking this spec: 0) · qa-audit.md: no
+Review: no page · Verification: never-run (1 command(s)) · gate legacy
+  WHY blocked: Code edits are BLOCKED while this open spec has no valid tasks approval (run `aidd review F20-eDoc-G` and have the owner review it, or ask the user with AskUserQuestion offering the option "Approve"; then `aidd rules approve`).
+  WHY blocked: R6 tasks.md has no valid "Approved: YYYY-MM-DD hash:<12hex>" line (approval pending). → Present the tasks to the user (AskUserQuestion), then run `aidd rules approve <spec_dir>`.
+  WHY blocked: R5 Quote not found in any recorded user prompt/answer: "es el modulo de checkout". → Quote the user's exact words from a prompt written AFTER spec.md was first drafted (5+ words), or ask the user (AskUserQuestion) and quote their answer verbatim (2+ words).
+  WHY blocked: R5 No find_spec run recorded in this session. → Run `python skill/scripts/find_spec.py` (Step -1) before planning.
+  WHY blocked: R5 tasks.md exists but plan.md does not. → Write plan.md (Step 3) before tasks.md.
+F21-eDoc-Inventory [OPEN]  Route: -1/0/1/1.5/2/3/4 run   Align: 0 proposed · 6 unverified quote(s) · Mapper ✘ · Graph ✘
+Tasks: approval pending ✘ · Waves: 2 · critical path 50 min · ~50 min, ~100k tokens   Build: 0 code edits · Auditors: functional ✘ performance ✘ security ✘ ui ✘
+Visual debt open: 0 (blocking this spec: 0) · qa-audit.md: no
+Review: no page · Verification: never-run (1 command(s)) · gate legacy
+  WHY blocked: Code edits are BLOCKED while this open spec has no valid tasks approval (run `aidd review F21-eDoc-Inventory` and have the owner review it, or ask the user with AskUserQuestion offering the option "Approve"; then `aidd rules approve`).
+  WHY blocked: R6 tasks.md has no valid "Approved: YYYY-MM-DD hash:<12hex>" line (approval pending). → Present the tasks to the user (AskUserQuestion), then run `aidd rules approve <spec_dir>`.
+  WHY blocked: R5 Quote not found in any recorded user prompt/answer: "es el modulo de checkout". → Quote the user's exact words from a prompt written AFTER spec.md was first drafted (5+ words), or ask the user (AskUserQuestion) and quote their answer verbatim (2+ words).
+  WHY blocked: R5 No find_spec run recorded in this session. → Run `python skill/scripts/find_spec.py` (Step -1) before planning.
+  WHY blocked: R5 tasks.md exists but plan.md does not. → Write plan.md (Step 3) before tasks.md.
+F22-eDoc-Pricing [OPEN]  Route: -1/0/1/1.5/2/3/4 run   Align: 0 proposed · 6 unverified quote(s) · Mapper ✘ · Graph ✘
+Tasks: approval pending ✘ · Waves: 2 · critical path 50 min · ~50 min, ~100k tokens   Build: 0 code edits · Auditors: functional ✘ performance ✘ security ✘ ui ✘
+Visual debt open: 0 (blocking this spec: 0) · qa-audit.md: no
+Review: no page · Verification: never-run (1 command(s)) · gate legacy
+  WHY blocked: Code edits are BLOCKED while this open spec has no valid tasks approval (run `aidd review F22-eDoc-Pricing` and have the owner review it, or ask the user with AskUserQuestion offering the option "Approve"; then `aidd rules approve`).
+  WHY blocked: R6 tasks.md has no valid "Approved: YYYY-MM-DD hash:<12hex>" line (approval pending). → Present the tasks to the user (AskUserQuestion), then run `aidd rules approve <spec_dir>`.
+  WHY blocked: R5 Quote not found in any recorded user prompt/answer: "es el modulo de checkout". → Quote the user's exact words from a prompt written AFTER spec.md was first drafted (5+ words), or ask the user (AskUserQuestion) and quote their answer verbatim (2+ words).
+  WHY blocked: R5 No find_spec run recorded in this session. → Run `python skill/scripts/find_spec.py` (Step -1) before planning.
+  WHY blocked: R5 tasks.md exists but plan.md does not. → Write plan.md (Step 3) before tasks.md.
+F23-eDoc-POS [OPEN]  Route: -1/0/1/1.5/2/3/4 run   Align: 0 proposed · 6 unverified quote(s) · Mapper ✘ · Graph ✘
+Tasks: approval pending ✘ · Waves: 2 · critical path 50 min · ~50 min, ~100k tokens   Build: 0 code edits · Auditors: functional ✘ performance ✘ security ✘ ui ✘
+Visual debt open: 0 (blocking this spec: 0) · qa-audit.md: no
+Review: no page · Verification: never-run (1 command(s)) · gate legacy
+  WHY blocked: Code edits are BLOCKED while this open spec has no valid tasks approval (run `aidd review F23-eDoc-POS` and have the owner review it, or ask the user with AskUserQuestion offering the option "Approve"; then `aidd rules approve`).
+  WHY blocked: R6 tasks.md has no valid "Approved: YYYY-MM-DD hash:<12hex>" line (approval pending). → Present the tasks to the user (AskUserQuestion), then run `aidd rules approve <spec_dir>`.
+  WHY blocked: R5 Quote not found in any recorded user prompt/answer: "es el modulo de checkout". → Quote the user's exact words from a prompt written AFTER spec.md was first drafted (5+ words), or ask the user (AskUserQuestion) and quote their answer verbatim (2+ words).
+  WHY blocked: R5 No find_spec run recorded in this session. → Run `python skill/scripts/find_spec.py` (Step -1) before planning.
+  WHY blocked: R5 tasks.md exists but plan.md does not. → Write plan.md (Step 3) before tasks.md.
+F24-eDoc-Traceability [OPEN]  Route: -1/0/1/1.5/2/3/4 run   Align: 0 proposed · 6 unverified quote(s) · Mapper ✘ · Graph ✘
+Tasks: approval pending ✘ · Waves: 2 · critical path 50 min · ~50 min, ~100k tokens   Build: 0 code edits · Auditors: functional ✘ performance ✘ security ✘ ui ✘
+Visual debt open: 0 (blocking this spec: 0) · qa-audit.md: no
+Review: no page · Verification: never-run (1 command(s)) · gate legacy
+  WHY blocked: Code edits are BLOCKED while this open spec has no valid tasks approval (run `aidd review F24-eDoc-Traceability` and have the owner review it, or ask the user with AskUserQuestion offering the option "Approve"; then `aidd rules approve`).
+  WHY blocked: R6 tasks.md has no valid "Approved: YYYY-MM-DD hash:<12hex>" line (approval pending). → Present the tasks to the user (AskUserQuestion), then run `aidd rules approve <spec_dir>`.
+  WHY blocked: R5 Quote not found in any recorded user prompt/answer: "es el modulo de checkout". → Quote the user's exact words from a prompt written AFTER spec.md was first drafted (5+ words), or ask the user (AskUserQuestion) and quote their answer verbatim (2+ words).
+  WHY blocked: R5 No find_spec run recorded in this session. → Run `python skill/scripts/find_spec.py` (Step -1) before planning.
+  WHY blocked: R5 tasks.md exists but plan.md does not. → Write plan.md (Step 3) before tasks.md.
+F26-eDoc-Tax-Catalogs [OPEN]  Route: -1/0/1/1.5/2/3/4 run   Align: 0 proposed · 6 unverified quote(s) · Mapper ✘ · Graph ✘
+Tasks: approval pending ✘ · Waves: 2 · critical path 50 min · ~50 min, ~100k tokens   Build: 0 code edits · Auditors: functional ✘ performance ✘ security ✘ ui ✘
+Visual debt open: 0 (blocking this spec: 0) · qa-audit.md: no
+Review: no page · Verification: never-run (1 command(s)) · gate legacy
+  WHY blocked: Code edits are BLOCKED while this open spec has no valid tasks approval (run `aidd review F26-eDoc-Tax-Catalogs` and have the owner review it, or ask the user with AskUserQuestion offering the option "Approve"; then `aidd rules approve`).
+  WHY blocked: R6 tasks.md has no valid "Approved: YYYY-MM-DD hash:<12hex>" line (approval pending). → Present the tasks to the user (AskUserQuestion), then run `aidd rules approve <spec_dir>`.
+  WHY blocked: R5 Quote not found in any recorded user prompt/answer: "es el modulo de checkout". → Quote the user's exact words from a prompt written AFTER spec.md was first drafted (5+ words), or ask the user (AskUserQuestion) and quote their answer verbatim (2+ words).
+  WHY blocked: R5 No find_spec run recorded in this session. → Run `python skill/scripts/find_spec.py` (Step -1) before planning.
+  WHY blocked: R5 tasks.md exists but plan.md does not. → Write plan.md (Step 3) before tasks.md.
+F27-Correction-Backlog [OPEN]  Route: -1/0/1/1.5/2/3/4 run   Align: 0 proposed · 6 unverified quote(s) · Mapper ✘ · Graph ✘
+Tasks: approval pending ✘ · Waves: 2 · critical path 50 min · ~50 min, ~100k tokens   Build: 0 code edits · Auditors: functional ✘ performance ✘ security ✘ ui ✘
+Visual debt open: 0 (blocking this spec: 0) · qa-audit.md: no
+Review: no page · Verification: never-run (1 command(s)) · gate legacy
+  WHY blocked: Code edits are BLOCKED while this open spec has no valid tasks approval (run `aidd review F27-Correction-Backlog` and have the owner review it, or ask the user with AskUserQuestion offering the option "Approve"; then `aidd rules approve`).
+  WHY blocked: R6 tasks.md has no valid "Approved: YYYY-MM-DD hash:<12hex>" line (approval pending). → Present the tasks to the user (AskUserQuestion), then run `aidd rules approve <spec_dir>`.
+  WHY blocked: R5 Quote not found in any recorded user prompt/answer: "es el modulo de checkout". → Quote the user's exact words from a prompt written AFTER spec.md was first drafted (5+ words), or ask the user (AskUserQuestion) and quote their answer verbatim (2+ words).
+  WHY blocked: R5 No find_spec run recorded in this session. → Run `python skill/scripts/find_spec.py` (Step -1) before planning.
+  WHY blocked: R5 tasks.md exists but plan.md does not. → Write plan.md (Step 3) before tasks.md.
+User answers recorded (AskUserQuestion answered): 0 — no approval/close/abandon is possible until the user answers a question · questions asked: 0
+Stop blocks: none
+Hook errors: 0
+gate pointer: F23-eDoc-POS
+Refresh (recomputed now from git and disk, no LLM):
+  git: branch master · last commit 7e67338 2026-10-05 init · 0 dirty · 30 untracked
+  untracked under specs/F13-eDoc-Emission-Engine/: spec.md, tasks.md
+  untracked under specs/F14-eDoc-A/: spec.md, tasks.md
+  untracked under specs/F15-eDoc-B/: spec.md, tasks.md
+  untracked under specs/F16-eDoc-C/: spec.md, tasks.md
+  untracked under specs/F17-eDoc-D/: spec.md, tasks.md
+  untracked under specs/F18-eDoc-E/: spec.md, tasks.md
+  untracked under specs/F19-eDoc-F/: spec.md, tasks.md
+  untracked under specs/F20-eDoc-G/: spec.md, tasks.md
+  untracked under specs/F21-eDoc-Inventory/: spec.md, tasks.md
+  untracked under specs/F22-eDoc-Pricing/: spec.md, tasks.md
+  untracked under specs/F23-eDoc-POS/: notes.md, spec.md, tasks.md
+  untracked under specs/F24-eDoc-Traceability/: spec.md, tasks.md
+  untracked under specs/F26-eDoc-Tax-Catalogs/: spec.md, tasks.md
+  untracked under specs/F27-Correction-Backlog/: spec.md, tasks.md
+  specs: 1 no-tasks · 14 pending
+  F13-eDoc-Emission-Engine: approval pending · review no page · verification never-run (1 command(s))
+  F14-eDoc-A: approval pending · review no page · verification never-run (1 command(s))
+  F15-eDoc-B: approval pending · review no page · verification never-run (1 command(s))
+  F16-eDoc-C: approval pending · review no page · verification never-run (1 command(s))
+  F17-eDoc-D: approval pending · review no page · verification never-run (1 command(s))
+  F18-eDoc-E: approval pending · review no page · verification never-run (1 command(s))
+  F19-eDoc-F: approval pending · review no page · verification never-run (1 command(s))
+  F20-eDoc-G: approval pending · review no page · verification never-run (1 command(s))
+  F21-eDoc-Inventory: approval pending · review no page · verification never-run (1 command(s))
+  F22-eDoc-Pricing: approval pending · review no page · verification never-run (1 command(s))
+  F23-eDoc-POS: approval pending · review no page · verification never-run (1 command(s))
+  F24-eDoc-Traceability: approval pending · review no page · verification never-run (1 command(s))
+  F26-eDoc-Tax-Catalogs: approval pending · review no page · verification never-run (1 command(s))
+  F27-Correction-Backlog: approval pending · review no page · verification never-run (1 command(s))
+  (+1 other spec(s) not open)
+  gate pointer: F23-eDoc-POS
+  AIDD_RULES=enforce
+  warn overrides: 0 · R5 audits: advisory
+--> PASS: --refresh: branch/last commit/dirty/untracked
+--> PASS: --refresh: untracked under specs/F23-eDoc-POS/
+--> PASS: --refresh: "14 pending"
+--> PASS: --refresh: gate pointer + effective AIDD_RULES
+--> PASS: --refresh: review and verification state per spec
+$ aidd_status.py status --refresh --json  -> exit 0
+{
+  "open_specs": [
+    "F13-eDoc-Emission-Engine",
+    "F14-eDoc-A",
+    "F15-eDoc-B",
+    "F16-eDoc-C",
+    "F17-eDoc-D",
+    "F18-eDoc-E",
+    "F19-eDoc-F",
+    "F20-eDoc-G",
+    "F21-eDoc-Inventory",
+    "F22-eDoc-Pricing",
+    "F23-eDoc-POS",
+    "F24-eDoc-Traceability",
+    "F26-eDoc-Tax-Catalogs",
+    "F27-Correction-Backlog"
+  ],
+  "specs": [
+    {
+      "spec": "F13-eDoc-Emission-Engine",
+      "root": "C:\\Users\\jquimis\\AppData\\Local\\Temp\\tmpm0o8r_b1",
+      "open": true,
+      "route": {
+        "-1": {
+          "status": "run",
+          "confirmed": false
+        },
+        "0": {
+          "status": "run",
+          "confirmed": false
+        },
+        "1": {
+          "status": "run",
+          "confirmed": false
+        },
+        "1.5": {
+          "status": "run",
+          "confirmed": false
+        },
+        "2": {
+          "status": "run",
+          "confirmed": false
+        },
+        "3": {
+          "status": "run",
+          "confirmed": false
+        },
+        "4": {
+          "status": "run",
+          "confirmed": false
+        }
+      },
+      "alignment": {
+        "proposed": 0,
+        "unanswered": 0,
+        "unverified_quotes": 6
+      },
+      "mapper": false,
+      "graph": false,
+      "plan_audited": false,
+      "tasks": {
+        "approval": "pending",
+        "waves": 2,
+        "critical_path_min": 50,
+        "tokens_k": 100,
+        "approval_recorded": false
+      },
+      "code_edits": 0,
+      "auditors": {
+        "functional": false,
+        "performance": false,
+        "security": false,
+        "ui": false
+      },
+      "qa_audit": false,
+      "qa_evidence": {
+        "checked": false,
+        "r10": 0,
+        "r11": 0
+      },
+      "visual_debt_open": 0,
+      "debt_blocking": 0,
+      "active": false,
+      "review": {
+        "page": false,
+        "page_current": false,
+        "present": false,
+        "complete": false,
+        "reason": "no review.md in the spec folder",
+        "missing": 0
+      },
+      "verification": {
+        "declared": true,
+        "commands": 1,
+        "status": "never-run",
+        "ts": null
+      },
+      "gate": 0,
+      "code_edits_attributed": null,
+      "overrides": 0,
+      "r5_mode": "advisory",
+      "gate_pointer": "F23-eDoc-POS",
+      "gate_pointer_changes": [],
+      "rules_mode": {
+        "raw": "",
+        "mode": "enforce",
+        "note": ""
+      },
+      "why_blocked": [
+        "Code edits are BLOCKED while this open spec has no valid tasks approval (run `aidd review F13-eDoc-Emission-Engine` and have the owner review it, or ask the user with AskUserQuestion offering the option \"Approve\"; then `aidd rules approve`).",
+        "R6 tasks.md has no valid \"Approved: YYYY-MM-DD hash:<12hex>\" line (approval pending). → Present the tasks to the user (AskUserQuestion), then run `aidd rules approve <spec_dir>`.",
+        "R5 Quote not found in any recorded user prompt/answer: \"es el modulo de checkout\". → Quote the user's exact words from a prompt written AFTER spec.md was first drafted (5+ words), or ask the user (AskUserQuestion) and quote their answer verbatim (2+ words).",
+        "R5 No find_spec run recorded in this session. → Run `python skill/scripts/find_spec.py` (Step -1) before planning.",
+        "R5 tasks.md exists but plan.md does not. → Write plan.md (Step 3) before tasks.md."
+      ]
+    },
+    {
+      "spec": "F14-eDoc-A",
+      "root": "C:\\Users\\jquimis\\AppData\\Local\\Temp\\tmpm0o8r_b1",
+      "open": true,
+      "route": {
+        "-1": {
+          "status": "run",
+          "confirmed": false
+        },
+        "0": {
+          "status": "run",
+          "confirmed": false
+        },
+        "1": {
+          "status": "run",
+          "confirmed": false
+        },
+        "1.5": {
+          "status": "run",
+          "confirmed": false
+        },
+        "2": {
+          "status": "run",
+          "confirmed": false
+        },
+        "3": {
+          "status": "run",
+          "confirmed": false
+        },
+        "4": {
+          "status": "run",
+          "confirmed": false
+        }
+      },
+      "alignment": {
+        "proposed": 0,
+        "unanswered": 0,
+        "unverified_quotes": 6
+      },
+      "mapper": false,
+      "graph": false,
+      "plan_audited": false,
+      "tasks": {
+        "approval": "pending",
+        "waves": 2,
+        "critical_path_min": 50,
+        "tokens_k": 100,
+        "approval_recorded": false
+      },
+      "code_edits": 0,
+      "auditors": {
+        "functional": false,
+        "performance": false,
+        "security": false,
+        "ui": false
+      },
+      "qa_audit": false,
+      "qa_evidence": {
+        "checked": false,
+        "r10": 0,
+        "r11": 0
+      },
+      "visual_debt_open": 0,
+      "debt_blocking": 0,
+      "active": false,
+      "review": {
+        "page": false,
+        "page_current": false,
+        "present": false,
+        "complete": false,
+        "reason": "no review.md in the spec folder",
+        "missing": 0
+      },
+      "verification": {
+        "declared": true,
+        "commands": 1,
+        "status": "never-run",
+        "ts": null
+      },
+      "gate": 0,
+      "code_edits_attributed": null,
+      "overrides": 0,
+      "r5_mode": "advisory",
+      "gate_pointer": "F23-eDoc-POS",
+      "gate_pointer_changes": [],
+      "rules_mode": {
+        "raw": "",
+        "mode": "enforce",
+        "note": ""
+      },
+      "why_blocked": [
+        "Code edits are BLOCKED while this open spec has no valid tasks approval (run `aidd review F14-eDoc-A` and have the owner review it, or ask the user with AskUserQuestion offering the option \"Approve\"; then `aidd rules approve`).",
+        "R6 tasks.md has no valid \"Approved: YYYY-MM-DD hash:<12hex>\" line (approval pending). → Present the tasks to the user (AskUserQuestion), then run `aidd rules approve <spec_dir>`.",
+        "R5 Quote not found in any recorded user prompt/answer: \"es el modulo de checkout\". → Quote the user's exact words from a prompt written AFTER spec.md was first drafted (5+ words), or ask the user (AskUserQuestion) and quote their answer verbatim (2+ words).",
+        "R5 No find_spec run recorded in this session. → Run `python skill/scripts/find_spec.py` (Step -1) before planning.",
+        "R5 tasks.md exists but plan.md does not. → Write plan.md (Step 3) before tasks.md."
+      ]
+    },
+    {
+      "spec": "F15-eDoc-B",
+      "root": "C:\\Users\\jquimis\\AppData\\Local\\Temp\\tmpm0o8r_b1",
+      "open": true,
+      "route": {
+        "-1": {
+          "status": "run",
+          "confirmed": false
+        },
+        "0": {
+          "status": "run",
+          "confirmed": false
+        },
+        "1": {
+          "status": "run",
+          "confirmed": false
+        },
+        "1.5": {
+          "status": "run",
+          "confirmed": false
+        },
+        "2": {
+          "status": "run",
+          "confirmed": false
+        },
+        "3": {
+          "status": "run",
+          "confirmed": false
+        },
+        "4": {
+          "status": "run",
+          "confirmed": false
+        }
+      },
+      "alignment": {
+        "proposed": 0,
+        "unanswered": 0,
+        "unverified_quotes": 6
+      },
+      "mapper": false,
+      "graph": false,
+      "plan_audited": false,
+      "tasks": {
+        "approval": "pending",
+        "waves": 2,
+        "critical_path_min": 50,
+        "tokens_k": 100,
+        "approval_recorded": false
+      },
+      "code_edits": 0,
+      "auditors": {
+        "functional": false,
+        "performance": false,
+        "security": false,
+        "ui": false
+      },
+      "qa_audit": false,
+      "qa_evidence": {
+        "checked": false,
+        "r10": 0,
+        "r11": 0
+      },
+      "visual_debt_open": 0,
+      "debt_blocking": 0,
+      "active": false,
+      "review": {
+        "page": false,
+        "page_current": false,
+        "present": false,
+        "complete": false,
+        "reason": "no review.md in the spec folder",
+        "missing": 0
+      },
+      "verification": {
+        "declared": true,
+        "commands": 1,
+        "status": "never-run",
+        "ts": null
+      },
+      "gate": 0,
+      "code_edits_attributed": null,
+      "overrides": 0,
+      "r5_mode": "advisory",
+      "gate_pointer": "F23-eDoc-POS",
+      "gate_pointer_changes": [],
+      "rules_mode": {
+        "raw": "",
+        "mode": "enforce",
+        "note": ""
+      },
+      "why_blocked": [
+        "Code edits are BLOCKED while this open spec has no valid tasks approval (run `aidd review F15-eDoc-B` and have the owner review it, or ask the user with AskUserQuestion offering the option \"Approve\"; then `aidd rules approve`).",
+        "R6 tasks.md has no valid \"Approved: YYYY-MM-DD hash:<12hex>\" line (approval pending). → Present the tasks to the user (AskUserQuestion), then run `aidd rules approve <spec_dir>`.",
+        "R5 Quote not found in any recorded user prompt/answer: \"es el modulo de checkout\". → Quote the user's exact words from a prompt written AFTER spec.md was first drafted (5+ words), or ask the user (AskUserQuestion) and quote their answer verbatim (2+ words).",
+        "R5 No find_spec run recorded in this session. → Run `python skill/scripts/find_spec.py` (Step -1) before planning.",
+        "R5 tasks.md exists but plan.md does not. → Write plan.md (Step 3) before tasks.md."
+      ]
+    },
+    {
+      "spec": "F16-eDoc-C",
+      "root": "C:\\Users\\jquimis\\AppData\\Local\\Temp\\tmpm0o8r_b1",
+      "open": true,
+      "route": {
+        "-1": {
+          "status": "run",
+          "confirmed": false
+        },
+        "0": {
+          "status": "run",
+          "confirmed": false
+        },
+        "1": {
+          "status": "run",
+          "confirmed": false
+        },
+        "1.5": {
+          "status": "run",
+          "confirmed": false
+        },
+        "2": {
+          "status": "run",
+          "confirmed": false
+        },
+        "3": {
+          "status": "run",
+          "confirmed": false
+        },
+        "4": {
+          "status": "run",
+          "confirmed": false
+        }
+      },
+      "alignment": {
+        "proposed": 0,
+        "unanswered": 0,
+        "unverified_quotes": 6
+      },
+      "mapper": false,
+      "graph": false,
+      "plan_audited": false,
+      "tasks": {
+        "approval": "pending",
+        "waves": 2,
+        "critical_path_min": 50,
+        "tokens_k": 100,
+        "approval_recorded": false
+      },
+      "code_edits": 0,
+      "auditors": {
+        "functional": false,
+        "performance": false,
+        "security": false,
+        "ui": false
+      },
+      "qa_audit": false,
+      "qa_evidence": {
+        "checked": false,
+        "r10": 0,
+        "r11": 0
+      },
+      "visual_debt_open": 0,
+      "debt_blocking": 0,
+      "active": false,
+      "review": {
+        "page": false,
+        "page_current": false,
+        "present": false,
+        "complete": false,
+        "reason": "no review.md in the spec folder",
+        "missing": 0
+      },
+      "verification": {
+        "declared": true,
+        "commands": 1,
+        "status": "never-run",
+        "ts": null
+      },
+      "gate": 0,
+      "code_edits_attributed": null,
+      "overrides": 0,
+      "r5_mode": "advisory",
+      "gate_pointer": "F23-eDoc-POS",
+      "gate_pointer_changes": [],
+      "rules_mode": {
+        "raw": "",
+        "mode": "enforce",
+        "note": ""
+      },
+      "why_blocked": [
+        "Code edits are BLOCKED while this open spec has no valid tasks approval (run `aidd review F16-eDoc-C` and have the owner review it, or ask the user with AskUserQuestion offering the option \"Approve\"; then `aidd rules approve`).",
+        "R6 tasks.md has no valid \"Approved: YYYY-MM-DD hash:<12hex>\" line (approval pending). → Present the tasks to the user (AskUserQuestion), then run `aidd rules approve <spec_dir>`.",
+        "R5 Quote not found in any recorded user prompt/answer: \"es el modulo de checkout\". → Quote the user's exact words from a prompt written AFTER spec.md was first drafted (5+ words), or ask the user (AskUserQuestion) and quote their answer verbatim (2+ words).",
+        "R5 No find_spec run recorded in this session. → Run `python skill/scripts/find_spec.py` (Step -1) before planning.",
+        "R5 tasks.md exists but plan.md does not. → Write plan.md (Step 3) before tasks.md."
+      ]
+    },
+    {
+      "spec": "F17-eDoc-D",
+      "root": "C:\\Users\\jquimis\\AppData\\Local\\Temp\\tmpm0o8r_b1",
+      "open": true,
+      "route": {
+        "-1": {
+          "status": "run",
+          "confirmed": false
+        },
+        "0": {
+          "status": "run",
+          "confirmed": false
+        },
+        "1": {
+          "status": "run",
+          "confirmed": false
+        },
+        "1.5": {
+          "status": "run",
+          "confirmed": false
+        },
+        "2": {
+          "status": "run",
+          "confirmed": false
+        },
+        "3": {
+          "status": "run",
+          "confirmed": false
+        },
+        "4": {
+          "status": "run",
+          "confirmed": false
+        }
+      },
+      "alignment": {
+        "proposed": 0,
+        "unanswered": 0,
+        "unverified_quotes": 6
+      },
+      "mapper": false,
+      "graph": false,
+      "plan_audited": false,
+      "tasks": {
+        "approval": "pending",
+        "waves": 2,
+        "critical_path_min": 50,
+        "tokens_k": 100,
+        "approval_recorded": false
+      },
+      "code_edits": 0,
+      "auditors": {
+        "functional": false,
+        "performance": false,
+        "security": false,
+        "ui": false
+      },
+      "qa_audit": false,
+      "qa_evidence": {
+        "checked": false,
+        "r10": 0,
+        "r11": 0
+      },
+      "visual_debt_open": 0,
+      "debt_blocking": 0,
+      "active": false,
+      "review": {
+        "page": false,
+        "page_current": false,
+        "present": false,
+        "complete": false,
+        "reason": "no review.md in the spec folder",
+        "missing": 0
+      },
+      "verification": {
+        "declared": true,
+        "commands": 1,
+        "status": "never-run",
+        "ts": null
+      },
+      "gate": 0,
+      "code_edits_attributed": null,
+      "overrides": 0,
+      "r5_mode": "advisory",
+      "gate_pointer": "F23-eDoc-POS",
+      "gate_pointer_changes": [],
+      "rules_mode": {
+        "raw": "",
+        "mode": "enforce",
+        "note": ""
+      },
+      "why_blocked": [
+        "Code edits are BLOCKED while this open spec has no valid tasks approval (run `aidd review F17-eDoc-D` and have the owner review it, or ask the user with AskUserQuestion offering the option \"Approve\"; then `aidd rules approve`).",
+        "R6 tasks.md has no valid \"Approved: YYYY-MM-DD hash:<12hex>\" line (approval pending). → Present the tasks to the user (AskUserQuestion), then run `aidd rules approve <spec_dir>`.",
+        "R5 Quote not found in any recorded user prompt/answer: \"es el modulo de checkout\". → Quote the user's exact words from a prompt written AFTER spec.md was first drafted (5+ words), or ask the user (AskUserQuestion) and quote their answer verbatim (2+ words).",
+        "R5 No find_spec run recorded in this session. → Run `python skill/scripts/find_spec.py` (Step -1) before planning.",
+        "R5 tasks.md exists but plan.md does not. → Write plan.md (Step 3) before tasks.md."
+      ]
+    },
+    {
+      "spec": "F18-eDoc-E",
+      "root": "C:\\Users\\jquimis\\AppData\\Local\\Temp\\tmpm0o8r_b1",
+      "open": true,
+      "route": {
+        "-1": {
+          "status": "run",
+          "confirmed": false
+        },
+        "0": {
+          "status": "run",
+          "confirmed": false
+        },
+        "1": {
+          "status": "run",
+          "confirmed": false
+        },
+        "1.5": {
+          "status": "run",
+          "confirmed": false
+        },
+        "2": {
+          "status": "run",
+          "confirmed": false
+        },
+        "3": {
+          "status": "run",
+          "confirmed": false
+        },
+        "4": {
+          "status": "run",
+          "confirmed": false
+        }
+      },
+      "alignment": {
+        "proposed": 0,
+        "unanswered": 0,
+        "unverified_quotes": 6
+      },
+      "mapper": false,
+      "graph": false,
+      "plan_audited": false,
+      "tasks": {
+        "approval": "pending",
+        "waves": 2,
+        "critical_path_min": 50,
+        "tokens_k": 100,
+        "approval_recorded": false
+      },
+      "code_edits": 0,
+      "auditors": {
+        "functional": false,
+        "performance": false,
+        "security": false,
+        "ui": false
+      },
+      "qa_audit": false,
+      "qa_evidence": {
+        "checked": false,
+        "r10": 0,
+        "r11": 0
+      },
+      "visual_debt_open": 0,
+      "debt_blocking": 0,
+      "active": false,
+      "review": {
+        "page": false,
+        "page_current": false,
+        "present": false,
+        "complete": false,
+        "reason": "no review.md in the spec folder",
+        "missing": 0
+      },
+      "verification": {
+        "declared": true,
+        "commands": 1,
+        "status": "never-run",
+        "ts": null
+      },
+      "gate": 0,
+      "code_edits_attributed": null,
+      "overrides": 0,
+      "r5_mode": "advisory",
+      "gate_pointer": "F23-eDoc-POS",
+      "gate_pointer_changes": [],
+      "rules_mode": {
+        "raw": "",
+        "mode": "enforce",
+        "note": ""
+      },
+      "why_blocked": [
+        "Code edits are BLOCKED while this open spec has no valid tasks approval (run `aidd review F18-eDoc-E` and have the owner review it, or ask the user with AskUserQuestion offering the option \"Approve\"; then `aidd rules approve`).",
+        "R6 tasks.md has no valid \"Approved: YYYY-MM-DD hash:<12hex>\" line (approval pending). → Present the tasks to the user (AskUserQuestion), then run `aidd rules approve <spec_dir>`.",
+        "R5 Quote not found in any recorded user prompt/answer: \"es el modulo de checkout\". → Quote the user's exact words from a prompt written AFTER spec.md was first drafted (5+ words), or ask the user (AskUserQuestion) and quote their answer verbatim (2+ words).",
+        "R5 No find_spec run recorded in this session. → Run `python skill/scripts/find_spec.py` (Step -1) before planning.",
+        "R5 tasks.md exists but plan.md does not. → Write plan.md (Step 3) before tasks.md."
+      ]
+    },
+    {
+      "spec": "F19-eDoc-F",
+      "root": "C:\\Users\\jquimis\\AppData\\Local\\Temp\\tmpm0o8r_b1",
+      "open": true,
+      "route": {
+        "-1": {
+          "status": "run",
+          "confirmed": false
+        },
+        "0": {
+          "status": "run",
+          "confirmed": false
+        },
+        "1": {
+          "status": "run",
+          "confirmed": false
+        },
+        "1.5": {
+          "status": "run",
+          "confirmed": false
+        },
+        "2": {
+          "status": "run",
+          "confirmed": false
+        },
+        "3": {
+          "status": "run",
+          "confirmed": false
+        },
+        "4": {
+          "status": "run",
+          "confirmed": false
+        }
+      },
+      "alignment": {
+        "proposed": 0,
+        "unanswered": 0,
+        "unverified_quotes": 6
+      },
+      "mapper": false,
+      "graph": false,
+      "plan_audited": false,
+      "tasks": {
+        "approval": "pending",
+        "waves": 2,
+        "critical_path_min": 50,
+        "tokens_k": 100,
+        "approval_recorded": false
+      },
+      "code_edits": 0,
+      "auditors": {
+        "functional": false,
+        "performance": false,
+        "security": false,
+        "ui": false
+      },
+      "qa_audit": false,
+      "qa_evidence": {
+        "checked": false,
+        "r10": 0,
+        "r11": 0
+      },
+      "visual_debt_open": 0,
+      "debt_blocking": 0,
+      "active": false,
+      "review": {
+        "page": false,
+        "page_current": false,
+        "present": false,
+        "complete": false,
+        "reason": "no review.md in the spec folder",
+        "missing": 0
+      },
+      "verification": {
+        "declared": true,
+        "commands": 1,
+        "status": "never-run",
+        "ts": null
+      },
+      "gate": 0,
+      "code_edits_attributed": null,
+      "overrides": 0,
+      "r5_mode": "advisory",
+      "gate_pointer": "F23-eDoc-POS",
+      "gate_pointer_changes": [],
+      "rules_mode": {
+        "raw": "",
+        "mode": "enforce",
+        "note": ""
+      },
+      "why_blocked": [
+        "Code edits are BLOCKED while this open spec has no valid tasks approval (run `aidd review F19-eDoc-F` and have the owner review it, or ask the user with AskUserQuestion offering the option \"Approve\"; then `aidd rules approve`).",
+        "R6 tasks.md has no valid \"Approved: YYYY-MM-DD hash:<12hex>\" line (approval pending). → Present the tasks to the user (AskUserQuestion), then run `aidd rules approve <spec_dir>`.",
+        "R5 Quote not found in any recorded user prompt/answer: \"es el modulo de checkout\". → Quote the user's exact words from a prompt written AFTER spec.md was first drafted (5+ words), or ask the user (AskUserQuestion) and quote their answer verbatim (2+ words).",
+        "R5 No find_spec run recorded in this session. → Run `python skill/scripts/find_spec.py` (Step -1) before planning.",
+        "R5 tasks.md exists but plan.md does not. → Write plan.md (Step 3) before tasks.md."
+      ]
+    },
+    {
+      "spec": "F20-eDoc-G",
+      "root": "C:\\Users\\jquimis\\AppData\\Local\\Temp\\tmpm0o8r_b1",
+      "open": true,
+      "route": {
+        "-1": {
+          "status": "run",
+          "confirmed": false
+        },
+        "0": {
+          "status": "run",
+          "confirmed": false
+        },
+        "1": {
+          "status": "run",
+          "confirmed": false
+        },
+        "1.5": {
+          "status": "run",
+          "confirmed": false
+        },
+        "2": {
+          "status": "run",
+          "confirmed": false
+        },
+        "3": {
+          "status": "run",
+          "confirmed": false
+        },
+        "4": {
+          "status": "run",
+          "confirmed": false
+        }
+      },
+      "alignment": {
+        "proposed": 0,
+        "unanswered": 0,
+        "unverified_quotes": 6
+      },
+      "mapper": false,
+      "graph": false,
+      "plan_audited": false,
+      "tasks": {
+        "approval": "pending",
+        "waves": 2,
+        "critical_path_min": 50,
+        "tokens_k": 100,
+        "approval_recorded": false
+      },
+      "code_edits": 0,
+      "auditors": {
+        "functional": false,
+        "performance": false,
+        "security": false,
+        "ui": false
+      },
+      "qa_audit": false,
+      "qa_evidence": {
+        "checked": false,
+        "r10": 0,
+        "r11": 0
+      },
+      "visual_debt_open": 0,
+      "debt_blocking": 0,
+      "active": false,
+      "review": {
+        "page": false,
+        "page_current": false,
+        "present": false,
+        "complete": false,
+        "reason": "no review.md in the spec folder",
+        "missing": 0
+      },
+      "verification": {
+        "declared": true,
+        "commands": 1,
+        "status": "never-run",
+        "ts": null
+      },
+      "gate": 0,
+      "code_edits_attributed": null,
+      "overrides": 0,
+      "r5_mode": "advisory",
+      "gate_pointer": "F23-eDoc-POS",
+      "gate_pointer_changes": [],
+      "rules_mode": {
+        "raw": "",
+        "mode": "enforce",
+        "note": ""
+      },
+      "why_blocked": [
+        "Code edits are BLOCKED while this open spec has no valid tasks approval (run `aidd review F20-eDoc-G` and have the owner review it, or ask the user with AskUserQuestion offering the option \"Approve\"; then `aidd rules approve`).",
+        "R6 tasks.md has no valid \"Approved: YYYY-MM-DD hash:<12hex>\" line (approval pending). → Present the tasks to the user (AskUserQuestion), then run `aidd rules approve <spec_dir>`.",
+        "R5 Quote not found in any recorded user prompt/answer: \"es el modulo de checkout\". → Quote the user's exact words from a prompt written AFTER spec.md was first drafted (5+ words), or ask the user (AskUserQuestion) and quote their answer verbatim (2+ words).",
+        "R5 No find_spec run recorded in this session. → Run `python skill/scripts/find_spec.py` (Step -1) before planning.",
+        "R5 tasks.md exists but plan.md does not. → Write plan.md (Step 3) before tasks.md."
+      ]
+    },
+    {
+      "spec": "F21-eDoc-Inventory",
+      "root": "C:\\Users\\jquimis\\AppData\\Local\\Temp\\tmpm0o8r_b1",
+      "open": true,
+      "route": {
+        "-1": {
+          "status": "run",
+          "confirmed": false
+        },
+        "0": {
+          "status": "run",
+          "confirmed": false
+        },
+        "1": {
+          "status": "run",
+          "confirmed": false
+        },
+        "1.5": {
+          "status": "run",
+          "confirmed": false
+        },
+        "2": {
+          "status": "run",
+          "confirmed": false
+        },
+        "3": {
+          "status": "run",
+          "confirmed": false
+        },
+        "4": {
+          "status": "run",
+          "confirmed": false
+        }
+      },
+      "alignment": {
+        "proposed": 0,
+        "unanswered": 0,
+        "unverified_quotes": 6
+      },
+      "mapper": false,
+      "graph": false,
+      "plan_audited": false,
+      "tasks": {
+        "approval": "pending",
+        "waves": 2,
+        "critical_path_min": 50,
+        "tokens_k": 100,
+        "approval_recorded": false
+      },
+      "code_edits": 0,
+      "auditors": {
+        "functional": false,
+        "performance": false,
+        "security": false,
+        "ui": false
+      },
+      "qa_audit": false,
+      "qa_evidence": {
+        "checked": false,
+        "r10": 0,
+        "r11": 0
+      },
+      "visual_debt_open": 0,
+      "debt_blocking": 0,
+      "active": false,
+      "review": {
+        "page": false,
+        "page_current": false,
+        "present": false,
+        "complete": false,
+        "reason": "no review.md in the spec folder",
+        "missing": 0
+      },
+      "verification": {
+        "declared": true,
+        "commands": 1,
+        "status": "never-run",
+        "ts": null
+      },
+      "gate": 0,
+      "code_edits_attributed": null,
+      "overrides": 0,
+      "r5_mode": "advisory",
+      "gate_pointer": "F23-eDoc-POS",
+      "gate_pointer_changes": [],
+      "rules_mode": {
+        "raw": "",
+        "mode": "enforce",
+        "note": ""
+      },
+      "why_blocked": [
+        "Code edits are BLOCKED while this open spec has no valid tasks approval (run `aidd review F21-eDoc-Inventory` and have the owner review it, or ask the user with AskUserQuestion offering the option \"Approve\"; then `aidd rules approve`).",
+        "R6 tasks.md has no valid \"Approved: YYYY-MM-DD hash:<12hex>\" line (approval pending). → Present the tasks to the user (AskUserQuestion), then run `aidd rules approve <spec_dir>`.",
+        "R5 Quote not found in any recorded user prompt/answer: \"es el modulo de checkout\". → Quote the user's exact words from a prompt written AFTER spec.md was first drafted (5+ words), or ask the user (AskUserQuestion) and quote their answer verbatim (2+ words).",
+        "R5 No find_spec run recorded in this session. → Run `python skill/scripts/find_spec.py` (Step -1) before planning.",
+        "R5 tasks.md exists but plan.md does not. → Write plan.md (Step 3) before tasks.md."
+      ]
+    },
+    {
+      "spec": "F22-eDoc-Pricing",
+      "root": "C:\\Users\\jquimis\\AppData\\Local\\Temp\\tmpm0o8r_b1",
+      "open": true,
+      "route": {
+        "-1": {
+          "status": "run",
+          "confirmed": false
+        },
+        "0": {
+          "status": "run",
+          "confirmed": false
+        },
+        "1": {
+          "status": "run",
+          "confirmed": false
+        },
+        "1.5": {
+          "status": "run",
+          "confirmed": false
+        },
+        "2": {
+          "status": "run",
+          "confirmed": false
+        },
+        "3": {
+          "status": "run",
+          "confirmed": false
+        },
+        "4": {
+          "status": "run",
+          "confirmed": false
+        }
+      },
+      "alignment": {
+        "proposed": 0,
+        "unanswered": 0,
+        "unverified_quotes": 6
+      },
+      "mapper": false,
+      "graph": false,
+      "plan_audited": false,
+      "tasks": {
+        "approval": "pending",
+        "waves": 2,
+        "critical_path_min": 50,
+        "tokens_k": 100,
+        "approval_recorded": false
+      },
+      "code_edits": 0,
+      "auditors": {
+        "functional": false,
+        "performance": false,
+        "security": false,
+        "ui": false
+      },
+      "qa_audit": false,
+      "qa_evidence": {
+        "checked": false,
+        "r10": 0,
+        "r11": 0
+      },
+      "visual_debt_open": 0,
+      "debt_blocking": 0,
+      "active": false,
+      "review": {
+        "page": false,
+        "page_current": false,
+        "present": false,
+        "complete": false,
+        "reason": "no review.md in the spec folder",
+        "missing": 0
+      },
+      "verification": {
+        "declared": true,
+        "commands": 1,
+        "status": "never-run",
+        "ts": null
+      },
+      "gate": 0,
+      "code_edits_attributed": null,
+      "overrides": 0,
+      "r5_mode": "advisory",
+      "gate_pointer": "F23-eDoc-POS",
+      "gate_pointer_changes": [],
+      "rules_mode": {
+        "raw": "",
+        "mode": "enforce",
+        "note": ""
+      },
+      "why_blocked": [
+        "Code edits are BLOCKED while this open spec has no valid tasks approval (run `aidd review F22-eDoc-Pricing` and have the owner review it, or ask the user with AskUserQuestion offering the option \"Approve\"; then `aidd rules approve`).",
+        "R6 tasks.md has no valid \"Approved: YYYY-MM-DD hash:<12hex>\" line (approval pending). → Present the tasks to the user (AskUserQuestion), then run `aidd rules approve <spec_dir>`.",
+        "R5 Quote not found in any recorded user prompt/answer: \"es el modulo de checkout\". → Quote the user's exact words from a prompt written AFTER spec.md was first drafted (5+ words), or ask the user (AskUserQuestion) and quote their answer verbatim (2+ words).",
+        "R5 No find_spec run recorded in this session. → Run `python skill/scripts/find_spec.py` (Step -1) before planning.",
+        "R5 tasks.md exists but plan.md does not. → Write plan.md (Step 3) before tasks.md."
+      ]
+    },
+    {
+      "spec": "F23-eDoc-POS",
+      "root": "C:\\Users\\jquimis\\AppData\\Local\\Temp\\tmpm0o8r_b1",
+      "open": true,
+      "route": {
+        "-1": {
+          "status": "run",
+          "confirmed": false
+        },
+        "0": {
+          "status": "run",
+          "confirmed": false
+        },
+        "1": {
+          "status": "run",
+          "confirmed": false
+        },
+        "1.5": {
+          "status": "run",
+          "confirmed": false
+        },
+        "2": {
+          "status": "run",
+          "confirmed": false
+        },
+        "3": {
+          "status": "run",
+          "confirmed": false
+        },
+        "4": {
+          "status": "run",
+          "confirmed": false
+        }
+      },
+      "alignment": {
+        "proposed": 0,
+        "unanswered": 0,
+        "unverified_quotes": 6
+      },
+      "mapper": false,
+      "graph": false,
+      "plan_audited": false,
+      "tasks": {
+        "approval": "pending",
+        "waves": 2,
+        "critical_path_min": 50,
+        "tokens_k": 100,
+        "approval_recorded": false
+      },
+      "code_edits": 0,
+      "auditors": {
+        "functional": false,
+        "performance": false,
+        "security": false,
+        "ui": false
+      },
+      "qa_audit": false,
+      "qa_evidence": {
+        "checked": false,
+        "r10": 0,
+        "r11": 0
+      },
+      "visual_debt_open": 0,
+      "debt_blocking": 0,
+      "active": false,
+      "review": {
+        "page": false,
+        "page_current": false,
+        "present": false,
+        "complete": false,
+        "reason": "no review.md in the spec folder",
+        "missing": 0
+      },
+      "verification": {
+        "declared": true,
+        "commands": 1,
+        "status": "never-run",
+        "ts": null
+      },
+      "gate": 0,
+      "code_edits_attributed": null,
+      "overrides": 0,
+      "r5_mode": "advisory",
+      "gate_pointer": "F23-eDoc-POS",
+      "gate_pointer_changes": [],
+      "rules_mode": {
+        "raw": "",
+        "mode": "enforce",
+        "note": ""
+      },
+      "why_blocked": [
+        "Code edits are BLOCKED while this open spec has no valid tasks approval (run `aidd review F23-eDoc-POS` and have the owner review it, or ask the user with AskUserQuestion offering the option \"Approve\"; then `aidd rules approve`).",
+        "R6 tasks.md has no valid \"Approved: YYYY-MM-DD hash:<12hex>\" line (approval pending). → Present the tasks to the user (AskUserQuestion), then run `aidd rules approve <spec_dir>`.",
+        "R5 Quote not found in any recorded user prompt/answer: \"es el modulo de checkout\". → Quote the user's exact words from a prompt written AFTER spec.md was first drafted (5+ words), or ask the user (AskUserQuestion) and quote their answer verbatim (2+ words).",
+        "R5 No find_spec run recorded in this session. → Run `python skill/scripts/find_spec.py` (Step -1) before planning.",
+        "R5 tasks.md exists but plan.md does not. → Write plan.md (Step 3) before tasks.md."
+      ]
+    },
+    {
+      "spec": "F24-eDoc-Traceability",
+      "root": "C:\\Users\\jquimis\\AppData\\Local\\Temp\\tmpm0o8r_b1",
+      "open": true,
+      "route": {
+        "-1": {
+          "status": "run",
+          "confirmed": false
+        },
+        "0": {
+          "status": "run",
+          "confirmed": false
+        },
+        "1": {
+          "status": "run",
+          "confirmed": false
+        },
+        "1.5": {
+          "status": "run",
+          "confirmed": false
+        },
+        "2": {
+          "status": "run",
+          "confirmed": false
+        },
+        "3": {
+          "status": "run",
+          "confirmed": false
+        },
+        "4": {
+          "status": "run",
+          "confirmed": false
+        }
+      },
+      "alignment": {
+        "proposed": 0,
+        "unanswered": 0,
+        "unverified_quotes": 6
+      },
+      "mapper": false,
+      "graph": false,
+      "plan_audited": false,
+      "tasks": {
+        "approval": "pending",
+        "waves": 2,
+        "critical_path_min": 50,
+        "tokens_k": 100,
+        "approval_recorded": false
+      },
+      "code_edits": 0,
+      "auditors": {
+        "functional": false,
+        "performance": false,
+        "security": false,
+        "ui": false
+      },
+      "qa_audit": false,
+      "qa_evidence": {
+        "checked": false,
+        "r10": 0,
+        "r11": 0
+      },
+      "visual_debt_open": 0,
+      "debt_blocking": 0,
+      "active": false,
+      "review": {
+        "page": false,
+        "page_current": false,
+        "present": false,
+        "complete": false,
+        "reason": "no review.md in the spec folder",
+        "missing": 0
+      },
+      "verification": {
+        "declared": true,
+        "commands": 1,
+        "status": "never-run",
+        "ts": null
+      },
+      "gate": 0,
+      "code_edits_attributed": null,
+      "overrides": 0,
+      "r5_mode": "advisory",
+      "gate_pointer": "F23-eDoc-POS",
+      "gate_pointer_changes": [],
+      "rules_mode": {
+        "raw": "",
+        "mode": "enforce",
+        "note": ""
+      },
+      "why_blocked": [
+        "Code edits are BLOCKED while this open spec has no valid tasks approval (run `aidd review F24-eDoc-Traceability` and have the owner review it, or ask the user with AskUserQuestion offering the option \"Approve\"; then `aidd rules approve`).",
+        "R6 tasks.md has no valid \"Approved: YYYY-MM-DD hash:<12hex>\" line (approval pending). → Present the tasks to the user (AskUserQuestion), then run `aidd rules approve <spec_dir>`.",
+        "R5 Quote not found in any recorded user prompt/answer: \"es el modulo de checkout\". → Quote the user's exact words from a prompt written AFTER spec.md was first drafted (5+ words), or ask the user (AskUserQuestion) and quote their answer verbatim (2+ words).",
+        "R5 No find_spec run recorded in this session. → Run `python skill/scripts/find_spec.py` (Step -1) before planning.",
+        "R5 tasks.md exists but plan.md does not. → Write plan.md (Step 3) before tasks.md."
+      ]
+    },
+    {
+      "spec": "F26-eDoc-Tax-Catalogs",
+      "root": "C:\\Users\\jquimis\\AppData\\Local\\Temp\\tmpm0o8r_b1",
+      "open": true,
+      "route": {
+        "-1": {
+          "status": "run",
+          "confirmed": false
+        },
+        "0": {
+          "status": "run",
+          "confirmed": false
+        },
+        "1": {
+          "status": "run",
+          "confirmed": false
+        },
+        "1.5": {
+          "status": "run",
+          "confirmed": false
+        },
+        "2": {
+          "status": "run",
+          "confirmed": false
+        },
+        "3": {
+          "status": "run",
+          "confirmed": false
+        },
+        "4": {
+          "status": "run",
+          "confirmed": false
+        }
+      },
+      "alignment": {
+        "proposed": 0,
+        "unanswered": 0,
+        "unverified_quotes": 6
+      },
+      "mapper": false,
+      "graph": false,
+      "plan_audited": false,
+      "tasks": {
+        "approval": "pending",
+        "waves": 2,
+        "critical_path_min": 50,
+        "tokens_k": 100,
+        "approval_recorded": false
+      },
+      "code_edits": 0,
+      "auditors": {
+        "functional": false,
+        "performance": false,
+        "security": false,
+        "ui": false
+      },
+      "qa_audit": false,
+      "qa_evidence": {
+        "checked": false,
+        "r10": 0,
+        "r11": 0
+      },
+      "visual_debt_open": 0,
+      "debt_blocking": 0,
+      "active": false,
+      "review": {
+        "page": false,
+        "page_current": false,
+        "present": false,
+        "complete": false,
+        "reason": "no review.md in the spec folder",
+        "missing": 0
+      },
+      "verification": {
+        "declared": true,
+        "commands": 1,
+        "status": "never-run",
+        "ts": null
+      },
+      "gate": 0,
+      "code_edits_attributed": null,
+      "overrides": 0,
+      "r5_mode": "advisory",
+      "gate_pointer": "F23-eDoc-POS",
+      "gate_pointer_changes": [],
+      "rules_mode": {
+        "raw": "",
+        "mode": "enforce",
+        "note": ""
+      },
+      "why_blocked": [
+        "Code edits are BLOCKED while this open spec has no valid tasks approval (run `aidd review F26-eDoc-Tax-Catalogs` and have the owner review it, or ask the user with AskUserQuestion offering the option \"Approve\"; then `aidd rules approve`).",
+        "R6 tasks.md has no valid \"Approved: YYYY-MM-DD hash:<12hex>\" line (approval pending). → Present the tasks to the user (AskUserQuestion), then run `aidd rules approve <spec_dir>`.",
+        "R5 Quote not found in any recorded user prompt/answer: \"es el modulo de checkout\". → Quote the user's exact words from a prompt written AFTER spec.md was first drafted (5+ words), or ask the user (AskUserQuestion) and quote their answer verbatim (2+ words).",
+        "R5 No find_spec run recorded in this session. → Run `python skill/scripts/find_spec.py` (Step -1) before planning.",
+        "R5 tasks.md exists but plan.md does not. → Write plan.md (Step 3) before tasks.md."
+      ]
+    },
+    {
+      "spec": "F27-Correction-Backlog",
+      "root": "C:\\Users\\jquimis\\AppData\\Local\\Temp\\tmpm0o8r_b1",
+      "open": true,
+      "route": {
+        "-1": {
+          "status": "run",
+          "confirmed": false
+        },
+        "0": {
+          "status": "run",
+          "confirmed": false
+        },
+        "1": {
+          "status": "run",
+          "confirmed": false
+        },
+        "1.5": {
+          "status": "run",
+          "confirmed": false
+        },
+        "2": {
+          "status": "run",
+          "confirmed": false
+        },
+        "3": {
+          "status": "run",
+          "confirmed": false
+        },
+        "4": {
+          "status": "run",
+          "confirmed": false
+        }
+      },
+      "alignment": {
+        "proposed": 0,
+        "unanswered": 0,
+        "unverified_quotes": 6
+      },
+      "mapper": false,
+      "graph": false,
+      "plan_audited": false,
+      "tasks": {
+        "approval": "pending",
+        "waves": 2,
+        "critical_path_min": 50,
+        "tokens_k": 100,
+        "approval_recorded": false
+      },
+      "code_edits": 0,
+      "auditors": {
+        "functional": false,
+        "performance": false,
+        "security": false,
+        "ui": false
+      },
+      "qa_audit": false,
+      "qa_evidence": {
+        "checked": false,
+        "r10": 0,
+        "r11": 0
+      },
+      "visual_debt_open": 0,
+      "debt_blocking": 0,
+      "active": false,
+      "review": {
+        "page": false,
+        "page_current": false,
+        "present": false,
+        "complete": false,
+        "reason": "no review.md in the spec folder",
+        "missing": 0
+      },
+      "verification": {
+        "declared": true,
+        "commands": 1,
+        "status": "never-run",
+        "ts": null
+      },
+      "gate": 0,
+      "code_edits_attributed": null,
+      "overrides": 0,
+      "r5_mode": "advisory",
+      "gate_pointer": "F23-eDoc-POS",
+      "gate_pointer_changes": [],
+      "rules_mode": {
+        "raw": "",
+        "mode": "enforce",
+        "note": ""
+      },
+      "why_blocked": [
+        "Code edits are BLOCKED while this open spec has no valid tasks approval (run `aidd review F27-Correction-Backlog` and have the owner review it, or ask the user with AskUserQuestion offering the option \"Approve\"; then `aidd rules approve`).",
+        "R6 tasks.md has no valid \"Approved: YYYY-MM-DD hash:<12hex>\" line (approval pending). → Present the tasks to the user (AskUserQuestion), then run `aidd rules approve <spec_dir>`.",
+        "R5 Quote not found in any recorded user prompt/answer: \"es el modulo de checkout\". → Quote the user's exact words from a prompt written AFTER spec.md was first drafted (5+ words), or ask the user (AskUserQuestion) and quote their answer verbatim (2+ words).",
+        "R5 No find_spec run recorded in this session. → Run `python skill/scripts/find_spec.py` (Step -1) before planning.",
+        "R5 tasks.md exists but plan.md does not. → Write plan.md (Step 3) before tasks.md."
+      ]
+    }
+  ],
+  "other_specs": [
+    "001-x"
+  ],
+  "evidence": {
+    "answers": 0,
+    "questions": 0,
+    "user_answered": false,
+    "stop_blocks": {},
+    "stop_block_exhausted": 0,
+    "hook_errors": 0,
+    "last_hook_error": null,
+    "open_specs": [
+      "F13-eDoc-Emission-Engine",
+      "F14-eDoc-A",
+      "F15-eDoc-B",
+      "F16-eDoc-C",
+      "F17-eDoc-D",
+      "F18-eDoc-E",
+      "F19-eDoc-F",
+      "F20-eDoc-G",
+      "F21-eDoc-Inventory",
+      "F22-eDoc-Pricing",
+      "F23-eDoc-POS",
+      "F24-eDoc-Traceability",
+      "F26-eDoc-Tax-Catalogs",
+      "F27-Correction-Backlog"
+    ],
+    "gate_pointer": "F23-eDoc-POS",
+    "gate_pointer_changes": [],
+    "overrides": 0,
+    "rules_mode": {
+      "raw": "",
+      "mode": "enforce",
+      "note": ""
+    },
+    "r5_mode": "advisory"
+  },
+  "derived": {
+    "git": {
+      "available": true,
+      "branch": "master",
+      "last_commit": "7e67338 2026-10-05 init",
+      "dirty": 0,
+      "untracked": 30,
+      "untracked_specs": {
+        "F13-eDoc-Emission-Engine": [
+          "spec.md",
+          "tasks.md"
+        ],
+        "F14-eDoc-A": [
+          "spec.md",
+          "tasks.md"
+        ],
+        "F15-eDoc-B": [
+          "spec.md",
+          "tasks.md"
+        ],
+        "F16-eDoc-C": [
+          "spec.md",
+          "tasks.md"
+        ],
+        "F17-eDoc-D": [
+          "spec.md",
+          "tasks.md"
+        ],
+        "F18-eDoc-E": [
+          "spec.md",
+          "tasks.md"
+        ],
+        "F19-eDoc-F": [
+          "spec.md",
+          "tasks.md"
+        ],
+        "F20-eDoc-G": [
+          "spec.md",
+          "tasks.md"
+        ],
+        "F21-eDoc-Inventory": [
+          "spec.md",
+          "tasks.md"
+        ],
+        "F22-eDoc-Pricing": [
+          "spec.md",
+          "tasks.md"
+        ],
+        "F23-eDoc-POS": [
+          "notes.md",
+          "spec.md",
+          "tasks.md"
+        ],
+        "F24-eDoc-Traceability": [
+          "spec.md",
+          "tasks.md"
+        ],
+        "F26-eDoc-Tax-Catalogs": [
+          "spec.md",
+          "tasks.md"
+        ],
+        "F27-Correction-Backlog": [
+          "spec.md",
+          "tasks.md"
+        ]
+      },
+      "untracked_prototypes": []
+    },
+    "specs_by_approval": {
+      "no-tasks": 1,
+      "pending": 14
+    },
+    "specs": [
+      {
+        "spec": "F13-eDoc-Emission-Engine",
+        "approval": "pending",
+        "review": {
+          "page": false,
+          "page_current": false,
+          "present": false,
+          "complete": false,
+          "reason": "no review.md in the spec folder",
+          "missing": 0
+        },
+        "verification": {
+          "declared": true,
+          "commands": 1,
+          "status": "never-run",
+          "ts": null
+        },
+        "gate": 0,
+        "code_edits_attributed": null,
+        "untracked": 2
+      },
+      {
+        "spec": "F14-eDoc-A",
+        "approval": "pending",
+        "review": {
+          "page": false,
+          "page_current": false,
+          "present": false,
+          "complete": false,
+          "reason": "no review.md in the spec folder",
+          "missing": 0
+        },
+        "verification": {
+          "declared": true,
+          "commands": 1,
+          "status": "never-run",
+          "ts": null
+        },
+        "gate": 0,
+        "code_edits_attributed": null,
+        "untracked": 2
+      },
+      {
+        "spec": "F15-eDoc-B",
+        "approval": "pending",
+        "review": {
+          "page": false,
+          "page_current": false,
+          "present": false,
+          "complete": false,
+          "reason": "no review.md in the spec folder",
+          "missing": 0
+        },
+        "verification": {
+          "declared": true,
+          "commands": 1,
+          "status": "never-run",
+          "ts": null
+        },
+        "gate": 0,
+        "code_edits_attributed": null,
+        "untracked": 2
+      },
+      {
+        "spec": "F16-eDoc-C",
+        "approval": "pending",
+        "review": {
+          "page": false,
+          "page_current": false,
+          "present": false,
+          "complete": false,
+          "reason": "no review.md in the spec folder",
+          "missing": 0
+        },
+        "verification": {
+          "declared": true,
+          "commands": 1,
+          "status": "never-run",
+          "ts": null
+        },
+        "gate": 0,
+        "code_edits_attributed": null,
+        "untracked": 2
+      },
+      {
+        "spec": "F17-eDoc-D",
+        "approval": "pending",
+        "review": {
+          "page": false,
+          "page_current": false,
+          "present": false,
+          "complete": false,
+          "reason": "no review.md in the spec folder",
+          "missing": 0
+        },
+        "verification": {
+          "declared": true,
+          "commands": 1,
+          "status": "never-run",
+          "ts": null
+        },
+        "gate": 0,
+        "code_edits_attributed": null,
+        "untracked": 2
+      },
+      {
+        "spec": "F18-eDoc-E",
+        "approval": "pending",
+        "review": {
+          "page": false,
+          "page_current": false,
+          "present": false,
+          "complete": false,
+          "reason": "no review.md in the spec folder",
+          "missing": 0
+        },
+        "verification": {
+          "declared": true,
+          "commands": 1,
+          "status": "never-run",
+          "ts": null
+        },
+        "gate": 0,
+        "code_edits_attributed": null,
+        "untracked": 2
+      },
+      {
+        "spec": "F19-eDoc-F",
+        "approval": "pending",
+        "review": {
+          "page": false,
+          "page_current": false,
+          "present": false,
+          "complete": false,
+          "reason": "no review.md in the spec folder",
+          "missing": 0
+        },
+        "verification": {
+          "declared": true,
+          "commands": 1,
+          "status": "never-run",
+          "ts": null
+        },
+        "gate": 0,
+        "code_edits_attributed": null,
+        "untracked": 2
+      },
+      {
+        "spec": "F20-eDoc-G",
+        "approval": "pending",
+        "review": {
+          "page": false,
+          "page_current": false,
+          "present": false,
+          "complete": false,
+          "reason": "no review.md in the spec folder",
+          "missing": 0
+        },
+        "verification": {
+          "declared": true,
+          "commands": 1,
+          "status": "never-run",
+          "ts": null
+        },
+        "gate": 0,
+        "code_edits_attributed": null,
+        "untracked": 2
+      },
+      {
+        "spec": "F21-eDoc-Inventory",
+        "approval": "pending",
+        "review": {
+          "page": false,
+          "page_current": false,
+          "present": false,
+          "complete": false,
+          "reason": "no review.md in the spec folder",
+          "missing": 0
+        },
+        "verification": {
+          "declared": true,
+          "commands": 1,
+          "status": "never-run",
+          "ts": null
+        },
+        "gate": 0,
+        "code_edits_attributed": null,
+        "untracked": 2
+      },
+      {
+        "spec": "F22-eDoc-Pricing",
+        "approval": "pending",
+        "review": {
+          "page": false,
+          "page_current": false,
+          "present": false,
+          "complete": false,
+          "reason": "no review.md in the spec folder",
+          "missing": 0
+        },
+        "verification": {
+          "declared": true,
+          "commands": 1,
+          "status": "never-run",
+          "ts": null
+        },
+        "gate": 0,
+        "code_edits_attributed": null,
+        "untracked": 2
+      },
+      {
+        "spec": "F23-eDoc-POS",
+        "approval": "pending",
+        "review": {
+          "page": false,
+          "page_current": false,
+          "present": false,
+          "complete": false,
+          "reason": "no review.md in the spec folder",
+          "missing": 0
+        },
+        "verification": {
+          "declared": true,
+          "commands": 1,
+          "status": "never-run",
+          "ts": null
+        },
+        "gate": 0,
+        "code_edits_attributed": null,
+        "untracked": 3
+      },
+      {
+        "spec": "F24-eDoc-Traceability",
+        "approval": "pending",
+        "review": {
+          "page": false,
+          "page_current": false,
+          "present": false,
+          "complete": false,
+          "reason": "no review.md in the spec folder",
+          "missing": 0
+        },
+        "verification": {
+          "declared": true,
+          "commands": 1,
+          "status": "never-run",
+          "ts": null
+        },
+        "gate": 0,
+        "code_edits_attributed": null,
+        "untracked": 2
+      },
+      {
+        "spec": "F26-eDoc-Tax-Catalogs",
+        "approval": "pending",
+        "review": {
+          "page": false,
+          "page_current": false,
+          "present": false,
+          "complete": false,
+          "reason": "no review.md in the spec folder",
+          "missing": 0
+        },
+        "verification": {
+          "declared": true,
+          "commands": 1,
+          "status": "never-run",
+          "ts": null
+        },
+        "gate": 0,
+        "code_edits_attributed": null,
+        "untracked": 2
+      },
+      {
+        "spec": "F27-Correction-Backlog",
+        "approval": "pending",
+        "review": {
+          "page": false,
+          "page_current": false,
+          "present": false,
+          "complete": false,
+          "reason": "no review.md in the spec folder",
+          "missing": 0
+        },
+        "verification": {
+          "declared": true,
+          "commands": 1,
+          "status": "never-run",
+          "ts": null
+        },
+        "gate": 0,
+        "code_edits_attributed": null,
+        "untracked": 2
+      }
+    ],
+    "other_specs": 1,
+    "gate_pointer": "F23-eDoc-POS",
+    "gate_pointer_changes": [],
+    "overrides": 0,
+    "rules_mode": {
+      "raw": "",
+      "mode": "enforce",
+      "note": ""
+    },
+    "r5_mode": "advisory"
+  }
+}
+--> PASS: --json adds "derived"
+$ (non-git) status --refresh -> exit 0 
+ No specs found (no open spec and no specs/ folder).
+User answers recorded (AskUserQuestion answered): 0 — no approval/close/abandon is possible until the user answers a question · questions asked: 0
+Stop blocks: none
+Hook errors: 0
+gate pointer: none (the code gate infers its target)
+Refresh (recomputed now from git and disk, no LLM):
+  git: unavailable
+  specs: none
+  gate pointer: none (the code gate infers its target)
+  AIDD_RULES=enforce
+  warn overrides: 0 · R5 audits: advisory
+
+--> PASS: non-git directory prints `git: unavailable`, exit 0
+$ aidd_status.py status  -> exit 0
+Open specs: F13-eDoc-Emission-Engine (approval pending), F14-eDoc-A (approval pending), F15-eDoc-B (approval pending), F16-eDoc-C (approval pending), F17-eDoc-D (approval pending), F18-eDoc-E (approval pending), F19-eDoc-F (approval pending), F20-eDoc-G (approval pending), F21-eDoc-Inventory (approval pending), F22-eDoc-Pricing (approval pending), F23-eDoc-POS (approval pending), F24-eDoc-Traceability (approval pending), F26-eDoc-Tax-Catalogs (approval pending), F27-Correction-Backlog (approval pending)
+F13-eDoc-Emission-Engine [OPEN]  Route: -1/0/1/1.5/2/3/4 run   Align: 0 proposed · 6 unverified quote(s) · Mapper ✘ · Graph ✘
+Tasks: approval pending ✘ · Waves: 2 · critical path 50 min · ~50 min, ~100k tokens   Build: 0 code edits · Auditors: functional ✘ performance ✘ security ✘ ui ✘
+Visual debt open: 0 (blocking this spec: 0) · qa-audit.md: no
+Review: no page · Verification: never-run (1 command(s)) · gate legacy
+  WHY blocked: Code edits are BLOCKED while this open spec has no valid tasks approval (run `aidd review F13-eDoc-Emission-Engine` and have the owner review it, or ask the user with AskUserQuestion offering the option "Approve"; then `aidd rules approve`).
+  WHY blocked: R6 tasks.md has no valid "Approved: YYYY-MM-DD hash:<12hex>" line (approval pending). → Present the tasks to the user (AskUserQuestion), then run `aidd rules approve <spec_dir>`.
+  WHY blocked: R5 Quote not found in any recorded user prompt/answer: "es el modulo de checkout". → Quote the user's exact words from a prompt written AFTER spec.md was first drafted (5+ words), or ask the user (AskUserQuestion) and quote their answer verbatim (2+ words).
+  WHY blocked: R5 No find_spec run recorded in this session. → Run `python skill/scripts/find_spec.py` (Step -1) before planning.
+  WHY blocked: R5 tasks.md exists but plan.md does not. → Write plan.md (Step 3) before tasks.md.
+F14-eDoc-A [OPEN]  Route: -1/0/1/1.5/2/3/4 run   Align: 0 proposed · 6 unverified quote(s) · Mapper ✘ · Graph ✘
+Tasks: approval pending ✘ · Waves: 2 · critical path 50 min · ~50 min, ~100k tokens   Build: 0 code edits · Auditors: functional ✘ performance ✘ security ✘ ui ✘
+Visual debt open: 0 (blocking this spec: 0) · qa-audit.md: no
+Review: no page · Verification: never-run (1 command(s)) · gate legacy
+  WHY blocked: Code edits are BLOCKED while this open spec has no valid tasks approval (run `aidd review F14-eDoc-A` and have the owner review it, or ask the user with AskUserQuestion offering the option "Approve"; then `aidd rules approve`).
+  WHY blocked: R6 tasks.md has no valid "Approved: YYYY-MM-DD hash:<12hex>" line (approval pending). → Present the tasks to the user (AskUserQuestion), then run `aidd rules approve <spec_dir>`.
+  WHY blocked: R5 Quote not found in any recorded user prompt/answer: "es el modulo de checkout". → Quote the user's exact words from a prompt written AFTER spec.md was first drafted (5+ words), or ask the user (AskUserQuestion) and quote their answer verbatim (2+ words).
+  WHY blocked: R5 No find_spec run recorded in this session. → Run `python skill/scripts/find_spec.py` (Step -1) before planning.
+  WHY blocked: R5 tasks.md exists but plan.md does not. → Write plan.md (Step 3) before tasks.md.
+F15-eDoc-B [OPEN]  Route: -1/0/1/1.5/2/3/4 run   Align: 0 proposed · 6 unverified quote(s) · Mapper ✘ · Graph ✘
+Tasks: approval pending ✘ · Waves: 2 · critical path 50 min · ~50 min, ~100k tokens   Build: 0 code edits · Auditors: functional ✘ performance ✘ security ✘ ui ✘
+Visual debt open: 0 (blocking this spec: 0) · qa-audit.md: no
+Review: no page · Verification: never-run (1 command(s)) · gate legacy
+  WHY blocked: Code edits are BLOCKED while this open spec has no valid tasks approval (run `aidd review F15-eDoc-B` and have the owner review it, or ask the user with AskUserQuestion offering the option "Approve"; then `aidd rules approve`).
+  WHY blocked: R6 tasks.md has no valid "Approved: YYYY-MM-DD hash:<12hex>" line (approval pending). → Present the tasks to the user (AskUserQuestion), then run `aidd rules approve <spec_dir>`.
+  WHY blocked: R5 Quote not found in any recorded user prompt/answer: "es el modulo de checkout". → Quote the user's exact words from a prompt written AFTER spec.md was first drafted (5+ words), or ask the user (AskUserQuestion) and quote their answer verbatim (2+ words).
+  WHY blocked: R5 No find_spec run recorded in this session. → Run `python skill/scripts/find_spec.py` (Step -1) before planning.
+  WHY blocked: R5 tasks.md exists but plan.md does not. → Write plan.md (Step 3) before tasks.md.
+F16-eDoc-C [OPEN]  Route: -1/0/1/1.5/2/3/4 run   Align: 0 proposed · 6 unverified quote(s) · Mapper ✘ · Graph ✘
+Tasks: approval pending ✘ · Waves: 2 · critical path 50 min · ~50 min, ~100k tokens   Build: 0 code edits · Auditors: functional ✘ performance ✘ security ✘ ui ✘
+Visual debt open: 0 (blocking this spec: 0) · qa-audit.md: no
+Review: no page · Verification: never-run (1 command(s)) · gate legacy
+  WHY blocked: Code edits are BLOCKED while this open spec has no valid tasks approval (run `aidd review F16-eDoc-C` and have the owner review it, or ask the user with AskUserQuestion offering the option "Approve"; then `aidd rules approve`).
+  WHY blocked: R6 tasks.md has no valid "Approved: YYYY-MM-DD hash:<12hex>" line (approval pending). → Present the tasks to the user (AskUserQuestion), then run `aidd rules approve <spec_dir>`.
+  WHY blocked: R5 Quote not found in any recorded user prompt/answer: "es el modulo de checkout". → Quote the user's exact words from a prompt written AFTER spec.md was first drafted (5+ words), or ask the user (AskUserQuestion) and quote their answer verbatim (2+ words).
+  WHY blocked: R5 No find_spec run recorded in this session. → Run `python skill/scripts/find_spec.py` (Step -1) before planning.
+  WHY blocked: R5 tasks.md exists but plan.md does not. → Write plan.md (Step 3) before tasks.md.
+F17-eDoc-D [OPEN]  Route: -1/0/1/1.5/2/3/4 run   Align: 0 proposed · 6 unverified quote(s) · Mapper ✘ · Graph ✘
+Tasks: approval pending ✘ · Waves: 2 · critical path 50 min · ~50 min, ~100k tokens   Build: 0 code edits · Auditors: functional ✘ performance ✘ security ✘ ui ✘
+Visual debt open: 0 (blocking this spec: 0) · qa-audit.md: no
+Review: no page · Verification: never-run (1 command(s)) · gate legacy
+  WHY blocked: Code edits are BLOCKED while this open spec has no valid tasks approval (run `aidd review F17-eDoc-D` and have the owner review it, or ask the user with AskUserQuestion offering the option "Approve"; then `aidd rules approve`).
+  WHY blocked: R6 tasks.md has no valid "Approved: YYYY-MM-DD hash:<12hex>" line (approval pending). → Present the tasks to the user (AskUserQuestion), then run `aidd rules approve <spec_dir>`.
+  WHY blocked: R5 Quote not found in any recorded user prompt/answer: "es el modulo de checkout". → Quote the user's exact words from a prompt written AFTER spec.md was first drafted (5+ words), or ask the user (AskUserQuestion) and quote their answer verbatim (2+ words).
+  WHY blocked: R5 No find_spec run recorded in this session. → Run `python skill/scripts/find_spec.py` (Step -1) before planning.
+  WHY blocked: R5 tasks.md exists but plan.md does not. → Write plan.md (Step 3) before tasks.md.
+F18-eDoc-E [OPEN]  Route: -1/0/1/1.5/2/3/4 run   Align: 0 proposed · 6 unverified quote(s) · Mapper ✘ · Graph ✘
+Tasks: approval pending ✘ · Waves: 2 · critical path 50 min · ~50 min, ~100k tokens   Build: 0 code edits · Auditors: functional ✘ performance ✘ security ✘ ui ✘
+Visual debt open: 0 (blocking this spec: 0) · qa-audit.md: no
+Review: no page · Verification: never-run (1 command(s)) · gate legacy
+  WHY blocked: Code edits are BLOCKED while this open spec has no valid tasks approval (run `aidd review F18-eDoc-E` and have the owner review it, or ask the user with AskUserQuestion offering the option "Approve"; then `aidd rules approve`).
+  WHY blocked: R6 tasks.md has no valid "Approved: YYYY-MM-DD hash:<12hex>" line (approval pending). → Present the tasks to the user (AskUserQuestion), then run `aidd rules approve <spec_dir>`.
+  WHY blocked: R5 Quote not found in any recorded user prompt/answer: "es el modulo de checkout". → Quote the user's exact words from a prompt written AFTER spec.md was first drafted (5+ words), or ask the user (AskUserQuestion) and quote their answer verbatim (2+ words).
+  WHY blocked: R5 No find_spec run recorded in this session. → Run `python skill/scripts/find_spec.py` (Step -1) before planning.
+  WHY blocked: R5 tasks.md exists but plan.md does not. → Write plan.md (Step 3) before tasks.md.
+F19-eDoc-F [OPEN]  Route: -1/0/1/1.5/2/3/4 run   Align: 0 proposed · 6 unverified quote(s) · Mapper ✘ · Graph ✘
+Tasks: approval pending ✘ · Waves: 2 · critical path 50 min · ~50 min, ~100k tokens   Build: 0 code edits · Auditors: functional ✘ performance ✘ security ✘ ui ✘
+Visual debt open: 0 (blocking this spec: 0) · qa-audit.md: no
+Review: no page · Verification: never-run (1 command(s)) · gate legacy
+  WHY blocked: Code edits are BLOCKED while this open spec has no valid tasks approval (run `aidd review F19-eDoc-F` and have the owner review it, or ask the user with AskUserQuestion offering the option "Approve"; then `aidd rules approve`).
+  WHY blocked: R6 tasks.md has no valid "Approved: YYYY-MM-DD hash:<12hex>" line (approval pending). → Present the tasks to the user (AskUserQuestion), then run `aidd rules approve <spec_dir>`.
+  WHY blocked: R5 Quote not found in any recorded user prompt/answer: "es el modulo de checkout". → Quote the user's exact words from a prompt written AFTER spec.md was first drafted (5+ words), or ask the user (AskUserQuestion) and quote their answer verbatim (2+ words).
+  WHY blocked: R5 No find_spec run recorded in this session. → Run `python skill/scripts/find_spec.py` (Step -1) before planning.
+  WHY blocked: R5 tasks.md exists but plan.md does not. → Write plan.md (Step 3) before tasks.md.
+F20-eDoc-G [OPEN]  Route: -1/0/1/1.5/2/3/4 run   Align: 0 proposed · 6 unverified quote(s) · Mapper ✘ · Graph ✘
+Tasks: approval pending ✘ · Waves: 2 · critical path 50 min · ~50 min, ~100k tokens   Build: 0 code edits · Auditors: functional ✘ performance ✘ security ✘ ui ✘
+Visual debt open: 0 (blocking this spec: 0) · qa-audit.md: no
+Review: no page · Verification: never-run (1 command(s)) · gate legacy
+  WHY blocked: Code edits are BLOCKED while this open spec has no valid tasks approval (run `aidd review F20-eDoc-G` and have the owner review it, or ask the user with AskUserQuestion offering the option "Approve"; then `aidd rules approve`).
+  WHY blocked: R6 tasks.md has no valid "Approved: YYYY-MM-DD hash:<12hex>" line (approval pending). → Present the tasks to the user (AskUserQuestion), then run `aidd rules approve <spec_dir>`.
+  WHY blocked: R5 Quote not found in any recorded user prompt/answer: "es el modulo de checkout". → Quote the user's exact words from a prompt written AFTER spec.md was first drafted (5+ words), or ask the user (AskUserQuestion) and quote their answer verbatim (2+ words).
+  WHY blocked: R5 No find_spec run recorded in this session. → Run `python skill/scripts/find_spec.py` (Step -1) before planning.
+  WHY blocked: R5 tasks.md exists but plan.md does not. → Write plan.md (Step 3) before tasks.md.
+F21-eDoc-Inventory [OPEN]  Route: -1/0/1/1.5/2/3/4 run   Align: 0 proposed · 6 unverified quote(s) · Mapper ✘ · Graph ✘
+Tasks: approval pending ✘ · Waves: 2 · critical path 50 min · ~50 min, ~100k tokens   Build: 0 code edits · Auditors: functional ✘ performance ✘ security ✘ ui ✘
+Visual debt open: 0 (blocking this spec: 0) · qa-audit.md: no
+Review: no page · Verification: never-run (1 command(s)) · gate legacy
+  WHY blocked: Code edits are BLOCKED while this open spec has no valid tasks approval (run `aidd review F21-eDoc-Inventory` and have the owner review it, or ask the user with AskUserQuestion offering the option "Approve"; then `aidd rules approve`).
+  WHY blocked: R6 tasks.md has no valid "Approved: YYYY-MM-DD hash:<12hex>" line (approval pending). → Present the tasks to the user (AskUserQuestion), then run `aidd rules approve <spec_dir>`.
+  WHY blocked: R5 Quote not found in any recorded user prompt/answer: "es el modulo de checkout". → Quote the user's exact words from a prompt written AFTER spec.md was first drafted (5+ words), or ask the user (AskUserQuestion) and quote their answer verbatim (2+ words).
+  WHY blocked: R5 No find_spec run recorded in this session. → Run `python skill/scripts/find_spec.py` (Step -1) before planning.
+  WHY blocked: R5 tasks.md exists but plan.md does not. → Write plan.md (Step 3) before tasks.md.
+F22-eDoc-Pricing [OPEN]  Route: -1/0/1/1.5/2/3/4 run   Align: 0 proposed · 6 unverified quote(s) · Mapper ✘ · Graph ✘
+Tasks: approval pending ✘ · Waves: 2 · critical path 50 min · ~50 min, ~100k tokens   Build: 0 code edits · Auditors: functional ✘ performance ✘ security ✘ ui ✘
+Visual debt open: 0 (blocking this spec: 0) · qa-audit.md: no
+Review: no page · Verification: never-run (1 command(s)) · gate legacy
+  WHY blocked: Code edits are BLOCKED while this open spec has no valid tasks approval (run `aidd review F22-eDoc-Pricing` and have the owner review it, or ask the user with AskUserQuestion offering the option "Approve"; then `aidd rules approve`).
+  WHY blocked: R6 tasks.md has no valid "Approved: YYYY-MM-DD hash:<12hex>" line (approval pending). → Present the tasks to the user (AskUserQuestion), then run `aidd rules approve <spec_dir>`.
+  WHY blocked: R5 Quote not found in any recorded user prompt/answer: "es el modulo de checkout". → Quote the user's exact words from a prompt written AFTER spec.md was first drafted (5+ words), or ask the user (AskUserQuestion) and quote their answer verbatim (2+ words).
+  WHY blocked: R5 No find_spec run recorded in this session. → Run `python skill/scripts/find_spec.py` (Step -1) before planning.
+  WHY blocked: R5 tasks.md exists but plan.md does not. → Write plan.md (Step 3) before tasks.md.
+F23-eDoc-POS [OPEN]  Route: -1/0/1/1.5/2/3/4 run   Align: 0 proposed · 6 unverified quote(s) · Mapper ✘ · Graph ✘
+Tasks: approval pending ✘ · Waves: 2 · critical path 50 min · ~50 min, ~100k tokens   Build: 0 code edits · Auditors: functional ✘ performance ✘ security ✘ ui ✘
+Visual debt open: 0 (blocking this spec: 0) · qa-audit.md: no
+Review: no page · Verification: never-run (1 command(s)) · gate legacy
+  WHY blocked: Code edits are BLOCKED while this open spec has no valid tasks approval (run `aidd review F23-eDoc-POS` and have the owner review it, or ask the user with AskUserQuestion offering the option "Approve"; then `aidd rules approve`).
+  WHY blocked: R6 tasks.md has no valid "Approved: YYYY-MM-DD hash:<12hex>" line (approval pending). → Present the tasks to the user (AskUserQuestion), then run `aidd rules approve <spec_dir>`.
+  WHY blocked: R5 Quote not found in any recorded user prompt/answer: "es el modulo de checkout". → Quote the user's exact words from a prompt written AFTER spec.md was first drafted (5+ words), or ask the user (AskUserQuestion) and quote their answer verbatim (2+ words).
+  WHY blocked: R5 No find_spec run recorded in this session. → Run `python skill/scripts/find_spec.py` (Step -1) before planning.
+  WHY blocked: R5 tasks.md exists but plan.md does not. → Write plan.md (Step 3) before tasks.md.
+F24-eDoc-Traceability [OPEN]  Route: -1/0/1/1.5/2/3/4 run   Align: 0 proposed · 6 unverified quote(s) · Mapper ✘ · Graph ✘
+Tasks: approval pending ✘ · Waves: 2 · critical path 50 min · ~50 min, ~100k tokens   Build: 0 code edits · Auditors: functional ✘ performance ✘ security ✘ ui ✘
+Visual debt open: 0 (blocking this spec: 0) · qa-audit.md: no
+Review: no page · Verification: never-run (1 command(s)) · gate legacy
+  WHY blocked: Code edits are BLOCKED while this open spec has no valid tasks approval (run `aidd review F24-eDoc-Traceability` and have the owner review it, or ask the user with AskUserQuestion offering the option "Approve"; then `aidd rules approve`).
+  WHY blocked: R6 tasks.md has no valid "Approved: YYYY-MM-DD hash:<12hex>" line (approval pending). → Present the tasks to the user (AskUserQuestion), then run `aidd rules approve <spec_dir>`.
+  WHY blocked: R5 Quote not found in any recorded user prompt/answer: "es el modulo de checkout". → Quote the user's exact words from a prompt written AFTER spec.md was first drafted (5+ words), or ask the user (AskUserQuestion) and quote their answer verbatim (2+ words).
+  WHY blocked: R5 No find_spec run recorded in this session. → Run `python skill/scripts/find_spec.py` (Step -1) before planning.
+  WHY blocked: R5 tasks.md exists but plan.md does not. → Write plan.md (Step 3) before tasks.md.
+F26-eDoc-Tax-Catalogs [OPEN]  Route: -1/0/1/1.5/2/3/4 run   Align: 0 proposed · 6 unverified quote(s) · Mapper ✘ · Graph ✘
+Tasks: approval pending ✘ · Waves: 2 · critical path 50 min · ~50 min, ~100k tokens   Build: 0 code edits · Auditors: functional ✘ performance ✘ security ✘ ui ✘
+Visual debt open: 0 (blocking this spec: 0) · qa-audit.md: no
+Review: no page · Verification: never-run (1 command(s)) · gate legacy
+  WHY blocked: Code edits are BLOCKED while this open spec has no valid tasks approval (run `aidd review F26-eDoc-Tax-Catalogs` and have the owner review it, or ask the user with AskUserQuestion offering the option "Approve"; then `aidd rules approve`).
+  WHY blocked: R6 tasks.md has no valid "Approved: YYYY-MM-DD hash:<12hex>" line (approval pending). → Present the tasks to the user (AskUserQuestion), then run `aidd rules approve <spec_dir>`.
+  WHY blocked: R5 Quote not found in any recorded user prompt/answer: "es el modulo de checkout". → Quote the user's exact words from a prompt written AFTER spec.md was first drafted (5+ words), or ask the user (AskUserQuestion) and quote their answer verbatim (2+ words).
+  WHY blocked: R5 No find_spec run recorded in this session. → Run `python skill/scripts/find_spec.py` (Step -1) before planning.
+  WHY blocked: R5 tasks.md exists but plan.md does not. → Write plan.md (Step 3) before tasks.md.
+F27-Correction-Backlog [OPEN]  Route: -1/0/1/1.5/2/3/4 run   Align: 0 proposed · 6 unverified quote(s) · Mapper ✘ · Graph ✘
+Tasks: approval pending ✘ · Waves: 2 · critical path 50 min · ~50 min, ~100k tokens   Build: 0 code edits · Auditors: functional ✘ performance ✘ security ✘ ui ✘
+Visual debt open: 0 (blocking this spec: 0) · qa-audit.md: no
+Review: no page · Verification: never-run (1 command(s)) · gate legacy
+  WHY blocked: Code edits are BLOCKED while this open spec has no valid tasks approval (run `aidd review F27-Correction-Backlog` and have the owner review it, or ask the user with AskUserQuestion offering the option "Approve"; then `aidd rules approve`).
+  WHY blocked: R6 tasks.md has no valid "Approved: YYYY-MM-DD hash:<12hex>" line (approval pending). → Present the tasks to the user (AskUserQuestion), then run `aidd rules approve <spec_dir>`.
+  WHY blocked: R5 Quote not found in any recorded user prompt/answer: "es el modulo de checkout". → Quote the user's exact words from a prompt written AFTER spec.md was first drafted (5+ words), or ask the user (AskUserQuestion) and quote their answer verbatim (2+ words).
+  WHY blocked: R5 No find_spec run recorded in this session. → Run `python skill/scripts/find_spec.py` (Step -1) before planning.
+  WHY blocked: R5 tasks.md exists but plan.md does not. → Write plan.md (Step 3) before tasks.md.
+User answers recorded (AskUserQuestion answered): 0 — no approval/close/abandon is possible until the user answers a question · questions asked: 0
+Stop blocks: none
+Hook errors: 0
+gate pointer: F23-eDoc-POS
+--> PASS: without --refresh: still prints, plus the pointer line

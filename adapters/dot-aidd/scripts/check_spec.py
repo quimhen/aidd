@@ -9,6 +9,9 @@ missing backend governance fields) in milliseconds, so the Auditor's time
 goes to what a script can't check: does the screenshot match, is the logic
 right.
 
+aidd:FR-208 This is a STRUCTURAL check only: it executes nothing, so "no gaps" never means the spec
+works; it says so in a banner until the spec's Verification has a passed run.
+
 Usage:
     python check_spec.py <path-to-spec-folder>
     python check_spec.py <path-to-spec-folder> --stamp-contract   # write the Contract hash line
@@ -547,6 +550,18 @@ def main():
 
     print(f"aidd spec check — {spec_dir}")
     print("=" * 60)
+    # aidd:FR-208 honest banner: structural only until verification evidence says passed
+    _banner = ("STRUCTURAL CHECK ONLY - nothing was executed. "
+               "0 gaps here does NOT mean the spec works.")
+    try:
+        import aidd_rules as _vr
+        _vs = _vr.verification_state(spec_dir)
+        if isinstance(_vs, dict) and _vs.get('status') == 'passed':
+            _banner = ("Execution evidence: the spec's Verification commands have a passed run "
+                       "(see `aidd status`). This check itself is still structural.")
+    except Exception:
+        pass
+    print(_banner)
     # FR-008: informational plan totals (never a gap, never affects the exit code)
     try:
         if tasks:
@@ -560,7 +575,7 @@ def main():
     except Exception:
         pass
     if not gaps:
-        print("No mechanical gaps found. (This does not check screenshots, business logic, "
+        print("No mechanical gaps found (structural only). (This does not check screenshots, business logic, "
               "or anything requiring judgment — that's still the Auditor's job.)")
         sys.exit(0)
 

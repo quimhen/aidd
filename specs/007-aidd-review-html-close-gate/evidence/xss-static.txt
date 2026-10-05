@@ -1,0 +1,10 @@
+script tags: ['<script type="application/json" id="aidd-data">', '<script id="aidd-js">']
+CSP: default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; script-src 'sha256-rlWzPURNiSd4VPvz2B+iTnW92X6v8r0ID1Zx9t2/VNc='; base-uri 'none'; form-action 'none'
+CSP hash matches script: True
+href/src values: ['https://example.com/p', 'https://x.y/&quot;onmouseover=&quot;alert(1', 'img.png', 'https:evil']
+bad href/src: []
+on*= attrs in body: ['<img src="img.png" alt="a&quot; onerror=']
+style= attrs: []
+data blob parses; contains raw <: False
+external links: ['https://example.com/p', 'https://x.y/&quot;onmouseover=&quot;alert(1', 'https:evil']
+anchors: ['<a href="https://example.com/p" rel="noopener noreferrer" target="_blank">', '<a href="https://x.y/&quot;onmouseover=&quot;alert(1" rel="noopener noreferrer" target="_blank">', '<a href="https:evil" rel="noopener noreferrer" target="_blank">']

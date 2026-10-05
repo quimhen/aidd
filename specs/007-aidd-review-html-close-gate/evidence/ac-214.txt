@@ -1,0 +1,33 @@
+AC-214: PASS
+  [PASS] warn: blocked write passes with the stderr notice and records rules_override
+  [PASS] off: session_start and Stop record rules_override{mode:off}
+  [PASS] aidd status shows "warn overrides: N" and "AIDD_RULES=off (rules disabled)"
+  [PASS] no project root: nothing fails
+
+[gate Write src/app.py] rc=0 stderr='[AIDD_RULES=warn, not blocking] aidd R6/R4: blocking this edit of app.py.\n  - [R6] Code edits are blocked: gate target spec F23-eDoc-POS (chosen by only: it is the only open spec) has no valid tasks approval (missing, duplicated, or tasks.md changed after it was approved).\n    Next action: Present the tasks to the owner (review page, or AskUserQuestion with an "Approve" option), wait for their consent, then add/refresh the "Approved: <date> hash:<hash>" line in specs/F23-eDoc-POS/tasks.md. Unblock: `aidd review specs/F23-eDoc-POS` (owner reviews the page and saves review.md), then `aidd rules approve specs/F23-eDoc-POS` with the owner\'s consent; or, if this work belongs to another spec, `aidd rules activate <other>`. If the spec is finished or dropped, ask the user and run `aidd rules close F23-eDoc-POS` / `aidd rules abandon F23-eDoc-POS`.\n(Owner override: AIDD_RULES=warn|off)'
+--> PASS: warn: blocked write passes with the stderr notice and records rules_override
+[hook session_start.py SessionStart] rc=0 stdout='' stderr=''
+[hook stop_gate.py Stop] rc=0 stdout='' stderr=''
+off overrides: [{'hook': 'session_start', 'mode': 'off'}, {'hook': 'stop_gate', 'mode': 'off'}]
+--> PASS: off: session_start and Stop record rules_override{mode:off}
+$ aidd_status.py status  -> exit 0
+Open specs: F23-eDoc-POS (approval pending)
+F23-eDoc-POS [OPEN]  Route: -1/0/1/1.5/2/3/4 run   Align: 0 proposed · 6 unverified quote(s) · Mapper ✘ · Graph ✘
+Tasks: approval pending ✘ · Waves: 2 · critical path 50 min · ~50 min, ~100k tokens   Build: 0 code edits · Auditors: functional ✘ performance ✘ security ✘ ui ✘
+Visual debt open: 0 (blocking this spec: 0) · qa-audit.md: no
+Review: no page · Verification: never-run (1 command(s)) · gate legacy
+  WHY blocked: Code edits are BLOCKED while this open spec has no valid tasks approval (run `aidd review F23-eDoc-POS` and have the owner review it, or ask the user with AskUserQuestion offering the option "Approve"; then `aidd rules approve`).
+  WHY blocked: R6 tasks.md has no valid "Approved: YYYY-MM-DD hash:<12hex>" line (approval pending). → Present the tasks to the user (AskUserQuestion), then run `aidd rules approve <spec_dir>`.
+  WHY blocked: R5 Quote not found in any recorded user prompt/answer: "es el modulo de checkout". → Quote the user's exact words from a prompt written AFTER spec.md was first drafted (5+ words), or ask the user (AskUserQuestion) and quote their answer verbatim (2+ words).
+  WHY blocked: R5 No find_spec run recorded in this session. → Run `python skill/scripts/find_spec.py` (Step -1) before planning.
+  WHY blocked: R5 tasks.md exists but plan.md does not. → Write plan.md (Step 3) before tasks.md.
+User answers recorded (AskUserQuestion answered): 0 — no approval/close/abandon is possible until the user answers a question · questions asked: 0
+Stop blocks: none
+Hook errors: 0
+gate pointer: none (the code gate infers its target)
+AIDD_RULES=off (rules disabled) - a last-resort diagnostic, not a workflow
+warn overrides: 3
+--> PASS: aidd status shows "warn overrides: N" and "AIDD_RULES=off (rules disabled)"
+[hook session_start.py SessionStart] rc=0 stdout='' stderr=''
+[hook stop_gate.py Stop] rc=0 stdout='' stderr=''
+--> PASS: no project root: nothing fails

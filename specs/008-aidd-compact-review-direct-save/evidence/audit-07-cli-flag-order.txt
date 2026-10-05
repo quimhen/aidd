@@ -1,0 +1,13 @@
+$ aidd review --summary <spec>   (documented order, FR-313 / SKILL.md:391 / AIDD.md:534)
+aidd: error: unrecognized arguments: --summary
+exit=0
+$ aidd review --check <spec>
+aidd: error: unrecognized arguments: --check
+
+$ aidd review <spec> --check
+STATE=stale approved=0/0 comments=0 stale=yes legacy=no tag=[tasks:5c3cbb5b]
+exit=3
+$ aidd_review.py --summary <spec> (script directly)
+Objective: Que las tablas del core y del mobile sean consistentes y el mobile offline sincronice con el hub sin duplicar documentos ni cruzar tenants
+Scope: n/a
+argparse exit for --check first: 2

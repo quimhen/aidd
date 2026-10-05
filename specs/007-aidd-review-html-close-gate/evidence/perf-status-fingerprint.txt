@@ -1,0 +1,42 @@
+perf-status-fingerprint: PASS
+  [PASS] fingerprint is recomputed once per spec (no memoisation) - informational
+
+$ aidd_status.py rules approve C:\Users\jquimis\AppData\Local\Temp\tmpln2qw82k\specs\F30-eDoc-X  -> exit 0
+Approved: 2026-10-05 hash:e9a09d9bac61
+approved through answer · gate pointer -> F30-eDoc-X
+$ aidd_status.py verify C:\Users\jquimis\AppData\Local\Temp\tmpln2qw82k\specs\F30-eDoc-X  -> exit 0
+PASS row 1: python -m unittest tests.test_ok (exit 0) → evidence/verify-1.txt
+verify_run recorded for F30-eDoc-X: PASSED (1/1 rows, verify hash 0881d7b7c23f)
+$ aidd_status.py rules approve C:\Users\jquimis\AppData\Local\Temp\tmpln2qw82k\specs\F31-eDoc-X  -> exit 0
+Approved: 2026-10-05 hash:e9a09d9bac61
+approved through answer · gate pointer -> F31-eDoc-X
+$ aidd_status.py verify C:\Users\jquimis\AppData\Local\Temp\tmpln2qw82k\specs\F31-eDoc-X  -> exit 0
+PASS row 1: python -m unittest tests.test_ok (exit 0) → evidence/verify-1.txt
+verify_run recorded for F31-eDoc-X: PASSED (1/1 rows, verify hash 0881d7b7c23f)
+$ aidd_status.py rules approve C:\Users\jquimis\AppData\Local\Temp\tmpln2qw82k\specs\F32-eDoc-X  -> exit 0
+Approved: 2026-10-05 hash:e9a09d9bac61
+approved through answer · gate pointer -> F32-eDoc-X
+$ aidd_status.py verify C:\Users\jquimis\AppData\Local\Temp\tmpln2qw82k\specs\F32-eDoc-X  -> exit 0
+PASS row 1: python -m unittest tests.test_ok (exit 0) → evidence/verify-1.txt
+verify_run recorded for F32-eDoc-X: PASSED (1/1 rows, verify hash 0881d7b7c23f)
+$ aidd_status.py rules approve C:\Users\jquimis\AppData\Local\Temp\tmpln2qw82k\specs\F33-eDoc-X  -> exit 0
+Approved: 2026-10-05 hash:e9a09d9bac61
+approved through answer · gate pointer -> F33-eDoc-X
+$ aidd_status.py verify C:\Users\jquimis\AppData\Local\Temp\tmpln2qw82k\specs\F33-eDoc-X  -> exit 0
+PASS row 1: python -m unittest tests.test_ok (exit 0) → evidence/verify-1.txt
+verify_run recorded for F33-eDoc-X: PASSED (1/1 rows, verify hash 0881d7b7c23f)
+$ aidd_status.py rules approve C:\Users\jquimis\AppData\Local\Temp\tmpln2qw82k\specs\F34-eDoc-X  -> exit 0
+Approved: 2026-10-05 hash:e9a09d9bac61
+approved through answer · gate pointer -> F34-eDoc-X
+$ aidd_status.py verify C:\Users\jquimis\AppData\Local\Temp\tmpln2qw82k\specs\F34-eDoc-X  -> exit 0
+PASS row 1: python -m unittest tests.test_ok (exit 0) → evidence/verify-1.txt
+verify_run recorded for F34-eDoc-X: PASSED (1/1 rows, verify hash 0881d7b7c23f)
+$ aidd_status.py rules approve C:\Users\jquimis\AppData\Local\Temp\tmpln2qw82k\specs\F35-eDoc-X  -> exit 0
+Approved: 2026-10-05 hash:e9a09d9bac61
+approved through answer · gate pointer -> F35-eDoc-X
+$ aidd_status.py verify C:\Users\jquimis\AppData\Local\Temp\tmpln2qw82k\specs\F35-eDoc-X  -> exit 0
+PASS row 1: python -m unittest tests.test_ok (exit 0) → evidence/verify-1.txt
+verify_run recorded for F35-eDoc-X: PASSED (1/1 rows, verify hash 0881d7b7c23f)
+plain `aidd status`: 6 fingerprint calls; --refresh: 12
+specs with a verify_run: 6; worktree_fingerprint calls during one `aidd status --refresh`: 18
+--> PASS: fingerprint is recomputed once per spec (no memoisation) - informational | 18 calls

@@ -1,0 +1,76 @@
+# delta audit probe 1 (scratch copy of real F28; repo files byte-identical to D:\Fuentes\AIDD, checked with cmp)
+# AC-305 F28 shape, AC-317/318 states/exits/comments, AC-326 and argument order
+=== AC-305 F28 shape: unanswered questions
+generate: exit=0 stdout='wrote: C:\\Users\\jquimis\\AppData\\Local\\Temp\\claude\\D--Fuentes-AIDD\\0f143e53-0037-424b-ad64-ed0094e98386\\scratchpad\\dA\\runs\\f28\\specs\\F28-DB-Unification-Sync\\review.html\nfile:///C:/Users/jquimis/AppData/Local/Temp/claude/D--Fuentes-AIDD/0f143e53-0037-424b-ad64-ed0094e98386/scratchpad/dA/runs/f28/specs/F28-DB-Unification-Sync/review.html\n' stderr='warning: Verification row V-1: neither a known test runner with its manifest (dotnet test, npm test, pytest, python -m unittest, cargo/go/mvn/gradle test, msbuild) nor an invocation of an existing project file: `python eDoc/tools/db_verify.py --psql "docker exec -i supabase_db_edoc psql -U p`. Fix: '
+Q items: 12
+  Q1 unanswered=False ans='Core b1SyncLink (Postgres/Supabase, eDoc/), mobile Flutter (Drift) y b'
+  Q2 unanswered=False ans='Ambos: modificar tablas existentes del mobile y del core para que sean'
+  Q3 unanswered=False ans='Sí: Supabase (Auth, Postgres, Storage, Realtime) y un ERP genérico med'
+  Q4 unanswered=False ans='Jefe de Sistemas (owner del proyecto)'
+  Q5 unanswered=False ans='P0, P1 y P2 son bloqueantes; depende de F09 (tracking), F25 (OAUT para'
+  Q6 unanswered=False ans='Que las tablas del core y del mobile sean consistentes y el mobile off'
+  Q7 unanswered=False ans='No aplica: trabajo de datos y sincronización sin pantallas nuevas; si '
+  Q8 unanswered=False ans='Estados de sync por registro: LOCAL, QUEUED, PROCESSING, SENT, SYNCED,'
+  Q9 unanswered=False ans='El vendedor ve solo sus sucursales de cliente y su cartera (D35); supe'
+  Q10 unanswered=True ans='pending - resolve in Align'
+  Q11 unanswered=True ans='pending - resolve in Align'
+  Q12 unanswered=False ans='b1SyncLink define el contrato (contracts.md de F28, versionado y sella'
+pending text count in page: 2
+CSS cue rule present: True
+blob keys: ['carry', 'codes', 'digests', 'format', 'generated', 'links', 'picker_id', 'prior', 'sources_digest', 'spec', 'summary', 'tabs', 'tasks_hash', 'tasks_hash8', 'verification_problems', 'warnings']
+codes: 175 tag tasks_hash: 5c3cbb5b7480
+summary (open decisions line): exit=0 stdout="Objective: Que las tablas del core y del mobile sean consistentes y el mobile offline sincronice con el hub sin duplicar documentos ni cruzar tenants\nScope: n/a\nChanges by component/file: ./ (3): supabase_init.sql, charter.md, STATE.md\nChanges by component/file: specs/ (3): specs/F28-DB-Unification-Sync/plan.md, specs/F09-Sync-Tracking/spec.md, specs/F28-DB-Unification-Sync/qa-audit.md\nChanges by component/file: eDoc/ (35): eDoc/supabase/migrations/0240_sync_queue_osyq.sql, eDoc/supabase/migrations/0241_sync_source_retrofit.sql, eDoc/supabase/tests/sync_queue_osyq.test.sql, eDoc/supabase/tests/sync_source_retrofit.test...\nChanges by component/file: mobile/ (103): mobile/pubspec.yaml, mobile/lib/core/services/app_version_provider.dart, mobile/lib/main.dart, mobile/test/core/services/app_version_provider_test.dart, mobile/lib/core/auth/claims_reader.dart, m...\nChanges by component/file: docs/ (5): docs/db-graph/sync-optimization.md, docs/db-graph/build_graph.py, docs/db-graph/graph.json, docs/db-graph/er/, docs/db-graph/mapping.csv\nChanges by component/file: run: aidd verify specs/ (1): run: aidd verify specs/F28-DB-Unification-Sync\nChanges by component/file: run: aidd calibrate record specs/ (1): run: aidd calibrate record specs/F28-DB-Unification-Sync\nCost: 348 min / 4834k tokens\nTasks/waves: 49 tasks, 10 waves\nRisks: n/a\nOpen decisions: Entry route: how does the user reach this from the app's start?; Target devices (phone, tablet, desktop, orientation)?\n"
+
+=== AC-317/318 states, exit codes, comments
+no review.md --check: exit=2 stdout='STATE=pending approved=0/175 comments=0 stale=no legacy=no tag=[tasks:5c3cbb5b]\n'
+no review.md --comments: exit=3 stdout=''
+1 unchecked --check: exit=2 stdout='STATE=pending approved=174/175 comments=0 stale=no legacy=no tag=[tasks:5c3cbb5b]\n'
+1 unchecked --comments: exit=0 stdout=''
+complete no comments --check: exit=0 stdout='STATE=complete approved=175/175 comments=0 stale=no legacy=no tag=[tasks:5c3cbb5b]\n'
+complete no comments --comments: exit=0 stdout=''
+complete no comments --wait: exit=0 stdout='STATE=complete approved=175/175 comments=0 stale=no legacy=no tag=[tasks:5c3cbb5b]\n'
+page-canonical comment lines: ['> line one - [x] FR-002', '> tarea dos SENTINEL-NO']
+page-canonical --comments: exit=0 stdout='FR-001: line one - [x] FR-002\nT-02: tarea dos SENTINEL-NO\n'
+hand-edited FR-001 block: ['- [x] FR-001 @c3faf1ee', '> line one', '> - [x] FR-002']
+2-line --check: exit=0 stdout='STATE=complete approved=175/175 comments=2 stale=no legacy=no tag=[tasks:5c3cbb5b]\n'
+2-line --comments: exit=0 stdout='FR-001: line one / - [x] FR-002\nT-02: tarea dos SENTINEL-NO\n'
+  AC-318 expected FR-001 line present: True
+2-line --wait: exit=0 stdout='STATE=complete approved=175/175 comments=2 stale=no legacy=no tag=[tasks:5c3cbb5b]\n'
+forged "- [x] FR-002" in comment, FR-002 unchecked --check: exit=2 stdout='STATE=pending approved=174/175 comments=2 stale=no legacy=no tag=[tasks:5c3cbb5b]\n'
+older tasks_hash --check: exit=3 stdout='STATE=stale approved=175/175 comments=1 stale=yes legacy=no tag=[tasks:5c3cbb5b]\n'
+older tasks_hash --comments: exit=3 stdout=''
+older tasks_hash --wait (timeout): exit=2 stdout='STATE=stale approved=175/175 comments=1 stale=yes legacy=no tag=[tasks:5c3cbb5b]\n'
+older sources_digest --check: exit=3 stdout='STATE=stale approved=175/175 comments=1 stale=yes legacy=no tag=[tasks:5c3cbb5b]\n'
+older sources_digest --comments: exit=3 stdout=''
+invalid --check: exit=3 stdout='STATE=stale approved=0/175 comments=0 stale=yes legacy=no tag=[tasks:5c3cbb5b]\n'
+invalid --comments: exit=3 stdout=''
+legacy --check: exit=3 stdout='STATE=legacy approved=0/175 comments=0 stale=no legacy=yes tag=[tasks:5c3cbb5b]\n'
+legacy --comments: exit=3 stdout=''
+no review.html --check: exit=3 stdout='STATE=stale approved=0/0 comments=0 stale=yes legacy=no tag=[tasks:5c3cbb5b]\n'
+no review.html --wait: exit=3 stdout='STATE=stale approved=0/0 comments=0 stale=yes legacy=no tag=[tasks:5c3cbb5b]\n'
+
+=== AC-326 and argument order (aidd CLI, scratch repo copy)
+aidd review --summary <spec>: exit=0 stdout="Objective: Que las tablas del core y del mobile sean consistentes y el mobile offline sincronice con el hub sin duplicar documentos ni cruzar tenants\nScope: n/a\nChanges by component/file: ./ (3): supabase_init.sql, charter.md, STATE.md\nChanges by component/file: specs/ (3): specs/F28-DB-Unification-Sync/plan.md, specs/F09-Sync-Tracking/spec.md, specs/F28-DB-Unification-Sync/qa-audit.md\nChanges by component/file: eDoc/ (35): eDoc/supabase/migrations/0240_sync_queue_osyq.sql, eDoc/supabase/migrations/0241_sync_source_retrofit.sql, eDoc/supabase/tests/sync_queue_osyq.test.sql, eDoc/supabase/tests/sync_source_retrofit.test...\nChanges by component/file: mobile/ (103): mobile/pubspec.yaml, mobile/lib/core/services/app_version_provider.dart, mobile/lib/main.dart, mobile/test/core/services/app_version_provider_test.dart, mobile/lib/core/auth/claims_reader.dart, m...\nChanges by component/file: docs/ (5): docs/db-graph/sync-optimization.md, docs/db-graph/build_graph.py, docs/db-graph/graph.json, docs/db-graph/er/, docs/db-graph/mapping.csv\nChanges by component/file: run: aidd verify specs/ (1): run: aidd verify specs/F28-DB-Unification-Sync\nChanges by component/file: run: aidd calibrate record specs/ (1): run: aidd calibrate record specs/F28-DB-Unification-Sync\nCost: 348 min / 4834k tokens\nTasks/waves: 49 tasks, 10 waves\nRisks: n/a\nOpen decisions: Entry route: how does the user reach this from the app's start?; Target devices (phone, tablet, desktop, orientation)?\n"
+aidd review <spec> --summary: exit=0 stdout="Objective: Que las tablas del core y del mobile sean consistentes y el mobile offline sincronice con el hub sin duplicar documentos ni cruzar tenants\nScope: n/a\nChanges by component/file: ./ (3): supabase_init.sql, charter.md, STATE.md\nChanges by component/file: specs/ (3): specs/F28-DB-Unification-Sync/plan.md, specs/F09-Sync-Tracking/spec.md, specs/F28-DB-Unification-Sync/qa-audit.md\nChanges by component/file: eDoc/ (35): eDoc/supabase/migrations/0240_sync_queue_osyq.sql, eDoc/supabase/migrations/0241_sync_source_retrofit.sql, eDoc/supabase/tests/sync_queue_osyq.test.sql, eDoc/supabase/tests/sync_source_retrofit.test...\nChanges by component/file: mobile/ (103): mobile/pubspec.yaml, mobile/lib/core/services/app_version_provider.dart, mobile/lib/main.dart, mobile/test/core/services/app_version_provider_test.dart, mobile/lib/core/auth/claims_reader.dart, m...\nChanges by component/file: docs/ (5): docs/db-graph/sync-optimization.md, docs/db-graph/build_graph.py, docs/db-graph/graph.json, docs/db-graph/er/, docs/db-graph/mapping.csv\nChanges by component/file: run: aidd verify specs/ (1): run: aidd verify specs/F28-DB-Unification-Sync\nChanges by component/file: run: aidd calibrate record specs/ (1): run: aidd calibrate record specs/F28-DB-Unification-Sync\nCost: 348 min / 4834k tokens\nTasks/waves: 49 tasks, 10 waves\nRisks: n/a\nOpen decisions: Entry route: how does the user reach this from the app's start?; Target devices (phone, tablet, desktop, orientation)?\n"
+  --summary: same output/exit both orders: True
+aidd review --check <spec>: exit=0 stdout='STATE=complete approved=175/175 comments=1 stale=no legacy=no tag=[tasks:5c3cbb5b]\n'
+aidd review <spec> --check: exit=0 stdout='STATE=complete approved=175/175 comments=1 stale=no legacy=no tag=[tasks:5c3cbb5b]\n'
+  --check: same output/exit both orders: True
+aidd review --comments <spec>: exit=0 stdout='FR-001: line one - [x] FR-002\n'
+aidd review <spec> --comments: exit=0 stdout='FR-001: line one - [x] FR-002\n'
+  --comments: same output/exit both orders: True
+aidd review --wait specs/F28-DB-Unification-Sync: exit=0 stdout='STATE=complete approved=175/175 comments=1 stale=no legacy=no tag=[tasks:5c3cbb5b]\n'
+aidd review specs/F28-DB-Unification-Sync --wait: exit=0 stdout='STATE=complete approved=175/175 comments=1 stale=no legacy=no tag=[tasks:5c3cbb5b]\n'
+aidd review --timeout 2 --wait specs/F28-DB-Unification-Sync: exit=0 stdout='STATE=complete approved=175/175 comments=1 stale=no legacy=no tag=[tasks:5c3cbb5b]\n'
+aidd review --wait --interval 0.5 specs/F28-DB-Unification-Sync --timeout 2: exit=0 stdout='STATE=complete approved=175/175 comments=1 stale=no legacy=no tag=[tasks:5c3cbb5b]\n'
+summary lines: 13
+summary labels: ['Objective', 'Scope', 'Changes by component/file', 'Changes by component/file', 'Changes by component/file', 'Changes by component/file', 'Changes by component/file', 'Changes by component/file', 'Changes by component/file', 'Cost', 'Tasks/waves', 'Risks', 'Open decisions']
+summary byte-identical on rerun: True
+files unchanged: ['contracts.md', 'data-model.md', 'plan.md', 'review.html', 'review.md', 'spec.md', 'tasks.md', 'verify', 'visual-flow.html', 'visual-flow.toon'] review.md sha same True review.html sha same True
+aidd review (no spec): exit=1 stdout='' stderr='usage: aidd review [-h] [--open] [--full]\n                   [--check | --wait | --comments | --summary] [--timeout S]\n                   [--interval S]\n                   spec_dir\naidd review: the following arguments are required: spec_dir'
+aidd review --check --summary <spec> (mutually exclusive): exit=1 stdout='' stderr='usage: aidd review [-h] [--open] [--full]\n                   [--check | --wait | --comments | --summary] [--timeout S]\n                   [--interval S]\n                   spec_dir\naidd review: argument --summary: not allowed with argument --check'
+aidd review --bogus <spec>: exit=1 stdout='' stderr='usage: aidd review [-h] [--open] [--full]\n                   [--check | --wait | --comments | --summary] [--timeout S]\n                   [--interval S]\n                   spec_dir\naidd review: unrecognized arguments: --bogus'
+aidd review --help: exit=0 stdout='usage: aidd review [-h] [--open] [--full]\n                   [--check | --wait | --comments | --summary] [--timeout S]\n                   [--interval S]\n                   spec_dir\n\nGenerate review.html for a spec / read the approval state of review.md.\n\npositional arguments:\n  spec_dir\n\noptions:\n  -h, --help    show this help message and exit\n  --open        open the page in the default browser\n  --full        generate the long page with heading keys (templates/review-\n                full.html)\n  --check       print ONE status line (exit 0 complete / 2 pending / 3 stale,\n                legacy, too many items)\n  --wait        poll silently, then print ONE status line (exit 0 complete / 2\n                timeout / 3 cannot help)\n  --comments    print `<CODE>: <comment>` for commented codes only\n  --summary     print the mechanical summary (at most 30 lines); writes\n                nothing\n  --timeout S   --wait timeout (default 3600)\n  --interval S  --wait poll interval (default 2)\n'
+no tasks.md: aidd review --summary <spec>: exit=3 stdout='' stderr='aidd review: tasks.md not found in C:\\Users\\jquimis\\AppData\\Local\\Temp\\claude\\D--Fuentes-AIDD\\0f143e53-0037-424b-ad64-ed0094e98386\\scratchpad\\dA\\runs\\f28_notasks\\specs\\F28-DB-Unification-Sync: nothing to summarise'
+no tasks.md: aidd review <spec> --summary: exit=3 stdout='' stderr='aidd review: tasks.md not found in C:\\Users\\jquimis\\AppData\\Local\\Temp\\claude\\D--Fuentes-AIDD\\0f143e53-0037-424b-ad64-ed0094e98386\\scratchpad\\dA\\runs\\f28_notasks\\specs\\F28-DB-Unification-Sync: nothing to summarise'
+no review files created: []

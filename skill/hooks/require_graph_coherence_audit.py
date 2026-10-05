@@ -113,6 +113,16 @@ def evaluate(event):
     if last_agent_dispatch is not None and last_agent_dispatch > last_graph_rebuild:
         return False, ''
 
+    # aidd:FR-206 aidd:AC-211 advisory R5 (default): the dispatch-after-rebuild demand is dropped (the find_spec
+    # requirement above stays); `strict` keeps it. Lazy import, fail open.
+    try:
+        sys.path.insert(0, str(Path(__file__).resolve().parent.parent / 'scripts'))
+        import aidd_rules as _rules
+        if _rules.r5_audit_mode() == 'advisory':
+            return False, ''
+    except Exception:
+        return False, ''
+
     return True, MESSAGE
 
 

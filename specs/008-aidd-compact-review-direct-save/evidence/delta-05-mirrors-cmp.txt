@@ -1,0 +1,12 @@
+# delta audit: mirrors, cmp skill/ vs adapters/dot-aidd/ (real working tree, read-only)
+IDENTICAL scripts/aidd_review.py sha256=6ddf5dc3dcd34ce4
+IDENTICAL scripts/aidd_review_items.py sha256=d7296a9d60a5004f
+IDENTICAL scripts/aidd_review_state.py sha256=2642e3c53e3d0aae
+IDENTICAL scripts/aidd_status.py sha256=48b53a3eb7903e23
+IDENTICAL scripts/aidd_rules.py sha256=a9061f189e3cfebf
+IDENTICAL templates/review.html sha256=d154ba402739d570
+IDENTICAL templates/review-full.html sha256=f325db906ce6db12
+IDENTICAL templates/spec.md sha256=d59dfb1d10a5730f
+IDENTICAL templates/qa-audit.md sha256=96303ef5a110c591
+IDENTICAL AIDD.md sha256=5d9be724ac06ec7a
+templates/tasks.md DIFFERS by design (reduced variant, excluded in tests/test_dot_aidd_mirror.py:123; neither copy modified vs HEAD)

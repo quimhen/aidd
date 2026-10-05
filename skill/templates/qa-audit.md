@@ -2,6 +2,19 @@
 
 **Audited by:** [independent Auditor agent/person — never the same agent that implemented the PR being checked]
 
+## Verification summary
+Verification: [`aidd verify` result: run id/verify hash, rows passed/total, or "legacy spec: not applicable"]
+
+## Domain checklist (filled from the single closing auditor's report)
+The closing auditor's first line is `CLOSING AUDIT [domains: a, b, c] [tasks:<h8>] [verify:<v8>]`. One row per required domain (`security` and `functional` always; `ui`, `backend`, `database`, `performance` by what the tasks touch).
+
+Closing auditor id: [agent/subagent id]
+
+| Domain | Covered by closing auditor? | Result | Key findings |
+|---|---|---|---|
+| security | | | |
+| functional | | | |
+
 ## Mapping ledger
 | Code | Status | Evidence (file/class/resource id) | PR/Spec ref | Screenshot diff done? |
 |---|---|---|---|---|

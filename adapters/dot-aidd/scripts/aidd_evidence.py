@@ -7,11 +7,14 @@ Storage is split by scope (spec 002 Rev 2, D1b/D5):
   SESSION kinds (prompt, subagent, question, answer, find_spec, session_start, hook_error) live in a
     per-session log  <tempdir>/aidd-hooks/evidence/<sanitised-session-id>.toon  (shared
     `unknown-session` file when there is no id) — never inside a project directory.
-  PROJECT kinds (spec_edit, code_edit, approved, spec_closed, stop_block, stop_block_exhausted) live in
+  PROJECT kinds (spec_edit, code_edit, approved, spec_closed, stop_block, stop_block_exhausted, verify_run,
+    rules_override, gate_pointer, stop_reminder) live in
     <known root>/.aidd/evidence/events.toon  (+ .gitignore '*'), written ONLY when a project root
     (an ancestor with specs/ or .aidd/) exists — nothing is recorded, and no `.aidd` is created,
     otherwise. spec_edit/code_edit are written to EVERY root in project_roots(target).
   <root>/.aidd/active_spec  two lines: spec id, since-ts  (INFORMATIONAL pointer only; no gate reads it)
+  <root>/.aidd/gate_spec    one sanitised spec id: the GATE pointer (spec 007 FR-201), written only by
+    activate_spec; gate_target_specs resolves the per-spec gate target from it plus a fallback.
 Rows are AIDD-TOON: ts,session,kind,detail (detail = one-line JSON).
 
 Env `AIDD_EVIDENCE_DIR` is honoured ONLY together with `AIDD_TESTING=1`: session logs then go to
@@ -39,6 +42,7 @@ import os
 import random
 import re
 import shlex
+import subprocess
 import tempfile
 import time
 import unicodedata
@@ -140,8 +144,10 @@ def known_root(start=None):
 
 
 SESSION_KINDS = frozenset({'prompt', 'subagent', 'question', 'answer', 'find_spec', 'session_start', 'hook_error'})
+# aidd:FR-201 aidd:FR-205 aidd:FR-206 aidd:FR-208 gate_pointer / verify_run / stop_reminder / rules_override
 PROJECT_KINDS = frozenset({'spec_edit', 'code_edit', 'approved', 'spec_closed', 'stop_block',
-                           'stop_block_exhausted'})
+                           'stop_block_exhausted', 'verify_run', 'rules_override', 'gate_pointer',
+                           'stop_reminder'})
 HOOKS_TMP = Path(tempfile.gettempdir()) / 'aidd-hooks'
 
 
@@ -951,8 +957,104 @@ def record_queued_messages(root, session, queued):
         return 0
 
 
-def append_approved(root, session, spec, hash):
-    append(root, session, 'approved', spec=str(spec), hash=str(hash))
+def append_approved(root, session, spec, hash, **extra):
+    """aidd:FR-204 `extra` (gate, source, consent_ts, verify_hash, review_sha1, ...) is merged into the
+    event detail; `spec` and `hash` always win over an extra key of the same name. Backward compatible:
+    old callers pass no extra and get the old event shape. Returns append()'s bool."""
+    detail = dict(extra)
+    detail['spec'] = str(spec)
+    detail['hash'] = str(hash)
+    return append(root, session, 'approved', **detail)
+
+
+def latest_approved(root, spec, hash=None):
+    """aidd:FR-204 Newest `approved` event detail (plus `ts`) for `spec` (exact id) and, when given,
+    `hash`; None when there is none. Never raises (None on error: callers fail closed)."""
+    try:
+        best = None
+        for e in events(root, kind='approved'):
+            d = e['detail']
+            if str(d.get('spec') or '') != str(spec):
+                continue
+            if hash is not None and str(d.get('hash') or '') != str(hash):
+                continue
+            if best is None or e['ts'] >= best['ts']:
+                best = e
+        if best is None:
+            return None
+        out = dict(best['detail'])
+        out['ts'] = best['ts']
+        return out
+    except Exception:
+        return None
+
+
+def append_verify_run(root, session, spec, ok, verify_hash, results, started, fingerprint_start,
+                      fingerprint_end, stable):
+    """aidd:FR-205 Record one executed `## Verification` run. Returns append()'s bool, never raises."""
+    try:
+        clean = []
+        for r in (results or []):
+            if isinstance(r, dict):  # a Verification `cmd` may carry `TOKEN=...` or a Bearer header
+                r = {k: (redact_secrets(v, limit=500)[0] if isinstance(v, str) else v) for k, v in r.items()}
+            clean.append(r)
+        return append(root, session, 'verify_run', spec=str(spec), ok=bool(ok),
+                      verify_hash=str(verify_hash or ''), started=float(started),
+                      fingerprint_start=fingerprint_start, fingerprint_end=fingerprint_end,
+                      stable=bool(stable), results=clean)
+    except Exception:
+        return False
+
+
+def latest_verify_run(root, spec):
+    """aidd:FR-205 Newest `verify_run` for `spec` (exact id) as {ts, ok, verify_hash, started,
+    fingerprint_start, fingerprint_end, stable, results}; None when there is none or on error."""
+    try:
+        best = None
+        for e in events(root, kind='verify_run'):
+            if str(e['detail'].get('spec') or '') == str(spec) and (best is None or e['ts'] >= best['ts']):
+                best = e
+        if best is None:
+            return None
+        d = best['detail']
+        res = d.get('results')
+        return {'ts': best['ts'], 'ok': d.get('ok') is True, 'verify_hash': str(d.get('verify_hash') or ''),
+                'started': float(d.get('started') or 0.0), 'fingerprint_start': d.get('fingerprint_start'),
+                'fingerprint_end': d.get('fingerprint_end'), 'stable': d.get('stable') is True,
+                'results': res if isinstance(res, list) else []}
+    except Exception:
+        return None
+
+
+def last_code_edit_ts(root):
+    """aidd:FR-205 Newest `code_edit` ts of ANY spec (freshness rule), 0.0 when none or on error."""
+    try:
+        return max((e['ts'] for e in events(root, kind='code_edit')), default=0.0)
+    except Exception:
+        return 0.0
+
+
+def code_edits_for(root, spec, since_ts, include_unstamped=True):
+    """aidd:FR-209 `code_edit` events after `since_ts` attributed to `spec`: detail `target` equal to
+    `spec` (case-insensitive). Events with no `target` key (legacy) and events with a stamped empty
+    `target` (unattributed) are returned only when `include_unstamped`. Never raises ([] on error)."""
+    out = []
+    try:
+        want = str(spec or '').strip().lower()
+        since = float(since_ts or 0.0)
+        for e in events(root, kind='code_edit'):
+            if e['ts'] <= since:
+                continue
+            tgt = e['detail'].get('target')
+            tgt = str(tgt).strip().lower() if tgt is not None else ''
+            if tgt:
+                if want and tgt == want:
+                    out.append(e)
+            elif include_unstamped:
+                out.append(e)
+    except Exception:
+        return []
+    return out
 
 
 def append_spec_closed(root, session, spec, reason='completed', hash=''):
@@ -1353,6 +1455,268 @@ def clear_active_spec(root):
         _active_path(root).unlink()
     except OSError:
         pass
+
+
+# ---------------------------------------------------------------------------
+# Gate pointer and per-spec gate target (spec 007)
+# ---------------------------------------------------------------------------
+
+GATE_POINTER_FILE = '.aidd/gate_spec'
+
+
+def _gate_path(root):
+    # Always <root>/.aidd/gate_spec, also under AIDD_TESTING: the gate reads the project's own file.
+    return Path(root) / GATE_POINTER_FILE
+
+
+def _clean_spec_id(spec_id):
+    """One-line spec id; '' when empty or when it could escape `specs/` (separators, '.', '..', ':')."""
+    s = sanitize_line(str(spec_id or '')).strip()
+    if not s or s in ('.', '..') or re.search(r'[\\/:]', s):
+        return ''
+    return s
+
+
+def get_gate_spec(root):
+    """aidd:FR-201 The gate pointer (first line of `.aidd/gate_spec`, sanitised) or ''. Never raises."""
+    try:
+        if root is None:
+            return ''
+        lines = _gate_path(root).read_text(encoding='utf-8').split('\n')
+        return _clean_spec_id(lines[0]) if lines else ''
+    except Exception:
+        return ''
+
+
+def activate_spec(root, spec_id, by='cli'):
+    """aidd:FR-201 The ONLY writer of the gate pointer. True only when `root/specs/<id>` is a directory
+    and the id is in open_specs(root, include_approved=True) (case-insensitive; the recorded id is
+    stored). Atomic write; a `gate_pointer{spec, prev, by}` event is appended only when the value changes.
+    set_active_spec is untouched (informational). Never raises (False on any failure)."""
+    try:
+        sid = _clean_spec_id(spec_id)
+        if not sid or root is None or not (Path(root) / 'specs' / sid).is_dir():
+            return False
+        match = [s for s in open_specs(root, include_approved=True) if s.lower() == sid.lower()]
+        if not match:
+            return False
+        if sid not in match:
+            sid = match[-1]
+        prev = get_gate_spec(root)
+        if prev == sid:
+            return True
+        path = _gate_path(root)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_name(f'gate_spec.{os.getpid()}.tmp')
+        tmp.write_text(sid + '\n', encoding='utf-8', newline='\n')
+        os.replace(str(tmp), str(path))
+        append(root, None, 'gate_pointer', spec=sid, prev=prev, by=str(by or ''))
+        return True
+    except Exception:
+        return False
+
+
+def recent_gate_pointer_changes(root, n=5):
+    """aidd:FR-201 Newest `gate_pointer` details (plus `ts`), newest first, at most `n`. [] on error."""
+    try:
+        evs = sorted(events(root, kind='gate_pointer'), key=lambda e: e['ts'], reverse=True)
+        out = []
+        for e in evs[:max(0, int(n))]:
+            d = dict(e['detail'])
+            d['ts'] = e['ts']
+            out.append(d)
+        return out
+    except Exception:
+        return []
+
+
+def _edit_file_name(d):
+    """Same file-name derivation as open_specs (detail `file`, else the basename of `path`)."""
+    name = str(d.get('file') or '') or re.split(r'[\\/]', str(d.get('path') or ''))[-1]
+    return name.strip().rstrip('. ').split(':')[0].lower()
+
+
+def gate_target_specs(root):
+    """aidd:FR-201 `(ids, ambiguous, how)`: the spec(s) the code gate checks.
+    (1) the gate pointer names an open spec (case-insensitive) -> ([it], False, 'pointer');
+    (2) one open spec -> (open, False, 'only'); none -> ([], False, 'none');
+    (3) the open spec owning the newest plan.md/tasks.md `spec_edit` (file order breaks ts ties) ->
+        ([it], False, 'inferred'); spec.md/other edits never infer, and neither does a hash-neutral
+        tasks.md edit (its recorded `hash` equals that spec's current approved hash, i.e. the newest
+        `approved` event's hash: a Status write-back must not move the target). When the inferred spec
+        differs from the newest `gate_pointer` event's spec, a `gate_pointer{spec, prev, by='inferred'}`
+        event is appended (the pointer file is never written);
+    (4) else ([], True, 'ambiguous'). Never reads `active_spec`. Never raises ([], False, 'none')."""
+    try:
+        opened = list(open_specs(root))
+        ptr = get_gate_spec(root).lower()
+        if ptr:
+            for s in opened:
+                if s.lower() == ptr:
+                    return [s], False, 'pointer'
+        if len(opened) == 1:
+            return opened, False, 'only'
+        if not opened:
+            return [], False, 'none'
+        by_lower = {s.lower(): s for s in opened}
+        evs = _project_events(root)
+        approved_hash = {}          # spec (lower) -> hash of its newest `approved` event
+        approved_ts = {}
+        last_logged = None          # spec of the newest `gate_pointer` event
+        last_logged_ts = None
+        for e in evs:
+            d = e['detail']
+            if e['kind'] == 'approved' and d.get('spec'):
+                sp = str(d['spec']).lower()
+                if sp not in approved_ts or e['ts'] >= approved_ts[sp]:
+                    approved_ts[sp], approved_hash[sp] = e['ts'], str(d.get('hash') or '')
+            elif e['kind'] == 'gate_pointer':
+                if last_logged_ts is None or e['ts'] >= last_logged_ts:
+                    last_logged, last_logged_ts = str(d.get('spec') or ''), e['ts']
+        best, best_ts = None, None
+        for e in evs:
+            if e['kind'] != 'spec_edit':
+                continue
+            d = e['detail']
+            sp = str(d.get('spec') or '').lower()
+            name = _edit_file_name(d)
+            if sp not in by_lower or name not in ('plan.md', 'tasks.md'):
+                continue
+            if name == 'tasks.md':
+                h = str(d.get('hash') or '')
+                if h and approved_hash.get(sp) == h:
+                    continue        # hash-neutral edit of an approved spec: never moves the target
+            if best_ts is None or e['ts'] >= best_ts:
+                best, best_ts = by_lower[sp], e['ts']
+        if best is not None:
+            if (last_logged or '').lower() != best.lower():
+                append(root, None, 'gate_pointer', spec=best, prev=last_logged or '', by='inferred')
+            return [best], False, 'inferred'
+        return [], True, 'ambiguous'
+    except Exception:
+        return [], False, 'none'
+
+
+# ---------------------------------------------------------------------------
+# Working-tree fingerprint (spec 007 FR-205)
+# ---------------------------------------------------------------------------
+
+_FP_GIT_TIMEOUT = 5.0
+_FP_MAX_FILES = 20000
+_FP_BIG_FILE = 1024 * 1024
+_FP_SKIP_TOP = frozenset({'specs', '.aidd'})
+_FP_SKIP_ANY = frozenset({'.git', 'node_modules', 'bin', 'obj', '__pycache__'})
+
+
+class _FpUnavailable(Exception):
+    """git is missing, failing or not a repo here: use the mtime fallback."""
+
+
+class _FpOverBudget(Exception):
+    """Over the file cap or the time budget: the fingerprint is None."""
+
+
+def _fp_left(deadline):
+    left = deadline - time.monotonic()
+    if left <= 0:
+        raise _FpOverBudget()
+    return left
+
+
+def _fp_git(root, args, deadline):
+    """stdout bytes of one list-form git call (5 s cap, never longer than the budget left)."""
+    timeout = min(_FP_GIT_TIMEOUT, _fp_left(deadline))
+    env = dict(os.environ, GIT_OPTIONAL_LOCKS='0', LC_ALL='C')
+    try:
+        r = subprocess.run(['git', *args], cwd=str(root), stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                           stderr=subprocess.DEVNULL, timeout=timeout, env=env,
+                           creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
+    except subprocess.TimeoutExpired:
+        raise _FpOverBudget()
+    except (OSError, ValueError):
+        raise _FpUnavailable()
+    if r.returncode != 0:
+        raise _FpUnavailable()
+    return r.stdout
+
+
+def _fp_outside(rel):
+    parts = rel.replace('\\', '/').split('/')
+    return not (parts and parts[0] in _FP_SKIP_TOP)
+
+
+def _fp_file_digest(path):
+    st = os.stat(path)
+    if st.st_size > _FP_BIG_FILE:
+        return f'big:{st.st_size}:{st.st_mtime_ns}'
+    h = hashlib.sha1()
+    with open(path, 'rb') as fh:
+        for chunk in iter(lambda: fh.read(65536), b''):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def _fp_from_git(root, deadline):
+    excl = ['--', '.', ':(exclude)specs', ':(exclude).aidd']
+    h = hashlib.sha1()
+    h.update(b'git\0' + _fp_git(root, ['rev-parse', 'HEAD'], deadline).strip() + b'\0')
+    h.update(_fp_git(root, ['diff', 'HEAD', '--no-color', '--no-ext-diff', '--no-textconv', *excl], deadline))
+    h.update(b'\0untracked\0')
+    raw = _fp_git(root, ['ls-files', '-o', '--exclude-standard', '-z', *excl], deadline)
+    paths = sorted(p for p in raw.decode('utf-8', errors='surrogateescape').split('\0') if p)
+    if len(paths) > _FP_MAX_FILES:
+        raise _FpOverBudget()
+    for rel in paths:
+        _fp_left(deadline)
+        if not _fp_outside(rel):
+            continue
+        try:
+            dig = _fp_file_digest(os.path.join(str(root), rel))
+        except OSError:
+            dig = 'unreadable'
+        h.update(rel.encode('utf-8', errors='surrogateescape') + b'\0' + dig.encode('ascii') + b'\0')
+    return h.hexdigest()[:16]
+
+
+def _fp_from_mtimes(root, deadline):
+    rows = []
+    base = os.path.abspath(str(root))
+    for cur, dirs, files in os.walk(base):
+        _fp_left(deadline)
+        top = os.path.normcase(os.path.abspath(cur)) == os.path.normcase(base)
+        dirs[:] = sorted(d for d in dirs if d not in _FP_SKIP_ANY and not (top and d in _FP_SKIP_TOP))
+        for f in files:
+            full = os.path.join(cur, f)
+            try:
+                st = os.stat(full)
+            except OSError:
+                continue
+            rows.append((os.path.relpath(full, base).replace('\\', '/'), st.st_size, st.st_mtime_ns))
+            if len(rows) > _FP_MAX_FILES:
+                raise _FpOverBudget()
+    h = hashlib.sha1(b'mtime\0')
+    for rel, size, mt in sorted(rows):
+        h.update(f'{rel}\0{size}\0{mt}\n'.encode('utf-8', errors='surrogateescape'))
+    return h.hexdigest()[:16]
+
+
+def worktree_fingerprint(root, budget_s=8.0):
+    """aidd:FR-205 sha1[:16] of the project's working tree outside `specs/` and `.aidd/`.
+    git: HEAD + `git diff HEAD` + every untracked non-ignored path with its content sha1 (files over 1 MB:
+    size + mtime). Not a git repo / git missing or failing: sorted (relpath, size, mtime_ns) of the
+    project files (skipping specs/, .aidd/, .git/, node_modules/, bin/, obj/, __pycache__/), capped at
+    20 000 files. Over the cap or over `budget_s`: None (callers then rely on the code_edit rule).
+    List-form subprocess, 5 s per git call, never raises."""
+    try:
+        if root is None or not Path(root).is_dir():
+            return None
+        deadline = time.monotonic() + float(budget_s)
+        try:
+            return _fp_from_git(Path(root), deadline)
+        except _FpUnavailable:
+            return _fp_from_mtimes(Path(root), deadline)
+    except Exception:
+        return None
 
 
 # ---------------------------------------------------------------------------

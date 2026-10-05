@@ -25,6 +25,7 @@ from gate_fixtures import (  # noqa: E402
     Base, EV, R, HOOKS_DIR, QUOTE, CHECKLIST_QUOTE, CHECKLIST_OK, CHECKLIST_PROPOSED, CHECKLIST_FABRICATED,
     CHECKLIST_BLANK, CHECKLIST_FAKE_REPO, CHECKLIST_SHORT_QUOTE, DEBT_OPEN, DEBT_RESOLVED, WAIVED_VISUAL,
     spec_text, debt_spec, tasks_text, approved_tasks, qa_text, QA_ROW_OK, QA_BUGS_REPEAT_BLANK,
+    VERIFICATION, verified_spec,
 )
 import _common  # noqa: E402
 import rule_gate  # noqa: E402
@@ -47,6 +48,8 @@ class PlanBase(Base):
         self.subagent("Mapper", "independent mapper over spec.md")
 
     def ready_for_tasks(self, tasks=None):
+        if not (self.root / SPEC).exists():
+            self.put(SPEC, verified_spec(), age=200)   # spec 007: a new approval needs a valid ## Verification
         self.put(PLAN, "# plan\n")
         if tasks is not None:
             self.put(TASKS, tasks)
@@ -714,15 +717,23 @@ class TestR6CodeGate(PlanBase):
         self.assertEqual(EV.get_active_spec(self.root), "zzz")
         self.assertBlocked(self.code(), "R6", "001-x")
 
-    def test_b1_every_open_spec_is_checked_not_just_one(self):
+    def test_b1_only_the_gate_target_is_checked(self):
+        """aidd:FR-201 aidd:AC-201 (supersedes B1 'every open spec'): the gate pointer on the approved spec ->
+        allowed although the other one is PENDING; the pointer on the pending one -> blocked naming it."""
         (self.root / "specs" / "002-y").mkdir()
         self.put(TASKS, approved_tasks())
         self.put("specs/002-y/tasks.md", tasks_text())     # 002-y is NOT approved
         self.open_spec("001-x")
         self.approve_spec()
         self.open_spec("002-y")
-        EV.set_active_spec(self.root, "001-x")              # the pointer names the approved one
-        self.assertBlocked(self.code(), "R6", "002-y")
+        EV.set_active_spec(self.root, "002-y")              # the informational pointer is never read
+        self.assertTrue(EV.activate_spec(self.root, "001-x"))
+        self.assertAllowed(self.code())
+        self.assertTrue(EV.activate_spec(self.root, "002-y"))
+        r = self.code()
+        self.assertBlocked(r, "R6", "002-y", "pointer", "aidd review", "aidd rules activate")
+        self.assertNotIn("001-x", r.err)
+        self.assertEqual(r.err.count("[R6]"), 1, r.err)    # never one violation per spec
 
     def test_mdl_abandoning_one_spec_unblocks_the_other_dead_end(self):
         (self.root / "specs" / "002-y").mkdir()
@@ -731,9 +742,92 @@ class TestR6CodeGate(PlanBase):
         self.open_spec("001-x")
         self.open_spec("002-y")
         self.approve_spec(spec="002-y")
-        self.assertBlocked(self.code(), "R6", "001-x")
+        self.assertTrue(EV.activate_spec(self.root, "001-x"))   # the owner chose 001-x
+        self.assertBlocked(self.code(), "R6", "001-x", "pointer")
         self.close_spec("001-x", "abandoned")                # (aidd rules abandon is owned elsewhere: simulated)
+        self.assertAllowed(self.code())                      # the single open spec (002-y, approved) is the target
+        # the ambiguous message lists the open ids and the activate fix (in-process: gate_target_specs says so)
+        ids = ["001-x", "002-y"]
+        with mock.patch.object(EV, "gate_target_specs", return_value=([], True, "ambiguous")), \
+                mock.patch.object(EV, "open_specs", return_value=ids):
+            vs = rule_gate._code_gate(EV, R, [self.root])
+        self.assertEqual(len(vs), 1, vs)
+        self.assertIn("001-x", vs[0]["message"])
+        self.assertIn("002-y", vs[0]["message"])
+        self.assertIn("aidd rules activate", vs[0]["fix"])
+
+    def test_ambiguous_lists_five_ids_and_n_more(self):
+        """aidd:AC-202 (2): ONE violation listing 5 open ids "and 9 more" and `aidd rules activate <id>`."""
+        ids = [f"F{n}-eDoc-x" for n in range(13, 27)]
+        with mock.patch.object(EV, "gate_target_specs", return_value=([], True, "ambiguous")), \
+                mock.patch.object(EV, "open_specs", return_value=ids):
+            vs = rule_gate._code_gate(EV, R, [self.root])
+        self.assertEqual(len(vs), 1, vs)
+        self.assertIn(", ".join(ids[:5]) + " and 9 more", vs[0]["message"])
+        self.assertNotIn(ids[5], vs[0]["message"])
+        self.assertIn("aidd rules activate F13-eDoc-x", vs[0]["fix"])
+
+    def test_no_pointer_plan_edit_infers_the_target(self):
+        """aidd:AC-202 (1): no pointer, B has the newest plan.md edit -> B inferred, ONE violation naming it."""
+        (self.root / "specs" / "002-y").mkdir()
+        self.put(TASKS, approved_tasks())
+        self.put("specs/002-y/tasks.md", tasks_text())
+        self.open_spec("001-x")
+        self.approve_spec()
+        self.open_spec("002-y")
+        self.spec_edit("plan.md", spec="001-x")             # 001-x has the newest plan edit -> inferred, approved
         self.assertAllowed(self.code())
+        self.spec_edit("plan.md", spec="002-y")             # now 002-y (PENDING) is inferred
+        r = self.code()
+        self.assertBlocked(r, "R6", "002-y", "inferred")
+        self.assertEqual(r.err.count("[R6]"), 1, r.err)
+
+    def test_active_spec_on_a_spec_md_only_spec_is_ignored(self):
+        """aidd:AC-202: `.aidd/active_spec` on a spec with only spec.md edits (not open) is never the target."""
+        (self.root / "specs" / "F28-DB-Unification-Sync").mkdir()
+        self.put(TASKS, tasks_text())
+        self.open_spec()
+        self.spec_edit("spec.md", spec="F28-DB-Unification-Sync")
+        EV.set_active_spec(self.root, "F28-DB-Unification-Sync")
+        r = self.code()
+        self.assertBlocked(r, "R6", "001-x", "only")
+        self.assertNotIn("F28", r.err)
+
+    def test_pointer_to_a_closed_or_unknown_spec_is_treated_as_unset(self):
+        (self.root / "specs" / "002-y").mkdir()
+        self.put(TASKS, tasks_text())                        # 001-x PENDING
+        self.put("specs/002-y/tasks.md", approved_tasks())
+        self.open_spec("002-y")
+        self.approve_spec(spec="002-y")
+        self.open_spec("001-x")
+        self.assertTrue(EV.activate_spec(self.root, "002-y"))
+        self.assertAllowed(self.code())
+        self.close_spec("002-y", "done")                     # the pointer now names a closed spec
+        self.assertBlocked(self.code(), "R6", "001-x", "only")
+        (self.root / ".aidd").mkdir(exist_ok=True)
+        (self.root / ".aidd" / "gate_spec").write_text("F99-none\n", encoding="utf-8")   # AC-202 (3)
+        self.assertBlocked(self.code(), "R6", "001-x")
+
+    def test_r4_debt_only_blocks_the_target(self):
+        (self.root / "specs" / "002-y").mkdir()
+        self.put(TASKS, approved_tasks())
+        self.put("specs/002-y/tasks.md", approved_tasks())
+        self.put("specs/002-y/spec.md", debt_spec().replace("| 001-x |", "| 002-y |"))   # debt blocks 002-y
+        self.open_spec("001-x")
+        self.approve_spec()
+        self.open_spec("002-y")
+        self.approve_spec(spec="002-y")
+        self.assertTrue(EV.activate_spec(self.root, "001-x"))
+        self.assertAllowed(self.code())
+        self.assertTrue(EV.activate_spec(self.root, "002-y"))
+        self.assertBlocked(self.code(), "R4", "002-y")
+
+    def test_gate_targets_fall_back_to_every_open_spec_with_an_older_library(self):
+        """An older aidd_evidence mirror without gate_target_specs: the pre-007 behaviour (every open spec)."""
+        lib = SimpleNamespace(open_specs=lambda root: ["001-x", "002-y"])
+        self.assertEqual(rule_gate._gate_targets(lib, self.root), (["001-x", "002-y"], False, "all"))
+        bad = SimpleNamespace(gate_target_specs=lambda root: None, open_specs=lambda root: ["001-x"])
+        self.assertEqual(rule_gate._gate_targets(bad, self.root), (["001-x"], False, "all"))
 
     def test_mdl_both_abandoned_or_one_abandoned_one_unapproved(self):
         (self.root / "specs" / "002-y").mkdir()
@@ -761,6 +855,24 @@ class TestR6CodeGate(PlanBase):
         self.open_spec()
         self.assertBlocked(self.gate("sub/app.py", content="x"), "R6", "001-x")
         self.assertBlocked(self.gate("sub/deep/dir/app.py", content="x"), "R6")
+
+    def test_nested_roots_each_check_their_own_gate_target(self):
+        """aidd:FR-201 every root above the file contributes ITS gate target (and only it)."""
+        # (in-process: the scratch AIDD_EVIDENCE_DIR is one log for every root, so the per-root targets are mocked)
+        (self.root / "sub" / "specs" / "010-in").mkdir(parents=True)
+        inner = self.root / "sub"
+        self.put(TASKS, approved_tasks())
+        self.put("sub/specs/010-in/tasks.md", tasks_text())          # inner target PENDING
+        self.approve_spec()
+        targets = {str(inner): (["010-in"], False, "pointer"), str(self.root): (["001-x"], False, "pointer")}
+        with mock.patch.object(EV, "gate_target_specs", side_effect=lambda root: targets[str(root)]):
+            vs = rule_gate._code_gate(EV, R, [inner, self.root])
+            self.assertEqual([v["rule"] for v in vs], ["R6"], vs)
+            self.assertIn("010-in", vs[0]["message"])
+            self.assertEqual(rule_gate._code_gate(EV, R, [self.root]), [])   # outer target approved + recorded
+            targets[str(self.root)] = ([], True, "ambiguous")
+            vs = rule_gate._code_gate(EV, R, [inner, self.root])
+            self.assertEqual(len(vs), 2, vs)                                   # one per root, never one per spec
 
     # ---- M8 / D11 (deny-list)
     NON_CODE = ("a.md", "a.markdown", "a.txt", "a.rst", "a.csv", "a.tsv", "a.log", "a.lock", "a.png", "a.jpg",
@@ -1341,14 +1453,27 @@ class TestD1NoAttributionAndD3Approval(PlanBase):
         self.subagent("Security", "security check")
         self.assertAllowed(self.gate(QA, content="# qa"))
 
-    def test_d1_code_gate_never_reads_the_pointer(self):
+    def test_d1_single_open_spec_is_the_target_whatever_active_spec_says(self):
         self.marker()
         self.put(TASKS, tasks_text())
         self.open_spec()
         EV.clear_active_spec(self.root)
         self.assertBlocked(self.gate("src/app.py", content="x"), "R6")
         EV.set_active_spec(self.root, "nonexistent")
-        self.assertBlocked(self.gate("src/app.py", content="x"), "R6")
+        self.assertBlocked(self.gate("src/app.py", content="x"), "R6", "001-x")
+        # `.aidd/active_spec` is never read by the gate: an unreadable / exploding reader changes nothing
+        with mock.patch.object(EV, "get_active_spec", side_effect=AssertionError("active_spec read")), \
+                mock.patch.object(EV, "_active_path", side_effect=AssertionError("active_spec read"), create=True):
+            vs = rule_gate._code_gate(EV, R, [self.root])
+        self.assertEqual(len(vs), 1, vs)
+        self.assertIn("001-x", vs[0]["message"])
+        # a spec with only spec.md edits is never inferred, even when active_spec names it
+        (self.root / "specs" / "003-z").mkdir()
+        self.spec_edit("spec.md", spec="003-z")
+        EV.set_active_spec(self.root, "003-z")
+        r = self.gate("src/app.py", content="x")
+        self.assertBlocked(r, "R6", "001-x")
+        self.assertNotIn("003-z", r.err)
 
     # ---- D3: an approval edit must change nothing else
     def approve_line(self, t):
@@ -1642,7 +1767,7 @@ class TestRealRecordersLayouts(Base):
             (proj / "specs" / "001-x").mkdir(parents=True)
             (proj / "src").mkdir()
             (proj / "src" / "cart.py").write_text("".join(f"x{i} = {i}\n" for i in range(40)), encoding="utf-8")
-            (proj / "specs" / "001-x" / "spec.md").write_text(spec_text(), encoding="utf-8")
+            (proj / "specs" / "001-x" / "spec.md").write_text(verified_spec(), encoding="utf-8")
             marker_session = self.session
             _common.marker_path(marker_session).write_text("invoked", encoding="utf-8")
             spec = str(proj / "specs" / "001-x" / "spec.md")
@@ -1888,6 +2013,824 @@ class TestR5UsesPreBuildAudit(PlanBase):
         self.assertBlocked(self.gate(TASKS, **approve), "R5")   # strict (0): blocked too
         self.subagent("Auditor", "independent auditor over tasks.md")
         self.assertAllowed(self.gate(TASKS, env=default, **approve))
+
+
+# ----------------------------------------------------------------------- spec 007 (T-06)
+
+class TestR5AuditMode(PlanBase):
+    """aidd:FR-206 aidd:AC-211 AIDD_R5_AUDIT: advisory (default) drops the pre-build subagent demand; strict keeps it."""
+
+    def setup_no_audit_after_plan(self):
+        self.subagent()  # runs BEFORE plan.md was last written
+        self.ev("find_spec", rebuilt=False, ok=True, source="bash")
+        self.put(PLAN, "# plan\n", age=-50)
+
+    def test_advisory_default_allows_tasks_without_a_pre_build_audit(self):
+        self.setup_no_audit_after_plan()
+        for v in (None, "advisory", "", "whatever"):
+            self.assertAllowed(self.gate(TASKS, content=tasks_text(), env={"AIDD_R5_AUDIT": v}))
+
+    def test_strict_blocks_as_before(self):
+        self.setup_no_audit_after_plan()
+        for v in ("strict", " STRICT "):
+            self.assertBlocked(self.gate(TASKS, content=tasks_text(), env={"AIDD_R5_AUDIT": v}), "R5", "subagent")
+
+    def test_find_spec_and_plan_are_demanded_in_both_modes(self):
+        self.subagent()
+        self.ev("find_spec", rebuilt=False, ok=True, source="bash")
+        for v in ("advisory", "strict"):
+            self.assertBlocked(self.gate(TASKS, content=tasks_text(), env={"AIDD_R5_AUDIT": v}), "plan.md")
+        self.session = self.session + "-2"                 # a fresh session: no find_spec recorded
+        self.put(PLAN, "# plan\n")
+        self.subagent()
+        for v in ("advisory", "strict"):
+            self.assertBlocked(self.gate(TASKS, content=tasks_text(), env={"AIDD_R5_AUDIT": v}), "find_spec.py")
+
+    def test_r5_mode_of_an_older_rules_library_is_strict(self):
+        self.assertEqual(rule_gate._r5_mode(SimpleNamespace()), "strict")
+        self.assertEqual(rule_gate._r5_mode(SimpleNamespace(r5_audit_mode=lambda: 1 / 0)), "strict")
+        self.assertEqual(rule_gate._r5_mode(SimpleNamespace(r5_audit_mode=lambda: "advisory")), "advisory")
+
+
+class TestWarnModeOverride(PlanBase):
+    """aidd:FR-208 aidd:AC-214 AIDD_RULES=warn: the would-be block passes and appends rules_override."""
+
+    def test_warn_records_rules_override_and_never_blocks(self):
+        self.marker()
+        self.put(TASKS, tasks_text())
+        self.open_spec()
+        r = self.gate("src/app.py", content="x", env={"AIDD_RULES": "warn"})
+        self.assertEqual(r.returncode, 0, r.err)
+        self.assertIn("AIDD_RULES=warn", r.err)
+        ov = self.events("rules_override")
+        self.assertEqual(len(ov), 1, ov)
+        self.assertEqual(ov[0]["detail"]["hook"], "rule_gate")
+        self.assertEqual(ov[0]["detail"]["mode"], "warn")
+        self.assertIn("R6/R4", ov[0]["detail"]["rules"])
+        r = self.bash("rm -rf .aidd", env={"AIDD_RULES": "warn"})
+        self.assertEqual(r.returncode, 0, r.err)
+        self.assertEqual(len(self.events("rules_override")), 2)
+
+    def test_enforce_and_allowed_writes_record_nothing(self):
+        self.marker()
+        self.put(TASKS, tasks_text())
+        self.open_spec()
+        self.assertBlocked(self.gate("src/app.py", content="x"), "R6")
+        self.assertAllowed(self.gate("README.md", content="x", env={"AIDD_RULES": "warn"}))
+        self.assertEqual(self.events("rules_override"), [])
+
+    def test_no_known_root_records_nothing_and_does_not_fail(self):
+        with tempfile.TemporaryDirectory() as td:
+            r = self.run_hook("rule_gate.py", {"session_id": self.session, "cwd": td, "tool_name": "Bash",
+                                               "tool_input": {"command": "rm -rf .aidd"}},
+                              env={"AIDD_RULES": "warn"})
+        self.assertEqual(r.returncode, 0, r.err)
+        self.assertNotIn("Traceback", r.err)
+
+
+class TestReviewApproval(PlanBase):
+    """aidd:FR-204 aidd:AC-205 aidd:AC-206 aidd:AC-207 the hook route: review = content, consent = trust root."""
+
+    def approve_edit(self, t):
+        return self.gate(TASKS, tool="Edit", old_string="Approved: PENDING",
+                         new_string=f"Approved: 2026-10-01 hash:{R.approval_hash(t)}")
+
+    def make_review(self, t, approved=True, unchecked=0, tasks_hash=None, md=True):
+        """review.html generated by aidd_review, then a review.md the owner 'downloaded' after it."""
+        import aidd_review as AR
+        path, _ = AR.generate(self.sd)
+        old = time.time() - 60
+        os.utime(path, (old, old))
+        if not md:
+            return path
+        keys = AR.reviewable_keys(self.sd)
+        self.assertTrue(keys)
+        # aidd:FR-304 the compact grammar `codes-v2`: one `- [x] <code>` line per reviewable code
+        lines = ["---", f"spec: {self.SPEC}", f"tasks_hash: {tasks_hash or R.approval_hash(t)}",
+                 f"sources_digest: {AR.sources_digest(self.sd)}", "format: codes-v2",
+                 f"approved: {'true' if approved else 'false'}",
+                 "generated: 2026-10-05", "reviewed: 2026-10-05T10:00:00", "---"]
+        for i, k in enumerate(keys):
+            lines += [f"- [ ] {k}" if i < unchecked else f"- [x] {k}"]
+        p = self.sd / "review.md"
+        p.write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
+        mid = time.time() - 30
+        os.utime(p, (mid, mid))
+        return p
+
+    def test_complete_review_without_consent_is_blocked(self):
+        t = tasks_text()
+        self.ready_for_tasks(t)
+        self.make_review(t)
+        r = self.approve_edit(t)
+        self.assertBlocked(r, "R6", "review.md is complete", self.tag(t), f"approve {self.tag(t)}",
+                           "aidd review specs/001-x --wait")
+        self.assertEqual(self.events("approved"), [])
+
+    def test_complete_review_plus_tagged_answer_mints_gate2_review_answer(self):
+        t = tasks_text()
+        self.ready_for_tasks(t)
+        self.make_review(t)
+        self.answer("Approve the tasks?", "Approve")
+        self.assertAllowed(self.approve_edit(t))
+        ev = self.events("approved")
+        self.assertEqual(len(ev), 1, ev)
+        d = ev[0]["detail"]
+        self.assertEqual((d["spec"], d["hash"], d["gate"], d["source"]),
+                         ("001-x", R.approval_hash(t), 2, "review+answer"))
+        self.assertEqual(d["verify_hash"], R.verification_hash(verified_spec()))
+        self.assertTrue(d.get("review_sha1"))
+        self.assertIn("consent_ts", d)
+
+    def test_complete_review_plus_tagged_prompt_mints_review_prompt(self):
+        t = tasks_text()
+        self.ready_for_tasks(t)
+        self.make_review(t)
+        self.prompt(f"approve {self.tag(t)}")
+        self.assertAllowed(self.approve_edit(t))
+        d = self.events("approved")[0]["detail"]
+        self.assertEqual((d["gate"], d["source"]), (2, "review+prompt"))
+
+    def test_negated_or_untagged_prompt_is_not_consent(self):
+        t = tasks_text()
+        self.ready_for_tasks(t)
+        self.make_review(t)
+        self.prompt(f"do not approve {self.tag(t)}")
+        self.prompt("approve the tasks please")
+        self.assertBlocked(self.approve_edit(t), "R6", "review.md is complete")
+
+    def test_consent_older_than_review_md_does_not_count(self):
+        t = tasks_text()
+        self.ready_for_tasks(t)
+        self.answer("Approve the tasks?", "Approve")
+        self.prompt(f"approve {self.tag(t)}")
+        time.sleep(0.05)
+        p = self.make_review(t)
+        os.utime(p, (time.time(), time.time()))           # review.md saved AFTER the consent acts
+        self.assertBlocked(self.approve_edit(t), "R6", "review.md is complete")
+
+    def test_stale_hash_review_is_refused_even_with_an_answer(self):
+        t = tasks_text()
+        self.ready_for_tasks(t)
+        self.make_review(t, tasks_hash="0" * 12)
+        self.answer("Approve the tasks?", "Approve")
+        self.assertBlocked(self.approve_edit(t), "R6", "A review exists", "run `aidd review` again")
+        self.assertEqual(self.events("approved"), [])
+
+    def test_current_page_with_incomplete_review_blocks_the_plain_answer(self):
+        t = tasks_text()
+        self.ready_for_tasks(t)
+        self.make_review(t, md=False)                      # page generated, no review.md yet
+        self.answer("Approve the tasks?", "Approve")
+        self.assertBlocked(self.approve_edit(t), "R6", "A review exists", "review.md")
+        self.make_review(t, unchecked=1)                   # a section left unchecked
+        self.answer("Approve the tasks?", "Approve")
+        self.assertBlocked(self.approve_edit(t), "R6", "unchecked sections")
+        self.make_review(t, approved=False)
+        self.answer("Approve the tasks?", "Approve")
+        self.assertBlocked(self.approve_edit(t), "R6", "approved: false")
+        self.assertEqual(self.events("approved"), [])
+
+    def test_no_page_keeps_the_answer_route_and_mints_source_answer(self):
+        t = tasks_text()
+        self.ready_for_tasks(t)
+        self.answer("Approve the tasks?", "Approve")
+        self.assertAllowed(self.approve_edit(t))
+        d = self.events("approved")[0]["detail"]
+        self.assertEqual((d["gate"], d["source"]), (2, "answer"))
+        self.assertNotIn("review_sha1", d)
+
+    def test_missing_or_invalid_verification_blocks_the_approval(self):
+        t = tasks_text()
+        self.put(SPEC, spec_text(), age=200)                # no ## Verification
+        self.ready_for_tasks(t)
+        self.answer("Approve the tasks?", "Approve")
+        self.assertBlocked(self.approve_edit(t), "R10", "Verification")
+        self.put(SPEC, spec_text(extra=VERIFICATION.replace("python src/cart.py", "echo ok")), age=200)
+        self.assertBlocked(self.approve_edit(t), "R10")
+        self.assertEqual(self.events("approved"), [])
+
+
+def _overcap_requirements(rows=2001):
+    """A requirements table with more coded rows than the compact page can show (FR-301)."""
+    body = "".join(f"| FR-{i:03d} | requirement {i} |\n" for i in range(1, rows + 1))
+    return "\n## Requirements\n\n| Code | Requirement |\n|---|---|\n" + body
+
+
+class ReviewModeGateMixin:
+    """aidd:FR-307 aidd:FR-313 the gate decisions of the compact review flow and of the exact-label summary route,
+    for one spec id (the two concrete classes below set SPEC to a numeric and a non-numeric real id)."""
+
+    make_review = TestReviewApproval.make_review          # the real default page + a `codes-v2` review.md
+
+    def tpath(self):
+        return f"specs/{self.SPEC}/tasks.md"
+
+    def prep(self, t, spec=None):
+        self.put(f"specs/{self.SPEC}/spec.md", spec if spec is not None else verified_spec(), age=200)
+        self.put(f"specs/{self.SPEC}/plan.md", "# plan\n")
+        self.put(self.tpath(), t)
+        self.ev("find_spec", rebuilt=False, ok=True, source="bash")
+        self.subagent("Auditor", "independent auditor over plan.md")
+
+    def approve_edit(self, t):
+        return self.gate(self.tpath(), tool="Edit", old_string="Approved: PENDING",
+                         new_string=f"Approved: 2026-10-01 hash:{R.approval_hash(t)}")
+
+    def ask(self, label, question="¿Aprobar las tareas?", **kw):
+        self.answer(question, label, options=[label, "Revisar en HTML visual"], **kw)
+
+    def sources(self):
+        return [e["detail"].get("source") for e in self.events("approved")]
+
+    def over_cap(self, with_page):
+        t = tasks_text()
+        self.prep(t)
+        if with_page:
+            self.make_review(t, md=False)                    # a page from before the padding (now stale)
+        self.put(f"specs/{self.SPEC}/spec.md", verified_spec(extra=_overcap_requirements()), age=200)
+        return t
+
+    # -- AC-327 (1)-(8)
+    def test_exact_label_and_outer_spaces_approve_with_source_summary(self):
+        for label in ("Aprobar con resumen", "  Aprobar con resumen "):
+            with self.subTest(label=label):
+                self.setUp_again()
+                t = tasks_text()
+                self.prep(t)
+                self.ask(label)
+                self.assertAllowed(self.approve_edit(t))
+                ev = self.events("approved")
+                self.assertEqual(len(ev), 1, ev)
+                d = ev[0]["detail"]
+                self.assertEqual((d["spec"], d["hash"], d["gate"], d["source"]),
+                                 (self.SPEC, R.approval_hash(t), 2, "summary"))
+                self.assertIn("consent_ts", d)
+                self.assertNotIn("review_sha1", d)
+
+    def test_near_misses_are_blocked_and_never_mint_source_answer(self):
+        for label in ("aprobar con resumen", "APROBAR CON RESUMEN", "Aprobar con resumem", "Aprobar con resumen ya",
+                      "Aprobar con resumen."):
+            with self.subTest(label=label):
+                self.setUp_again()
+                t = tasks_text()
+                self.prep(t)
+                self.ask(label)
+                self.assertBlocked(self.approve_edit(t), "R6")
+                self.assertEqual(self.events("approved"), [])
+
+    def test_missing_older_tag_and_question_without_the_approve_word_are_blocked(self):
+        cases = {
+            "no tag": dict(question="¿Aprobar las tareas?", tagged=False),
+            "older tag": dict(question="¿Aprobar las tareas? [tasks:deadbeef]", tagged=False),
+            "no approve word": dict(question="¿Cómo seguimos?", tagged=True),
+        }
+        for name, kw in cases.items():
+            with self.subTest(case=name):
+                self.setUp_again()
+                t = tasks_text()
+                self.prep(t)
+                self.ask("Aprobar con resumen", **kw)
+                self.assertBlocked(self.approve_edit(t), "R6")
+                self.assertEqual(self.events("approved"), [])
+
+    def test_typed_prompt_gives_no_source_summary(self):
+        t = tasks_text()
+        self.prep(t)
+        self.prompt(f"Aprobar con resumen {self.tag(t)}")
+        self.assertBlocked(self.approve_edit(t), "R6")
+        self.assertEqual(self.events("approved"), [])
+
+    def test_agent_forged_text_is_not_accepted(self):
+        t = tasks_text()
+        self.prep(t)
+        tag = self.tag(t)
+        self.ev("question", text=f"¿Aprobar las tareas? {tag}", options=[["Aprobar con resumen", "Otro"]])
+        self.put(f"specs/{self.SPEC}/answer.txt", f"Aprobar con resumen {tag}\n")
+        self.prompt(f"<assistant> Aprobar con resumen {tag}")
+        self.ev("bash", command=f"echo 'Aprobar con resumen {tag}'")
+        self.ask("Aprobar con resumen", session="some-other-session")
+        self.assertBlocked(self.approve_edit(t), "R6")
+        self.assertEqual(self.events("approved"), [])
+        self.assertIsNone(rule_gate._summary_answer(EV, self.root, self.session, 0.0, tag))
+
+    # -- AC-328
+    def test_stale_page_current_page_and_complete_review_approve_with_summary(self):
+        for mode in ("stale", "current", "complete"):
+            with self.subTest(mode=mode):
+                self.setUp_again()
+                t = tasks_text()
+                self.prep(t)
+                page = self.make_review(t, md=(mode == "complete"))
+                if mode == "complete":
+                    page = self.sd / "review.html"
+                if mode == "stale":
+                    self.put(f"specs/{self.SPEC}/plan.md", "# plan\n\nchanged after the page\n", age=10)
+                before = page.read_bytes()
+                had_md = (self.sd / "review.md").exists()
+                self.ask("Aprobar con resumen")
+                self.assertAllowed(self.approve_edit(t))
+                self.assertEqual(self.sources(), ["summary"])          # never review+answer, never answer
+                self.assertEqual(page.read_bytes(), before)
+                self.assertEqual((self.sd / "review.md").exists(), had_md)
+
+    # -- AC-329
+    def test_current_page_with_a_bare_approve_is_still_blocked(self):
+        t = tasks_text()
+        self.prep(t)
+        self.make_review(t, md=False)
+        self.answer("¿Aprobar las tareas?", "Approve")
+        self.assertBlocked(self.approve_edit(t), "R6", "A review exists", "--wait")
+        self.ask("Aprobar con resumen")                                  # the summary, then a newer bare Approve
+        self.answer("¿Aprobar las tareas?", "Approve")
+        self.assertBlocked(self.approve_edit(t), "R6", "A review exists")
+        self.assertEqual(self.events("approved"), [])
+
+    def test_over_cap_spec_blocks_a_bare_answer_and_the_summary_with_and_without_a_page(self):
+        for with_page in (False, True):
+            for label, q in (("Approve", "¿Aprobar las tareas?"), ("Aprobar con resumen", "¿Aprobar las tareas?")):
+                with self.subTest(page=with_page, label=label):
+                    self.setUp_again()
+                    t = self.over_cap(with_page)
+                    self.answer(q, label, options=[label, "Otro"])
+                    self.assertBlocked(self.approve_edit(t), "R6", "too many items")
+                    self.assertEqual(self.events("approved"), [])
+
+    def test_review_page_blocks_answer_only_route_rules(self):
+        d = self.sd
+        self.assertTrue(rule_gate._review_page_blocks_answer(d, {"reason": "too many items (2001 > 2000): x"}))
+        self.assertFalse((d / "review.html").exists())
+        self.assertFalse(rule_gate._review_page_blocks_answer(d, {"reason": "source too large (450000 chars)"}))
+        self.assertFalse(rule_gate._review_page_blocks_answer(d, {"reason": "no review.html: run aidd review"}))
+        self.assertTrue(rule_gate._review_page_blocks_answer(d, {"page_current": True}))
+
+    def test_source_too_large_keeps_the_answer_only_route(self):
+        t = tasks_text()
+        self.prep(t)
+        self.put(f"specs/{self.SPEC}/plan.md", "# plan\n\n" + "x" * 450_000)
+        self.answer("¿Aprobar las tareas?", "Approve")
+        self.assertAllowed(self.approve_edit(t))
+        self.assertEqual(self.sources(), ["answer"])
+
+    def test_no_page_bare_approve_keeps_source_answer(self):
+        t = tasks_text()
+        self.prep(t)
+        self.answer("¿Aprobar las tareas?", "Approve")
+        self.assertAllowed(self.approve_edit(t))
+        self.assertEqual(self.sources(), ["answer"])
+
+    def test_delegate_returns_none_when_aidd_status_cannot_be_imported(self):
+        t = tasks_text()
+        self.prep(t)
+        self.ask("Aprobar con resumen")
+        with mock.patch.dict(sys.modules, {"aidd_status": None}):        # `import aidd_status` raises ImportError
+            self.assertIsNone(rule_gate._summary_answer(EV, self.root, self.session, 0.0, self.tag(t)))
+            blocked, msg = rule_gate.decide({"session_id": self.session, "cwd": str(self.root), "tool_name": "Edit",
+                                             "tool_input": {"file_path": str(self.root / self.tpath()),
+                                                            "old_string": "Approved: PENDING",
+                                                            "new_string": f"Approved: 2026-10-01 hash:{R.approval_hash(t)}"}})
+        self.assertTrue(blocked, msg)                       # fail closed: no other route accepts the label
+        self.assertEqual(self.events("approved"), [])
+
+    def test_approve_label_regression(self):
+        import re as _re
+        rx = _re.compile(rule_gate.APPROVE_LABEL, _re.I)
+        for ok in ("Approve", "Aprobar", "Aprobado", "Aprobar las tareas", "approve these tasks"):
+            self.assertTrue(rx.search(ok), ok)
+        for bad in ("Aprobar con resumen", "aprobar con resumen", "Aprobar con resumem", "Aprobar con resumen ya"):
+            self.assertFalse(rx.search(bad), bad)
+
+    # -- FR-307 / FR-309 (d) messages
+    def test_review_message_has_no_cat_and_names_the_agent_only_commands(self):
+        import re as _re
+        m = rule_gate.REVIEW_MESSAGE
+        self.assertIsNone(_re.search(r"\bcat\b", m))
+        self.assertNotIn("(cat", m)
+        self.assertNotIn("Reading the files", m)
+        for needle in ("never read review.md/review.html", "--check", "--wait", "--comments", "Aprobar y guardar"):
+            self.assertIn(needle, m.replace("Agents never", "never"))
+
+    def test_incomplete_review_block_names_the_wait_flow(self):
+        t = tasks_text()
+        self.prep(t)
+        self.make_review(t, md=False)
+        self.answer("¿Aprobar las tareas?", "Approve")
+        self.assertBlocked(self.approve_edit(t), "R6", "A review exists", f"aidd review specs/{self.SPEC} --wait",
+                           "Aprobar y guardar")
+
+    def test_legacy_review_md_is_blocked_with_the_regenerate_cause_and_no_traceback(self):
+        t = tasks_text()
+        self.prep(t)
+        self.make_review(t, md=False)
+        import aidd_review as AR
+        lines = ["---", f"spec: {self.SPEC}", f"tasks_hash: {R.approval_hash(t)}",
+                 f"sources_digest: {AR.sources_digest(self.sd)}", "approved: true", "generated: 2026-10-05",
+                 "reviewed: 2026-10-05T10:00:00", "---"]
+        for k in AR.reviewable_keys(self.sd):
+            lines += [f"## {k}", "- [x] Approved"]
+        p = self.sd / "review.md"
+        p.write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
+        mid = time.time() - 30
+        os.utime(p, (mid, mid))
+        self.answer("¿Aprobar las tareas?", "Approve")
+        r = self.approve_edit(t)
+        self.assertBlocked(r, "R6", "old per-heading grammar", "run aidd review")
+        self.assertEqual(self.events("approved"), [])
+
+
+class TestReviewModeGateNumericId(ReviewModeGateMixin, PlanBase):
+    SPEC = "002-aidd-hard-rules"
+
+    def setUp_again(self):
+        self.tearDown()
+        self.setUp()
+
+
+class TestReviewModeGateNonNumericId(ReviewModeGateMixin, PlanBase):
+    SPEC = "F23-eDoc-POS"
+
+    def setUp_again(self):
+        self.tearDown()
+        self.setUp()
+
+
+class TestReviewArtifactGuard(PlanBase):
+    """aidd:FR-204 aidd:AC-207 agents never write / copy / move / delete specs/<any-id>/review.md|review.html."""
+
+    IDS = ("002-aidd-hard-rules", "F23-eDoc-POS")
+
+    def setUp(self):
+        super().setUp()
+        for sid in self.IDS:
+            (self.root / "specs" / sid).mkdir(parents=True, exist_ok=True)
+
+    def test_file_tools_blocked_for_every_spelling_numeric_and_non_numeric(self):
+        for sid in self.IDS:
+            for leaf in ("review.md", "REVIEW.MD.", "review.md::$DATA", "review.html", "Review.HTML ",
+                         "sub/../review.md"):
+                rel = f"specs/{sid}/{leaf}"
+                for tool, ti in (("Write", {"content": "x"}), ("Edit", {"old_string": "a", "new_string": "b"}),
+                                 ("MultiEdit", {"edits": [{"old_string": "a", "new_string": "b"}]}),
+                                 ("NotebookEdit", {"new_source": "x"})):
+                    key = "notebook_path" if tool == "NotebookEdit" else "file_path"
+                    for p in (str(self.root / rel), rel):          # absolute and relative (cwd = root)
+                        blocked, msg = rule_gate.decide({"session_id": self.session, "cwd": str(self.root),
+                                                         "tool_name": tool, "tool_input": dict(ti, **{key: p})})
+                        self.assertTrue(blocked, (tool, p))
+                        self.assertIn("aidd review", msg)
+        r = self.gate(f"specs/{self.IDS[1]}/review.md", content="x")   # the real subprocess too
+        self.assertBlocked(r, "review", "owner")
+
+    def test_other_files_named_review_are_not_owner_only(self):
+        for rel in ("docs/review.md", "specs/review.md", "specs/F23-eDoc-POS/evidence/review.md",
+                    "specs/F23-eDoc-POS/my-review.md"):
+            self.assertFalse(_common.is_user_only_spec_file(rel), rel)
+        for rel in ("specs/F23-eDoc-POS/review.md", "d:/proj/specs/002-aidd-hard-rules/review.html",
+                    "specs/F23-eDoc-POS/REVIEW.MD."):
+            self.assertTrue(_common.is_user_only_spec_file(rel), rel)
+        self.assertFalse(_common.is_user_only_spec_file(None))
+
+    def bash_cmds(self, sid):
+        absd = str(self.root).replace("\\", "/") + f"/specs/{sid}"
+        return [
+            f"echo ok > specs/{sid}/review.md",
+            f"echo ok > D:/proj/specs/{sid}/review.md",
+            f"echo ok > {absd}/review.md",
+            f"echo ok > {absd.replace('/', chr(92))}\\review.md",
+            f"cp /tmp/r.md D:/proj/specs/{sid}/review.md",
+            f"cp ~/Downloads/review.md {absd}/",
+            f"cd specs/{sid} && echo x > review.md",
+            f"cd specs/{sid} && printf x | tee review.md",
+            f"mv ~/Downloads/review.md D:/proj/specs/{sid}/",
+            f"python -c \"open('specs/{sid}/review.md','w').write('x')\"",
+            f"rm specs/{sid}/review.html",
+            f"del specs\\{sid}\\review.html",
+            f"Remove-Item specs/{sid}/review.html",
+            f"Set-Content -Path specs/{sid}/review.md -Value x",
+            f"aidd review specs/{sid} > specs/{sid}/review.md",
+            f"bash -c \"echo x > specs/{sid}/review.md\"",
+            f"node -e \"require('fs').writeFileSync('specs/{sid}/review.md','x')\"",
+        ]
+
+    def test_bash_forgery_forms_are_blocked(self):
+        for sid in self.IDS:
+            for cmd in self.bash_cmds(sid):
+                for tool in ("Bash", "PowerShell"):
+                    blocked, msg = rule_gate.decide({"session_id": self.session, "cwd": str(self.root),
+                                                     "tool_name": tool, "tool_input": {"command": cmd}})
+                    self.assertTrue(blocked, (tool, cmd))
+        r = self.bash(f"cd specs/{self.IDS[1]} && echo x > review.md")        # the real subprocess
+        self.assertBlocked(r, "review")
+
+    def test_relative_name_with_cwd_inside_the_spec_folder_is_blocked(self):
+        for sid in self.IDS:
+            r = self.bash("echo x > review.md", cwd=self.root / "specs" / sid)
+            self.assertBlocked(r, "review")
+
+    def test_reads_and_the_aidd_cli_stay_allowed(self):
+        for sid in self.IDS:
+            for cmd in (f"cat specs/{sid}/review.md", f"type specs\\{sid}\\review.md",
+                        f"Get-Content specs/{sid}/review.md", f"aidd review specs/{sid}",
+                        f"aidd review specs/{sid} --check", f"aidd review specs/{sid} --comments",
+                        f"aidd review specs/{sid} --wait", f"aidd review {sid} --wait --timeout 600",
+                        f"aidd verify specs/{sid}", f"python skill/scripts/aidd_review.py specs/{sid} --check",
+                        f"grep -n Approved specs/{sid}/review.md", f"git add specs/{sid}/review.md",
+                        f"ls specs/{sid}"):
+                blocked, _ = rule_gate.decide({"session_id": self.session, "cwd": str(self.root),
+                                               "tool_name": "Bash", "tool_input": {"command": cmd}})
+                self.assertFalse(blocked, cmd)
+        self.assertAllowed(self.bash(f"cat specs/{self.IDS[1]}/review.md"))
+        self.assertAllowed(self.bash(f"aidd review specs/{self.IDS[1]} --check"))
+
+    def test_wait_is_allowed_but_redirecting_it_into_review_md_is_blocked(self):
+        """aidd:FR-306 aidd:FR-307 `--wait` is read-only (allowed); `--wait > specs/<id>/review.md` forges the file."""
+        for sid in self.IDS:
+            absd = str(self.root).replace("\\", "/") + f"/specs/{sid}"
+            for ok in (f"aidd review specs/{sid} --wait", f"aidd review {absd} --wait --timeout 600"):
+                for tool in ("Bash", "PowerShell"):
+                    blocked, msg = rule_gate.decide({"session_id": self.session, "cwd": str(self.root),
+                                                     "tool_name": tool, "tool_input": {"command": ok}})
+                    self.assertFalse(blocked, (tool, ok, msg))
+            for bad in (f"aidd review specs/{sid} --wait > specs/{sid}/review.md",
+                        f"aidd review specs/{sid} --wait > {absd}/review.md",
+                        f"aidd review specs/{sid} --wait | tee specs/{sid}/review.md",
+                        f"cd specs/{sid} && aidd review . --wait > review.md"):
+                for tool in ("Bash", "PowerShell"):
+                    blocked, msg = rule_gate.decide({"session_id": self.session, "cwd": str(self.root),
+                                                     "tool_name": tool, "tool_input": {"command": bad}})
+                    self.assertTrue(blocked, (tool, bad))
+        self.assertAllowed(self.bash(f"aidd review specs/{self.IDS[1]} --wait"))
+        self.assertBlocked(self.bash(f"aidd review specs/{self.IDS[1]} --wait > specs/{self.IDS[1]}/review.md"),
+                           "review")
+
+    def test_specs_tok_sees_review_leaf_for_any_id(self):
+        for tok in ("D:/proj/specs/F23-eDoc-POS/review.md", "specs/F23-eDoc-POS/review.html",
+                    "C:\\p\\specs\\002-aidd-hard-rules\\REVIEW.MD.", "/home/u/p/specs/x/review.md"):
+            self.assertTrue(rule_gate._specs_tok(tok), tok)
+        for tok in ("D:/proj/specs/F23-eDoc-POS/notes.md", "D:/proj/specs/review.md", "src/review.md"):
+            self.assertFalse(rule_gate._specs_tok(tok), tok)
+
+
+class TestSpecsShellGuardAnyId(PlanBase):
+    """Closing audit 007 F-1 / F-3: the shell guard for specs/<id>/ artifacts holds for numeric AND non-numeric
+    ids, absolute paths, the relative form after `cd specs/<id>` (or a hook cwd inside it), and the review-file
+    rule is not defeated by quote splitting or globs. Every probe of evidence/probe-d8-nonnumeric.txt and the
+    LEXICAL BYPASS PROBES of evidence/ac-207.txt is a case here."""
+
+    IDS = ("002-aidd-hard-rules", "F23-eDoc-POS")
+
+    def setUp(self):
+        super().setUp()
+        for sid in self.IDS:
+            (self.root / "specs" / sid).mkdir(parents=True, exist_ok=True)
+
+    def absd(self, sid):
+        return str(self.root).replace("\\", "/") + f"/specs/{sid}"
+
+    def decide(self, cmd, cwd=None, tool="Bash"):
+        return rule_gate.decide({"session_id": self.session, "cwd": str(cwd or self.root),
+                                 "tool_name": tool, "tool_input": {"command": cmd}})
+
+    def test_probe_d8_commands_are_blocked_for_every_id(self):
+        for sid in self.IDS:
+            absd = self.absd(sid)
+            for cmd in (f"echo x > {absd}/tasks.md",
+                        f"cp /tmp/t.md {absd}/plan.md",
+                        f"echo x > specs/{sid}/tasks.md",
+                        f"cd specs/{sid} && echo x > spec.md",
+                        f'echo "Approved: 2026-10-05 hash:abc" >> {absd}/tasks.md',
+                        f"echo x > D:/proj/specs/{sid}/tasks.md",
+                        f"echo x > {absd.replace('/', chr(92))}\\spec.md",
+                        f"cp /tmp/t.md D:\\proj\\specs\\{sid}\\plan.md",
+                        f"mv /tmp/t.md {absd}/data-model.md",
+                        f"rm {absd}/qa-audit.md",
+                        f"sed -i s/a/b/ {absd}/tasks.md",
+                        f"cd {absd} && echo x > plan.md",
+                        f"cd specs/{sid} && cp /tmp/t.md tasks.md",
+                        f"cd specs/{sid} && printf x | tee contracts.md",
+                        f"cd specs/{sid} && sed -i s/a/b/ tasks.md",
+                        f"cd specs && echo x > {sid}/tasks.md",
+                        f"pushd specs/{sid}; Set-Content -Path spec.md -Value x",
+                        f"cd specs/{sid} && echo x > spe''c.md",
+                        f"cd specs/{sid} && python -c \"open('spec.md','w').write('x')\"",
+                        f"bash -c \"cd specs/{sid} && echo x > tasks.md\""):
+                for tool in ("Bash", "PowerShell"):
+                    blocked, _ = self.decide(cmd, tool=tool)
+                    self.assertTrue(blocked, (tool, cmd))
+        sid = self.IDS[1]                                   # the real subprocess, non-numeric id
+        self.assertBlocked(self.bash(f"echo x > {self.absd(sid)}/tasks.md"))
+        self.assertBlocked(self.bash(f"cd specs/{sid} && echo x > spec.md"))
+        self.assertBlocked(self.bash(f"cp /tmp/t.md {self.absd(self.IDS[0])}/plan.md"))
+
+    def test_hook_cwd_inside_the_spec_folder_blocks_relative_artifact_writes(self):
+        for sid in self.IDS:
+            cwd = self.root / "specs" / sid                 # absolute cwd as the host sends it
+            for cmd in ("echo x > spec.md", "cp /tmp/t.md plan.md", "rm tasks.md", "echo x >> ./tasks.md"):
+                blocked, _ = self.decide(cmd, cwd=cwd)
+                self.assertTrue(blocked, (cwd, cmd))
+            self.assertBlocked(self.bash("echo x > spec.md", cwd=cwd))
+            blocked, _ = self.decide(f"echo x > {sid}/tasks.md", cwd=self.root / "specs")
+            self.assertTrue(blocked, sid)
+
+    def test_reads_and_unrelated_writes_stay_allowed(self):
+        for sid in self.IDS:
+            absd = self.absd(sid)
+            for cmd, cwd in ((f"cd specs/{sid} && cat spec.md", None),
+                             (f"cd specs/{sid} && cp tasks.md /tmp/tasks.bak", None),
+                             (f"cd specs/{sid} && grep -n Status tasks.md > /tmp/out.txt", None),
+                             (f"cat {absd}/tasks.md", None),
+                             (f"cp {absd}/plan.md /tmp/plan.md", None),
+                             (f"cd {absd} && cd D:/other && echo x > spec.md", None),
+                             (f"echo x > D:/proj/docs/{sid}/spec.md && ls specs", None),
+                             (f"echo x > src/spec.md && ls specs/{sid}", None),
+                             ("cat spec.md", self.root / "specs" / sid),
+                             ("echo x > notes.txt", self.root / "specs" / sid),
+                             (f"aidd rules approve specs/{sid}", None),
+                             (f"aidd review {absd}", None)):
+                blocked, _ = self.decide(cmd, cwd=cwd)
+                self.assertFalse(blocked, (cmd, cwd))
+        self.assertAllowed(self.bash(f"cd specs/{self.IDS[1]} && cat spec.md"))
+
+    def test_review_rule_survives_quote_splitting_and_globs(self):
+        for sid in self.IDS:
+            absd = self.absd(sid)
+            for cmd, cwd in ((f"cd specs/{sid} && echo x > rev''iew.md", None),           # ac-207 lexical probes
+                             (f"cd specs/{sid} && rm review.*", None),
+                             (f"cd specs/{sid} && rm revie?.html", None),
+                             (f"cd specs/{sid} && echo x > \"review\".md", None),
+                             (f"cd specs/{sid} && rm review.{{md,html}}", None),
+                             (f"cd specs/{sid} && rm r[e]view.html", None),
+                             (f"cd specs/{sid} && rm *", None),
+                             (f"cd specs/{sid} && Remove-Item *.html", None),
+                             (f"cd {absd} && rm review.*", None),
+                             (f"rm {absd}/revie?.html", None),
+                             (f"rm specs/{sid}/*.html", None),
+                             (f"rm D:\\proj\\specs\\{sid}\\review.*", None),
+                             ("rm review.*", self.root / "specs" / sid),
+                             ("rm *", self.root / "specs" / sid)):
+                for tool in ("Bash", "PowerShell"):
+                    blocked, msg = self.decide(cmd, cwd=cwd, tool=tool)
+                    self.assertTrue(blocked, (tool, cmd, cwd))
+                    self.assertIn("aidd review", msg, cmd)
+        sid = self.IDS[1]
+        self.assertBlocked(self.bash(f"cd specs/{sid} && rm review.*"), "review")
+        self.assertBlocked(self.bash(f"cd specs/{sid} && echo x > rev''iew.md"), "review")
+        self.assertBlocked(self.bash(f"rm {self.absd(self.IDS[0])}/revie?.html"), "review")
+
+    def test_review_globs_do_not_catch_unrelated_files(self):
+        for sid in self.IDS:
+            absd = self.absd(sid)
+            for cmd in (f"rm build/* && ls specs/{sid}", f"rm -rf {absd.replace('/specs/', '/build/')}/*",
+                        f"rm src/*.pyc && ls {absd}", f"cd specs/{sid} && ls review.*",
+                        f"cat {absd}/revie?.html"):
+                blocked, _ = self.decide(cmd)
+                self.assertFalse(blocked, cmd)
+
+    def test_specs_tok_artifact_leaf_any_id_and_cwd_relative(self):
+        for sid in self.IDS:
+            for tok in (f"D:/proj/specs/{sid}/tasks.md", f"C:\\p\\specs\\{sid}\\PLAN.MD.", f"/home/u/p/specs/{sid}/spec.md",
+                        f"specs/{sid}/qa-audit.md", f"{self.absd(sid)}/data-model.md", f'"{self.absd(sid)}/tasks.md"'):
+                self.assertTrue(rule_gate._specs_tok(tok), tok)
+            for tok in ("spec.md", "./tasks.md", f"{sid}/plan.md", "../x/review.md"):
+                self.assertTrue(rule_gate._specs_tok(tok, cwd_specs=True), tok)
+                self.assertFalse(rule_gate._specs_tok(tok), tok)
+            for tok in ("D:/proj/specs/tasks.md", f"D:/proj/docs/{sid}/spec.md", "D:/other/spec.md"):
+                self.assertFalse(rule_gate._specs_tok(tok, cwd_specs=True), tok)
+            # a non-artifact leaf: a numeric id keeps its whole-tree D8 guard, a non-numeric id does not widen
+            self.assertEqual(rule_gate._specs_tok(f"D:/proj/specs/{sid}/notes.md", cwd_specs=True), sid[:3].isdigit())
+
+
+class TestSpecsCwdRootRelative(PlanBase):
+    """Closing audit 007 delta N-1 / R-2. N-1: "the shell sits inside specs/<id>/" is decided on the path RELATIVE
+    TO THE PROJECT ROOT (specs must be segment 0), and every `cd` (relative or absolute) updates or clears it,
+    so a project under a folder named `specs`, a `tests/specs` folder, or a `cd ..` out of the spec no longer
+    over-blocks. Every case of evidence/delta-false-positives.txt is here (allowed). R-2: a bash backslash
+    escape (`rev\\iew.html`) no longer hides the review file name (blocked). The F-1 / F-3 blocks stay."""
+
+    IDS = ("002-aidd-hard-rules", "F23-eDoc-POS")
+
+    def setUp(self):
+        super().setUp()
+        for sid in self.IDS:
+            d = self.root / "specs" / sid
+            d.mkdir(parents=True, exist_ok=True)
+            (d / "tasks.md").write_text("x\n", encoding="utf-8")
+        (self.root / "tests" / "specs").mkdir(parents=True)
+        self._td2 = tempfile.TemporaryDirectory()
+        self.outer = Path(self._td2.name).resolve()
+        self.nested = self.outer / "specs" / "proj"        # a project whose root lives under a folder named specs
+        (self.nested / "src").mkdir(parents=True)
+        (self.nested / "build").mkdir()
+
+    def tearDown(self):
+        self._td2.cleanup()
+        super().tearDown()
+
+    def decide(self, cmd, cwd=None, tool="Bash"):
+        return rule_gate.decide({"session_id": self.session, "cwd": str(cwd or self.root),
+                                 "tool_name": tool, "tool_input": {"command": cmd}})
+
+    def fwd(self, p):
+        return str(p).replace("\\", "/")
+
+    def test_project_root_under_a_folder_named_specs_is_not_a_spec(self):
+        n = self.fwd(self.nested)
+        cmds = ["rm *", "rm build/*", "rm -rf dist/*", "echo x > plan.md", 'echo "# notes" > spec.md', "ls",
+                "cp a.txt b.txt", "rm *.html", "echo x > review.txt",
+                f"echo x > {n}/plan.md", f"echo x > {str(self.nested)}\\spec.md", f"rm -rf {n}/dist/*",
+                f"cd {n} && rm *", f"cd {n}/src && echo x > ../tasks.md"]
+        for cmd in cmds:
+            for tool in ("Bash", "PowerShell"):
+                blocked, msg = self.decide(cmd, cwd=self.nested, tool=tool)
+                self.assertFalse(blocked, (tool, cmd, msg))
+        for cmd in ("rm *", "rm build/*", "rm -rf dist/*", "echo x > plan.md", 'echo "# notes" > spec.md'):
+            self.assertAllowed(self.bash(cmd, cwd=self.nested))
+        blocked, _ = self.decide(f"cd {self.fwd(self.root)} && rm *", cwd=self.nested)
+        self.assertFalse(blocked)
+
+    def test_nested_project_keeps_its_own_specs_guarded(self):
+        (self.nested / "specs" / "F23-eDoc-POS").mkdir(parents=True)
+        for cmd in ("cd specs/F23-eDoc-POS && echo x > tasks.md", "echo x > specs/F23-eDoc-POS/plan.md",
+                    f"echo x > {self.fwd(self.nested)}/specs/F23-eDoc-POS/spec.md",
+                    "cd specs/F23-eDoc-POS && rm *"):
+            blocked, _ = self.decide(cmd, cwd=self.nested)
+            self.assertTrue(blocked, cmd)
+
+    def test_tests_specs_folder_is_not_a_spec(self):
+        js = self.root / "tests" / "specs"
+        for cmd, cwd in (("rm *", js), ("echo x > spec.md", js), ("rm *.snap", js), ("echo x > plan.md", js),
+                         ("cd tests/specs && rm *", None), ("cd tests/specs && rm *.snap", None),
+                         ("cd tests/specs && echo x > spec.md", None), ("cd tests\\specs && echo x > tasks.md", None),
+                         (f"cd {self.fwd(js)} && rm *", None), (f"cd {self.fwd(js)} && echo x > review.txt", None),
+                         (f"echo x > {self.fwd(js)}/spec.md", None), ("echo x > tests/specs/spec.md", None),
+                         ("pushd tests/specs; Remove-Item *", None), ("Set-Location tests/specs; Set-Content spec.md x", None)):
+            for tool in ("Bash", "PowerShell"):
+                blocked, msg = self.decide(cmd, cwd=cwd, tool=tool)
+                self.assertFalse(blocked, (tool, cmd, cwd, msg))
+        self.assertAllowed(self.bash("rm *", cwd=js))
+        self.assertAllowed(self.bash("echo x > spec.md", cwd=js))
+        self.assertAllowed(self.bash("cd tests/specs && rm *"))
+
+    def test_cd_out_of_the_spec_clears_the_flag(self):
+        for sid in self.IDS:
+            absr = self.fwd(self.root)
+            for cmd, cwd in ((f"cd specs/{sid} && cd ../.. && rm *", None),
+                             (f"cd specs/{sid} && cd ../../src && echo x > plan.md", None),
+                             (f"cd specs/{sid} && cd .. && cd .. && echo x > spec.md", None),
+                             (f"cd specs/{sid} && cd {absr}/src && rm *", None),
+                             (f"cd specs/{sid} && cd {absr} && echo x > tasks.md", None),
+                             (f"pushd specs/{sid}; Set-Location ../../src; echo x > plan.md", None),
+                             ("cd ../.. && rm *", self.root / "specs" / sid),
+                             ("cd ../../src && echo x > spec.md", self.root / "specs" / sid),
+                             (f"cd {absr} && rm *", self.root / "specs" / sid),
+                             ("rm *", self.root / "specs"), ("echo x > spec.md", self.root / "specs")):
+                for tool in ("Bash", "PowerShell"):
+                    blocked, msg = self.decide(cmd, cwd=cwd, tool=tool)
+                    self.assertFalse(blocked, (tool, cmd, cwd, msg))
+        self.assertAllowed(self.bash(f"cd specs/{self.IDS[1]} && cd ../.. && rm *"))
+        self.assertAllowed(self.bash(f"cd specs/{self.IDS[1]} && cd ../../src && echo x > plan.md"))
+
+    def test_f1_f3_blocks_hold_with_root_relative_tracking(self):
+        for sid in self.IDS:
+            absd = self.fwd(self.root) + f"/specs/{sid}"
+            sd = self.root / "specs" / sid
+            for cmd, cwd in ((f"cd specs/{sid} && echo x > tasks.md", None),
+                             (f"cd specs && cd {sid} && echo x > plan.md", None),
+                             (f"cd src && cd ../specs/{sid} && rm *", None),         # back INTO the spec
+                             (f"cd specs/{sid} && cd .. && cd {sid} && echo x > spec.md", None),
+                             (f"cd tests/specs && cd {absd} && rm review.html", None),
+                             (f"cd {absd} && rm *", None),
+                             (f"cd specs/{sid}/sub && echo x > ../tasks.md", None),
+                             (f"echo x > {sid}/tasks.md", self.root / "specs"),
+                             ("cd .. && echo x > tasks.md", sd / "contracts"),
+                             ("rm *", sd), ("echo x > tasks.md", sd),
+                             (f"rm specs/{sid}/*", None),
+                             (f"cd specs/{sid} && rm * && cd ../..", None)):        # the delete runs IN the spec
+                for tool in ("Bash", "PowerShell"):
+                    blocked, _ = self.decide(cmd, cwd=cwd, tool=tool)
+                    self.assertTrue(blocked, (tool, cmd, cwd))
+        self.assertBlocked(self.bash(f"cd specs/{self.IDS[1]} && cd .. && cd {self.IDS[1]} && rm *"))
+        self.assertBlocked(self.bash("echo x > tasks.md", cwd=self.root / "specs" / self.IDS[1]))
+
+    def test_r2_backslash_escape_does_not_hide_the_review_name(self):
+        for sid in self.IDS:
+            absd = self.fwd(self.root) + f"/specs/{sid}"
+            for cmd, cwd in ((f"cd specs/{sid} && rm rev\\iew.html", None),
+                             (f"cd specs/{sid} && rm r\\e\\v\\i\\e\\w.md", None),
+                             (f"cd specs/{sid} && echo x > rev\\iew.md", None),
+                             (f"cd {absd} && rm rev\\iew.html", None),
+                             (f"rm {absd}/rev\\iew.html", None),
+                             ("rm rev\\iew.html", self.root / "specs" / sid),
+                             (f"cd specs/{sid} && echo x > ta\\sks.md", None)):
+                blocked, msg = self.decide(cmd, cwd=cwd)
+                self.assertTrue(blocked, (cmd, cwd))
+        r = self.bash(f"cd specs/{self.IDS[1]} && rm rev\\iew.html")
+        self.assertBlocked(r, "review")
+        self.assertBlocked(self.bash(f"cd specs/{self.IDS[0]} && rm rev\\iew.html"), "review")
+        self.assertEqual(rule_gate._unescape("rev\\iew.html"), "review.html")
+        # the Windows reading of a backslash path is kept
+        blocked, _ = self.decide(f"rm {str(self.root)}\\specs\\{self.IDS[1]}\\review.html")
+        self.assertTrue(blocked)
 
 
 if __name__ == "__main__":

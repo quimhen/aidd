@@ -1,0 +1,81 @@
+delta-F2: PASS
+  [PASS] F-2: plain `aidd status` computes the fingerprint once
+  [PASS] F-2: `aidd status --refresh` (and --json) computes it once
+  [PASS] F-2: named status computes it once
+  [PASS] baseline: every verified spec reads "passed" before any tree change
+  [PASS] F-2 freshness: a tree change with no code_edit makes every verified spec stale in the next run (plain and --refresh)
+  [PASS] F-2 freshness: unmemoised verification_state agrees (stale)
+  [PASS] F-2: memo never serves a value older than its bound / ttl
+
+$ aidd_status.py rules approve C:\Users\jquimis\AppData\Local\Temp\tmpe42v7rc0\specs\F30-eDoc-X  -> exit 0
+Approved: 2026-10-05 hash:e9a09d9bac61
+approved through answer · gate pointer -> F30-eDoc-X
+$ aidd_status.py rules approve C:\Users\jquimis\AppData\Local\Temp\tmpe42v7rc0\specs\F31-eDoc-X  -> exit 0
+Approved: 2026-10-05 hash:e9a09d9bac61
+approved through answer · gate pointer -> F31-eDoc-X
+$ aidd_status.py rules approve C:\Users\jquimis\AppData\Local\Temp\tmpe42v7rc0\specs\F32-eDoc-X  -> exit 0
+Approved: 2026-10-05 hash:e9a09d9bac61
+approved through answer · gate pointer -> F32-eDoc-X
+$ aidd_status.py rules approve C:\Users\jquimis\AppData\Local\Temp\tmpe42v7rc0\specs\F33-eDoc-X  -> exit 0
+Approved: 2026-10-05 hash:e9a09d9bac61
+approved through answer · gate pointer -> F33-eDoc-X
+$ aidd_status.py rules approve C:\Users\jquimis\AppData\Local\Temp\tmpe42v7rc0\specs\F34-eDoc-X  -> exit 0
+Approved: 2026-10-05 hash:e9a09d9bac61
+approved through answer · gate pointer -> F34-eDoc-X
+$ aidd_status.py rules approve C:\Users\jquimis\AppData\Local\Temp\tmpe42v7rc0\specs\F35-eDoc-X  -> exit 0
+Approved: 2026-10-05 hash:e9a09d9bac61
+approved through answer · gate pointer -> F35-eDoc-X
+$ aidd_status.py verify C:\Users\jquimis\AppData\Local\Temp\tmpe42v7rc0\specs\F30-eDoc-X  -> exit 0
+PASS row 1: python -m unittest tests.test_ok (exit 0) → evidence/verify-1.txt
+verify_run recorded for F30-eDoc-X: PASSED (1/1 rows, verify hash 0881d7b7c23f)
+$ aidd_status.py verify C:\Users\jquimis\AppData\Local\Temp\tmpe42v7rc0\specs\F31-eDoc-X  -> exit 0
+PASS row 1: python -m unittest tests.test_ok (exit 0) → evidence/verify-1.txt
+verify_run recorded for F31-eDoc-X: PASSED (1/1 rows, verify hash 0881d7b7c23f)
+$ aidd_status.py verify C:\Users\jquimis\AppData\Local\Temp\tmpe42v7rc0\specs\F32-eDoc-X  -> exit 0
+PASS row 1: python -m unittest tests.test_ok (exit 0) → evidence/verify-1.txt
+verify_run recorded for F32-eDoc-X: PASSED (1/1 rows, verify hash 0881d7b7c23f)
+$ aidd_status.py verify C:\Users\jquimis\AppData\Local\Temp\tmpe42v7rc0\specs\F33-eDoc-X  -> exit 0
+PASS row 1: python -m unittest tests.test_ok (exit 0) → evidence/verify-1.txt
+verify_run recorded for F33-eDoc-X: PASSED (1/1 rows, verify hash 0881d7b7c23f)
+$ aidd_status.py verify C:\Users\jquimis\AppData\Local\Temp\tmpe42v7rc0\specs\F34-eDoc-X  -> exit 0
+PASS row 1: python -m unittest tests.test_ok (exit 0) → evidence/verify-1.txt
+verify_run recorded for F34-eDoc-X: PASSED (1/1 rows, verify hash 0881d7b7c23f)
+$ aidd_status.py verify C:\Users\jquimis\AppData\Local\Temp\tmpe42v7rc0\specs\F35-eDoc-X  -> exit 0
+PASS row 1: python -m unittest tests.test_ok (exit 0) → evidence/verify-1.txt
+verify_run recorded for F35-eDoc-X: PASSED (1/1 rows, verify hash 0881d7b7c23f)
+specs with a verify_run: 6; fingerprint calls: plain=1 --refresh=1 --refresh --json=1 named=1
+plain status output (head):
+Open specs: F30-eDoc-X (approval valid), F31-eDoc-X (approval valid), F32-eDoc-X (approval valid), F33-eDoc-X (approval valid), F34-eDoc-X (approval valid), F35-eDoc-X (approval valid)
+F30-eDoc-X [OPEN]  Route: -1/0/1/1.5/2/3/4 run   Align: 0 proposed · 6 unverified quote(s) · Mapper ✘ · Graph ✘
+Tasks: approved ✔ (hash ok, approval recorded) · Waves: 2 · critical path 50 min · ~50 min, ~100k tokens   Build: 0 code edits · Auditors: functional ✘ performance ✘ security ✘ ui ✘
+Visual debt open: 0 (blocking this spec: 0) · qa-audit.md: no
+Review: no page · Verification: passed (1 command(s)) · gate 2 · 0 code edit(s) attributed since approval
+  WHY blocked: R5 Quote not found in any recorded user prompt/answer: "es el modulo de checkout". → Quote the user's exact words from a prompt written AFTER spec.md was first drafted (5+ words), or ask the user (AskUserQuestion) and quote their answer verbatim (2+ words).
+  WHY blocked: R5 No find_spec run recorded in this session. → Run `python skill/scripts/find_spec.py` (Step -1) before planning.
+  WHY blocked: R5 tasks.md exists but plan.md does not. → Write plan.md (Step 3) before tasks.md.
+F31-eDoc-X [OPEN]  Route: -1/0/1/1.5/2/3/4 run   Align: 0 proposed · 6 unverified quote(s) · Mapper ✘ · Graph ✘
+Tasks: approved ✔ (hash ok, approval recorded) · Waves: 2 · critical path 50 min · ~50 min, ~100k tokens   Build: 0 code edits · Auditors: functional ✘ performance ✘ security ✘ ui ✘
+Visual debt open: 0 (blocking this spec: 0) · qa-audit.md:
+--> PASS: F-2: plain `aidd status` computes the fingerprint once | 1
+--> PASS: F-2: `aidd status --refresh` (and --json) computes it once | 1 1
+--> PASS: F-2: named status computes it once | 1
+--> PASS: baseline: every verified spec reads "passed" before any tree change | Open specs: F30-eDoc-X (approval valid), F31-eDoc-X (approval valid), F32-eDoc-X (approval valid), F33-eDoc-X (approval valid), F34-eDoc-X (approval valid), F35-eDoc-X (approval valid)
+F30-eDoc-X [OPEN]  Route: -1/0/1/1.5/2/3/4 run   Align: 0 proposed · 6 unverified quote(s) · Mapper ✘ · Graph ✘
+Tasks: approved ✔ (hash ok, approval recorded) · Waves: 2 · critical path 50 min · ~50 min, ~100k token
+after an out-of-band tree change, plain status:
+Open specs: F30-eDoc-X (approval valid), F31-eDoc-X (approval valid), F32-eDoc-X (approval valid), F33-eDoc-X (approval valid), F34-eDoc-X (approval valid), F35-eDoc-X (approval valid)
+F30-eDoc-X [OPEN]  Route: -1/0/1/1.5/2/3/4 run   Align: 0 proposed · 6 unverified quote(s) · Mapper ✘ · Graph ✘
+Tasks: approved ✔ (hash ok, approval recorded) · Waves: 2 · critical path 50 min · ~50 min, ~100k tokens   Build: 0 code edits · Auditors: functional ✘ performance ✘ security ✘ ui ✘
+Visual debt open: 0 (blocking this spec: 0) · qa-audit.md: no
+Review: no page · Verification: stale (1 command(s)) · gate 2 · 0 code edit(s) attributed since approval
+  WHY blocked: R5 Quote not found in any recorded user prompt/answer: "es el modulo de checkout". → Quote the user's exact words from a prompt written AFTER spec.md was first drafted (5+ words), or ask the user (AskUserQuestion) and quote their answer verbatim (2+ words).
+  WHY blocked: R5 No find_spec run recorded in this session. → Run `python skill/scripts/find_spec.py` (Step -1) before planning.
+  WHY blocked: R5 tasks.md exists but plan.md does not. → Write plan.md (Step 3) before tasks.md.
+F31-eDoc-X [OPEN]  Route: -1/0/1/1.5/2/3/4 run   Align: 0 proposed · 6 unverified quote(s) · Mapper ✘ · Graph ✘
+Tasks: approved ✔ (hash ok, approval recorded) · Waves: 2 · critical path 50 min · ~50 min, ~100k tokens   Build: 0 code edits · Auditors: functional ✘ performance ✘ security ✘ ui ✘
+Visual debt open: 0 (blocking this spec: 0) · qa-audit.md: 
+--> PASS: F-2 freshness: a tree change with no code_edit makes every verified spec stale in the next run (plain and --refresh) | stale plain=6 refresh=6
+verification_state without memo (fresh path): stale
+--> PASS: F-2 freshness: unmemoised verification_state agrees (stale) | stale
+FingerprintOnce fake-clock sequence: fp1 fp1 fp2 fp3 fp4 calls 4
+--> PASS: F-2: memo never serves a value older than its bound / ttl

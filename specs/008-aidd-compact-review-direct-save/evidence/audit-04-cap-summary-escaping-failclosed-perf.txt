@@ -1,0 +1,81 @@
+===== AC-303 cap
+002-aidd-hard-rules items 2007 extract 235 ms
+  generate: 1 aidd review: too many items (2007 > 2000): split the spec or run aidd review <spec> --full review.html exists False
+  review_state no page: too many items (2007 > 2000): split the spec or run aidd review <spec> 2007 [] False False
+  --check: 3 'STATE=too_many_items approved=0/2007 comments=0 stale=yes legacy=no tag=[tasks:e448a55e]\n'
+  --wait: 3 'STATE=too_many_items approved=0/2007 comments=0 stale=yes legacy=no tag=[tasks:e448a55e]\n'
+  approve bare answer (no page): 1 []
+  gate bare answer (no page) blocked: True []
+  approve summary label over cap: 1 []
+  gate summary over cap blocked: True []
+  --check with compact page: 3 'STATE=too_many_items approved=0/2007 comments=0 stale=yes legacy=no tag=[tasks:e448a55e]\n'
+  blob-less page: reason no review.md in the spec folder page_format headings-v1
+  --check blob-less page: 3 'STATE=stale approved=0/2007 comments=0 stale=yes legacy=no tag=[tasks:e448a55e]\n'
+  approve bare answer (blob-less page): 1 []
+  --full over cap: 0 wrote: C:\Users\jquimis\AppData\Local\Temp\claude\D--Fuentes 
+  full page state reason: no review.md in the spec folder 4
+F23-eDoc-POS items 2007 extract 287 ms
+  generate: 1 aidd review: too many items (2007 > 2000): split the spec or run aidd review <spec> --full review.html exists False
+  review_state no page: too many items (2007 > 2000): split the spec or run aidd review <spec> 2007 [] False False
+  --check: 3 'STATE=too_many_items approved=0/2007 comments=0 stale=yes legacy=no tag=[tasks:e448a55e]\n'
+  --wait: 3 'STATE=too_many_items approved=0/2007 comments=0 stale=yes legacy=no tag=[tasks:e448a55e]\n'
+  approve bare answer (no page): 1 []
+  gate bare answer (no page) blocked: True []
+  approve summary label over cap: 1 []
+  gate summary over cap blocked: True []
+  --check with compact page: 3 'STATE=too_many_items approved=0/2007 comments=0 stale=yes legacy=no tag=[tasks:e448a55e]\n'
+  blob-less page: reason no review.md in the spec folder page_format headings-v1
+  --check blob-less page: 3 'STATE=stale approved=0/2007 comments=0 stale=yes legacy=no tag=[tasks:e448a55e]\n'
+  approve bare answer (blob-less page): 1 []
+  --full over cap: 0 wrote: C:\Users\jquimis\AppData\Local\Temp\claude\D--Fuentes 
+  full page state reason: no review.md in the spec folder 4
+===== AC-326 --summary
+F28-DB-Unification-Sync rc 0 lines 13 deterministic True sentinel False files unchanged True max line len 240
+   | Objective: Que las tablas del core y del mobile sean consistentes y el mobile offline sincronice con el hub sin duplicar documentos ni cruzar tenants
+   | Scope: n/a
+   | Changes by component/file: ./ (3): supabase_init.sql, charter.md, STATE.md
+   | Changes by component/file: specs/ (3): specs/F28-DB-Unification-Sync/plan.md, specs/F09-Sync-Tracking/spec.md, specs/F28-DB-Unification-Sync/qa-audit.md
+   | Changes by component/file: eDoc/ (35): eDoc/supabase/migrations/0240_sync_queue_osyq.sql, eDoc/supabase/migrations/0241_sync_source_retrofit.sql, eDoc/supabase/tests/sync_queue_osyq.test.sql, eDoc/sup
+   | Changes by component/file: mobile/ (103): mobile/pubspec.yaml, mobile/lib/core/services/app_version_provider.dart, mobile/lib/main.dart, mobile/test/core/services/app_version_provider_test.dart, mobil
+   | Changes by component/file: docs/ (5): docs/db-graph/sync-optimization.md, docs/db-graph/build_graph.py, docs/db-graph/graph.json, docs/db-graph/er/, docs/db-graph/mapping.csv
+   | Changes by component/file: run: aidd verify specs/ (1): run: aidd verify specs/F28-DB-Unification-Sync
+   | Changes by component/file: run: aidd calibrate record specs/ (1): run: aidd calibrate record specs/F28-DB-Unification-Sync
+   | Cost: 348 min / 4834k tokens
+   | Tasks/waves: 49 tasks, 10 waves
+   | Risks: n/a
+   | Open decisions: Entry route: how does the user reach this from the app's start?; Target devices (phone, tablet, desktop, orientation)?
+F23-eDoc-POS rc 0 lines 7 deterministic True sentinel False files unchanged True max line len 240
+   | Objective: written objective SENT-OBJ
+   | Scope: in = x
+   | Changes by component/file: eDoc/ (86): eDoc/supabase/migrations/0200_pos_pay_methods.sql, eDoc/supabase/migrations/0201_pos_terminals_shifts.sql, eDoc/supabase/migrations/0202_pos_document_columns.sql
+   | Cost: 229 min / 5010k tokens
+   | Tasks/waves: 86 tasks, 11 waves
+   | Risks: RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR
+   | Open decisions: none
+no tasks.md: (3, '')
+===== AC-312 escaping
+rc 0 exec scripts 1 csp has hash True default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; script-src 'sha256-z3/jGhebujiQvtf3VetdJnOk9lVwKVEK/bcgNdpjSns='; base-uri 'none'; form-action 'none'
+raw <script>alert in html: False True {{SCRIPT_SHA256}} literal kept escaped: True
+injected code not a code: [] onerror=1> raw: False
+inline handlers: [] innerHTML uses: 0 eval: False
+===== fail closed: module missing
+  aidd_review_items.py (): rc=3 out='' err='aidd review: aidd_review_items/aidd_review_state is not importable next to aidd_review.py (reinstall AIDD) (No' tb=False
+  aidd_review_items.py ('--check',): rc=3 out='' err='aidd review: aidd_review_items/aidd_review_state is not importable next to aidd_review.py (reinstall AIDD) (No' tb=False
+  aidd_review_items.py ('--wait', '--timeout', '1'): rc=3 out='' err='aidd review: aidd_review_items/aidd_review_state is not importable next to aidd_review.py (reinstall AIDD) (No' tb=False
+  aidd_review_items.py ('--comments',): rc=3 out='' err='aidd review: aidd_review_items/aidd_review_state is not importable next to aidd_review.py (reinstall AIDD) (No' tb=False
+  aidd_review_items.py ('--summary',): rc=3 out='' err='aidd review: aidd_review_items/aidd_review_state is not importable next to aidd_review.py (reinstall AIDD) (No' tb=False
+   review_state reason: aidd_review_items/aidd_review_state is not importable next to aidd_review.py (reinstall AIDD) 
+   approve (page present, module missing): 1 Refused: a review exists for F23-eDoc-POS (specs/F23-eDoc-POS/review.html exists but is stale: run `aidd review F23-eDoc-POS` again): complete it. Cau
+  aidd_review_state.py (): rc=0 out='wrote: C:\\Users\\jquimis\\AppData\\Local\\Temp\\claude\\D--Fuentes-AIDD\\0f143e53-0037-' err='' tb=False
+  aidd_review_state.py ('--check',): rc=3 out='' err='aidd review: aidd_review_items/aidd_review_state is not importable next to aidd_review.py (reinstall AIDD) (No' tb=False
+  aidd_review_state.py ('--wait', '--timeout', '1'): rc=3 out='' err='aidd review: aidd_review_items/aidd_review_state is not importable next to aidd_review.py (reinstall AIDD) (No' tb=False
+  aidd_review_state.py ('--comments',): rc=3 out='' err='aidd review: aidd_review_items/aidd_review_state is not importable next to aidd_review.py (reinstall AIDD) (No' tb=False
+  aidd_review_state.py ('--summary',): rc=3 out='' err='aidd review: aidd_review_items/aidd_review_state is not importable next to aidd_review.py (reinstall AIDD) (No' tb=False
+   review_state reason: aidd_review_items/aidd_review_state is not importable next to aidd_review.py (reinstall AIDD) 
+   approve (page present, module missing): 1 Refused: a review exists for F23-eDoc-POS (specs/F23-eDoc-POS/review.html exists but is stale: run `aidd review F23-eDoc-POS` again): complete it. Cau
+===== perf
+  F15-eDoc-Backoffice-Web: generate rc=0 571 ms (subprocess), page 475 KB, review_state avg 400 ms, codes 732, md embedded False
+   --wait 3s: rc=2 wall 4.2s out='STATE=pending approved=0/732 comments=0 stale=no legacy=no tag=[tasks:8754a3bb]'
+  F13-eDoc-Emission-Engine: generate rc=0 448 ms (subprocess), page 168 KB, review_state avg 140 ms, codes 196, md embedded False
+   --wait 3s: rc=2 wall 3.5s out='STATE=pending approved=0/196 comments=0 stale=no legacy=no tag=[tasks:218e7097]'
+  synthetic 560 items: extract 81 ms, review_state avg 101 ms

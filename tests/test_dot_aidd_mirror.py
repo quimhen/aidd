@@ -67,6 +67,9 @@ VERBATIM_SCRIPTS = [
     "aidd_rules.py",
     "aidd_evidence.py",
     "aidd_status.py",
+    "aidd_review.py",
+    "aidd_review_items.py",
+    "aidd_review_state.py",
     "find_spec.py",
     "aidd_calibrate.py",
     "tasks_to_issues.py",
@@ -113,6 +116,29 @@ class TestScriptMirrorTextual(unittest.TestCase):
 # ---------------------------------------------------------------------------
 # Layer 1b — bundled provider extensions must be byte-identical too.
 # ---------------------------------------------------------------------------
+
+
+class TestDocsAndTemplatesMirrorTextual(unittest.TestCase):
+    """AIDD.md and the spec/qa-audit/review templates are byte-identical copies
+    (adapters/dot-aidd/templates/tasks.md is a REDUCED variant: not checked)."""
+
+    PAIRS = [
+        ("AIDD.md",),
+        ("templates", "spec.md"),
+        ("templates", "qa-audit.md"),
+        ("templates", "review.html"),
+        ("templates", "review-full.html"),
+    ]
+
+    def test_docs_and_templates_match(self):
+        for parts in self.PAIRS:
+            with self.subTest(file="/".join(parts)):
+                a = REPO_ROOT.joinpath("skill", *parts)
+                b = REPO_ROOT.joinpath("adapters", "dot-aidd", *parts)
+                self.assertTrue(a.is_file(), "missing in skill/: %s" % a)
+                self.assertTrue(b.is_file(), "missing in adapters/dot-aidd/: %s" % b)
+                self.assertEqual(a.read_bytes(), b.read_bytes(),
+                                 "%s drifted between skill/ and adapters/dot-aidd/" % "/".join(parts))
 
 
 class TestExtensionsMirrorTextual(unittest.TestCase):

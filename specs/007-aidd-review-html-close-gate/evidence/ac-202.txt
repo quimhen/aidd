@@ -1,0 +1,44 @@
+AC-202: PASS
+  [PASS] (1) target = F23 inferred
+  [PASS] (1) ONE violation naming F23 and "inferred", never F28
+  [PASS] (2a) real log: 14 open specs always infer (ambiguous branch unreachable without mocks)
+  [PASS] (2b) mocked: ONE violation, 5 ids "and 9 more", `aidd rules activate`
+  [PASS] (3) F99-none treated as unset (falls back to inferred)
+  [PASS] (3) activate sets gate_spec and appends gate_pointer
+  [PASS] (3) .aidd/gate_spec and active_spec not writable by the agent (Write + Bash)
+  [PASS] (3) spec-file edit moves active_spec, NOT gate_spec
+
+(1) gate_target_specs -> (['F23-eDoc-POS'], False, 'inferred')
+--> PASS: (1) target = F23 inferred
+[gate Write src/app.py] rc=2 stderr='aidd R6/R4: blocking this edit of app.py.\n  - [R6] Code edits are blocked: gate target spec F23-eDoc-POS (chosen by inferred: it has the newest plan.md/tasks.md edit of the open specs (no gate pointer set)) has no valid tasks approval (missing, duplicated, or tasks.md changed after it was approved).\n    Next action: Present the tasks to the owner (review page, or AskUserQuestion with an "Approve" option), wait for their consent, then add/refresh the "Approved: <date> hash:<hash>" line in specs/F23-eDoc-POS/tasks.md. Unblock: `aidd review specs/F23-eDoc-POS` (owner reviews the page and saves review.md), then `aidd rules approve specs/F23-eDoc-POS` with the owner\'s consent; or, if this work belongs to another spec, `aidd rules activate <other>`. If the spec is finished or dropped, ask the user and run `aidd rules close F23-eDoc-POS` / `aidd rules abandon F23-eDoc-POS`.\n(Owner override: AID'
+--> PASS: (1) ONE violation naming F23 and "inferred", never F28
+[gate Write src/app.py] rc=2 stderr='aidd R6/R4: blocking this edit of app.py.\n  - [R6] Code edits are blocked: gate target spec F23-eDoc-POS (chosen by inferred: it has the newest plan.md/tasks.md edit of the open specs (no gate pointer set)) has no valid tasks approval (missing, duplicated, or tasks.md changed after it was approved).\n    Next action: Present the tasks to the owner (review page, or AskUserQuestion with an "Approve" option), wait for their consent, then add/refresh the "Approved: <date> hash:<hash>" line in specs/F23-eDoc-POS/tasks.md. Unblock: `aidd review specs/F23-eDoc-POS` (owner reviews the page and saves review.md), then `aidd rules approve specs/F23-eDoc-POS` with the owner\'s consent; or, if this work belongs to another spec, `aidd rules activate <other>`. If the spec is finished or dropped, ask the user and run `aidd rules close F23-eDoc-POS` / `aidd rules abandon F23-eDoc-POS`.\n(Owner override: AID'
+[gate Write src/app.py] rc=0 stderr=''
+PROBE inferred flip: before rc 2 | after F22 tasks.md edit target (['F22-eDoc-Pricing'], False, 'inferred') rc 0 | gate_pointer events: 0
+--> PASS: (2a) real log: 14 open specs always infer (ambiguous branch unreachable without mocks)
+(2b) mocked open_specs -> ([], True, 'ambiguous') 
+ [
+ {
+  "rule": "R6",
+  "message": "Code edits are blocked: 14 specs are open (G00-x, G01-x, G02-x, G03-x, G04-x and 9 more), no gate pointer is set and none can be inferred (no open spec has a recorded plan.md/tasks.md edit), so the gate target is ambiguous.",
+  "fix": "Choose the spec this work belongs to: run `aidd rules activate <id>` (for example `aidd rules activate G00-x`); `aidd rules approve <id>` also activates the spec it approves. If a spec was dropped, ask the user and run `aidd rules abandon <id>`."
+ }
+]
+--> PASS: (2b) mocked: ONE violation, 5 ids "and 9 more", `aidd rules activate`
+(3) gate_spec=F99-none -> (['F23-eDoc-POS'], False, 'inferred')
+--> PASS: (3) F99-none treated as unset (falls back to inferred)
+$ aidd_status.py rules activate F13-eDoc-Emission-Engine  -> exit 0
+gate pointer: F99-none -> F13-eDoc-Emission-Engine
+--> PASS: (3) activate sets gate_spec and appends gate_pointer | F13-eDoc-Emission-Engine {'spec': 'F13-eDoc-Emission-Engine', 'prev': 'F99-none', 'by': 'activate'}
+[gate Write .aidd/gate_spec] rc=2 stderr='aidd R9: the `.aidd/` directory (evidence log, active_spec, ...) is written by hooks only; the agent may not write it (only `.aidd/memory/**` is writable).\nNext action: do not edit these files. If the evidence log is wrong, ask the user; they can reset it themselves (owner-only: AIDD_RULES=warn|off in settings.json env).'
+[gate Write .aidd/active_spec] rc=2 stderr='aidd R9: the `.aidd/` directory (evidence log, active_spec, ...) is written by hooks only; the agent may not write it (only `.aidd/memory/**` is writable).\nNext action: do not edit these files. If the evidence log is wrong, ask the user; they can reset it themselves (owner-only: AIDD_RULES=warn|off in settings.json env).'
+[gate Write .AIDD/GATE_SPEC.] rc=2 stderr='aidd R9: the `.aidd/` directory (evidence log, active_spec, ...) is written by hooks only; the agent may not write it (only `.aidd/memory/**` is writable).\nNext action: do not edit these files. If the evidence log is wrong, ask the user; they can reset it themselves (owner-only: AIDD_RULES=warn|off in settings.json env).'
+[gate Write .aidd/gate_spec::$DATA] rc=2 stderr='aidd R9: the `.aidd/` directory (evidence log, active_spec, ...) is written by hooks only; the agent may not write it (only `.aidd/memory/**` is writable).\nNext action: do not edit these files. If the evidence log is wrong, ask the user; they can reset it themselves (owner-only: AIDD_RULES=warn|off in settings.json env).'
+[bash] 'echo F23-eDoc-POS > .aidd/gate_spec' cwd=root rc=2
+[bash] 'echo x > .aidd/active_spec' cwd=root rc=2
+[bash] 'cp /tmp/x .aidd/gate_spec' cwd=root rc=2
+[bash] 'cd .aidd && echo F23 > gate_spec' cwd=root rc=2
+[bash] 'python -c "open(\'.aidd/gate_spec\',\'w\').write(\'F23\')"' cwd=root rc=2
+--> PASS: (3) .aidd/gate_spec and active_spec not writable by the agent (Write + Bash) | [True, True, True, True, True, True, True, True, True]
+[hook mark_code_edit.py Write] rc=0 stdout='' stderr=''
+--> PASS: (3) spec-file edit moves active_spec, NOT gate_spec | active=F24-eDoc-Traceability gate=F13-eDoc-Emission-Engine

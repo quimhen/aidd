@@ -8,8 +8,9 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
-REPO = Path(__file__).resolve().parent.parent
+REPO =Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO / "skill" / "scripts"))
 
 import aidd_rules as R  # noqa: E402
@@ -444,6 +445,10 @@ class TestCheckSpecDir(unittest.TestCase):
         (self.root / 'src' / 'cart.py').write_text('x\n' * 30, encoding='utf-8')
         (self.root / 'a.py').write_text('x\n' * 30, encoding='utf-8')
         self._old = R._evidence
+        # spec 007 (FR-206): these cases test the 006 R5 block, which is the `strict` mode now
+        pin = patch.dict(os.environ, {'AIDD_R5_AUDIT': 'strict'})
+        pin.start()
+        self.addCleanup(pin.stop)
 
     def tearDown(self):
         R._evidence = self._old
@@ -548,6 +553,51 @@ class TestCheckSpecDir(unittest.TestCase):
         self.write('tasks.md', tasks(), mtime=1200.0)
         self.use(FakeEv([ev('subagent', 1300), ev('find_spec', 1400, rebuilt=True)], self.prompts()))
         bad(self, R.check_spec_dir(self.d), 'R5', 'pre-build coherence audit')   # rebuild postdates the only subagent
+
+    # --- spec 007 (FR-206, AC-211): advisory twins — the same fixtures emit NO Mapper/pre-build R5
+    def test_no_mapper_after_spec_edit_advisory(self):
+        self.write('spec.md', self.good_spec(), mtime=2000.0)
+        self.use(FakeEv([ev('find_spec', 1500), ev('subagent', 1600)], self.prompts()))
+        for value in (None, 'advisory', 'ADVISORY', ' x ', ''):
+            if value is None:
+                os.environ.pop('AIDD_R5_AUDIT', None)
+            else:
+                os.environ['AIDD_R5_AUDIT'] = value
+            self.assertEqual([v for v in R.check_spec_dir(self.d) if v['rule'] == 'R5'], [], value)
+        os.environ['AIDD_R5_AUDIT'] = ' Strict '   # trimmed, case-insensitive
+        bad(self, R.check_spec_dir(self.d), 'R5', 'Mapper')
+
+    def test_tasks_chain_and_approval_advisory(self):
+        os.environ.pop('AIDD_R5_AUDIT', None)
+        self.write('spec.md', self.good_spec(), mtime=1000.0)
+        self.write('plan.md', 'plan', mtime=1700.0)
+        self.write('tasks.md', tasks(), mtime=1800.0)
+        self.use(FakeEv([ev('find_spec', 1500), ev('subagent', 1600)], self.prompts()))
+        vs = R.check_spec_dir(self.d)
+        self.assertEqual([v for v in vs if v['rule'] == 'R5'], [])
+        bad(self, vs, 'R6', 'pending')            # approval itself is untouched by the R5 mode
+
+    def test_graph_rebuilt_needs_subagent_after_advisory(self):
+        os.environ.pop('AIDD_R5_AUDIT', None)
+        self.write('spec.md', self.good_spec(), mtime=1000.0)
+        self.write('plan.md', 'plan', mtime=1100.0)
+        self.write('tasks.md', tasks(), mtime=1200.0)
+        self.use(FakeEv([ev('subagent', 1300), ev('find_spec', 1400, rebuilt=True)], self.prompts()))
+        self.assertEqual([v for v in R.check_spec_dir(self.d) if v['rule'] == 'R5'], [])
+
+    def test_advisory_keeps_find_spec_quotes_proposed_and_plan_order(self):
+        os.environ.pop('AIDD_R5_AUDIT', None)
+        self.write('spec.md', self.good_spec())
+        self.use(FakeEv([ev('subagent', 1600)], self.prompts()))
+        bad(self, R.check_spec_dir(self.d), 'R5', 'find_spec')
+        self.use(FakeEv([ev('find_spec', 1500)], ['something else entirely']))
+        bad(self, R.check_spec_dir(self.d), 'R5', 'Quote not found')
+        self.write('spec.md', spec())
+        self.use(FakeEv([ev('find_spec', 1500)], self.prompts()))
+        bad(self, R.check_spec_dir(self.d), 'R5', 'Proposed')
+        self.write('spec.md', self.good_spec())
+        self.write('tasks.md', tasks())
+        bad(self, R.check_spec_dir(self.d), 'R5', 'plan.md does not')
 
     def test_r7_qa_audit_domains(self):
         self.write('spec.md', self.good_spec(), mtime=1000.0)
@@ -1415,6 +1465,11 @@ class TestPhasedAudits(unittest.TestCase):
         cl =CHECKLIST.replace('[Proposed — unconfirmed]', 'user — "pagar mas rapido por favor"')
         self.spec_text = spec(checklist=cl)
         self.prompts = ['es el modulo de checkout', 'pagar mas rapido por favor', 'no hace falta el flowmap']
+        # spec 007 (FR-206): the 006 phases are the `strict` mode now; started BEFORE the tolerance
+        # change so the patch's snapshot is the pristine environment
+        pin = patch.dict(os.environ, {'AIDD_R5_AUDIT': 'strict'})
+        pin.start()
+        self.addCleanup(pin.stop)
         self._old_tol = os.environ.get('AIDD_R5_FIX_EDITS')
         os.environ['AIDD_R5_FIX_EDITS'] = '0'   # strict by default; AC-010 tests override it
 
@@ -1567,6 +1622,639 @@ class TestPhasedAudits(unittest.TestCase):
         signed = t.replace('Approved: PENDING', f'Approved: 2026-10-01 hash:{R.approval_hash(t)}')
         self.assertIs(R.approval_valid(signed), True)
         self.assertIsNot(R.approval_valid(signed + '\n- one more fix\n'), True)   # tolerance never extends to approval
+
+    # --- spec 007 (FR-206, AC-211): advisory twins of the phase tests
+    def test_advisory_twin_no_mapper_no_pre_build_demanded(self):
+        os.environ.pop('AIDD_R5_AUDIT', None)
+        self._chain()
+        self.fake(self.spec_edits(1000, 1100) + [ev('find_spec', 1010)])
+        ok(self, self.r5())                              # no Mapper, no pre-build audit: allowed
+        self.fake(self.spec_edits(1000) + [ev('find_spec', 1010), ev('subagent', 1300, head='audit', model='haiku'),
+                                           ev('find_spec', 1400, rebuilt=True)])
+        ok(self, self.r5())
+        self.fake(self.spec_edits(1000))                 # find_spec stays required in both modes
+        bad(self, self.r5(), 'R5', 'find_spec')
+        # the pure helpers are unchanged by the mode
+        f = FakeEv(self.spec_edits(1000))
+        self.assertFalse(R.pre_build_audit_done(f, self.root, 's', self.d))
+        self.assertEqual(R.mapper_since(f, self.root, self.d), 1000)
+
+
+# ============================================================ Spec 007 (T-02): Verification + closing audit
+import hashlib  # noqa: E402
+
+SPEC_IDS = ('002-aidd-hard-rules', 'F23-eDoc-POS')   # numeric and non-numeric real ids
+
+
+def vspec(rows, prose='Some prose.', extra=''):
+    body = '\n'.join(f'| {n} | {c} | {e} | {cv} |' for n, c, e, cv in rows)
+    return (f"# Spec\n\n{prose}\n\n## Verification\n\nCommands run at close.\n\n"
+            f"| # | Command | Expected | Covers |\n|---|---|---|---|\n{body}\n\n## Optimization brief\n\nx{extra}\n")
+
+
+GOOD_ROW = ('V-1', '`python -m unittest tests.test_x`', 'exit 0', 'FR-1')
+
+
+class FakeEv7(FakeEv):
+    """FakeEv plus the spec 007 readers (duck-typed like aidd_evidence; never T-01's code)."""
+
+    def __init__(self, rows=(), approved=None, run=None, last_edit=0.0, fp=None):
+        super().__init__(rows)
+        self.approved, self.run, self.last_edit, self.fp = approved, run, last_edit, fp
+
+    def latest_approved(self, root, spec, hash=None):
+        a = self.approved
+        if a is None or (hash is not None and a.get('hash') not in (None, hash)):
+            return None
+        return dict(a)
+
+    def latest_verify_run(self, root, spec):
+        return dict(self.run) if self.run else None
+
+    def last_code_edit_ts(self, root):
+        return self.last_edit
+
+    def worktree_fingerprint(self, root, budget_s=8.0):
+        return self.fp
+
+
+def scratch_project():
+    root = Path(tempfile.mkdtemp()).resolve()
+    for rel, text in (('tests/__init__.py', ''), ('tests/test_x.py', 'import unittest\n'),
+                      ('scripts/run.py', 'print(1)\n'), ('scripts/run.ps1', 'exit 0\n'),
+                      ('skill/scripts/aidd_review.py', '# stub\n')):
+        put(root / rel, text)
+    (root / 'tests' / 'empty').mkdir()
+    return root
+
+
+class TestParseVerification(unittest.TestCase):
+    def test_rows_placeholders_backticks(self):
+        rows = R.parse_verification(vspec([('V-0', '', 'exit 0', ''), GOOD_ROW, ('V-2', ' ', '', '')]))
+        self.assertEqual(rows, [{'n': 'V-1', 'cmd': 'python -m unittest tests.test_x', 'expected': 'exit 0', 'covers': 'FR-1'}])
+
+    def test_escaped_pipe_in_command_and_comment_in_cell(self):
+        rows = R.parse_verification(vspec([('V-1', r'python scripts/run.py \| findstr ok', 'contains: ok <!-- note -->', 'x')]))
+        self.assertEqual(rows[0]['cmd'], 'python scripts/run.py | findstr ok')
+        self.assertEqual(rows[0]['expected'], 'contains: ok')
+
+    def test_crlf_same_rows_and_hash(self):
+        t = vspec([GOOD_ROW, ('V-2', 'npm test', 'exit 0', '')])
+        self.assertEqual(R.parse_verification(t.replace('\n', '\r\n')), R.parse_verification(t))
+        self.assertEqual(R.verification_hash(t.replace('\n', '\r\n')), R.verification_hash(t))
+
+    def test_no_section_or_garbage(self):
+        for bad_in in ('# Spec\n\nno table', '', None, 123, ['x']):
+            self.assertEqual(R.parse_verification(bad_in), [])
+            self.assertEqual(R.verification_hash(bad_in), '')
+        self.assertEqual(R.verification_hash(vspec([('V-1', '', 'exit 0', '')])), '')   # placeholders only
+
+    def test_hash_ignores_prose_and_covers_not_commands(self):
+        base = R.verification_hash(vspec([GOOD_ROW]))
+        self.assertRegex(base, r'^[0-9a-f]{12}$')
+        self.assertEqual(R.verification_hash(vspec([GOOD_ROW], prose='Other prose entirely.')), base)
+        self.assertEqual(R.verification_hash(vspec([('V-1', GOOD_ROW[1], 'exit 0', 'FR-9, AC-1')])), base)
+        self.assertEqual(R.verification_hash(vspec([('V-1', 'python  -m unittest   tests.test_x', 'exit 0', '')])), base)
+        self.assertNotEqual(R.verification_hash(vspec([('V-1', 'python -m unittest tests.test_y', 'exit 0', '')])), base)
+        self.assertNotEqual(R.verification_hash(vspec([('V-1', GOOD_ROW[1], 'contains: OK', '')])), base)
+        self.assertNotEqual(R.verification_hash(vspec([('V-2', GOOD_ROW[1], 'exit 0', '')])), base)
+
+
+class TestVerificationLint(unittest.TestCase):
+    def setUp(self):
+        self.root = scratch_project()
+
+    def p(self, cmd, expected='exit 0', root='default'):
+        return R.verification_command_problem(cmd, expected, self.root if root == 'default' else root)
+
+    def test_ac218_rejected_rows(self):
+        cases = [('python -c "pass"', 'exit 0', 'inline code'),
+                 ('python --version', 'exit 0', 'neither'),
+                 ('cmd /c exit 0', 'exit 0', 'inline code'),
+                 ('sh -c true', 'exit 0', 'inline code'),
+                 ('python -c "print(\'PASS\')"', 'contains: PASS', None),
+                 ('python tests/x.py', 'exit 0', 'neither')]
+        for cmd, exp, why in cases:
+            r = self.p(cmd, exp)
+            self.assertIsNotNone(r, cmd)
+            if why:
+                self.assertIn(why, r, cmd)
+
+    def test_ac218_empty_discover_accepted_at_approval(self):
+        self.assertIsNone(self.p('python -m unittest discover -s tests/empty'))
+
+    def test_trivial(self):
+        for cmd in ('echo ok', 'ECHO ok', '@echo off', 'true', 'exit 0', ':', ': x', 'rem x', 'type tests/test_x.py',
+                    'python -m unittest tests.test_x\necho done'):
+            self.assertIn('trivial', self.p(cmd) or '', cmd)
+
+    def test_forbidden_text(self):
+        for cmd in ('python scripts/run.py .aidd/evidence/events.toon', 'python scripts/run.py events.toon',
+                    'python scripts/run.py active_spec', 'python scripts/run.py gate_spec',
+                    'python scripts/run.py && python -m aidd_status approve x',
+                    'python scripts/run.py && python -m aidd_evidence', 'python -m unittest tests.test_x && aidd verify x',
+                    'set AIDD_RULES=off && python -m unittest tests.test_x',
+                    'AIDD_EVIDENCE_DIR=/tmp python -m unittest tests.test_x',
+                    'AIDD_TESTING=1 python scripts/run.py', 'AIDD_SESSION_ID=x python scripts/run.py',
+                    "$env:AIDD_RULES = 'off'; python scripts/run.py",
+                    'python scripts/run.py specs/x/review.md', 'python scripts/run.py tasks.md Approved',
+                    'python skill/scripts/aidd_status.py approve specs/x'):
+            self.assertIn('protected AIDD state', self.p(cmd) or '', cmd)
+
+    def test_inline_variants(self):
+        for cmd in ('node -e 1', 'node --eval=1', 'node --print 1', 'node -pe 1', 'powershell -Command "exit 0"',
+                    'pwsh -c "exit 0"', 'powershell -EncodedCommand AAAA', 'powershell -enc AAAA',
+                    'powershell -NoProfile -ExecutionPolicy Bypass -Command x', 'powershell "exit 0"',
+                    'bash -lc x', 'zsh -c x', 'perl -e 1', 'ruby -e 1', 'py -3 -c 1', 'python -Bc 1', 'python -',
+                    r'C:\Python311\python.exe -c 1', 'python3.11 -c 1', 'cd tests && python -c 1',
+                    'X=1 python -c 1', 'cmd.exe /C dir', 'cmd /k dir'):
+            self.assertIn('inline code', self.p(cmd) or '', cmd)
+
+    def test_flags_after_the_script_are_not_inline(self):
+        self.assertIsNone(self.p('python scripts/run.py -c foo'))
+        self.assertIsNone(self.p('python -W ignore scripts/run.py -e x'))
+        self.assertIsNone(self.p('powershell -NoProfile -ExecutionPolicy Bypass -File scripts/run.ps1'))
+        self.assertIsNone(self.p('python skill/scripts/aidd_review.py specs/F23-eDoc-POS --check'))
+
+    def test_self_satisfying_contains(self):
+        self.assertIn('satisfied by the command', self.p('python scripts/run.py PASS', 'contains: pass'))
+        self.assertIsNone(self.p('python scripts/run.py', 'contains: ROUNDTRIP OK'))
+
+    def test_runners_with_manifest(self):
+        self.assertIsNone(self.p('python -m unittest tests.test_x'))
+        self.assertIsNone(self.p('python -m unittest -v tests.test_x'))
+        self.assertIsNone(self.p('python -m unittest tests.test_x.Case.test_y'))
+        self.assertIsNone(self.p('python -m unittest tests'))            # a package dir
+        self.assertIsNone(self.p('python -m unittest discover -s tests'))
+        self.assertIsNone(self.p('python -m unittest tests/test_x.py'))
+        for cmd, why in (('dotnet test', '.sln'), ('npm test', 'package.json'), ('npm run e2e', 'package.json'),
+                         ('cargo test', 'cargo.toml'), ('go test ./...', 'go.mod'), ('mvn -q test', 'pom.xml'),
+                         ('gradle test', 'build.gradle'), ('pytest', 'pyproject.toml'),
+                         ('python -m pytest -p no:cacheprovider', 'pyproject.toml'), ('msbuild /t:Test', '.sln')):
+            self.assertIn(why, self.p(cmd) or '', cmd)               # manifest missing: rejected naming it
+        put(self.root / 'App.sln', 'x')
+        put(self.root / 'web' / 'package.json', '{}')                  # nested manifest (cd web && npm test)
+        put(self.root / 'pyproject.toml', '')
+        put(self.root / 'Cargo.toml', '')
+        put(self.root / 'go.mod', '')
+        put(self.root / 'pom.xml', '')
+        put(self.root / 'build.gradle', '')
+        for cmd in ('dotnet test', 'dotnet test --no-build', 'npm test', 'cd web && npm test', 'npm run e2e',
+                    'cargo test', 'go test ./...', 'mvn -q test', 'gradle test', 'pytest', 'python -m pytest -p x',
+                    'msbuild /t:Test'):
+            self.assertIsNone(self.p(cmd), cmd)
+
+    def test_unittest_targets_must_exist(self):
+        self.assertIn('not found', self.p('python -m unittest tests.test_missing'))
+        self.assertIn('not found', self.p('python -m unittest tests.missing.Case'))
+        self.assertIn('needs a module', self.p('python -m unittest'))
+        self.assertIn('does not exist', self.p('python -m unittest discover -s nope'))
+
+    def test_paths_must_be_relative_inside_root(self):
+        self.assertIsNotNone(self.p(f'python {self.root / "scripts" / "run.py"}'))   # absolute: never
+        self.assertIsNotNone(self.p('python ../outside.py'))
+        self.assertIsNone(self.p(r'python scripts\run.py'))                          # Windows separators
+
+    def test_root_none_skips_only_existence(self):
+        for cmd in ('dotnet test', 'npm test', 'python tests/x.py', 'python -m unittest tests.test_nope'):
+            self.assertIsNone(self.p(cmd, root=None), cmd)
+        for cmd in ('python --version', 'python -c 1', 'echo x', 'python -m unittest', 'whoami'):
+            self.assertIsNotNone(self.p(cmd, root=None), cmd)
+
+    def test_empty_and_garbage(self):
+        for c in ('', '   ', None, 5):
+            self.assertEqual(R.verification_command_problem(c), 'empty command')
+        self.assertIn('longer', self.p('python scripts/run.py ' + 'x' * 3000))
+
+
+class TestCheckVerification(unittest.TestCase):
+    def setUp(self):
+        self.root = scratch_project()
+
+    def test_missing_section_and_rows(self):
+        bad(self, R.check_verification('# Spec\n\nnothing', self.root), 'R10', 'no "## Verification"')
+        bad(self, R.check_verification(vspec([('V-1', '', 'exit 0', '')]), self.root), 'R10', 'no row')
+
+    def test_expected_rules(self):
+        bad(self, R.check_verification(vspec([('V-1', GOOD_ROW[1], '', '')]), self.root), 'R10', 'Expected is empty')
+        bad(self, R.check_verification(vspec([('V-1', GOOD_ROW[1], 'exit 1', '')]), self.root), 'R10', 'is not `exit 0`')
+        ok(self, R.check_verification(vspec([GOOD_ROW, ('V-2', 'python scripts/run.py', 'contains: OK', '')]), self.root))
+
+    def test_row_problems_reported_per_row(self):
+        vs = R.check_verification(vspec([GOOD_ROW, ('V-2', 'python -c "pass"', 'exit 0', ''),
+                                         ('V-3', 'python tests/x.py', 'exit 0', '')]), self.root)
+        self.assertEqual(len(vs), 2)
+        self.assertTrue(all(v['rule'] == 'R10' and v['fix'] for v in vs))
+        self.assertIn('V-2', vs[0]['message'])
+        self.assertIn('V-3', vs[1]['message'])
+
+    def test_never_raises(self):
+        for x in (None, 5, 'x' * (R.MAX_CHARS + 1)):
+            self.assertIsInstance(R.check_verification(x), list)
+            self.assertTrue(R.check_verification(x))
+
+    def test_new_template_sections_and_legacy_spec_pass_check_content(self):
+        raw = (REPO / 'skill' / 'templates' / 'spec.md').read_text(encoding='utf-8')
+        new = raw
+        if '## Verification' not in raw:   # until T-09 lands the template sections, simulate them
+            new = raw + ('\n## Verification\n\n| # | Command | Expected | Covers |\n|---|---|---|---|\n'
+                         '| V-1 | | exit 0 | |\n\n## Optimization brief\n\nOwner pick:\n')
+        self.assertEqual(R.check_content('spec', new), [])
+        legacy = re.sub(r'\n## (Verification|Optimization brief)\b.*?(?=\n## |\Z)', '\n', new, flags=re.S)
+        self.assertNotIn('## Verification', legacy)
+        self.assertEqual(R.check_content('spec', legacy), [])
+        bad(self, R.check_verification(legacy), 'R10', 'no "## Verification"')
+
+
+class TestApprovalEvidenceAndOutput(unittest.TestCase):
+    def test_approval_evidence(self):
+        t = vspec([GOOD_ROW])
+        self.assertEqual(R.GATE_VERSION, 2)
+        e = R.approval_evidence(t, 'review+prompt', review_sha1='abc', consent_ts=12)
+        self.assertEqual(e, {'gate': 2, 'source': 'review+prompt', 'verify_hash': R.verification_hash(t),
+                             'consent_ts': 12.0, 'review_sha1': 'abc'})
+        self.assertEqual(R.approval_evidence('# none', 'answer'), {'gate': 2, 'source': 'answer', 'verify_hash': ''})
+
+    def test_zero_tests(self):
+        hdr = '# python -m unittest x | exit 0 | 2026-10-05T10:00:00\n'
+        for out in ('\nRan 0 tests in 0.000s\n\nOK\n', 'NO TESTS RAN', 'No test is available in x.dll. Make sure ...',
+                    '==== collected 0 items ====', 'Passed!  Total tests: 0  ok ok ok ok'):
+            self.assertEqual(R.verify_output_problem(hdr + out, 'exit 0'), 'zero tests ran', out)
+            self.assertEqual(R.verify_output_problem(out, 'contains: Ran'), 'zero tests ran', out)   # contains never excuses it
+        self.assertIsNone(R.verify_output_problem(hdr + 'Ran 10 tests in 1.0s\n\nOK\n', 'exit 0'))
+        self.assertIsNone(R.verify_output_problem(hdr + 'Total tests: 05 passed fine here', 'exit 0'))
+
+    def test_short_output(self):
+        hdr = '# npm test | exit 0 | 2026-10-05T10:00:00\n'
+        self.assertEqual(R.verify_output_problem(hdr + 'ok\n', 'exit 0'), 'output too short')
+        self.assertEqual(R.verify_output_problem(hdr, 'exit 0'), 'output too short')
+        self.assertEqual(R.verify_output_problem('', 'exit 0'), 'output too short')
+        self.assertIsNone(R.verify_output_problem(hdr + 'ROUNDTRIP OK\n', 'contains: ROUNDTRIP OK'))
+        self.assertEqual(R.verify_output_problem(hdr + 'ok\n', 'contains: missing'), 'output too short')
+        self.assertIsNone(R.verify_output_problem((hdr + 'x' * 25).encode('utf-8'), 'exit 0'))   # bytes accepted
+
+
+class _GateSpec(unittest.TestCase):
+    """A new-style spec (gate 2) with an executed, passing Verification, for each real id."""
+
+    def mkspec(self, spec_id):
+        self.root = scratch_project()
+        d = self.root / 'specs' / spec_id
+        self.spec_text = vspec([GOOD_ROW])
+        put(d / 'spec.md', self.spec_text)
+        self.tasks_text = tasks()
+        put(d / 'tasks.md', self.tasks_text)
+        put(d / 'evidence' / 'verify-1.txt', '# python -m unittest tests.test_x | exit 0 | t\nRan 3 tests\n\nOK\n')
+        self.vh = R.verification_hash(self.spec_text)
+        sha = hashlib.sha1((d / 'evidence' / 'verify-1.txt').read_bytes()).hexdigest()
+        self.run = {'ts': 500.0, 'ok': True, 'verify_hash': self.vh, 'started': 400.0, 'fingerprint_start': 'fp',
+                    'fingerprint_end': 'fp', 'stable': True,
+                    'results': [{'n': 'V-1', 'cmd': 'python -m unittest tests.test_x', 'exit': 0, 'ok': True,
+                                 'evidence': 'evidence/verify-1.txt', 'sha1': sha}]}
+        self.approved = {'spec': spec_id, 'hash': R.approval_hash(self.tasks_text), 'gate': 2, 'source': 'review+answer',
+                         'verify_hash': self.vh}
+        return d
+
+    def fake(self, rows=(), **kw):
+        args = dict(approved=self.approved, run=self.run, last_edit=300.0, fp='fp')
+        args.update(kw)
+        return FakeEv7(rows, **args)
+
+    def dirs(self, spec_id):
+        """(absolute spec dir, relative spec dir valid while cwd is the project root)."""
+        d = self.mkspec(spec_id)
+        return d, Path('specs') / spec_id
+
+    def in_root(self):
+        old = os.getcwd()
+        os.chdir(self.root)
+        self.addCleanup(os.chdir, old)
+
+
+class TestVerificationGaps(_GateSpec):
+    def msgs(self, ev_, d):
+        return ' | '.join(v['message'] for v in R.verification_gaps(ev_, self.root, d))
+
+    def test_passing_run_absolute_and_relative(self):
+        for sid in SPEC_IDS:
+            d, rel = self.dirs(sid)
+            ok(self, R.verification_gaps(self.fake(), self.root, d))
+            self.in_root()
+            ok(self, R.verification_gaps(self.fake(), self.root, rel))
+
+    def test_each_gap(self):
+        for sid in SPEC_IDS:
+            d = self.mkspec(sid)
+            self.assertIn('No verify_run', self.msgs(self.fake(run=None), d))
+            self.assertIn('failed', self.msgs(self.fake(run=dict(self.run, ok=False)), d))
+            self.assertIn('tree changed while verification ran', self.msgs(self.fake(run=dict(self.run, stable=False)), d))
+            self.assertIn('code edit happened after', self.msgs(self.fake(last_edit=450.0), d))
+            self.assertIn('fingerprint differs', self.msgs(self.fake(fp='other'), d))
+            self.assertIn('fingerprint differs', self.msgs(self.fake(fp=None), d))       # fail closed
+            ok(self, R.verification_gaps(self.fake(fp='x', run=dict(self.run, fingerprint_end=None)), self.root, d))
+            self.assertIn('changed after approval',
+                          self.msgs(self.fake(approved=dict(self.approved, verify_hash='000000000000')), d))
+            self.assertIn('No approved event', self.msgs(self.fake(approved=None), d))
+            self.assertIn('no results', self.msgs(self.fake(run=dict(self.run, results=[])), d))
+
+    def test_table_and_evidence_drift(self):
+        for sid in SPEC_IDS:
+            d = self.mkspec(sid)
+            put(d / 'spec.md', vspec([('V-1', 'python -m unittest tests', 'exit 0', '')]))
+            m = self.msgs(self.fake(), d)
+            self.assertIn('changed after the last verify_run', m)
+            self.assertIn('changed after approval', m)
+            put(d / 'spec.md', vspec([GOOD_ROW], prose='prose edits are neutral'))
+            ok(self, R.verification_gaps(self.fake(), self.root, d))
+            put(d / 'evidence' / 'verify-1.txt', 'tampered')
+            self.assertIn('sha1 differs', self.msgs(self.fake(), d))
+            (d / 'evidence' / 'verify-1.txt').unlink()
+            self.assertIn('missing', self.msgs(self.fake(), d))
+
+    def test_evidence_path_forms(self):
+        d = self.mkspec('F23-eDoc-POS')
+        res = self.run['results'][0]
+        root_rel = dict(res, evidence='specs/F23-eDoc-POS/evidence/verify-1.txt')
+        ok(self, R.verification_gaps(self.fake(run=dict(self.run, results=[root_rel])), self.root, d))
+        put(self.root / 'outside.txt', 'x')
+        for evid in ('../../outside.txt', 'outside.txt', str(self.root / 'outside.txt'), ''):
+            r = dict(res, evidence=evid, sha1=hashlib.sha1(b'x').hexdigest())
+            self.assertIn('missing or outside', self.msgs(self.fake(run=dict(self.run, results=[r])), d), evid)
+        self.assertIn('no recorded sha1', self.msgs(self.fake(run=dict(self.run, results=[dict(res, sha1='')])), d))
+
+    def test_old_library_and_garbage_fail_closed(self):
+        d = self.mkspec('002-aidd-hard-rules')
+        self.assertIn('old install', self.msgs(FakeEv(), d))
+        vs = R.verification_gaps(self.fake(), self.root, None)
+        self.assertTrue(vs and vs[0]['rule'] == 'R10')
+        put(d / 'spec.md', '# no table')
+        self.assertIn('no "## Verification"', self.msgs(self.fake(), d))
+
+
+class TestVerificationState(_GateSpec):
+    def state(self, fake, d, root=None):
+        old = R._evidence
+        R._evidence = lambda: fake
+        try:
+            return R.verification_state(d, root)
+        finally:
+            R._evidence = old
+
+    def test_states(self):
+        for sid in SPEC_IDS:
+            d = self.mkspec(sid)
+            st = self.state(self.fake(), d)
+            self.assertEqual(st, {'declared': True, 'commands': 1, 'status': 'passed', 'ts': 500.0})
+            self.assertEqual(self.state(self.fake(run=None), d)['status'], 'never-run')
+            self.assertEqual(self.state(self.fake(last_edit=900.0), d)['status'], 'stale')
+            self.assertEqual(self.state(self.fake(run=dict(self.run, ok=False)), d)['status'], 'failed')
+            self.assertEqual(self.state(self.fake(), d, root=self.root)['status'], 'passed')
+            self.assertEqual(self.state(None, d)['status'], 'never-run')       # no evidence module: never passed
+            put(d / 'spec.md', vspec([('V-1', '', 'exit 0', '')]))
+            self.assertEqual(self.state(self.fake(), d), {'declared': True, 'commands': 0, 'status': 'none', 'ts': None})
+            put(d / 'spec.md', '# legacy spec')
+            self.assertEqual(self.state(self.fake(), d)['status'], 'none')
+        self.assertEqual(R.verification_state(None)['status'], 'none')
+
+
+class _CountingEv7(FakeEv7):
+    """FakeEv7 whose worktree_fingerprint counts its calls (closing-audit F-2)."""
+
+    def __init__(self, *a, **kw):
+        super().__init__(*a, **kw)
+        self.fp_calls = 0
+
+    def worktree_fingerprint(self, root):
+        self.fp_calls += 1
+        return self.fp
+
+
+class TestFingerprintOnce(_GateSpec):
+    """F-2: one worktree fingerprint per status run, never older than what it is compared against."""
+
+    def counting(self, **kw):
+        args = dict(approved=self.approved, run=self.run, last_edit=300.0, fp='fp')
+        args.update(kw)
+        return _CountingEv7((), **args)
+
+    def state(self, fake, d, root=None, fingerprint=None):
+        old = R._evidence
+        R._evidence = lambda: fake
+        try:
+            return R.verification_state(d, root, fingerprint=fingerprint)
+        finally:
+            R._evidence = old
+
+    def test_one_fingerprint_shared_across_specs_absolute_and_relative(self):
+        self.mkspec(SPEC_IDS[0])
+        root = self.root                         # every spec in ONE project root: one cache key
+        for sid in SPEC_IDS[1:]:
+            self.mkspec_in(root, sid)
+        fake = self.counting()
+        once = R.FingerprintOnce(fake)
+        self.in_root()
+        for sid in SPEC_IDS:
+            for d in (root / 'specs' / sid, Path('specs') / sid):
+                st = self.state(fake, d, root=root, fingerprint=once)
+                self.assertEqual(st['status'], 'passed', (sid, d))
+        self.assertEqual(fake.fp_calls, 1)
+        self.assertEqual(once.calls, 1)
+        # without a provider the old behaviour stays: one fingerprint per call
+        fake2 = self.counting()
+        for sid in SPEC_IDS:
+            self.state(fake2, root / 'specs' / sid, root=root)
+        self.assertEqual(fake2.fp_calls, len(SPEC_IDS))
+
+    def mkspec_in(self, root, spec_id):
+        d = root / 'specs' / spec_id
+        put(d / 'spec.md', self.spec_text)
+        put(d / 'tasks.md', self.tasks_text)
+        put(d / 'evidence' / 'verify-1.txt', '# python -m unittest tests.test_x | exit 0 | t\nRan 3 tests\n\nOK\n')
+        return d
+
+    def test_cache_never_older_than_the_compared_run_or_code_edit(self):
+        clock = [1000.0]
+        for sid in SPEC_IDS:
+            d = self.mkspec(sid)
+            fake = self.counting(run=dict(self.run, ts=900.0, started=800.0), last_edit=700.0)
+            once = R.FingerprintOnce(fake, ttl=30.0, clock=lambda: clock[0])
+            self.assertEqual(self.state(fake, d, root=self.root, fingerprint=once)['status'], 'passed')
+            self.assertEqual(self.state(fake, d, root=self.root, fingerprint=once)['status'], 'passed')
+            self.assertEqual(fake.fp_calls, 1)                       # served from the cache
+            # a verify_run recorded AFTER the cached fingerprint was taken: recompute
+            fake.run = dict(self.run, ts=1005.0, started=1001.0)
+            clock[0] = 1010.0
+            self.state(fake, d, root=self.root, fingerprint=once)
+            self.assertEqual(fake.fp_calls, 2)
+            # a code edit AFTER the cached fingerprint: recompute (and the edit makes the run stale anyway)
+            fake.last_edit = 1020.0
+            clock[0] = 1021.0
+            self.assertEqual(self.state(fake, d, root=self.root, fingerprint=once)['status'], 'stale')
+            self.assertEqual(fake.fp_calls, 3)
+            # the TTL expires: recompute even with nothing newer
+            fake.last_edit = 700.0
+            clock[0] = 1021.0 + 31.0
+            self.state(fake, d, root=self.root, fingerprint=once)
+            self.assertEqual(fake.fp_calls, 4)
+            # a changed tree is still detected through the shared provider
+            fake.fp = 'other'
+            clock[0] += 100.0
+            self.assertEqual(self.state(fake, d, root=self.root, fingerprint=once)['status'], 'stale')
+            clock[0] = 1000.0
+
+    def test_failures_never_raise_and_fail_closed(self):
+        d = self.mkspec('F23-eDoc-POS')
+
+        class Boom(_CountingEv7):
+            def worktree_fingerprint(self, root):
+                raise RuntimeError('git exploded')
+
+        fake = Boom((), approved=self.approved, run=self.run, last_edit=300.0, fp='fp')
+        once = R.FingerprintOnce(fake)
+        self.assertIsNone(once(self.root))
+        self.assertEqual(self.state(fake, d, root=self.root, fingerprint=once)['status'], 'stale')
+        self.assertIsNone(R.FingerprintOnce(FakeEv())(self.root))            # old library: None
+        once2 = R.FingerprintOnce(self.counting())
+        self.assertEqual(once2(self.root, not_before='garbage'), 'fp')
+        self.assertEqual(once2(self.root, not_before='garbage'), 'fp')       # unreadable bound: no cache
+        self.assertEqual(once2.calls, 2)
+
+
+class _ClosingBase(_GateSpec):
+    def header(self, doms=None, tasks8=None, verify8=None):
+        doms = sorted(R.required_domains(self.d)) if doms is None else doms
+        t8 = R.approval_hash(self.tasks_text)[:8] if tasks8 is None else tasks8
+        v8 = self.vh[:8] if verify8 is None else verify8
+        return f"CLOSING AUDIT [domains: {', '.join(doms)}] [tasks:{t8}]" + (f" [verify:{v8}]" if v8 else '')
+
+    def auditor(self, ts=600.0, head=None, **kw):
+        d = dict(desc='closing auditor', head=(self.header() if head is None else head) + '\nAudit everything.',
+                 model='sonnet', result_chars=4000, tool_use_id='toolu_01ABC')
+        d.update(kw)
+        return ev('subagent', ts, **d)
+
+    def covers(self, e, gate2=True, fake=None, domains=None):
+        return R.closing_audit_covers(e, self.d, R.required_domains(self.d) if domains is None else domains,
+                                      gate2, fake or self.fake(), self.root)
+
+
+class TestClosingAudit(_ClosingBase):
+    def test_header_parsing(self):
+        self.d = self.mkspec('F23-eDoc-POS')
+        h = R.closing_audit_header(self.auditor())
+        self.assertEqual(h['domains'], R.required_domains(self.d))
+        self.assertEqual(h['tasks'], R.approval_hash(self.tasks_text)[:8])
+        self.assertEqual(h['verify'], self.vh[:8])
+        self.assertIsNone(R.closing_audit_header(self.auditor(head='Please run the\n' + self.header())))   # not first line
+        self.assertIsNone(R.closing_audit_header(self.auditor(head='plain prompt', desc=self.header())))   # only in desc
+        e = self.auditor(desc=self.header())
+        e['detail']['head'] = ''
+        self.assertIsNotNone(R.closing_audit_header(e))                                                   # no head: desc
+        self.assertIsNone(R.closing_audit_header(self.auditor(head='CLOSING AUDIT [domains: security]')))  # no tasks tag
+        for junk in (None, {}, {'detail': None}, 'x', 5):
+            self.assertIsNone(R.closing_audit_header(junk))
+
+    def test_ac210_coverage_cases(self):
+        for sid in SPEC_IDS:
+            self.d = self.mkspec(sid)
+            doms = R.required_domains(self.d)
+            self.assertEqual(doms, {'security', 'functional', 'performance', 'ui'})
+            self.assertTrue(self.covers(self.auditor()))
+            self.assertTrue(self.covers(self.auditor(result_chars=R.CLOSING_AUDIT_MIN_RESULT)))
+            self.assertFalse(self.covers(self.auditor(head=self.header(doms=['security']))))
+            self.assertFalse(self.covers(self.auditor(model='haiku')))
+            self.assertFalse(self.covers(self.auditor(model='claude-haiku-4-5')))
+            self.assertFalse(self.covers(self.auditor(phase='pre')))
+            self.assertFalse(self.covers(self.auditor(head=self.header(tasks8='deadbeef'))))       # stale [tasks:]
+            self.assertFalse(self.covers(self.auditor(head=self.header(verify8='deadbeef'))))      # wrong [verify:]
+            self.assertFalse(self.covers(self.auditor(head=self.header(verify8=''))))             # gate 2 needs it
+            self.assertTrue(self.covers(self.auditor(head=self.header(verify8='')), gate2=False))  # legacy: not needed
+            self.assertFalse(self.covers(self.auditor(ts=450.0)))                                  # older than verify_run
+            self.assertTrue(self.covers(self.auditor(ts=450.0), gate2=False))
+            self.assertFalse(self.covers(self.auditor(), fake=self.fake(run=None)))
+            self.assertFalse(self.covers(self.auditor(result_chars=20)))                           # "reply ok"
+            e = self.auditor()
+            del e['detail']['result_chars']
+            self.assertFalse(self.covers(e))                                                       # absent = no
+            self.assertFalse(self.covers(self.auditor(result_chars=True)))
+            self.assertFalse(self.covers(self.auditor(), fake=FakeEv()))                           # old lib, gate 2
+            self.assertFalse(R.closing_audit_covers(None, self.d, doms, True, self.fake(), self.root))
+
+    def test_uncovered_early_return_and_per_domain_untouched(self):
+        for sid in SPEC_IDS:
+            self.d = self.mkspec(sid)
+            doms = R.required_domains(self.d)
+            f = self.fake([self.auditor()])
+            self.assertEqual(R._uncovered(f, self.root, 's', doms, 0.0, spec_dir=self.d), set())
+            self.assertEqual(R._uncovered(f, self.root, 's', doms, 700.0, spec_dir=self.d), doms)   # before window
+            self.assertTrue(R._uncovered(f, self.root, 's', doms, 0.0))                             # no spec_dir: old path
+            only_sec = self.fake([self.auditor(head=self.header(doms=['security']))])
+            self.assertEqual(R._uncovered(only_sec, self.root, 's', doms, 0.0, spec_dir=self.d), doms - {'security'})
+            legacy = self.fake([ev('subagent', 600, desc='security review'), ev('subagent', 610, desc='functional acceptance'),
+                                ev('subagent', 620, desc='performance'), ev('subagent', 630, desc='ui mockup audit')])
+            self.assertEqual(R._uncovered(legacy, self.root, 's', doms, 0.0, spec_dir=self.d), set())
+            old = R._evidence
+            R._evidence = lambda: f
+            try:
+                self.assertEqual(R.uncovered_domains(self.root, 's', sid, 0.0, spec_dir=self.d), set())
+                self.assertEqual(R.uncovered_domains(self.root, 's', sid, 0.0), set())   # root/specs/<id>
+            finally:
+                R._evidence = old
+
+    def test_gate_detection_drives_the_verify_tag(self):
+        self.d = self.mkspec('002-aidd-hard-rules')
+        no_verify = self.auditor(head=self.header(verify8=''))
+        legacy_appr = {'spec': self.d.name, 'hash': R.approval_hash(self.tasks_text)}
+        doms = R.required_domains(self.d)
+        self.assertEqual(R._uncovered(self.fake([no_verify], approved=legacy_appr), self.root, 's', doms, 0.0,
+                                      spec_dir=self.d), set())
+        self.assertTrue(R._uncovered(self.fake([no_verify]), self.root, 's', doms, 0.0, spec_dir=self.d))
+
+    def test_check_spec_dir_r7_accepts_the_closing_auditor(self):
+        self.d = self.mkspec('F23-eDoc-POS')
+        put(self.d / 'qa-audit.md', 'qa')
+        old = R._evidence
+        self.addCleanup(setattr, R, '_evidence', old)
+        R._evidence = lambda: self.fake([ev('code_edit', 300), self.auditor()])
+        self.assertEqual([v for v in R.check_spec_dir(self.d) if v['rule'] == 'R7'], [])
+        R._evidence = lambda: self.fake([ev('code_edit', 300), self.auditor(result_chars=20)])
+        self.assertTrue([v for v in R.check_spec_dir(self.d) if v['rule'] == 'R7'])
+
+
+class TestClosingAuditGaps(_ClosingBase):
+    QA_ROWS = '| Domain | Result |\n|---|---|\n| security | ok |\n| functional | ok |\n| performance | ok |\n| ui | ok |\n'
+
+    def qa(self, text):
+        put(self.d / 'qa-audit.md', text)
+
+    def gaps(self, fake):
+        return ' | '.join(v['message'] for v in R.closing_audit_gaps(fake, self.root, self.d))
+
+    def test_gaps(self):
+        for sid in SPEC_IDS:
+            self.d = self.mkspec(sid)
+            f = self.fake([self.auditor()])
+            self.assertIn('does not exist', self.gaps(f))
+            self.qa('# QA\n\n' + self.QA_ROWS + '\nClosing auditor: toolu_01ABC\n')
+            ok(self, R.closing_audit_gaps(f, self.root, self.d))
+            self.qa('# QA\n\n' + self.QA_ROWS.replace('| performance | ok |\n', '') + '\ntoolu_01ABC\n')
+            self.assertIn('performance', self.gaps(f))
+            self.qa('# QA\n\n' + self.QA_ROWS)
+            self.assertIn("tool_use_id", self.gaps(f))
+            self.qa('# QA\n\n' + self.QA_ROWS + '\n<!-- toolu_01ABC -->\n')                       # comments never count
+            self.assertIn("tool_use_id", self.gaps(f))
+            e = self.auditor()
+            del e['detail']['tool_use_id']
+            self.assertIn('no recorded tool_use_id', self.gaps(self.fake([e])))
+
+    def test_not_applied(self):
+        self.d = self.mkspec('F23-eDoc-POS')
+        legacy_appr = {'spec': self.d.name, 'hash': R.approval_hash(self.tasks_text)}
+        ok(self, R.closing_audit_gaps(self.fake([self.auditor()], approved=legacy_appr), self.root, self.d))   # legacy
+        per_domain = self.fake([ev('subagent', 600, desc='security review'), ev('subagent', 610, desc='functional')])
+        ok(self, R.closing_audit_gaps(per_domain, self.root, self.d))                                          # per-domain
+        ok(self, R.closing_audit_gaps(FakeEv(), self.root, self.d))                                            # old lib
+        self.assertIsInstance(R.closing_audit_gaps(self.fake(), self.root, None), list)
 
 
 if __name__ == '__main__':

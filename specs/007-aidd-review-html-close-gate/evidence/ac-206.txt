@@ -1,0 +1,49 @@
+AC-206: PASS
+  [PASS] (b) Status-cell-only edit: review still complete (--check exit 0)
+  [PASS] (a) title-cell edit refused: "generated for tasks hash X; current is Y: run aidd review again"
+  [PASS] (b) approve still works after the Status-only edit
+  [PASS] (c) after approve rewrote the Approved: line: --check exit 0
+  [PASS] (c) `aidd review` does not rewrite the page
+  [PASS] (d) sources_digest mismatch (plan.md edited) refused and asks for `aidd review` again
+
+check_content(tasks) on the Status-column fixture: []
+$ aidd_review.py C:\Users\jquimis\AppData\Local\Temp\tmp7ketmq9b\specs\F23-eDoc-POS  -> exit 0
+wrote: C:\Users\jquimis\AppData\Local\Temp\tmp7ketmq9b\specs\F23-eDoc-POS\review.html
+file:///C:/Users/jquimis/AppData/Local/Temp/tmp7ketmq9b/specs/F23-eDoc-POS/review.html
+$ aidd_review.py C:\Users\jquimis\AppData\Local\Temp\tmp7ketmq9b\specs\F23-eDoc-POS --check  -> exit 0
+review.md: present
+valid: true
+hash_ok: true
+digest_ok: true
+fresh: true
+page_current: true
+complete: true
+--> PASS: (b) Status-cell-only edit: review still complete (--check exit 0)
+$ aidd_status.py rules approve C:\Users\jquimis\AppData\Local\Temp\tmp7ketmq9b\specs\F23-eDoc-POS  -> exit 1
+Refused: a review exists for F23-eDoc-POS (specs/F23-eDoc-POS/review.html exists but is stale: run `aidd review F23-eDoc-POS` again): complete it. Cause: review.md was generated for tasks hash f61b8081be84; current is 52dca3cf7ba1: run `aidd review` again.
+Fix: open specs/F23-eDoc-POS/review.html (`aidd review F23-eDoc-POS --open`), check every section (the Verification box one by one), press Send, move the downloaded review.md into specs/F23-eDoc-POS/, then the owner confirms: answer the question tagged `[tasks:52dca3cf]` or type `approve [tasks:52dca3cf]`.
+--> PASS: (a) title-cell edit refused: "generated for tasks hash X; current is Y: run aidd review again"
+$ aidd_status.py rules approve C:\Users\jquimis\AppData\Local\Temp\tmp7ketmq9b\specs\F23-eDoc-POS  -> exit 0
+Approved: 2026-10-05 hash:f61b8081be84
+approved through review+prompt · gate pointer -> F23-eDoc-POS
+--> PASS: (b) approve still works after the Status-only edit
+$ aidd_review.py C:\Users\jquimis\AppData\Local\Temp\tmp7ketmq9b\specs\F23-eDoc-POS --check  -> exit 0
+review.md: present
+valid: true
+hash_ok: true
+digest_ok: true
+fresh: true
+page_current: true
+complete: true
+--> PASS: (c) after approve rewrote the Approved: line: --check exit 0
+$ aidd_review.py C:\Users\jquimis\AppData\Local\Temp\tmp7ketmq9b\specs\F23-eDoc-POS  -> exit 0
+unchanged: C:\Users\jquimis\AppData\Local\Temp\tmp7ketmq9b\specs\F23-eDoc-POS\review.html
+file:///C:/Users/jquimis/AppData/Local/Temp/tmp7ketmq9b/specs/F23-eDoc-POS/review.html
+--> PASS: (c) `aidd review` does not rewrite the page
+$ aidd_review.py C:\Users\jquimis\AppData\Local\Temp\tmp7ketmq9b\specs\F22-eDoc-Pricing  -> exit 0
+wrote: C:\Users\jquimis\AppData\Local\Temp\tmp7ketmq9b\specs\F22-eDoc-Pricing\review.html
+file:///C:/Users/jquimis/AppData/Local/Temp/tmp7ketmq9b/specs/F22-eDoc-Pricing/review.html
+$ aidd_status.py rules approve C:\Users\jquimis\AppData\Local\Temp\tmp7ketmq9b\specs\F22-eDoc-Pricing  -> exit 1
+Refused: a review exists for F22-eDoc-Pricing (specs/F22-eDoc-Pricing/review.html exists but is stale: run `aidd review F22-eDoc-Pricing` again): complete it. Cause: review.md was generated for sources digest 8283d9c510b6; current is 1a0bde82edb3: run `aidd review` again.
+Fix: open specs/F22-eDoc-Pricing/review.html (`aidd review F22-eDoc-Pricing --open`), check every section (the Verification box one by one), press Send, move the downloaded review.md into specs/F22-eDoc-Pricing/, then the owner confirms: answer the question tagged `[tasks:e9a09d9b]` or type `approve [tasks:e9a09d9b]`.
+--> PASS: (d) sources_digest mismatch (plan.md edited) refused and asks for `aidd review` again

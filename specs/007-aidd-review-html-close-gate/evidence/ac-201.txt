@@ -1,0 +1,15 @@
+AC-201: PASS
+  [PASS] F23 approved+recorded: code write allowed although 13 others PENDING
+  [PASS] F23 PENDING: write blocked
+  [PASS] exactly ONE violation message
+  [PASS] names F23, "pointer" and the unblock path
+  [PASS] no other spec named
+
+gate_target_specs -> (['F23-eDoc-POS'], False, 'pointer')
+[gate Write src/app.py] rc=0 stderr=''
+--> PASS: F23 approved+recorded: code write allowed although 13 others PENDING
+[gate Write src/app.py] rc=2 stderr='aidd R6/R4: blocking this edit of app.py.\n  - [R6] Code edits are blocked: gate target spec F23-eDoc-POS (chosen by pointer: the gate pointer .aidd/gate_spec names it) has no valid tasks approval (missing, duplicated, or tasks.md changed after it was approved).\n    Next action: Present the tasks to the owner (review page, or AskUserQuestion with an "Approve" option), wait for their consent, then add/refresh the "Approved: <date> hash:<hash>" line in specs/F23-eDoc-POS/tasks.md. Unblock: `aidd review specs/F23-eDoc-POS` (owner reviews the page and saves review.md), then `aidd rules approve specs/F23-eDoc-POS` with the owner\'s consent; or, if this work belongs to another spec, `aidd rules activate <other>`. If the spec is finished or dropped, ask the user and run `aidd rules close F23-eDoc-POS` / `aidd rules abandon F23-eDoc-POS`.\n(Owner override: AIDD_RULES=warn|off)'
+--> PASS: F23 PENDING: write blocked
+--> PASS: exactly ONE violation message | count=1
+--> PASS: names F23, "pointer" and the unblock path
+--> PASS: no other spec named | []

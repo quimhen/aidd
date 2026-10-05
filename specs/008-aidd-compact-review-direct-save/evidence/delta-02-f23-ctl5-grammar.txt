@@ -1,0 +1,65 @@
+# delta audit probe 2 (scratch copy of real F23): AC-305 F23, 5-digit CTL codes, grammar agreement, oversize vs too-many-items routes
+# NOTE: the docs-route block in this run used a tasks.md without 'Human ref hours' (R1 refusal); the valid rerun is delta-03
+=== AC-305 F23-eDoc-POS (real copy)
+generate: exit=0 stdout='wrote: C:\\Users\\jquimis\\AppData\\Local\\Temp\\claude\\D--Fuentes-AIDD\\0f143e53-0037-424b-ad64-ed0094e98386\\scratchpad\\dA\\runs\\f23\\specs\\F23-eDoc-POS\\review.html\nfile:///C:/Users/jquimis/AppData/Local/Temp/claude/D--Fuentes-AIDD/0f143e53-0037-424b-ad64-ed0094e98386/scratchpad/dA/runs/f23/specs/F23-eDoc-POS/review.html' stderr='warning: spec.md has no "## Verification" section. Fix: Add "## Verification" to spec.md as | # | Command | Expected | Covers | with at least one row that runs the project\'s own tests (e.g. `python -m unittest discover -s tests`, `dotnet te'
+  Q1 unanswered=False ans='Point-of-sale mode of b1SyncLink.eDoc: payment methods catal' fld=['Source: repo — docs/b1SyncLink.eDoc/propuesta-impl']
+  Q2 unanswered=False ans='New development on top of the F12 tables, plus additive colu' fld=['Source: repo — docs/b1SyncLink.eDoc/propuesta-impl']
+  Q3 unanswered=False ans="Only the project's own Supabase (PostgREST/RPC, Postgres fun" fld=['Source: repo — docs/b1SyncLink.eDoc/propuesta-impl']
+  Q4 unanswered=False ans='Sistemas (Soyoda), product owner of b1SyncLink.eDoc; the dai' fld=['Source: repo — docs/b1SyncLink.eDoc/propuesta-impl']
+  Q5 unanswered=False ans='Upstream per the roadmap graph (arrows F20 --> F23, F21 --> ' fld=['Source: repo — docs/b1SyncLink.eDoc/propuesta-impl']
+  Q6 unanswered=False ans='Let a cashier sell at the counter with mixed payment methods' fld=['Source: repo — docs/b1SyncLink.eDoc/propuesta-impl']
+  Q7 unanswered=False ans='Exact. Each screen is built new, faithful to its approved HT' fld=['Source: repo — docs/b1SyncLink.eDoc/propuesta-impl']
+  warnings: ['14 decision rows without a D code are not reviewable: C1, C2, C3; C5; C6; C9; C10; C11; C12; C13, D18; ...']
+  summary Open decisions: exit=0 stdout='Open decisions: n/a'
+
+=== 5-digit CTL codes reviewable (F23 real copy)
+  codes 247 CTL 5-digit items 93 ['CTL-23001', 'CTL-23002', 'CTL-23003', 'CTL-23004', 'CTL-23005', 'CTL-23006']
+  CTL 5-digit first cells in sources 93 all extracted: True
+  warnings mentioning CTL: []
+  complete review.md incl. 5-digit CTL --check: exit=0 stdout='STATE=complete approved=247/247 comments=1 stale=no legacy=no tag=[tasks:473e244c]'
+  --comments: exit=0 stdout='CTL-23001: control five-digit comment'
+  CTL-23001 unchecked --check: exit=2 stdout='STATE=pending approved=246/247 comments=0 stale=no legacy=no tag=[tasks:473e244c]'
+
+=== grammar agreement spec / plan / code / page JS / test
+  plan == python: True | js == python: True | test literal == python: True
+  FR-301 says 1-5 for API/COMP/CTL/SCREEN: True | FR-301 still says "1 to 4 digits" alone: False
+  AC-314 states 5/6-digit rule: True
+  'FR-004b'          py=True js=True
+  'AC-01-n'          py=True js=True
+  'V-5'              py=True js=True
+  'D24b'             py=True js=True
+  'FR-4.1'           py=False js=False
+  'FR-٣'             py=False js=False
+  'FR-1\n'           py=False js=False
+  'FR-301"><img'     py=False js=False
+  'CTL-15001'        py=True js=True
+  'CTL-23001a'       py=True js=True
+  'CTL-150011'       py=False js=False
+  'API-12345'        py=True js=True
+  'SCREEN-12345'     py=True js=True
+  'COMP-00001-b'     py=True js=True
+  'FR-00001'         py=False js=False
+  'AC-12345'         py=False js=False
+  'T-12345'          py=False js=False
+  'T-1234'           py=True js=True
+
+=== docs correction (finding 5): no page -> only too many items refuses; oversize keeps answer route
+-- oversize: spec.md chars 410440
+  generate: exit=1 stdout='' stderr='aidd review: spec.md is 410440 chars (limit 400000): split the spec'
+  review.html written: False
+  --check: exit=3 stdout='STATE=stale approved=0/0 comments=0 stale=yes legacy=no tag=[tasks:e448a55e]'
+  --wait: exit=3 stdout='STATE=stale approved=0/0 comments=0 stale=yes legacy=no tag=[tasks:e448a55e]'
+  rule_gate blocks Approved: edit after bare answer: False
+  aidd rules approve after bare tagged answer: exit=1 stdout='FAIL R1 T-01: missing Human ref hours:. → In T-01 add "Agent min: <whole minutes an agent needs>" and "Human ref hours: <hours a human would need>"; remove "Estimated hours:".\nRefused: tasks.md is not R1-valid, so it cannot be approved. Fix the violations above, then ask the user for approval.'
+  approved events: ['answer']
+-- toomany: spec.md chars 69164
+  generate: exit=1 stdout='' stderr='aidd review: too many items (2004 > 2000): split the spec or run aidd review <spec> --full'
+  review.html written: False
+  --check: exit=3 stdout='STATE=too_many_items approved=0/2004 comments=0 stale=yes legacy=no tag=[tasks:e448a55e]'
+  --wait: exit=3 stdout='STATE=too_many_items approved=0/2004 comments=0 stale=yes legacy=no tag=[tasks:e448a55e]'
+  rule_gate blocks Approved: edit after bare answer: True
+  aidd rules approve after bare tagged answer: exit=1 stdout='FAIL R1 T-01: missing Human ref hours:. → In T-01 add "Agent min: <whole minutes an agent needs>" and "Human ref hours: <hours a human would need>"; remove "Estimated hours:".\nRefused: tasks.md is not R1-valid, so it cannot be approved. Fix the violations above, then ask the user for approval.'
+  approved events: []
+  --check with a compact page present: exit=3 stdout='STATE=too_many_items approved=0/2004 comments=0 stale=yes legacy=no tag=[tasks:e448a55e]'
+  --wait with a compact page present: exit=3 stdout='STATE=too_many_items approved=0/2004 comments=0 stale=yes legacy=no tag=[tasks:e448a55e]'
+  --check with a blob-less page (finding 6, low, not in scope): exit=3 stdout='STATE=stale approved=0/2004 comments=0 stale=yes legacy=no tag=[tasks:e448a55e]'

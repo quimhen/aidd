@@ -13,6 +13,7 @@ fails safe (require_independent_audit.py still blocks qa-audit.md writes;
 it just can't be un-blocked by a dispatch it never saw). Adjust the matcher
 in settings.json if you confirm the actual tool name differs.
 """
+import hashlib
 import re
 import sys
 from pathlib import Path
@@ -73,6 +74,32 @@ def _resolve_model(ti, cwd):
     return '', ''
 
 
+def _response_text(resp):
+    """aidd:FR-209 Best-effort text of a PostToolUse `tool_response`: a string; a dict with `content`
+    (string or list of {type:'text', text}) or `result`/`output`/`text`; a list of those. '' when none.
+    Never raises."""
+    try:
+        if isinstance(resp, str):
+            return resp
+        if isinstance(resp, list):
+            return '\n'.join(t for t in (_response_text(x) for x in resp) if t)
+        if isinstance(resp, dict):
+            if resp.get('type') == 'text' and isinstance(resp.get('text'), str):
+                return resp['text']
+            c = resp.get('content')
+            if c is not None:
+                t = _response_text(c)
+                if t:
+                    return t
+            for k in ('result', 'output', 'text'):
+                t = _response_text(resp.get(k)) if not isinstance(resp.get(k), dict) else ''
+                if t:
+                    return t
+    except Exception:
+        pass
+    return ''
+
+
 def _record_subagent():
     """FR-004: append the counting `subagent` row FIRST (before any other work), with the model
     always resolved (_resolve_model). The PreToolUse recorder's phase='pre' row is attribution only
@@ -106,6 +133,13 @@ def _record_subagent():
                       head=_ev.redact_secrets(_s(_ti.get('prompt')), limit=400)[0])
         if _tid:
             detail['tool_use_id'] = _tid
+        try:  # aidd:FR-209 size and hash of the final report; absent when the payload has no text
+            _txt = _response_text(event.get('tool_response'))
+            if _txt.strip():
+                detail['result_chars'] = len(_txt)
+                detail['result_sha1'] = hashlib.sha1(_txt.encode('utf-8', 'replace')).hexdigest()
+        except Exception:
+            pass
         if not _ev.append(_root, _sid, 'subagent', **detail):
             _ev.record_hook_error(_cwd, _sid, 'mark_agent_dispatch', 'subagent row not recorded')
     except Exception as _e:

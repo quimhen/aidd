@@ -323,7 +323,8 @@ class TestRouting(EvidenceCase):
     def test_kinds_are_routed_and_merged(self):
         for k in ("prompt", "subagent", "question", "answer", "find_spec", "session_start", "hook_error"):
             ev.append(self.root, "s", k, text="x")
-        for k in ("spec_edit", "code_edit", "approved", "spec_closed", "stop_block", "stop_block_exhausted"):
+        for k in ("spec_edit", "code_edit", "approved", "spec_closed", "stop_block", "stop_block_exhausted",
+                  "verify_run", "rules_override", "gate_pointer", "stop_reminder"):     # 007 kinds
             ev.append(self.root, "s", k, spec="x")
         sess = (self.evdir / "sessions" / "s.toon").read_text(encoding="utf-8")
         proj = (self.evdir / "events.toon").read_text(encoding="utf-8")
@@ -333,8 +334,8 @@ class TestRouting(EvidenceCase):
         for k in ev.PROJECT_KINDS:
             self.assertIn(f",{k},", proj)
             self.assertNotIn(f",{k},", sess)
-        self.assertEqual(len(ev.events(self.root)), 13)                    # kind=None merges both
-        self.assertEqual(len(ev.events(self.root, session="s")), 13)
+        self.assertEqual(len(ev.events(self.root)), 17)                    # kind=None merges both
+        self.assertEqual(len(ev.events(self.root, session="s")), 17)
         self.assertEqual(len(ev.events(self.root, kind="prompt")), 1)
         self.assertEqual(ev.events(self.root, session="other"), [])
         self.assertEqual(ev.count(self.root, "prompt", session="s"), 1)
@@ -1137,6 +1138,428 @@ class TestCanonPath(unittest.TestCase):
         for bad in ("", "\x00", "C:", "\\\\", "\\\\?\\", ":::", "...", "a\x00b", "?" * 5):
             self.assertIsInstance(ev.canon_path(bad), str)
         self.assertIsInstance(ev.canon_path(Path("x")), str)
+
+
+# ---------------------------------------------------------------------------
+# Spec 007 (T-01): gate pointer, gate target, approval extras, verify_run, code-edit attribution,
+# working-tree fingerprint. aidd:FR-201 aidd:FR-204 aidd:FR-205 aidd:FR-206 aidd:FR-208 aidd:FR-209
+# ---------------------------------------------------------------------------
+
+NUM_ID = "002-aidd-hard-rules"
+TXT_ID = "F23-eDoc-POS"
+
+
+class Spec007Case(EvidenceCase):
+    def edit(self, spec, name="tasks.md", session="s"):
+        ev.append(self.root, session, "spec_edit", path=f"specs/{spec}/{name}", spec=spec, file=name.lower())
+
+    def mkspec(self, *ids):
+        for i in ids:
+            (self.root / "specs" / i).mkdir(parents=True, exist_ok=True)
+
+    def write_pointer(self, value):
+        (self.root / ".aidd").mkdir(exist_ok=True)
+        (self.root / ".aidd" / "gate_spec").write_text(value + "\n", encoding="utf-8")
+
+
+class TestProjectKinds007(Spec007Case):
+    def test_new_kinds_are_project_kinds_and_routed_to_the_project_log(self):
+        for k in ("verify_run", "rules_override", "gate_pointer", "stop_reminder"):
+            self.assertIn(k, ev.PROJECT_KINDS)
+            self.assertNotIn(k, ev.SESSION_KINDS)
+            self.assertTrue(ev.append(self.root, "s1", k, spec=NUM_ID))
+        text = (self.evdir / "events.toon").read_text(encoding="utf-8")
+        for k in ("verify_run", "rules_override", "gate_pointer", "stop_reminder"):
+            self.assertIn("," + k + ",", text)
+        self.assertFalse((self.evdir / "sessions" / "s1.toon").exists())
+        self.assertEqual(ev.GATE_POINTER_FILE, ".aidd/gate_spec")
+
+
+class TestGateTarget(Spec007Case):
+    def test_pointer_wins_among_three_open(self):
+        for s in ("001-a", NUM_ID, TXT_ID):
+            self.edit(s)
+        self.write_pointer(NUM_ID)
+        self.assertEqual(ev.gate_target_specs(self.root), ([NUM_ID], False, "pointer"))
+        self.write_pointer(TXT_ID)
+        self.assertEqual(ev.gate_target_specs(self.root), ([TXT_ID], False, "pointer"))
+
+    def test_pointer_is_case_insensitive_and_returns_the_recorded_id(self):
+        for s in ("001-a", TXT_ID):
+            self.edit(s)
+        self.write_pointer(TXT_ID.lower())
+        self.assertEqual(ev.gate_target_specs(self.root), ([TXT_ID], False, "pointer"))
+        self.write_pointer(NUM_ID.upper())
+        self.edit(NUM_ID)
+        self.assertEqual(ev.gate_target_specs(self.root), ([NUM_ID], False, "pointer"))
+
+    def test_no_pointer_infers_newest_plan_or_tasks_edit(self):
+        self.edit("001-a")
+        self.edit(TXT_ID)
+        self.edit(NUM_ID, "plan.md")             # newest plan/tasks edit -> inferred
+        self.edit("001-a", "spec.md")            # spec.md edits never infer
+        self.edit(TXT_ID, "contracts.md")
+        self.assertEqual(ev.gate_target_specs(self.root), ([NUM_ID], False, "inferred"))
+
+    def test_real_data_active_spec_with_only_spec_md_is_never_the_target(self):
+        open_ids = [f"F{n:02d}-eDoc-Spec" for n in range(13, 27)]   # 14 open specs
+        for s in open_ids:
+            self.edit(s, "plan.md")
+        self.mkspec("F28-DB-Unification-Sync")
+        self.edit("F28-DB-Unification-Sync", "spec.md")             # newest edit of all, spec.md only
+        ev.set_active_spec(self.root, "F28-DB-Unification-Sync")
+        ids, amb, how = ev.gate_target_specs(self.root)
+        self.assertNotIn("F28-DB-Unification-Sync", ids)
+        self.assertEqual((ids, amb, how), ([open_ids[-1]], False, "inferred"))
+        self.assertEqual(len(ev.open_specs(self.root)), 14)
+
+    def test_active_spec_is_never_read(self):
+        self.edit("001-a")
+        self.edit(TXT_ID)
+        with unittest.mock.patch.object(ev, "get_active_spec", side_effect=AssertionError("read")), \
+                unittest.mock.patch.object(ev, "_active_path", side_effect=AssertionError("read")):
+            self.assertEqual(ev.gate_target_specs(self.root), ([TXT_ID], False, "inferred"))
+
+    def test_no_inference_candidate_is_ambiguous(self):
+        with unittest.mock.patch.object(ev, "open_specs", return_value=["001-a", TXT_ID]):
+            self.assertEqual(ev.gate_target_specs(self.root), ([], True, "ambiguous"))
+
+    def test_pointer_to_closed_or_unknown_spec_falls_back(self):
+        self.edit(NUM_ID)
+        self.edit(TXT_ID)
+        ev.append_spec_closed(self.root, "s", TXT_ID)
+        self.write_pointer(TXT_ID)                               # closed -> falls back to the only open
+        self.assertEqual(ev.gate_target_specs(self.root), ([NUM_ID], False, "only"))
+        self.write_pointer("999-ghost")                          # unknown
+        self.assertEqual(ev.gate_target_specs(self.root), ([NUM_ID], False, "only"))
+        self.edit("001-a")
+        self.assertEqual(ev.gate_target_specs(self.root), (["001-a"], False, "inferred"))
+
+    def test_one_open_no_pointer_is_only_and_none_is_none(self):
+        self.assertEqual(ev.gate_target_specs(self.root), ([], False, "none"))
+        self.edit(TXT_ID)
+        self.assertEqual(ev.gate_target_specs(self.root), ([TXT_ID], False, "only"))
+
+    def tasks_edit(self, spec, hash):
+        ev.append(self.root, "s", "spec_edit", path=f"specs/{spec}/tasks.md", spec=spec, file="tasks.md",
+                  hash=hash)
+
+    def _check_hash_neutral(self, target, other):
+        """aidd:FR-201 F-4: a Status write-back (tasks.md edit whose hash equals the approved hash) of an
+        approved spec does not move the inferred target; a real content change does."""
+        self.tasks_edit(other, "h-approved")
+        ev.append_approved(self.root, "s", other, "h-approved")
+        self.edit(target, "plan.md")
+        self.assertEqual(ev.gate_target_specs(self.root), ([target], False, "inferred"))
+        self.tasks_edit(other, "h-approved")             # hash-neutral: ignored
+        self.assertEqual(ev.gate_target_specs(self.root), ([target], False, "inferred"))
+        self.tasks_edit(other, "h-changed")              # content change: moves the target
+        self.assertEqual(ev.gate_target_specs(self.root), ([other], False, "inferred"))
+        self.tasks_edit(target, "")                      # no hash recorded: counts
+        self.assertEqual(ev.gate_target_specs(self.root), ([target], False, "inferred"))
+
+    def test_hash_neutral_edit_of_non_numeric_spec_never_moves_the_target(self):
+        self._check_hash_neutral(NUM_ID, TXT_ID)
+
+    def test_hash_neutral_edit_of_numeric_spec_never_moves_the_target(self):
+        self._check_hash_neutral(TXT_ID, NUM_ID)
+
+    def test_hash_neutral_uses_the_current_approval_only(self):
+        self.edit(NUM_ID, "plan.md")
+        ev.append_approved(self.root, "s", TXT_ID, "h-old")
+        ev.append_approved(self.root, "s", TXT_ID, "h-new")
+        self.tasks_edit(TXT_ID, "h-old")                      # matches a superseded approval: counts
+        self.assertEqual(ev.gate_target_specs(self.root), ([TXT_ID], False, "inferred"))
+        self.tasks_edit(NUM_ID, "")
+        self.tasks_edit(TXT_ID, "h-new")                      # current approval: ignored
+        self.assertEqual(ev.gate_target_specs(self.root), ([NUM_ID], False, "inferred"))
+
+    def test_only_hash_neutral_candidates_is_ambiguous(self):
+        for s in (NUM_ID, TXT_ID):
+            self.tasks_edit(s, "h-" + s)
+            ev.append_approved(self.root, "s", s, "h-" + s)
+        self.assertEqual(ev.gate_target_specs(self.root), ([], True, "ambiguous"))
+        self.assertEqual(ev.count(self.root, "gate_pointer"), 0)
+
+    def test_inferred_target_change_is_logged_once_per_change(self):
+        self.edit(NUM_ID)
+        self.edit(TXT_ID)
+        for _ in range(3):
+            self.assertEqual(ev.gate_target_specs(self.root), ([TXT_ID], False, "inferred"))
+        ch = ev.recent_gate_pointer_changes(self.root)
+        self.assertEqual([(c["spec"], c["prev"], c["by"]) for c in ch], [(TXT_ID, "", "inferred")])
+        self.edit(NUM_ID, "plan.md")
+        self.assertEqual(ev.gate_target_specs(self.root), ([NUM_ID], False, "inferred"))
+        self.assertEqual(ev.gate_target_specs(self.root), ([NUM_ID], False, "inferred"))
+        ch = ev.recent_gate_pointer_changes(self.root)
+        self.assertEqual([(c["spec"], c["prev"], c["by"]) for c in ch],
+                         [(NUM_ID, TXT_ID, "inferred"), (TXT_ID, "", "inferred")])
+        self.assertEqual(ev.get_gate_spec(self.root), "")        # the pointer file is never written
+        self.assertFalse((self.root / ".aidd" / "gate_spec").exists())
+
+    def test_inference_change_logging_skips_pointer_only_and_none(self):
+        self.mkspec(NUM_ID, TXT_ID)
+        self.assertEqual(ev.gate_target_specs(self.root), ([], False, "none"))
+        self.edit(NUM_ID)
+        self.assertEqual(ev.gate_target_specs(self.root), ([NUM_ID], False, "only"))
+        self.edit(TXT_ID)
+        self.assertTrue(ev.activate_spec(self.root, NUM_ID))
+        self.assertEqual(ev.gate_target_specs(self.root), ([NUM_ID], False, "pointer"))
+        self.assertEqual(ev.count(self.root, "gate_pointer"), 1)             # activate only
+        (self.root / ".aidd" / "gate_spec").unlink()
+        self.assertEqual(ev.gate_target_specs(self.root), ([TXT_ID], False, "inferred"))
+        ch = ev.recent_gate_pointer_changes(self.root)
+        self.assertEqual((ch[0]["spec"], ch[0]["prev"], ch[0]["by"]), (TXT_ID, NUM_ID, "inferred"))
+
+    def test_hash_neutral_inference_absolute_and_relative_root(self):
+        self.tasks_edit(TXT_ID, "h1")
+        ev.append_approved(self.root, "s", TXT_ID, "h1")
+        self.edit(NUM_ID, "plan.md")
+        self.tasks_edit(TXT_ID, "h1")
+        self.assertEqual(ev.gate_target_specs(self.root.resolve()), ([NUM_ID], False, "inferred"))
+        old = os.getcwd()
+        os.chdir(self.root.parent)
+        try:
+            self.assertEqual(ev.gate_target_specs(Path(self.root.name)), ([NUM_ID], False, "inferred"))
+        finally:
+            os.chdir(old)
+        self.assertEqual(ev.count(self.root, "gate_pointer"), 1)
+
+    def test_never_raises(self):
+        with unittest.mock.patch.object(ev, "open_specs", side_effect=RuntimeError("boom")):
+            self.assertEqual(ev.gate_target_specs(self.root), ([], False, "none"))
+        self.assertEqual(ev.get_gate_spec(None), "")
+        self.assertEqual(ev.get_gate_spec(self.root / "missing"), "")
+
+
+class TestActivateSpec(Spec007Case):
+    def test_refuses_unknown_closed_or_unsafe_ids(self):
+        self.mkspec(NUM_ID)
+        self.assertFalse(ev.activate_spec(self.root, NUM_ID))          # directory but never opened
+        self.edit("004-nodir")
+        self.assertFalse(ev.activate_spec(self.root, "004-nodir"))     # opened but no directory
+        for bad in ("", "..", ".", "specs/../x", "a\\b", "C:x", None):
+            self.assertFalse(ev.activate_spec(self.root, bad))
+        self.edit(NUM_ID)
+        ev.append_spec_closed(self.root, "s", NUM_ID)
+        self.assertFalse(ev.activate_spec(self.root, NUM_ID))          # closed
+        self.assertEqual(ev.get_gate_spec(self.root), "")
+        self.assertEqual(ev.recent_gate_pointer_changes(self.root), [])
+
+    def test_writes_pointer_and_event_only_on_change(self):
+        self.mkspec(NUM_ID, TXT_ID)
+        self.edit(NUM_ID)
+        self.edit(TXT_ID)
+        self.assertTrue(ev.activate_spec(self.root, NUM_ID, by="cli"))
+        self.assertEqual((self.root / ".aidd" / "gate_spec").read_text(encoding="utf-8"), NUM_ID + "\n")
+        self.assertTrue(ev.activate_spec(self.root, NUM_ID, by="cli"))   # unchanged: no event
+        self.assertEqual(ev.count(self.root, "gate_pointer"), 1)
+        self.assertTrue(ev.activate_spec(self.root, TXT_ID.lower(), by="approve"))   # case-insensitive
+        self.assertEqual(ev.get_gate_spec(self.root), TXT_ID)
+        ch = ev.recent_gate_pointer_changes(self.root)
+        self.assertEqual([(c["spec"], c["prev"], c["by"]) for c in ch],
+                         [(TXT_ID, NUM_ID, "approve"), (NUM_ID, "", "cli")])
+        self.assertIsInstance(ch[0]["ts"], float)
+        self.assertEqual(len(ev.recent_gate_pointer_changes(self.root, n=1)), 1)
+        self.assertEqual(ev.gate_target_specs(self.root), ([TXT_ID], False, "pointer"))
+        self.assertEqual(list((self.root / ".aidd").glob("*.tmp")), [])
+
+    def test_approved_only_spec_can_be_activated(self):
+        self.mkspec(TXT_ID)
+        ev.append_approved(self.root, "s", TXT_ID, "abc123")
+        self.assertTrue(ev.activate_spec(self.root, TXT_ID))
+
+    def test_absolute_and_relative_root(self):
+        self.mkspec(NUM_ID, TXT_ID)
+        self.edit(NUM_ID)
+        self.edit(TXT_ID)
+        old = os.getcwd()
+        os.chdir(self.root.parent)
+        try:
+            rel = Path(self.root.name)
+            self.assertTrue(ev.activate_spec(rel, TXT_ID))
+            self.assertEqual(ev.get_gate_spec(rel), TXT_ID)
+            self.assertEqual(ev.gate_target_specs(rel), ([TXT_ID], False, "pointer"))
+        finally:
+            os.chdir(old)
+        self.assertTrue(ev.activate_spec(self.root.resolve(), NUM_ID))
+        self.assertEqual(ev.get_gate_spec(self.root.resolve()), NUM_ID)
+
+    def test_set_active_spec_never_moves_the_gate_pointer(self):
+        self.mkspec(NUM_ID, TXT_ID)
+        self.edit(NUM_ID)
+        self.edit(TXT_ID)
+        self.assertTrue(ev.activate_spec(self.root, NUM_ID))
+        ev.set_active_spec(self.root, TXT_ID)
+        self.assertEqual(ev.get_gate_spec(self.root), NUM_ID)
+        self.assertEqual(ev.count(self.root, "gate_pointer"), 1)
+        self.assertEqual(ev.gate_target_specs(self.root), ([NUM_ID], False, "pointer"))
+
+    def test_write_failure_returns_false(self):
+        self.mkspec(NUM_ID)
+        self.edit(NUM_ID)
+        with unittest.mock.patch.object(ev.os, "replace", side_effect=OSError("disk")):
+            self.assertFalse(ev.activate_spec(self.root, NUM_ID))
+        self.assertEqual(ev.get_gate_spec(self.root), "")
+        self.assertEqual(ev.count(self.root, "gate_pointer"), 0)
+
+
+class TestApprovedExtras(Spec007Case):
+    def test_extras_round_trip_and_spec_hash_win(self):
+        self.assertTrue(ev.append_approved(self.root, "s", TXT_ID, "h1", gate=2, source="review+answer",
+                                           consent_ts=12.5, verify_hash="v1", review_sha1="r1"))
+        a = ev.latest_approved(self.root, TXT_ID)
+        self.assertEqual((a["spec"], a["hash"], a["gate"], a["source"], a["consent_ts"], a["verify_hash"],
+                          a["review_sha1"]), (TXT_ID, "h1", 2, "review+answer", 12.5, "v1", "r1"))
+        self.assertIsInstance(a["ts"], float)
+
+    def test_old_event_without_gate_and_hash_filter(self):
+        ev.append(self.root, "s", "approved", spec=NUM_ID, hash="old")    # legacy shape
+        ev.append_approved(self.root, "s", NUM_ID, "h2")
+        self.assertNotIn("gate", ev.latest_approved(self.root, NUM_ID, "old"))
+        self.assertEqual(ev.latest_approved(self.root, NUM_ID)["hash"], "h2")
+        self.assertEqual(ev.latest_approved(self.root, NUM_ID, "old")["hash"], "old")
+        self.assertIsNone(ev.latest_approved(self.root, NUM_ID, "nope"))
+        self.assertIsNone(ev.latest_approved(self.root, TXT_ID))
+        self.assertEqual(ev.count(self.root, "approved", spec=NUM_ID, hash="h2"), 1)
+
+
+class TestVerifyRun(Spec007Case):
+    def test_append_and_latest(self):
+        self.assertIsNone(ev.latest_verify_run(self.root, TXT_ID))
+        res = [{"n": "1", "cmd": "npm test", "exit": 1, "ok": False, "evidence": "evidence/verify-1.txt",
+                "sha1": "a" * 40}]
+        self.assertTrue(ev.append_verify_run(self.root, "s", TXT_ID, False, "vh", res, 100.0, "f1", "f1", True))
+        res2 = [dict(res[0], exit=0, ok=True)]
+        self.assertTrue(ev.append_verify_run(self.root, "s", TXT_ID, True, "vh", res2, 200.0, "f2", None, False))
+        ev.append_verify_run(self.root, "s", NUM_ID, True, "other", [], 300.0, None, None, True)
+        r = ev.latest_verify_run(self.root, TXT_ID)
+        self.assertEqual(set(r), {"ts", "ok", "verify_hash", "started", "fingerprint_start",
+                                  "fingerprint_end", "stable", "results"})
+        self.assertEqual((r["ok"], r["verify_hash"], r["started"], r["fingerprint_start"], r["fingerprint_end"],
+                          r["stable"], r["results"]), (True, "vh", 200.0, "f2", None, False, res2))
+        self.assertEqual(ev.latest_verify_run(self.root, NUM_ID)["verify_hash"], "other")
+
+    def test_secrets_in_cmd_and_problem_are_redacted(self):
+        # aidd:FR-205 a Verification command may carry a credential; the row must not persist it
+        for sid in (TXT_ID, NUM_ID):
+            res = [{"n": "1", "cmd": "TOKEN=abc123secret pytest", "problem": "curl -H 'Authorization: Bearer xyz987token'",
+                    "exit": 0, "ok": True}]
+            self.assertTrue(ev.append_verify_run(self.root, "s", sid, True, "vh", res, 1.0, None, None, True))
+            got = ev.latest_verify_run(self.root, sid)["results"][0]
+            blob = got["cmd"] + got["problem"]
+            self.assertNotIn("abc123secret", blob)
+            self.assertNotIn("xyz987token", blob)
+            self.assertEqual((got["n"], got["exit"], got["ok"]), ("1", 0, True))
+
+    def test_bad_input_never_raises(self):
+        self.assertFalse(ev.append_verify_run(self.root, "s", TXT_ID, True, "vh", [], "not-a-ts", None, None, True))
+        self.assertIsNone(ev.latest_verify_run(self.root, TXT_ID))
+
+
+class TestCodeEditAttribution(Spec007Case):
+    def test_last_code_edit_ts(self):
+        self.assertEqual(ev.last_code_edit_ts(self.root), 0.0)
+        ev.append(self.root, "s", "code_edit", path="a.py", target=TXT_ID)
+        t1 = ev.last_code_edit_ts(self.root)
+        time.sleep(0.01)
+        ev.append(self.root, "s", "code_edit", path="b.py")
+        self.assertGreater(ev.last_code_edit_ts(self.root), t1)
+
+    def test_code_edits_for_stamped_empty_and_legacy(self):
+        ev.append(self.root, "s", "code_edit", path="old.py")                           # legacy (no key)
+        ev.append(self.root, "s", "code_edit", path="a.py", target=TXT_ID, active=TXT_ID)
+        ev.append(self.root, "s", "code_edit", path="b.py", target=NUM_ID)
+        ev.append(self.root, "s", "code_edit", path="c.py", target="", active=NUM_ID)   # unattributed
+        paths = lambda evs: sorted(e["detail"]["path"] for e in evs)                     # noqa: E731
+        self.assertEqual(paths(ev.code_edits_for(self.root, TXT_ID.lower(), 0.0)), ["a.py", "c.py", "old.py"])
+        self.assertEqual(paths(ev.code_edits_for(self.root, TXT_ID, 0.0, include_unstamped=False)), ["a.py"])
+        self.assertEqual(paths(ev.code_edits_for(self.root, NUM_ID, 0.0, False)), ["b.py"])
+        self.assertEqual(paths(ev.code_edits_for(self.root, "", 0.0, False)), [])
+        future = time.time() + 60
+        self.assertEqual(ev.code_edits_for(self.root, TXT_ID, future), [])
+        mid = ev.events(self.root, kind="code_edit")[1]["ts"]
+        self.assertNotIn("a.py", paths(ev.code_edits_for(self.root, TXT_ID, mid)))
+
+
+def _git_ok():
+    try:
+        return subprocess.run(["git", "--version"], capture_output=True, timeout=10).returncode == 0
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
+class TestWorktreeFingerprint(unittest.TestCase):
+    def setUp(self):
+        self._td = tempfile.TemporaryDirectory()
+        self.root = Path(self._td.name) / "proj"
+        (self.root / "specs" / TXT_ID).mkdir(parents=True)
+        (self.root / ".aidd").mkdir()
+        (self.root / "src").mkdir()
+        (self.root / "src" / "a.py").write_text("x = 1\n", encoding="utf-8")
+        (self.root / "specs" / TXT_ID / "spec.md").write_text("# s\n", encoding="utf-8")
+
+    def tearDown(self):
+        self._td.cleanup()
+
+    def git(self, *args):
+        subprocess.run(["git", "-c", "user.email=t@t", "-c", "user.name=t", "-c", "core.autocrlf=false",
+                        *args], cwd=str(self.root), check=True, capture_output=True, timeout=30)
+
+    @unittest.skipUnless(_git_ok(), "git not available")
+    def test_git_repo(self):
+        self.git("init", "-q")
+        self.git("add", "-A")
+        self.git("commit", "-q", "-m", "init")
+        f1 = ev.worktree_fingerprint(self.root)
+        self.assertRegex(f1 or "", r"^[0-9a-f]{16}$")
+        self.assertEqual(ev.worktree_fingerprint(self.root), f1)                     # stable twice
+        (self.root / "specs" / TXT_ID / "spec.md").write_text("# changed\n", encoding="utf-8")
+        (self.root / "specs" / TXT_ID / "new.md").write_text("n\n", encoding="utf-8")
+        (self.root / ".aidd" / "gate_spec").write_text(TXT_ID + "\n", encoding="utf-8")
+        self.assertEqual(ev.worktree_fingerprint(self.root), f1)                     # specs/ .aidd/ ignored
+        (self.root / "src" / "a.py").write_text("x = 2\n", encoding="utf-8")
+        f2 = ev.worktree_fingerprint(self.root)
+        self.assertNotEqual(f2, f1)                                                   # tracked edit
+        (self.root / "src" / "new.py").write_text("y\n", encoding="utf-8")
+        f3 = ev.worktree_fingerprint(self.root)
+        self.assertNotEqual(f3, f2)                                                   # untracked file
+        (self.root / "src" / "new.py").write_text("z\n", encoding="utf-8")
+        f4 = ev.worktree_fingerprint(self.root)
+        self.assertNotEqual(f4, f3)                                                   # untracked content
+        self.git("add", "src")
+        self.git("commit", "-q", "-m", "two")
+        f5 = ev.worktree_fingerprint(self.root)
+        self.assertNotEqual(f5, f4)                                                   # commit
+        self.assertEqual(ev.worktree_fingerprint(self.root), f5)
+
+    @unittest.mock.patch.dict(os.environ)
+    def test_non_git_dir_uses_mtime_fallback(self):
+        os.environ["GIT_CEILING_DIRECTORIES"] = str(self.root.parent)   # never discover an outer repo
+        f1 = ev.worktree_fingerprint(self.root)
+        self.assertRegex(f1 or "", r"^[0-9a-f]{16}$")
+        self.assertEqual(ev.worktree_fingerprint(self.root), f1)
+        (self.root / "specs" / TXT_ID / "spec.md").write_text("# changed a lot\n", encoding="utf-8")
+        (self.root / ".aidd" / "x").write_text("x", encoding="utf-8")
+        (self.root / "src" / "__pycache__").mkdir()
+        (self.root / "src" / "__pycache__" / "a.pyc").write_text("c", encoding="utf-8")
+        self.assertEqual(ev.worktree_fingerprint(self.root), f1)
+        (self.root / "src" / "a.py").write_text("x = 22\n", encoding="utf-8")
+        self.assertNotEqual(ev.worktree_fingerprint(self.root), f1)
+
+    def test_git_missing_falls_back_to_mtimes(self):
+        expected = ev._fp_from_mtimes(self.root, time.monotonic() + 8)
+        with unittest.mock.patch.object(ev.subprocess, "run", side_effect=FileNotFoundError("git")):
+            self.assertEqual(ev.worktree_fingerprint(self.root), expected)
+
+    def test_over_file_cap_or_budget_is_none(self):
+        with unittest.mock.patch.object(ev, "_FP_MAX_FILES", 1), \
+                unittest.mock.patch.object(ev.subprocess, "run", side_effect=FileNotFoundError("git")):
+            (self.root / "src" / "b.py").write_text("b", encoding="utf-8")
+            self.assertIsNone(ev.worktree_fingerprint(self.root))
+        self.assertIsNone(ev.worktree_fingerprint(self.root, budget_s=0))
+        self.assertIsNone(ev.worktree_fingerprint(self.root / "missing"))
+        self.assertIsNone(ev.worktree_fingerprint(None))
 
 
 if __name__ == "__main__":

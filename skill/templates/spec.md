@@ -28,6 +28,18 @@ confirms each one and the Source becomes `user — "..."`. Quotes are checked ag
 `tasks.md`'s "leave it blank, don't invent" rule, applied one stage earlier — a plan built on
 a guessed requirement produces exactly the kind of rework this whole skill exists to avoid.
 
+## Executive summary
+
+<!-- aidd:FR-301 the owner reads this before approving; keep it short: it is capped, and the first lines of each bullet are what the review page and `aidd review --summary` show -->
+
+- **Objective:** <one sentence: what this achieves and why>
+- **Scope:** <what changes, by component or file; and what is out>
+- **Cost:** <minutes and tokens, task count, waves>
+- **Risks:** <what could go wrong, and the mitigation>
+- **Open decisions:** <what the owner still has to decide, or `none`>
+
+Each bullet is capped (long text is cut). A legacy spec without this section still gets a mechanical summary built from its other sections.
+
 ## Pipeline route
 
 Declare, for every step, whether it runs. Skipping a step needs the user: `waived` requires a Reason and a
@@ -82,6 +94,27 @@ zero, a user with no rows). `Real data (id)` is a real record id/key from the sy
 | Case | Real data (id) | Expected | Edge? |
 |---|---|---|---|
 | AC-001 | | | |
+
+## Verification
+
+How the close gate EXECUTES this spec (`aidd verify <spec>`). One row per check; `Expected` is `exit 0` (default) or `contains: <text>`. Lint: each command must be a real runner (`dotnet test`, `npm test`, `pytest`, `python -m unittest ...`, `cargo test`, `go test`, ...) or invoke an existing repo path, no inline-code interpreters (`python -c`, `node -e`, `cmd /c`, `powershell -Command`), and a `contains:` text must not appear literally in its own command. This section is mandatory for new approvals; the owner reviews it on its own in `review.html`. Legacy specs without it stay valid.
+
+| # | Command | Expected | Covers |
+|---|---|---|---|
+| V-1 | | exit 0 | FR-001 |
+
+## Optimization brief
+
+Optional for legacy specs. Before Step 3 the AI thinks about what could be better than the literal request and returns 2-3 options, each with its cost (tokens/minutes) and risk, plus a recommendation. The owner picks: ask the owner, using whatever ask-the-user mechanism the host offers.
+
+Optimization targets, in order: (1) correct result on real data, (2) fewer moving parts, (3) reuse of existing code, (4) smaller PRs, (5) lower token cost. When a proposal trades one target for another, say so.
+
+| Option | Cost (tokens / min) | Risk | Recommended? |
+|---|---|---|---|
+| A | | | |
+| B | | | |
+
+Owner pick:
 
 ## Optional Align questions
 

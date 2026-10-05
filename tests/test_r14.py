@@ -181,8 +181,11 @@ class TestR14R8(Helpers):
 
 
 class TestR14R5(Helpers):
+    """The 006 pre-build demand is the `strict` R5 mode since spec 007 (FR-206): pinned here."""
+
     def setUp(self):
         super().setUp()
+        self.env["AIDD_R5_AUDIT"] = "strict"     # the hook child process sees strict
         self.put(PLAN, "# plan\n")
         self.ev("find_spec", rebuilt=False, ok=True, source="bash")
 
@@ -197,6 +200,47 @@ class TestR14R5(Helpers):
     def test_pre_row_does_not_satisfy_tasks_chain(self):
         self.sub("Auditor", "independent auditor over plan.md", model="sonnet", phase="pre")
         self.assertBlocked(self.gate(TASKS, content=tasks_text()), "subagent")
+
+
+_RULE_GATE_SRC = (Path(__file__).resolve().parent.parent / "skill" / "hooks" / "rule_gate.py")
+
+
+def _rule_gate_has_r5_mode():
+    try:
+        return "r5_audit_mode" in _RULE_GATE_SRC.read_text(encoding="utf-8")
+    except OSError:
+        return False
+
+
+class TestR14R5Modes(Helpers):
+    """Spec 007 (FR-206, AC-211): the library's R5 mode; the hook twin activates once rule_gate reads it."""
+
+    def setUp(self):
+        super().setUp()
+        self.put(PLAN, "# plan\n")
+        self.ev("find_spec", rebuilt=False, ok=True, source="bash")
+
+    def test_library_mode_values(self):
+        import os
+        from unittest.mock import patch
+        for value, want in ((None, "advisory"), ("", "advisory"), ("advisory", "advisory"), ("x", "advisory"),
+                            ("strict", "strict"), (" STRICT ", "strict")):
+            with patch.dict(os.environ):
+                os.environ.pop("AIDD_R5_AUDIT", None)
+                if value is not None:
+                    os.environ["AIDD_R5_AUDIT"] = value
+                self.assertEqual(R.r5_audit_mode(), want, value)
+
+    def test_haiku_still_never_counts_in_strict(self):
+        self.env["AIDD_R5_AUDIT"] = "strict"
+        self.sub("Auditor", "independent auditor over plan.md", model="haiku")
+        self.assertBlocked(self.gate(TASKS, content=tasks_text()), "subagent")
+
+    @unittest.skipUnless(_rule_gate_has_r5_mode(), "rule_gate does not read r5_audit_mode yet (T-06)")
+    def test_advisory_twin_haiku_only_is_allowed(self):
+        self.env.pop("AIDD_R5_AUDIT", None)
+        self.sub("Auditor", "independent auditor over plan.md", model="haiku")
+        self.assertAllowed(self.gate(TASKS, content=tasks_text()))
 
 
 class TestDispatchModelResolution(Helpers):

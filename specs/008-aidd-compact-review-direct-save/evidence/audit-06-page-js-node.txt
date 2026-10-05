@@ -1,0 +1,138 @@
+{
+ "parity": [
+  [
+   "FR-004b",
+   true
+  ],
+  [
+   "AC-01-n",
+   true
+  ],
+  [
+   "V-5",
+   true
+  ],
+  [
+   "D24b",
+   true
+  ],
+  [
+   "FR-4.1",
+   false
+  ],
+  [
+   "FR-٣",
+   false
+  ],
+  [
+   "FR-1\n",
+   false
+  ],
+  [
+   "FR-301\"><img",
+   false
+  ],
+  [
+   "CTL-15001",
+   true
+  ],
+  [
+   "CTL-150011",
+   false
+  ],
+  [
+   "FR-00001",
+   false
+  ]
+ ],
+ "code_re_src": "^(SUMMARY|Q\\d{1,3}|D\\d{1,3}(?:-?[a-z])?|V-\\d{1,3}|(?:FR|AC|T)-\\d{1,4}(?:-?[a-z])?|(?:API|COMP|CTL|SCREEN)-\\d{1,5}(?:-?[a-z])?)$",
+ "miss1": "Falta: Verificación V-1..V-5",
+ "miss2": "Falta: Tareas T-17; Verificación V-1..V-5",
+ "picker": [
+  "aidd-bd228f9f",
+  "aidd-bd228f9f"
+ ],
+ "picker_noid": "aidd-f9c19cb8",
+ "picker_bad": "scriptaaaaaaaaaaaaaaaaaaaaaaaaaa",
+ "md": "---\nspec: F23-eDoc-POS\ntasks_hash: aaaaaaaaaaaa\nsources_digest: bbbbbbbbbbbb\nformat: codes-v2\napproved: false\n---\n- [x] SUMMARY @0123abcd\n> a - [x] FR-2 ---\n- [x] FR-1\n- [ ] FR-2\n- [x] FR-004b\n",
+ "fm": [
+  true,
+  false,
+  false,
+  false
+ ],
+ "save": {
+  "ok": [
+   {
+    "ok": true,
+    "method": "fs",
+    "reason": ""
+   },
+   [
+    "review.md"
+   ],
+   "TEXT"
+  ],
+  "other": [
+   {
+    "ok": false,
+    "method": "mismatch",
+    "reason": "mismatch"
+   },
+   [],
+   [
+    "This folder belongs to F23-eDoc-POS/5c3cbb5b: pick specs/F28-DB-Unification-Sync/"
+   ]
+  ],
+  "nohtml": [
+   {
+    "ok": false,
+    "method": "mismatch",
+    "reason": "mismatch"
+   },
+   [],
+   [
+    "This folder belongs to no review of this spec (no matching review.html): pick specs/F28-DB-Unification-Sync/"
+   ]
+  ],
+  "abort": [
+   {
+    "ok": false,
+    "method": "cancelled",
+    "reason": "cancelled"
+   },
+   [],
+   []
+  ],
+  "typeerr": [
+   {
+    "ok": true,
+    "method": "download",
+    "reason": "picker-failed"
+   },
+   2,
+   [
+    "application/octet-stream",
+    "click:review.md"
+   ],
+   [
+    "Folder picker failed (TypeError): using the download instead",
+    "review.md downloaded: if the browser renamed it, save it over specs/F28-DB-Unification-Sync/review.md"
+   ]
+  ],
+  "noapi": [
+   {
+    "ok": true,
+    "method": "download",
+    "reason": "no-api"
+   },
+   [
+    "application/octet-stream",
+    "click:review.md"
+   ],
+   [
+    "review.md downloaded: if the browser renamed it, save it over specs/F28-DB-Unification-Sync/review.md"
+   ]
+  ]
+ }
+}

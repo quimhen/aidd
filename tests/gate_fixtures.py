@@ -57,6 +57,18 @@ def spec_text(checklist=CHECKLIST_OK, route_overrides=None, extra=""):
     return f"# Spec — x\n\n{checklist}\n{route(route_overrides)}\n{extra}"
 
 
+# aidd:FR-204 aidd:FR-205 spec 007: a NEW approval needs a valid `## Verification` (rules.check_verification).
+# The row runs src/cart.py, which every Base project (and the d1b layout) creates, so the lint accepts it.
+VERIFICATION = ("\n## Verification\n\n| # | Command | Expected | Covers |\n|---|---|---|---|\n"
+                "| 1 | `python src/cart.py` | exit 0 | FR-001 |\n")
+
+
+def verified_spec(**kw):
+    """spec_text(...) plus a valid `## Verification` section."""
+    kw["extra"] = kw.get("extra", "") + VERIFICATION
+    return spec_text(**kw)
+
+
 DEBT_OPEN = """
 ## Visual debt
 
@@ -233,6 +245,9 @@ class Base(unittest.TestCase):
         self.env["AIDD_TESTING"] = "1"
         self.env["AIDD_R7_FIX_EDITS"] = "0"       # strict R7 by default; tolerance tests override it
         self.env["AIDD_R5_FIX_EDITS"] = "0"       # strict R5 by default; AC-010 tests override it
+        self.env["AIDD_R5_AUDIT"] = "strict"      # spec 007 FR-206: the old R5 tests keep their meaning (default is advisory)
+        self._old_r5 = os.environ.get("AIDD_R5_AUDIT")
+        os.environ["AIDD_R5_AUDIT"] = "strict"    # same for the in-process decide() calls
 
     def tearDown(self):
         _common.marker_path(self.session).unlink(missing_ok=True)
@@ -245,6 +260,10 @@ class Base(unittest.TestCase):
             os.environ.pop("AIDD_TESTING", None)
         else:
             os.environ["AIDD_TESTING"] = self._old_testing
+        if self._old_r5 is None:
+            os.environ.pop("AIDD_R5_AUDIT", None)
+        else:
+            os.environ["AIDD_R5_AUDIT"] = self._old_r5
         shutil.rmtree(self.evdir, ignore_errors=True)
         self._td.cleanup()
 

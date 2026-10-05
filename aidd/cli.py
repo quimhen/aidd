@@ -93,6 +93,18 @@ def cmd_rules(args):
     return _run("aidd_status.py", ["rules", *args.rules_args])
 
 
+def cmd_review(args):
+    # aidd:FR-202 aidd:FR-203 aidd:FR-303 aidd:FR-309 aidd:FR-313 — passthrough to aidd_review.py
+    # (`<spec_dir> [--open] [--check] [--wait] [--comments] [--summary] [--full] [--timeout S]
+    # [--interval S]`); aidd_review.py owns the parsing.
+    return _run("aidd_review.py", [args.spec_dir, *args.review_flags])
+
+
+def cmd_verify(args):
+    # aidd:FR-205 — passthrough to aidd_status.py (`verify <spec>`); main() short-circuits it.
+    return _run("aidd_status.py", ["verify", *args.verify_args])
+
+
 def cmd_check_charter(args):
     return _run("check_charter.py", [args.root] if args.root else [])
 
@@ -262,7 +274,7 @@ def build_parser():
     p_mem.set_defaults(func=cmd_mem)
 
     p_status = sub.add_parser(
-        "status", help="Hard-rules ledger of ALL open specs from the evidence log (route, alignment, approval, waves, auditors); --json",
+        "status", help="Hard-rules ledger of ALL open specs from the evidence log (route, alignment, approval, waves, auditors); --json; --refresh adds git/review/verification facts",
         add_help=False)
     p_status.add_argument("status_args", nargs=argparse.REMAINDER, help="forwarded to aidd_status.py (try: aidd status [spec_dir] --json)")
     p_status.set_defaults(func=cmd_status)
@@ -272,6 +284,19 @@ def build_parser():
         add_help=False)
     p_rules.add_argument("rules_args", nargs=argparse.REMAINDER, help="forwarded to aidd_status.py (try: aidd rules check specs/001-x)")
     p_rules.set_defaults(func=cmd_rules)
+
+    p_review = sub.add_parser(
+        "review", help="aidd review <spec> [--open] [--check] [--wait] [--comments] [--summary] [--full] [--timeout S] [--interval S]: generate specs/<id>/review.html (compact page) or read the approval state")
+    p_review.add_argument("spec_dir", help="spec folder, e.g. specs/008-x (first, then the flags)")
+    p_review.add_argument("review_flags", nargs=argparse.REMAINDER,
+                          help="forwarded to aidd_review.py: --open, --check (ONE status line; exit 0 complete / 2 pending / 3 stale, legacy, too many items), --wait (poll, then ONE status line; exit 0 complete / 2 timeout / 3 cannot help), --comments (<CODE>: <comment> lines), --summary (mechanical summary, writes nothing), --full (long page with heading keys), --timeout S, --interval S")
+    p_review.set_defaults(func=cmd_review)
+
+    p_verify = sub.add_parser(
+        "verify", help="Run the spec's ## Verification commands and record the evidence (verify <spec>)",
+        add_help=False)
+    p_verify.add_argument("verify_args", nargs=argparse.REMAINDER, help="forwarded to aidd_status.py verify")
+    p_verify.set_defaults(func=cmd_verify)
 
     p_cal = sub.add_parser(
         "calibrate", help="Record measured minutes/tokens of a closed spec into .aidd/calibration.toon")
@@ -424,9 +449,15 @@ def main(argv=None):
         # come before the subcommand (--root X, --help) work too — argparse's
         # REMAINDER would otherwise choke on a leading option.
         sys.exit(_run("aidd_memory.py", argv[1:]))
-    if argv and argv[0] in ("status", "rules"):
-        # Same passthrough for the hard-rules commands (aidd_status.py owns the parsing).
+    if argv and argv[0] in ("status", "rules", "verify"):
+        # Same passthrough for the hard-rules commands (aidd_status.py owns the parsing);
+        # `aidd verify <spec>` -> `aidd_status.py verify <spec>` (aidd:FR-205).
         sys.exit(_run("aidd_status.py", argv))
+    if argv and argv[0] == "review":
+        # aidd:FR-313 — aidd_review.py owns the parsing, so the flags work in any order
+        # (`aidd review --summary <spec>` as well as `aidd review <spec> --summary`); the
+        # REMAINDER subparser below rejected a leading flag with exit 2 (= --check `pending`).
+        sys.exit(_run("aidd_review.py", argv[1:]))
     parser = build_parser()
     args = parser.parse_args(argv)
     sys.exit(args.func(args))

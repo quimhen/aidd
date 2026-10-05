@@ -1,0 +1,53 @@
+AC-215: FAIL
+  [PASS] Stop BLOCKS naming only F23 with the three closing steps
+  [PASS] once per session, a reminder names F21
+  [PASS] second Stop: reminder not repeated
+  [PASS] after pointer -> F22: reminder lists F21 and F23 (non-blocking)
+  [PASS] aidd status prints "gate pointer: F23 -> F22"
+  [FAIL] no pointer + several open specs: R8 blocks none
+  [PASS] AIDD_STOP_BLOCKS=1 allows after one block (budget already consumed earlier)
+
+[hook stop_gate.py Stop] rc=2 stdout='' stderr='aidd R8: spec F23-eDoc-POS not closed (1 code edit(s); block 1 of 3). Do not stop yet. Missing:\n  [ ] specs/F23-eDoc-POS/qa-audit.md does not exist - write it from the auditors\' findings.\n  [ ] no distinct functional auditor subagent ran after the last code edit - dispatch an independent functional auditor (Agent tool; its description/prompt must name "functional"; one subagent covers one domain).\n  [ ] no distinct performance auditor subagent ran after the last code edit - dispatch an independent performance auditor (Agent tool; its description/prompt must name "performance"; one subagent covers one domain).\n  [ ] no distinct security auditor subagent ran after the last code edit - dispatch an independent security auditor (Agent tool; its description/prompt must name "security"; one subagent covers one domain).\n  [ ] no distinct ui auditor subagent ran after the last code edit - dispatc'
+--> PASS: Stop BLOCKS naming only F23 with the three closing steps
+--> PASS: once per session, a reminder names F21
+[hook stop_gate.py Stop] rc=2 stdout='' stderr='aidd R8: spec F23-eDoc-POS not closed (1 code edit(s); block 2 of 3). Do not stop yet. Missing:\n  [ ] specs/F23-eDoc-POS/qa-audit.md does not exist - write it from the auditors\' findings.\n  [ ] no distinct functional auditor subagent ran after the last code edit - dispatch an independent functional auditor (Agent tool; its description/prompt must name "functional"; one subagent covers one domain).\n  [ ] no distinct performance auditor subagent ran after the last code edit - dispatch an independent performance auditor (Agent tool; its description/prompt must name "performance"; one subagent covers one domain).\n  [ ] no distinct security auditor subagent ran after the last code edit - dispatch an independent security auditor (Agent tool; its description/prompt must name "security"; one subagent covers one domain).\n  [ ] no distinct ui auditor subagent ran after the last code edit - dispatc'
+--> PASS: second Stop: reminder not repeated
+$ aidd_status.py rules activate F22-eDoc-Pricing  -> exit 0
+gate pointer: F23-eDoc-POS -> F22-eDoc-Pricing
+[hook stop_gate.py Stop] rc=0 stdout='{"systemMessage": "AIDD: spec F21-eDoc-Inventory is approved and has 1 code edit(s) with no closing audit; gate target is F22-eDoc-Pricing; see `aidd status`.\\nAIDD: spec F23-eDoc-POS is approved and has 1 code edit(s) with no closing audit; gate target is F22-eDoc-Pricing; see `aidd status`."}' stderr=''
+--> PASS: after pointer -> F22: reminder lists F21 and F23 (non-blocking)
+$ aidd_status.py status  -> exit 0
+Open specs: F21-eDoc-Inventory (approval valid), F22-eDoc-Pricing (approval valid), F23-eDoc-POS (approval valid)
+F21-eDoc-Inventory [OPEN]  Route: -1/0/1/1.5/2/3/4 run   Align: 0 proposed · 6 unverified quote(s) · Mapper ✘ · Graph ✘
+Tasks: approved ✔ (hash ok, approval recorded) · Waves: 2 · critical path 50 min · ~50 min, ~100k tokens   Build: 2 code edits · Auditors: functional ✘ performance ✘ security ✘ ui ✘
+Visual debt open: 0 (blocking this spec: 0) · qa-audit.md: no
+Review: no page · Verification: never-run (1 command(s)) · gate 2 · 1 code edit(s) attributed since approval
+  WHY blocked: R5 Quote not found in any recorded user prompt/answer: "es el modulo de checkout". → Quote the user's exact words from a prompt written AFTER spec.md was first drafted (5+ words), or ask the user (AskUserQuestion) and quote their answer verbatim (2+ words).
+  WHY blocked: R5 No find_spec run recorded in this session. → Run `python skill/scripts/find_spec.py` (Step -1) before planning.
+  WHY blocked: R5 tasks.md exists but plan.md does not. → Write plan.md (Step 3) before tasks.md.
+F22-eDoc-Pricing [OPEN]  Route: -1/0/1/1.5/2/3/4 run   Align: 0 proposed · 6 unverified quote(s) · Mapper ✘ · Graph ✘
+Tasks: approved ✔ (hash ok, approval recorded) · Waves: 2 · critical path 50 min · ~50 min, ~100k tokens   Build: 2 code edits · Auditors: functional ✘ performance ✘ security ✘ ui ✘
+Visual debt open: 0 (blocking this spec: 0) · qa-audit.md: no
+Review: no page · Verification: never-run (1 command(s)) · gate 2 · 0 code edit(s) attributed since approval
+  WHY blocked: R5 Quote not found in any recorded user prompt/answer: "es el modulo de checkout". → Quote the user's exact words from a prompt written AFTER spec.md was first drafted (5+ words), or ask the user (AskUserQuestion) and quote their answer verbatim (2+ words).
+  WHY blocked: R5 No find_spec run recorded in this session. → Run `python skill/scripts/find_spec.py` (Step -1) before planning.
+  WHY blocked: R5 tasks.md exists but plan.md does not. → Write plan.md (Step 3) before tasks.md.
+F23-eDoc-POS [OPEN]  Route: -1/0/1/1.5/2/3/4 run   Align: 0 proposed · 6 unverified quote(s) · Mapper ✘ · Graph ✘
+Tasks: approved ✔ (hash ok, approval recorded) · Waves: 2 · critical path 50 min · ~50 min, ~100k tokens   Build: 2 code edits · Auditors: functional ✘ performance ✘ security ✘ ui ✘
+Visual debt open: 0 (blocking this spec: 0) · qa-audit.md: no
+Review: no page · Verification: never-run (1 command(s)) · gate 2 · 1 code edit(s) attributed since approval
+  WHY blocked: R5 Quote not found in any recorded user prompt/answer: "es el modulo de checkout". → Quote the user's exact words from a prompt written AFTER spec.md was first drafted (5+ words), or ask the user (AskUserQuestion) and quote their answer verbatim (2+ words).
+  WHY blocked: R5 No find_spec run recorded in this session. → Run `python skill/scripts/find_spec.py` (Step -1) before planning.
+  WHY blocked: R5 tasks.md exists but plan.md does not. → Write plan.md (Step 3) before tasks.md.
+User answers recorded (AskUserQuestion answered): 0 — no approval/close/abandon is possible until the user answers a question · questions asked: 0
+Stop blocks: F23-eDoc-POS x2
+Hook errors: 0
+gate pointer: F22-eDoc-Pricing · last changes: F23-eDoc-POS -> F22-eDoc-Pricing (activate)
+--> PASS: aidd status prints "gate pointer: F23 -> F22"
+no pointer -> gate_target_specs (['F23-eDoc-POS'], False, 'inferred')
+[hook stop_gate.py Stop] rc=2 stdout='' stderr='aidd R8: spec F23-eDoc-POS not closed (1 code edit(s); block 3 of 3). Do not stop yet. Missing:\n  [ ] specs/F23-eDoc-POS/qa-audit.md does not exist - write it from the auditors\' findings.\n  [ ] no distinct functional auditor subagent ran after the last code edit - dispatch an independent functional auditor (Agent tool; its description/prompt must name "functional"; one subagent covers one domain).\n  [ ] no distinct performance auditor subagent ran after the last code edit - dispatch an independent performance auditor (Agent tool; its description/prompt must name "performance"; one subagent covers one domain).\n  [ ] no distinct security auditor subagent ran after the last code edit - dispatch an independent security auditor (Agent tool; its description/prompt must name "security"; one subagent covers one domain).\n  [ ] no distinct ui auditor subagent ran after the last code edit - dispatc'
+--> FAIL: no pointer + several open specs: R8 blocks none | rc=2 (target=(['F23-eDoc-POS'], False, 'inferred'))
+[hook stop_gate.py Stop] rc=0 stdout='{"systemMessage": "AIDD: spec F21-eDoc-Inventory is approved and has 1 code edit(s) with no closing audit; gate target is F23-eDoc-POS; see `aidd status`."}' stderr=''
+[hook stop_gate.py Stop] rc=0 stdout='' stderr=''
+AIDD_STOP_BLOCKS=1 rcs: [0, 0]
+--> PASS: AIDD_STOP_BLOCKS=1 allows after one block (budget already consumed earlier)

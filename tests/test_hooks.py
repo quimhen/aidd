@@ -339,10 +339,18 @@ class TestRequireGraphCoherenceAudit(HookTestCase):
 
     def test_blocks_when_rebuilt_but_no_dispatch(self):
         self._write_ts(last_graph_rebuild_ts=100.0)
-        result = run_hook("require_graph_coherence_audit.py", {
-            "session_id": self.session_id,
-            "tool_input": {"file_path": "tasks.md"},
-        })
+        old = os.environ.get("AIDD_R5_AUDIT")
+        os.environ["AIDD_R5_AUDIT"] = "strict"      # spec 007 FR-206: advisory is the default now
+        try:
+            result = run_hook("require_graph_coherence_audit.py", {
+                "session_id": self.session_id,
+                "tool_input": {"file_path": "tasks.md"},
+            })
+        finally:
+            if old is None:
+                os.environ.pop("AIDD_R5_AUDIT", None)
+            else:
+                os.environ["AIDD_R5_AUDIT"] = old
         self.assertEqual(result.returncode, 2)
         self.assertIn("Graph Coherence Auditor", result.stderr)
 
@@ -1049,6 +1057,240 @@ class TestCredentialHygiene(RecorderCase):
             self.assertEqual(r.returncode, 0)
         finally:
             os.environ["AIDD_EVIDENCE_DIR"] = old
+
+
+# ---------------------------------------------------------------------------
+# Spec 007 (T-12): recorders stamp the facts the new gates use; session_start; R5 advisory/strict
+# ---------------------------------------------------------------------------
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from gate_fixtures import Base as _GateBase, approved_tasks as _approved_tasks, EV as _GEV  # noqa: E402
+
+
+class TestCodeEditR6Predicate(RecorderCase):
+    """aidd:FR-209 code_edit is recorded for every R6-gated path, stamped with target/active."""
+
+    def edit(self, rel):
+        return self.hook("mark_code_edit.py", tool_input={"file_path": str(self.root / rel)})
+
+    def test_non_py_gated_files_are_recorded_and_md_or_specs_are_not(self):
+        for rel in ("web/site.css", "config/appsettings.json", "web/index.html", "web.config", "src/app.py"):
+            self.assertEqual(self.edit(rel).returncode, 0)
+        for rel in ("README.md", "docs/guide.md", "specs/001-x/helper.py", "specs/001-x/notes.md"):
+            self.edit(rel)
+        got = sorted(Path(e["detail"]["path"]).name for e in self.ev("code_edit"))
+        self.assertEqual(got, sorted(["appsettings.json", "app.py", "index.html", "site.css", "web.config"]))
+
+    def test_target_and_active_stamped_with_pointers(self):
+        (self.root / "specs" / "002-y").mkdir()
+        aidd_evidence.append(self.root, self.session_id, "spec_edit", spec="001-x", file="tasks.md")
+        aidd_evidence.append(self.root, self.session_id, "spec_edit", spec="002-y", file="tasks.md")
+        self.assertTrue(aidd_evidence.activate_spec(self.root, "001-x"))
+        aidd_evidence.set_active_spec(self.root, "002-y")
+        self.edit("src/a.py")
+        d = self.ev("code_edit")[0]["detail"]
+        self.assertEqual(d["target"], "001-x")
+        self.assertEqual(d["active"], "002-y")
+
+    def test_target_and_active_stamped_empty_without_pointers(self):
+        self.edit("src/a.py")
+        d = self.ev("code_edit")[0]["detail"]
+        self.assertEqual(d["target"], "")
+        self.assertEqual(d["active"], "")
+
+    def test_old_library_without_get_gate_spec_still_records_the_base_event(self):
+        import io
+        import runpy
+        from unittest import mock
+        stdin = io.StringIO(json.dumps({"session_id": self.session_id, "cwd": str(self.root),
+                                        "tool_input": {"file_path": str(self.root / "src" / "a.py")}}))
+        with mock.patch.object(aidd_evidence, "get_gate_spec", side_effect=AttributeError("old lib")), \
+                mock.patch.object(sys, "stdin", stdin):
+            with self.assertRaises(SystemExit):
+                runpy.run_path(str(HOOKS_DIR / "mark_code_edit.py"), run_name="__main__")
+        e = self.ev("code_edit")
+        self.assertEqual(len(e), 1)
+        self.assertNotIn("target", e[0]["detail"])
+
+    def test_spec_file_branch_unchanged(self):
+        self.edit("specs/001-x/plan.md")
+        self.assertEqual(self.ev("code_edit"), [])
+        self.assertEqual(self.ev("spec_edit")[0]["detail"]["spec"], "001-x")
+        self.assertEqual(aidd_evidence.get_active_spec(self.root), "001-x")
+
+    def test_non_numeric_spec_id_pointer_is_stamped(self):
+        (self.root / "specs" / "F23-eDoc-POS").mkdir()
+        aidd_evidence.append(self.root, self.session_id, "spec_edit", spec="F23-eDoc-POS", file="tasks.md")
+        self.assertTrue(aidd_evidence.activate_spec(self.root, "F23-eDoc-POS"))
+        self.hook("mark_code_edit.py", cwd=str(self.root), tool_input={"file_path": "src/rel.py"})
+        self.assertEqual(self.ev("code_edit")[0]["detail"]["target"], "F23-eDoc-POS")
+
+
+class TestDispatchResultFingerprint(RecorderCase):
+    """aidd:FR-209 result_chars / result_sha1 on the counting subagent row."""
+    TI = {"subagent_type": "general-purpose", "description": "Auditor", "prompt": "audit"}
+
+    def post(self, resp, **extra):
+        ev = dict(tool_use_id="toolu_r", tool_input=self.TI)
+        if resp is not None:
+            ev["tool_response"] = resp
+        ev.update(extra)
+        self.assertEqual(self.hook("mark_agent_dispatch.py", **ev).returncode, 0)
+        return [r for r in self.ev("subagent") if r["detail"].get("phase") == "post"][-1]["detail"]
+
+    def check(self, resp, text):
+        import hashlib
+        d = self.post(resp)
+        self.assertEqual(d["result_chars"], len(text))
+        self.assertEqual(d["result_sha1"], hashlib.sha1(text.encode("utf-8")).hexdigest())
+
+    def test_string_response(self):
+        self.check("final report " * 50, "final report " * 50)
+
+    def test_content_list_of_text_blocks(self):
+        self.check({"status": "completed", "content": [{"type": "text", "text": "abc"}, {"type": "text", "text": "def"}]},
+                   "abc\ndef")
+
+    def test_content_string(self):
+        self.check({"content": "plain"}, "plain")
+
+    def test_result_key(self):
+        self.check({"result": "the result"}, "the result")
+
+    def test_output_key(self):
+        self.check({"output": "the output"}, "the output")
+
+    def test_text_key(self):
+        self.check({"text": "the text"}, "the text")
+
+    def test_list_response(self):
+        self.check([{"type": "text", "text": "one"}, "two"], "one\ntwo")
+
+    def test_non_ascii_text(self):
+        self.check("auditoria ñá " * 10, "auditoria ñá " * 10)
+
+    def test_absent_when_no_text(self):
+        for n, resp in enumerate((None, {}, {"content": []}, 42, {"usage": {"x": 1}}, "")):
+            d = self.post(resp, tool_use_id="toolu_none%d" % n)
+            self.assertNotIn("result_chars", d, resp)
+            self.assertNotIn("result_sha1", d, resp)
+
+    def test_pre_row_unchanged(self):
+        self.hook("record_dispatch_pre.py", tool_use_id="toolu_p", tool_input=self.TI)
+        pre = [r for r in self.ev("subagent") if r["detail"].get("phase") == "pre"][0]["detail"]
+        self.assertNotIn("result_chars", pre)
+
+
+class TestSessionStartObligations(_GateBase):
+    """aidd:FR-206 aidd:FR-208 the context line about approved non-target specs with unaudited edits."""
+
+    LINE = ("AIDD: spec 002-y is approved and has 1 code edit(s) with no closing audit; "
+            "gate target is 001-x; see `aidd status`")
+
+    def setUp(self):
+        super().setUp()
+        t = _approved_tasks()
+        (self.root / "specs" / "002-y").mkdir()
+        for sp in ("001-x", "002-y"):
+            self.put("specs/%s/tasks.md" % sp, t)
+            self.open_spec(sp)
+            self.approve_spec(t, sp)
+        self.ev("code_edit", path="src/b.py", target="002-y")
+
+    def start(self, env=None):
+        return self.run_hook("session_start.py", {"session_id": self.session, "cwd": str(self.root)}, env=env)
+
+    def test_line_for_the_non_target_spec_only(self):
+        self.assertTrue(_GEV.activate_spec(self.root, "001-x"))
+        r = self.start()
+        self.assertEqual(r.returncode, 0, r.err)
+        self.assertIn(self.LINE, r.out)
+        self.assertNotIn("spec 001-x is approved", r.out)
+
+    def test_no_line_once_the_spec_is_closed(self):
+        _GEV.activate_spec(self.root, "001-x")
+        self.close_spec("002-y", reason="completed")
+        r = self.start()
+        self.assertEqual(r.returncode, 0)
+        self.assertNotIn("spec 002-y is approved", r.out)
+
+    def test_pointer_on_neither_spec_does_not_crash(self):
+        r = self.start()
+        self.assertEqual(r.returncode, 0, r.err)
+        self.assertNotIn("Traceback", r.err)
+
+    def test_rules_override_recorded_for_warn_and_off(self):
+        for mode in ("warn", "off"):
+            before = len(self.events("rules_override"))
+            r = self.start(env={"AIDD_RULES": mode})
+            self.assertEqual(r.returncode, 0, r.err)
+            rows = self.events("rules_override")
+            self.assertEqual(len(rows), before + 1)
+            self.assertEqual(rows[-1]["detail"]["hook"], "session_start")
+            self.assertEqual(rows[-1]["detail"]["mode"], mode)
+
+    def test_no_rules_override_when_unset_or_enforce(self):
+        self.start()
+        self.start(env={"AIDD_RULES": "enforce"})
+        self.assertEqual(self.events("rules_override"), [])
+
+    def test_no_project_root_records_nothing_and_exits_zero(self):
+        with tempfile.TemporaryDirectory() as bare:
+            r = self.run_hook("session_start.py", {"session_id": self.session, "cwd": bare}, env={"AIDD_RULES": "warn"})
+            self.assertEqual(r.returncode, 0, r.err)
+            self.assertEqual(_GEV.events(Path(bare), kind="rules_override"), [])
+        self.assertEqual(self.events("rules_override"), [])
+
+    def test_garbage_stdin_exits_zero(self):
+        r = self.run_hook("session_start.py", None, raw=b"not json", env={"AIDD_RULES": "warn"})
+        self.assertEqual(r.returncode, 0)
+
+
+class TestGraphCoherenceAdvisoryVsStrict(_GateBase):
+    """aidd:FR-206 aidd:AC-211 R5 advisory (default) skips the dispatch-after-rebuild branch; strict keeps it."""
+
+    IDS = ("002-aidd-hard-rules", "F23-eDoc-POS")
+
+    def setUp(self):
+        super().setUp()
+        for i in self.IDS:
+            (self.root / "specs" / i).mkdir(exist_ok=True)
+
+    def ts(self, **kw):
+        _common.timestamps_path(self.session).write_text(json.dumps(kw), encoding="utf-8")
+
+    def check(self, spec, absolute, mode):
+        fp = self.root / "specs" / spec / "plan.md"
+        arg = str(fp) if absolute else "specs/%s/plan.md" % spec
+        return self.run_hook("require_graph_coherence_audit.py", {
+            "session_id": self.session, "cwd": str(self.root), "tool_name": "Write",
+            "tool_input": {"file_path": arg}}, env={"AIDD_R5_AUDIT": mode})
+
+    def test_rebuilt_without_dispatch_advisory_allows_strict_blocks(self):
+        self.ev("find_spec", ok=True, rebuilt=True)
+        self.ts(last_graph_rebuild_ts=100.0)
+        for spec in self.IDS:
+            for absolute in (True, False):
+                for mode in (None, "advisory"):
+                    self.assertEqual(self.check(spec, absolute, mode).returncode, 0, (spec, absolute, mode))
+                r = self.check(spec, absolute, "strict")
+                self.assertEqual(r.returncode, 2, (spec, absolute))
+                self.assertIn("Graph Coherence Auditor", r.err)
+
+    def test_missing_find_spec_blocks_in_both_modes(self):
+        self.ts(last_graph_rebuild_ts=100.0)
+        for spec in self.IDS:
+            for mode in (None, "advisory", "strict"):
+                r = self.check(spec, True, mode)
+                self.assertEqual(r.returncode, 2, (spec, mode))
+                self.assertIn("No find_spec run is recorded", r.err)
+
+    def test_dispatch_after_rebuild_allows_in_both_modes(self):
+        self.ev("find_spec", ok=True, rebuilt=True)
+        self.ts(last_graph_rebuild_ts=100.0, last_agent_dispatch_ts=150.0)
+        for spec in self.IDS:
+            for mode in (None, "advisory", "strict"):
+                self.assertEqual(self.check(spec, False, mode).returncode, 0, (spec, mode))
 
 
 if __name__ == "__main__":

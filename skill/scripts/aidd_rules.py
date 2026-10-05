@@ -7,6 +7,8 @@ Rules: R1 estimates (agent time) · R2 pipeline route · R3 alignment provenance
 R4 visual debt · R5 chain order · R6 tasks approval · R7 closing-audit domains ·
 R9 protected paths. (R8 is the Stop hook, not a library concern.)
 Spec 003 adds R10 execution evidence at close · R11 root cause on repeat · R12 view-vs-logic tag.
+Spec 007 adds the `## Verification` table (lint + executed close gate), the ONE closing auditor
+(`CLOSING AUDIT` header) and the advisory R5 mode (AIDD_R5_AUDIT).
 
 Every public function is total: malformed input yields a Violation, never an
 exception. A Violation is ``{'rule', 'message', 'fix'}`` where ``fix`` is the exact
@@ -19,7 +21,9 @@ import hashlib
 import os
 import posixpath
 import re
+import shlex
 import sys
+import time
 import unicodedata
 from pathlib import Path
 
@@ -1450,10 +1454,10 @@ def _subagent_counts(event):
         return True
 
 
-def _uncovered_reasons(ev, root, session, domains, since_ts):
+def _uncovered_reasons(ev, root, session, domains, since_ts, spec_dir=None):
     """{domain: 'tier'|'none'} for uncovered domains: 'tier' when only low-tier subagents match it."""
     try:
-        missing = _uncovered(ev, root, session, domains, since_ts)
+        missing = _uncovered(ev, root, session, domains, since_ts, spec_dir=spec_dir)
     except Exception:
         missing = set(domains)
     try:
@@ -1474,16 +1478,28 @@ def _uncovered_reasons(ev, root, session, domains, since_ts):
     return out
 
 
-def _uncovered(ev, root, session, domains, since_ts):
+def _uncovered(ev, root, session, domains, since_ts, spec_dir=None):
     """Domains (subset of `domains`) left without a DISTINCT matching subagent (M9): maximum
-    bipartite matching domains -> subagent events; one subagent covers one domain only."""
-    doms = sorted(d for d in domains if d in DOMAIN_RE)
-    unknown = {d for d in domains if d not in DOMAIN_RE}
+    bipartite matching domains -> subagent events; one subagent covers one domain only.
+
+    aidd:FR-206 aidd:AC-210 When `spec_dir` is given, ONE counting subagent after `since_ts` whose
+    first line is a valid `CLOSING AUDIT [domains: ...] [tasks:<h8>] [verify:<v8>]` header
+    (closing_audit_covers) covers every domain at once (early return). Below it the per-domain
+    matching is unchanged, so legacy per-domain auditors keep working."""
     try:
         events = [e for e in ev.events(root, session, 'subagent')
                   if e.get('ts', 0) > since_ts and _subagent_counts(e)]
     except Exception:
         events = []
+    if spec_dir is not None and events:
+        try:
+            gate2 = _is_gate2(ev, root, spec_dir)
+            if any(closing_audit_covers(e, spec_dir, domains, gate2, ev, root) for e in events):
+                return set()
+        except Exception:
+            pass   # fail closed: fall through to the per-domain matching
+    doms = sorted(d for d in domains if d in DOMAIN_RE)
+    unknown = {d for d in domains if d not in DOMAIN_RE}
     texts = [f"{(e.get('detail') or {}).get('head', '')} {(e.get('detail') or {}).get('desc', '')}" for e in events]
     cand = {dom: [i for i, tx in enumerate(texts) if DOMAIN_RE[dom].search(tx)] for dom in doms}
     owner = {}
@@ -1529,7 +1545,7 @@ def uncovered_domains(root, session, spec_id, since_ts, spec_dir=None):
     if ev is None:
         return set(doms)
     try:
-        return _uncovered(ev, root, session, doms, since_ts)
+        return _uncovered(ev, root, session, doms, since_ts, spec_dir=d)
     except Exception:
         return set(doms)
 
@@ -1832,14 +1848,17 @@ def _evidence_rules(ev, d, root, session, spec_t, has_tasks, plan_p, tasks_p, qa
         if not ev.last_event(root, 'find_spec', session):
             out.append(_v('R5', 'No find_spec run recorded in this session.',
                           'Run `python skill/scripts/find_spec.py` (Step -1) before planning.'))
-        sm = mapper_since(ev, root, d)
+        # aidd:FR-206 aidd:AC-211 advisory (default) stops demanding the Mapper and the pre-build
+        # subagent; find_spec, quotes and Proposed rows above/below stay blocking in both modes.
+        strict = r5_audit_mode() == 'strict'
+        sm = mapper_since(ev, root, d) if strict else None
         if sm is not None and not [e for e in ev.events(root, session, 'subagent') if e['ts'] > sm and _subagent_counts(e)]:
             out.append(_v('R5', 'No independent subagent (Mapper/Alignment) ran after the first draft of spec.md.',
                           'Dispatch a Mapper/Alignment subagent (Agent tool) over spec.md before writing plan.md.'))
         if has_tasks:
             if not plan_p.exists():
                 out.append(_v('R5', 'tasks.md exists but plan.md does not.', 'Write plan.md (Step 3) before tasks.md.'))
-            elif not approval_valid(_read(tasks_p)) and not pre_build_audit_done(ev, root, session, d):
+            elif strict and not approval_valid(_read(tasks_p)) and not pre_build_audit_done(ev, root, session, d):
                 out.append(_v('R5', 'No pre-build coherence audit: no independent subagent ran after the last edit '
                                     'of spec.md/plan.md/tasks.md (or the last graph rebuild).',
                               'Dispatch ONE pre-build coherence auditor subagent (medium or high tier, never haiku) '
@@ -1866,11 +1885,11 @@ def _evidence_rules(ev, d, root, session, spec_t, has_tasks, plan_p, tasks_p, qa
         except Exception:
             since = 0.0
         try:
-            missing = _uncovered(ev, root, session, required_domains(d), since)
+            missing = _uncovered(ev, root, session, required_domains(d), since, spec_dir=d)
         except Exception:
             missing = set(required_domains(d))
         try:
-            reasons = _uncovered_reasons(ev, root, session, required_domains(d), since)
+            reasons = _uncovered_reasons(ev, root, session, required_domains(d), since, spec_dir=d)
         except Exception:
             reasons = {}
         for dom in sorted(missing):
@@ -1879,6 +1898,830 @@ def _evidence_rules(ev, d, root, session, spec_t, has_tasks, plan_p, tasks_p, qa
                           f'Dispatch a dedicated {dom} auditor subagent (one subagent per domain) whose '
                           f'prompt/description names "{dom}", then rewrite qa-audit.md.'))
     return out
+
+
+# ===================================================== spec 007: executed verification (R10)
+
+GATE_VERSION = 2   # aidd:FR-204 stored as `gate` in every `approved` event minted by the new routes
+
+_VERIF_HEADING = r'verification\s*$'
+_EXPECT_CONTAINS_RE = re.compile(r'^contains\s*:\s*(.+?)\s*$', re.I)
+_EXPECT_EXIT0_RE = re.compile(r'^exit\s+0$', re.I)
+_MAX_CMD_CHARS = 2000
+
+
+def r5_audit_mode():
+    """aidd:FR-206 aidd:AC-211 'strict' iff env AIDD_R5_AUDIT is `strict` (trimmed, case-insensitive),
+    else 'advisory' (the default: the Mapper / pre-build subagent stop blocking)."""
+    try:
+        return 'strict' if str(os.environ.get('AIDD_R5_AUDIT', '')).strip().lower() == 'strict' else 'advisory'
+    except Exception:
+        return 'advisory'
+
+
+def _strip_ticks(s):
+    s = (s or '').strip()
+    while len(s) >= 2 and s.startswith('`') and s.endswith('`'):
+        s = s[1:-1].strip()
+    return s
+
+
+def _expected_contains(expected):
+    """The X of an Expected `contains: X`, else None."""
+    m = _EXPECT_CONTAINS_RE.match(_strip_ticks(str(expected or '')))
+    return m.group(1) if m else None
+
+
+def parse_verification(spec_text):
+    """aidd:FR-205 Rows of `## Verification` as [{n, cmd, expected, covers}] (cells cleaned, backticks
+    around the command stripped). Rows with an empty command (template placeholders) are skipped.
+    Never raises ([] on any problem)."""
+    try:
+        if not isinstance(spec_text, str) or _too_large(spec_text):
+            return []
+        tb = _table(_clean(spec_text), _VERIF_HEADING)
+        if tb is None:
+            return []
+        header, rows = tb
+        hn = [_hdr(header, i) for i in range(len(header))]
+
+        def col(*names):
+            return next((i for i, h in enumerate(hn) if h in names), None)
+        ni, ci, ei, vi = col('#', 'n', 'no', 'no.'), col('command', 'cmd'), col('expected'), col('covers')
+        if ci is None:
+            return []
+        out = []
+        for r in rows:
+            r = r + [''] * (len(header) - len(r))
+            cmd = _strip_ticks(r[ci])
+            if not cmd:
+                continue
+            out.append({'n': r[ni].strip() if ni is not None else str(len(out) + 1),
+                        'cmd': cmd,
+                        'expected': _strip_ticks(r[ei]) if ei is not None else '',
+                        'covers': r[vi].strip() if vi is not None else ''})
+        return out
+    except Exception:
+        return []
+
+
+def _norm_cell(s):
+    return re.sub(r'\s+', ' ', str(s or '')).strip()
+
+
+def verification_hash(spec_text):
+    """aidd:FR-205 sha1[:12] of the normalised `n|cmd|expected` rows joined by \\n (prose, Covers
+    and blank lines do not change it); '' when the table has no row."""
+    try:
+        rows = parse_verification(spec_text)
+        if not rows:
+            return ''
+        body = '\n'.join(f"{_norm_cell(r['n'])}|{_norm_cell(r['cmd'])}|{_norm_cell(r['expected'])}" for r in rows)
+        return hashlib.sha1(body.encode('utf-8')).hexdigest()[:12]
+    except Exception:
+        return ''
+
+
+# --- command lint (aidd:FR-205 aidd:AC-218)
+
+_TRIVIAL_RE = re.compile(r'^\s*@?(?:(?:echo|true|rem|type)\b|exit\s+0\b|:(?:\s|$))', re.I)
+_FORBIDDEN_SUBSTR = ('.aidd', 'events.toon', 'active_spec', 'gate_spec', 'review.md')
+_FORBIDDEN_RE = re.compile(
+    r'(?:\bimport\s+|\bfrom\s+|-m\s*)aidd_(?:evidence|rules|status)\b'          # the evidence/rules library
+    r'|\baidd_(?:evidence|rules|status)\.py\b'                                   # its scripts run directly
+    r'|\baidd_(?:evidence_dir|testing|session_id|rules)\s*=', re.I)              # env that bends the gates
+_AIDD_VERIFY_RE = re.compile(r'(?:^|[\s;&|(])aidd(?:\.exe)?\s+verify\b', re.I)  # recursion
+_SEG_SPLIT_RE = re.compile(r'&&|\|\||[;&|\n]')
+_PREFIX_CMDS = {'call', 'start', 'exec', 'env', 'time', 'nice', 'sudo', 'command', 'nohup'}
+_INTERP_RE = re.compile(r'^(?:python(?:\d+(?:\.\d+)*)?|py|node|nodejs|sh|bash|zsh|dash|ksh|cmd|powershell|pwsh|perl|ruby)$')
+_PS_VALUE_OPTS = ('executionpolicy', 'windowstyle', 'version', 'inputformat', 'outputformat',
+                  'configurationname', 'workingdirectory', 'settingsfile', 'custompipename')
+_MANIFEST_SKIP = {'.git', 'node_modules', 'bin', 'obj', '__pycache__', '.aidd', 'specs', '.venv', 'venv',
+                  'dist', 'target', '.idea', '.vs'}
+
+
+def _unquote(t):
+    t = t.strip()
+    if len(t) >= 2 and t[0] == t[-1] and t[0] in '"\'':
+        return t[1:-1]
+    return t
+
+
+def _tokens(seg):
+    try:
+        toks = shlex.split(seg, posix=False)   # posix=False: Windows backslashes stay intact
+    except ValueError:
+        toks = seg.split()
+    return [u for u in (_unquote(t) for t in toks) if u]
+
+
+def _exe(tok):
+    b = re.split(r'[\\/]', tok)[-1].lower()
+    for ext in ('.exe', '.cmd', '.bat', '.com'):
+        if b.endswith(ext):
+            return b[:-len(ext)]
+    return b
+
+
+def _cmd_start(toks):
+    i = 0
+    while i < len(toks) and (_exe(toks[i]) in _PREFIX_CMDS or re.match(r'^[A-Za-z_]\w*=', toks[i])):
+        i += 1
+    return i
+
+
+def _interp_kind(exe):
+    if exe.startswith('python') or exe == 'py':
+        return 'python'
+    if exe in ('node', 'nodejs'):
+        return 'node'
+    if exe in ('sh', 'bash', 'zsh', 'dash', 'ksh'):
+        return 'sh'
+    return exe   # cmd | powershell | pwsh | perl | ruby
+
+
+def _cluster_flag(tok, bad, stop, value):
+    """Walk a short-option cluster (`-Bc`): a char in `bad` -> inline code; in `stop` -> the rest of the
+    command belongs to that option (module/script); in `value` -> the option takes a value (attached or
+    the next token). Returns ('bad'|'stop'|'value-next'|'ok')."""
+    body = tok[1:]
+    for k, ch in enumerate(body):
+        if ch in bad:
+            return 'bad'
+        if ch in stop:
+            return 'stop'
+        if ch in value:
+            return 'value-next' if k == len(body) - 1 else 'ok'
+    return 'ok'
+
+
+def _inline_flag(kind, opts):
+    """aidd:FR-205 The interpreter option that runs inline code (`python -c`, `node -e`, `cmd /c`,
+    `powershell -Command`, ...), looked for among the interpreter's OWN options only (before its
+    first script/module argument). None when there is none."""
+    i = 0
+    while i < len(opts):
+        t = opts[i]
+        tl = t.lower()
+        if kind == 'cmd':
+            if re.match(r'^/[ckr]', tl):
+                return t
+            if tl.startswith('/'):
+                i += 1
+                continue
+            return None
+        if kind in ('powershell', 'pwsh'):
+            if tl in ('-', '/c'):
+                return t
+            if tl.startswith(('-', '/')):
+                name = tl.lstrip('-/').split(':')[0]
+                if name and ('command'.startswith(name) or 'encodedcommand'.startswith(name)
+                             or name in ('e', 'ec', 'enc')):
+                    return t
+                if name in ('file', 'f'):
+                    return None   # -File <script>: the existing-path rule decides
+                if name in ('ep', 'ex', 'wd') or any(len(name) >= 2 and o.startswith(name) for o in _PS_VALUE_OPTS):
+                    i += 2
+                    continue
+                i += 1
+                continue
+            return t if kind == 'powershell' else None   # 5.1 runs a bare argument as -Command
+        if tl == '-':
+            return t   # program read from stdin
+        if tl.startswith('--'):
+            if kind == 'node' and re.match(r'^--(?:eval|print)(?:=|$)', tl):
+                return t
+            if tl == '--':
+                return None
+            i += 1
+            continue
+        if not tl.startswith('-') or len(tl) < 2:
+            return None   # first non-option: the script (or module) owns the rest
+        spec = {'python': ('c', 'm', 'WX'), 'node': ('ep', '', 'r'), 'sh': ('c', '', 'oO'),
+                'perl': ('eE', '', 'IMmdDxl0'), 'ruby': ('e', '', 'IrCE')}.get(kind, ('', '', ''))
+        res = _cluster_flag(t, *spec)
+        if res == 'bad':
+            return t
+        if res == 'stop':
+            return None
+        i += 2 if res == 'value-next' else 1
+    return None
+
+
+def _find_manifest(root, patterns, max_depth=3, cap=20000):
+    """True iff a file matching one of `patterns` (lowercase fnmatch) exists under `root`, at most
+    `max_depth` levels deep, skipping vendor/build/AIDD dirs; bounded to `cap` entries."""
+    import fnmatch
+    try:
+        base = Path(root)
+        seen = 0
+        for dirpath, dirnames, filenames in os.walk(base):
+            depth = len(Path(dirpath).relative_to(base).parts)
+            dirnames[:] = [] if depth >= max_depth else [d for d in dirnames if d.lower() not in _MANIFEST_SKIP]
+            for f in filenames:
+                seen += 1
+                if seen > cap:
+                    return False
+                fl = f.lower()
+                if any(fnmatch.fnmatch(fl, p) for p in patterns):
+                    return True
+    except Exception:
+        return False
+    return False
+
+
+def _safe_rel(rel):
+    r = (rel or '').strip()
+    return bool(r) and not (_DRIVE_RE.match(r) or r.startswith(('/', '\\'))
+                            or '..' in re.split(r'[\\/]+', r))
+
+
+def _rel_dir_exists(root, rel):
+    if not _safe_rel(rel):
+        return False
+    try:
+        base = Path(root).resolve()
+        target = (base / rel.replace('\\', '/')).resolve()
+        target.relative_to(base)
+        return target.is_dir()
+    except Exception:
+        return False
+
+
+def _module_exists(root, tgt):
+    """`tests.test_x` (or `tests.test_x.Case.test_y`) resolves to a .py file under root, or the full
+    dotted path is a package dir; a path form (`tests/test_x.py`) must be an existing file."""
+    if re.search(r'[\\/]', tgt) or tgt.lower().endswith('.py'):
+        return _safe_rel(tgt) and _inside_exists(root, tgt, want_file=True)
+    parts = [p for p in tgt.split('.') if p]
+    if not parts or not all(re.match(r'^\w+$', p) for p in parts):
+        return False
+    if _rel_dir_exists(root, '/'.join(parts)):
+        return True
+    return any(_inside_exists(root, '/'.join(parts[:k]) + '.py', want_file=True) for k in range(len(parts), 0, -1))
+
+
+def _unittest_problem(args, root):
+    """None when `python -m unittest <args>` names something real; else the reason."""
+    i, targets, start, discover = 0, [], None, False
+    while i < len(args):
+        a = args[i]
+        if a == 'discover' and not targets and not discover:
+            discover = True
+        elif a in ('-s', '--start-directory'):
+            start = args[i + 1] if i + 1 < len(args) else ''
+            i += 1
+        elif a in ('-p', '--pattern', '-t', '--top-level-directory', '-k'):
+            i += 1
+        elif a.startswith('-'):
+            pass
+        elif discover:
+            if start is None:
+                start = a
+        else:
+            targets.append(a)
+        i += 1
+    if discover:
+        if root is None or _rel_dir_exists(root, start or '.'):
+            return None
+        return f'unittest discover start directory "{(start or ".")[:60]}" does not exist under the project'
+    if not targets:
+        return 'python -m unittest needs a module or `discover -s <dir>`'
+    if root is None:
+        return None
+    for tgt in targets:
+        if not _module_exists(root, tgt):
+            return f'unittest module "{tgt[:60]}" not found under the project'
+    return None
+
+
+def _runner(toks, root):
+    """None when `toks` is not a known test-runner invocation; True when it is and its manifest exists
+    (or `root` is None); otherwise the reason string."""
+    exe = _exe(toks[0])
+    rl = [t.lower() for t in toks[1:]]
+    pyish = _interp_kind(exe) == 'python' and _INTERP_RE.match(exe)
+    m_idx = None
+    if pyish:
+        for k, t in enumerate(rl):
+            if t == '-m':
+                m_idx = k
+                break
+            if not t.startswith('-'):
+                break
+    mod = rl[m_idx + 1] if m_idx is not None and m_idx + 1 < len(rl) else None
+    if pyish and mod == 'unittest':
+        p = _unittest_problem(toks[1:][m_idx + 2:], root)
+        return True if p is None else p
+    if exe == 'dotnet' and rl[:1] == ['test']:
+        name, pats = 'dotnet test', ('*.sln', '*.csproj', '*.fsproj', '*.vbproj')
+    elif exe == 'npm' and (rl[:1] in (['test'], ['t']) or (rl[:1] in (['run'], ['run-script']) and len(rl) > 1)):
+        name, pats = 'npm', ('package.json',)
+    elif exe == 'pytest' or (pyish and mod == 'pytest'):
+        name, pats = 'pytest', ('pyproject.toml', 'pytest.ini', 'setup.cfg', 'tox.ini', 'conftest.py')
+    elif exe == 'cargo' and rl[:1] == ['test']:
+        name, pats = 'cargo test', ('cargo.toml',)
+    elif exe == 'go' and rl[:1] == ['test']:
+        name, pats = 'go test', ('go.mod',)
+    elif exe in ('mvn', 'mvnw') and 'test' in rl:
+        name, pats = 'mvn test', ('pom.xml',)
+    elif exe in ('gradle', 'gradlew') and 'test' in rl:
+        name, pats = 'gradle test', ('build.gradle', 'build.gradle.kts')
+    elif exe == 'msbuild':
+        name, pats = 'msbuild', ('*.sln', '*.csproj', '*.proj', '*.vbproj', '*.fsproj')
+    else:
+        return None
+    if root is None or _find_manifest(root, pats):
+        return True
+    return f'{name} but no {" / ".join(pats)} exists in the project'
+
+
+def _names_existing_file(toks, root):
+    """True iff some token is an existing file of the project (relative, inside root). With root None
+    a path-looking token (a separator or an extension) is enough (existence not checkable)."""
+    for t in toks:
+        cand = t.split('=', 1)[1] if t.startswith('-') and '=' in t else t
+        cand = _unquote(cand)
+        if not cand or cand.startswith('-'):
+            continue
+        if root is None:
+            if re.search(r'[\\/]', cand) or re.search(r'\.[A-Za-z0-9]{1,5}$', cand):
+                return True
+            continue
+        if _safe_rel(cand) and _inside_exists(root, cand, want_file=True):
+            return True
+    return False
+
+
+def verification_command_problem(cmd, expected='exit 0', root=None):
+    """aidd:FR-205 aidd:AC-218 Lint of ONE Verification row: the reason it is rejected, or None.
+    Rejects trivial commands, protected AIDD state / evidence tooling, interpreter inline code, an
+    Expected `contains:` text found in the command itself, and a command that is neither a known test
+    runner whose manifest exists nor an invocation of an existing project file. `root=None` skips only
+    the existence checks. Never raises (a reason on internal error: fail closed)."""
+    try:
+        c = _norm_nl(cmd).strip() if isinstance(cmd, str) else ''
+        if not c:
+            return 'empty command'
+        if len(c) > _MAX_CMD_CHARS:
+            return f'command longer than {_MAX_CMD_CHARS} characters'
+        for line in c.split('\n'):
+            if _TRIVIAL_RE.match(line):
+                return f'trivial command ("{line.strip()[:30]}") proves nothing'
+        low = c.lower()
+        hit = next((s for s in _FORBIDDEN_SUBSTR if s in low), None)
+        if hit is None:
+            m = _FORBIDDEN_RE.search(c) or _AIDD_VERIFY_RE.search(c)
+            hit = m.group(0).strip() if m else None
+        if hit is None and 'tasks.md' in low and 'approved' in low:
+            hit = 'tasks.md + Approved'
+        if hit is not None:
+            return f'touches protected AIDD state or evidence tooling ({hit[:40]})'
+        rootp = Path(root) if root is not None else None
+        runner_ok, runner_reason, all_toks = False, None, []
+        for seg in _SEG_SPLIT_RE.split(c):
+            toks = _tokens(seg)
+            toks = toks[_cmd_start(toks):]
+            if not toks:
+                continue
+            all_toks += toks
+            exe = _exe(toks[0])
+            if _INTERP_RE.match(exe):
+                flag = _inline_flag(_interp_kind(exe), toks[1:])
+                if flag is not None:
+                    return (f'inline code ({exe} {flag[:20]}) is not a test: run a test runner, a test file '
+                            'or a script of the project')
+            r = _runner(toks, rootp)
+            if r is True:
+                runner_ok = True
+            elif isinstance(r, str):
+                runner_reason = r
+        x = _expected_contains(expected)
+        if x is not None and x.lower() in low:
+            return f'Expected "contains: {x[:40]}" is satisfied by the command text itself'
+        if runner_ok or _names_existing_file(all_toks, rootp):
+            return None
+        return runner_reason or ('neither a known test runner with its manifest (dotnet test, npm test, pytest, '
+                                 'python -m unittest, cargo/go/mvn/gradle test, msbuild) nor an invocation of an '
+                                 'existing project file')
+    except Exception as e:  # pragma: no cover - defensive
+        return f'command could not be checked ({e})'
+
+
+def check_verification(spec_text, root=None):
+    """aidd:FR-205 aidd:FR-207 R10 violations of the `## Verification` table: missing section, no row,
+    empty/unsupported Expected, and verification_command_problem per row. Used at approval (new
+    routes) and at close for `gate: 2` specs; NOT part of check_content('spec') (legacy specs pass).
+    Never raises."""
+    fix_add = ('Add "## Verification" to spec.md as | # | Command | Expected | Covers | with at least one row '
+               "that runs the project's own tests (e.g. `python -m unittest discover -s tests`, `dotnet test`, "
+               '`npm test`) and Expected `exit 0` or `contains: <text>`.')
+    try:
+        if _too_large(spec_text):
+            return [_v('R10', 'spec.md file too large (> 2 MB): its "## Verification" is not scanned.',
+                       'Shrink spec.md below 2 MB.')]
+        t = _clean(spec_text)
+        if not _has_heading(t, _VERIF_HEADING):
+            return [_v('R10', 'spec.md has no "## Verification" section.', fix_add)]
+        rows = parse_verification(spec_text)
+        if not rows:
+            return [_v('R10', '"## Verification" has no row with a command.', fix_add)]
+        out = []
+        for r in rows:
+            n = r['n'] or '?'
+            exp = r['expected']
+            if not exp:
+                out.append(_v('R10', f'Verification row {n}: Expected is empty.',
+                              f'Write `exit 0` or `contains: <text>` in the Expected cell of row {n}.'))
+            elif not (_EXPECT_EXIT0_RE.match(exp) or _EXPECT_CONTAINS_RE.match(exp)):
+                out.append(_v('R10', f'Verification row {n}: Expected "{exp[:40]}" is not `exit 0` or `contains: <text>`.',
+                              f'Write `exit 0` or `contains: <text>` in the Expected cell of row {n}.'))
+            p = verification_command_problem(r['cmd'], exp or 'exit 0', root)
+            if p:
+                out.append(_v('R10', f'Verification row {n}: {p}: `{r["cmd"][:80]}`.',
+                              f'Replace the command of row {n} with one that runs real tests of this change '
+                              '(a test runner of the project or an existing test file/script).'))
+        return out
+    except Exception as e:  # pragma: no cover - defensive
+        return [_v('R10', f'Could not parse "## Verification" ({e}).', fix_add)]
+
+
+def approval_evidence(spec_text, source, review_sha1=None, consent_ts=None):
+    """aidd:FR-204 The extras of a new `approved` event, built in ONE place for every approval route:
+    {gate, source, verify_hash, [consent_ts], [review_sha1]}."""
+    out = {'gate': GATE_VERSION, 'source': str(source or ''), 'verify_hash': verification_hash(spec_text)}
+    if consent_ts is not None:
+        try:
+            out['consent_ts'] = float(consent_ts)
+        except (TypeError, ValueError):
+            pass
+    if review_sha1:
+        out['review_sha1'] = str(review_sha1)
+    return out
+
+
+VERIFY_BAD_OUTPUT_RE = re.compile(
+    r'\bRan 0 tests?\b|\bNO TESTS RAN\b|\bNo test is available\b|\bcollected 0 items\b|\bTotal tests:\s*0\b', re.I)
+VERIFY_MIN_OUTPUT = 20
+_VERIFY_HEADER_RE = re.compile(r'^#\s.*\|\s*exit\s+-?\d+\s*\|')
+
+
+def verify_output_problem(output, expected):
+    """aidd:FR-205 aidd:AC-218 'zero tests ran' | 'output too short' | None for the saved output of one
+    row (with or without the `# <cmd> | exit <code> | <ts>` evidence header). A matched `contains:`
+    Expected excuses a short output, never a zero-test run. Fail closed on unreadable output."""
+    try:
+        text = output.decode('utf-8', 'replace') if isinstance(output, (bytes, bytearray)) else str(output or '')
+        lines = _norm_nl(text).split('\n')
+        body = '\n'.join(lines[1:]) if lines and _VERIFY_HEADER_RE.match(lines[0]) else '\n'.join(lines)
+        if VERIFY_BAD_OUTPUT_RE.search(body):
+            return 'zero tests ran'
+        if len(body.strip().encode('utf-8')) < VERIFY_MIN_OUTPUT:
+            x = _expected_contains(expected)
+            if x is None or x not in body:
+                return 'output too short'
+        return None
+    except Exception:  # pragma: no cover - defensive
+        return 'output could not be read'
+
+
+def _sha1_file(p):
+    h = hashlib.sha1()
+    with open(p, 'rb') as f:
+        for chunk in iter(lambda: f.read(65536), b''):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def _current_approved(ev, root, spec_dir):
+    """The `approved` event detail of the CURRENT tasks.md (fallback: the newest one), else None."""
+    d = Path(spec_dir)
+    f = getattr(ev, 'latest_approved', None)
+    if not callable(f):
+        return None
+    try:
+        tasks = _read(d / 'tasks.md')
+        a = f(root, d.name, approval_hash(tasks)) if tasks.strip() else None
+        return a if a is not None else f(root, d.name)
+    except Exception:
+        return None
+
+
+def _is_gate2(ev, root, spec_dir):
+    """aidd:FR-205 New-style spec = its current `approved` event carries gate >= 2 (legacy otherwise)."""
+    a = _current_approved(ev, root, spec_dir)
+    try:
+        return isinstance(a, dict) and int(a.get('gate') or 0) >= GATE_VERSION
+    except (TypeError, ValueError):
+        return False
+
+
+class FingerprintOnce:
+    """aidd:FR-208 Memo of `ev.worktree_fingerprint(root)` for ONE `aidd status` run (closing-audit F-2):
+    the fingerprint (up to ~1 s in git, 8 s outside git) is computed lazily, at most once per root, instead
+    of once per spec. Freshness: a cached value is served only when it was taken at or after `not_before`
+    (the newest of the verify_run's `ts`/`started` and the last code edit being compared) and is younger
+    than `ttl` seconds; otherwise it is recomputed. So it never serves a fingerprint older than what it is
+    compared against. Never raises (None on any failure, like worktree_fingerprint)."""
+
+    def __init__(self, ev, ttl=30.0, clock=None):
+        self.ev = ev
+        self.ttl = float(ttl)
+        self.clock = clock or time.time
+        self.calls = 0
+        self._cache = {}                     # str(root) -> (taken_at, fingerprint)
+
+    def __call__(self, root, not_before=0.0):
+        try:
+            key = str(Path(root).resolve()) if root is not None else ''
+        except Exception:
+            key = str(root)
+        try:
+            nb = float(not_before or 0.0)
+        except (TypeError, ValueError):
+            nb = float('inf')                # unreadable bound: never trust the cache
+        now = self.clock()
+        hit = self._cache.get(key)
+        if hit is not None and hit[0] >= nb and (now - hit[0]) <= self.ttl:
+            return hit[1]
+        g = getattr(self.ev, 'worktree_fingerprint', None)
+        try:
+            self.calls += 1
+            fp = g(root) if callable(g) else None
+        except Exception:
+            fp = None
+        self._cache[key] = (now, fp)
+        return fp
+
+
+def _run_problems(ev, root, spec_dir, spec_text, run, fingerprint=None):
+    """[(state, violation)] for an existing verify_run; state 'failed' | 'stale'. Fail closed.
+    `fingerprint`: an optional FingerprintOnce (shared across the specs of one status run); without it the
+    fingerprint is computed fresh, as before."""
+    d = Path(spec_dir)
+    spec = d.name
+    rerun = f'Run `aidd verify {spec}` again after the last code change, then close.'
+    out = []
+    if run.get('ok') is not True:
+        out.append(('failed', _v('R10', f'The last verify_run of {spec} failed.',
+                                 f'Fix the failing rows (see specs/{spec}/evidence/verify-<n>.txt), then run '
+                                 f'`aidd verify {spec}` again.')))
+    if run.get('stable') is not True:
+        out.append(('stale', _v('R10', 'tree changed while verification ran; re-run.', rerun)))
+    if str(run.get('verify_hash') or '') != verification_hash(spec_text):
+        out.append(('stale', _v('R10', 'The Verification table changed after the last verify_run (verify_hash differs).', rerun)))
+    f = getattr(ev, 'last_code_edit_ts', None)
+    try:
+        last = float(f(root)) if callable(f) else None
+        started = float(run.get('started') or 0.0)
+    except Exception:
+        last, started = None, 0.0
+    if last is None:
+        out.append(('stale', _v('R10', 'Cannot read the code edits of the evidence log (old install).',
+                                f'Reinstall AIDD (spec 007 aidd_evidence.py), then run `aidd verify {spec}` again.')))
+    elif last > started:
+        out.append(('stale', _v('R10', 'A code edit happened after the last verify_run started (verification is stale).', rerun)))
+    fp_end = run.get('fingerprint_end')
+    if fp_end is not None:
+        now = None
+        if callable(fingerprint):
+            try:
+                nb = max(float(run.get('ts') or 0.0), started, last or 0.0)
+            except Exception:
+                nb = float('inf')
+            try:
+                now = fingerprint(root, nb)
+            except Exception:
+                now = None
+        else:
+            g = getattr(ev, 'worktree_fingerprint', None)
+            try:
+                now = g(root) if callable(g) else None
+            except Exception:
+                now = None
+        if now != fp_end:
+            out.append(('stale', _v('R10', 'The working tree changed since the last verify_run (fingerprint differs).', rerun)))
+    results = run.get('results') or []
+    if not isinstance(results, list) or not results:
+        out.append(('failed', _v('R10', 'The last verify_run recorded no results.', rerun)))
+        return out
+    try:
+        base = d.resolve()
+    except Exception:
+        base = d
+    for r in results:
+        if not isinstance(r, dict):
+            out.append(('failed', _v('R10', 'The last verify_run has a malformed result row.', rerun)))
+            continue
+        n = str(r.get('n', '?'))[:20]
+        rel = str(r.get('evidence') or '')
+        want = str(r.get('sha1') or '').strip().lower()
+        if r.get('ok') is False:
+            out.append(('failed', _v('R10', f'Verification row {n} failed in the last verify_run.', rerun)))
+        st, p = _evidence_path(base, root, rel)
+        inside = False
+        if st == 'ok' and p is not None:
+            try:
+                Path(p).relative_to(base)
+                inside = True
+            except Exception:
+                inside = False
+        if not inside:
+            out.append(('stale', _v('R10', f'Evidence file of Verification row {n} ("{rel[:60]}") is missing or outside the spec dir.', rerun)))
+            continue
+        if len(want) < 12 or not re.match(r'^[0-9a-f]+$', want):
+            out.append(('stale', _v('R10', f'Verification row {n} has no recorded sha1 for its evidence.', rerun)))
+            continue
+        try:
+            actual = _sha1_file(p)
+        except Exception:
+            actual = ''
+        if not actual.startswith(want):
+            out.append(('stale', _v('R10', f'Evidence file of Verification row {n} changed after the run (sha1 differs).', rerun)))
+    return out
+
+
+def verification_gaps(ev, root, spec_dir):
+    """aidd:FR-205 aidd:AC-209 aidd:AC-216 Close-time R10 check for a `gate: 2` spec: a valid table; the
+    newest verify_run exists, ok and stable; its verify_hash == the table's == the approved event's;
+    no code edit after `started`; the fingerprint still equals `fingerprint_end` (when recorded);
+    every evidence file exists under the spec dir with its recorded sha1. `ev` is duck-typed. Never
+    raises (a violation on internal error: fail closed)."""
+    try:
+        d = Path(spec_dir)
+        spec = d.name
+        if _big(d / 'spec.md'):
+            return [_v('R10', 'spec.md file too large (> 2 MB): it is not scanned.', 'Shrink spec.md below 2 MB.')]
+        spec_text = _read(d / 'spec.md')
+        out = list(check_verification(spec_text, root))
+        f = getattr(ev, 'latest_verify_run', None)
+        if not callable(f):
+            return out + [_v('R10', 'The evidence library cannot read verify_run events (old install).',
+                             f'Reinstall AIDD (spec 007 aidd_evidence.py), then run `aidd verify {spec}`.')]
+        try:
+            run = f(root, spec)
+        except Exception:
+            run = None
+        if not run:
+            return out + [_v('R10', f'No verify_run recorded for {spec}: the Verification table was never executed.',
+                             f'Run `aidd verify {spec}` (it runs every row and saves evidence/verify-<n>.txt), then close.')]
+        out += [v for _s, v in _run_problems(ev, root, d, spec_text, run)]
+        appr = _current_approved(ev, root, d)
+        if appr is None:
+            out.append(_v('R10', f'No approved event found for {spec}.', f'Approve the tasks (`aidd rules approve {spec}`) first.'))
+        elif str(appr.get('verify_hash') or '') != verification_hash(spec_text):
+            out.append(_v('R10', 'The Verification table changed after approval (verify_hash differs from the approved one).',
+                          f'Regenerate the review (`aidd review specs/{spec}`), run `aidd review specs/{spec} --wait` in '
+                          'the background (the owner presses `Aprobar y guardar` on the page, which saves review.md), '
+                          f'ask ONE tagged question and approve again, then run `aidd verify {spec}`.'))
+        return _dedup(out)
+    except Exception as e:  # pragma: no cover - defensive
+        return [_v('R10', f'Verification check failed internally ({e}).', 'Report this to the AIDD maintainers.')]
+
+
+def verification_state(spec_dir, root=None, fingerprint=None):
+    """aidd:FR-208 {declared, commands, status: none|never-run|stale|failed|passed, ts} of a spec's
+    Verification (the newest verify_run vs the current table, code edits, fingerprint, evidence).
+    `fingerprint`: optional FingerprintOnce shared by the caller across specs (F-2). Never raises."""
+    st = {'declared': False, 'commands': 0, 'status': 'none', 'ts': None}
+    try:
+        d = Path(spec_dir)
+        text = '' if _big(d / 'spec.md') else _read(d / 'spec.md')
+        st['declared'] = _has_heading(_clean(text), _VERIF_HEADING)
+        rows = parse_verification(text)
+        st['commands'] = len(rows)
+        if not st['declared'] or not rows:
+            return st
+        st['status'] = 'never-run'
+        ev = _evidence()
+        if ev is None:
+            return st
+        if root:
+            root = Path(root)
+        elif d.parent.name == 'specs':
+            root = d.parent.parent
+        else:
+            root = ev.find_root(d)
+        f = getattr(ev, 'latest_verify_run', None)
+        run = f(root, d.name) if callable(f) else None
+        if not run:
+            return st
+        st['ts'] = run.get('ts')
+        probs = _run_problems(ev, root, d, text, run, fingerprint)
+        st['status'] = 'failed' if any(s == 'failed' for s, _v2 in probs) else ('stale' if probs else 'passed')
+    except Exception:
+        pass
+    return st
+
+
+# ===================================================== spec 007: the ONE closing auditor (R7)
+
+CLOSING_AUDIT_MIN_RESULT = 1500
+CLOSING_AUDIT_RE = re.compile(
+    r'^\s*CLOSING AUDIT\s*\[\s*domains\s*:\s*([^\]\n]*)\]\s*\[\s*tasks\s*:\s*([0-9a-f]{8})\s*\]'
+    r'(?:\s*\[\s*verify\s*:\s*([0-9a-f]{8})\s*\])?', re.I)
+
+
+def closing_audit_header(event):
+    """aidd:FR-206 {domains:set, tasks:str, verify:str} parsed from the FIRST line of the subagent's
+    `head` (its prompt; `desc` only when there is no head), else None. Never raises."""
+    try:
+        det = (event or {}).get('detail') or {}
+        src = str(det.get('head') or '').lstrip() or str(det.get('desc') or '').lstrip()
+        if not src:
+            return None
+        m = CLOSING_AUDIT_RE.match(src.split('\n', 1)[0][:1000])
+        if not m:
+            return None
+        doms = {x for x in re.split(r'[\s,;]+', m.group(1).strip().lower()) if x}
+        return {'domains': doms, 'tasks': m.group(2).lower(), 'verify': (m.group(3) or '').lower()}
+    except Exception:
+        return None
+
+
+def _result_chars(event):
+    try:
+        rc = (event.get('detail') or {}).get('result_chars')
+        if rc is None or isinstance(rc, bool):
+            return None
+        return int(float(rc))
+    except Exception:
+        return None
+
+
+def closing_audit_covers(event, spec_dir, domains, gate2, ev, root):
+    """aidd:FR-206 aidd:AC-210 True only for a COUNTING subagent (R14) whose header names every domain
+    of `domains`, whose `tasks` tag is approval_hash(tasks.md)[:8], whose recorded final report is at
+    least CLOSING_AUDIT_MIN_RESULT chars (absent = does not count) and, for a `gate: 2` spec, whose
+    `verify` tag is the newest verify_run's verify_hash[:8] and which postdates that run."""
+    try:
+        if not _subagent_counts(event):
+            return False
+        h = closing_audit_header(event)
+        if h is None:
+            return False
+        if not {str(x).lower() for x in domains} <= h['domains']:
+            return False
+        d = Path(spec_dir)
+        tasks = _read(d / 'tasks.md')
+        if not tasks.strip() or h['tasks'] != approval_hash(tasks)[:8]:
+            return False
+        if gate2:
+            f = getattr(ev, 'latest_verify_run', None)
+            run = f(root, d.name) if callable(f) else None
+            if not run:
+                return False
+            vh = str(run.get('verify_hash') or '').lower()
+            if not vh or h['verify'] != vh[:8]:
+                return False
+            if float(event.get('ts', 0) or 0) <= float(run.get('ts') or 0):
+                return False
+        rc = _result_chars(event)
+        return rc is not None and rc >= CLOSING_AUDIT_MIN_RESULT
+    except Exception:
+        return False
+
+
+def closing_audit_gaps(ev, root, spec_dir):
+    """aidd:FR-206 aidd:AC-210 For a `gate: 2` spec covered by a closing auditor: qa-audit.md must hold
+    a table row naming each required domain and the auditor's tool_use_id. [] for legacy specs and
+    when no closing auditor covers (per-domain auditors: R7 decides). Never raises (fail closed)."""
+    try:
+        d = Path(spec_dir)
+        if not _is_gate2(ev, root, d):
+            return []
+        doms = required_domains(d)
+        try:
+            subs = ev.events(root, None, 'subagent')
+        except Exception:
+            subs = []
+        aud = [e for e in subs if closing_audit_covers(e, d, doms, True, ev, root)]
+        if not aud:
+            return []
+        e = max(aud, key=lambda x: x.get('ts', 0) or 0)
+        tid = str((e.get('detail') or {}).get('tool_use_id') or '').strip()
+        qa_p = d / 'qa-audit.md'
+        fix = ('Rewrite qa-audit.md with one checklist row per required domain (' + ', '.join(sorted(doms))
+               + ') and the closing auditor\'s tool_use_id' + (f' ({tid})' if tid else '') + '.')
+        if not qa_p.exists():
+            return [_v('R10', 'qa-audit.md does not exist (closing audit not written down).', fix)]
+        if _big(qa_p):
+            return [_v('R10', 'qa-audit.md file too large (> 2 MB): it is not scanned.', 'Shrink qa-audit.md below 2 MB.')]
+        qa = _clean(_read(qa_p))
+        rows = [ln for ln in qa.split('\n') if ln.strip().startswith('|') and not _is_sep(_split_row(ln))]
+        out = []
+        for dom in sorted(doms):
+            rx = re.compile(r'\b' + re.escape(dom) + r'\b', re.I)
+            if not any(rx.search(r) for r in rows):
+                out.append(_v('R10', f'qa-audit.md has no checklist row for the {dom} domain of the closing audit.', fix))
+        if not tid:
+            out.append(_v('R10', 'The closing auditor has no recorded tool_use_id.',
+                          'Re-dispatch the closing auditor through the Agent tool (the hook records its tool_use_id).'))
+        elif tid not in qa:
+            out.append(_v('R10', f'qa-audit.md does not cite the closing auditor\'s tool_use_id ({tid[:60]}).', fix))
+        return out
+    except Exception as e:  # pragma: no cover - defensive
+        return [_v('R10', f'Closing-audit check failed internally ({e}).', 'Report this to the AIDD maintainers.')]
 
 
 if __name__ == '__main__':  # tiny CLI: python aidd_rules.py <spec_dir>

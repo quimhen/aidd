@@ -1,0 +1,50 @@
+== AC-301 compact generate
+rc 0 ['wrote: C:\\Users\\jquimis\\AppData\\Local\\Temp\\claude\\D--Fuentes-AIDD\\0f143e53-0037-424b-ad64-ed0094e98386\\scratchpad\\runs\\f28_page\\specs\\F28-DB-Unification-Sync\\review.html'] 
+size KB 163.2 format codes-v2 codes 175 tabs [('summary', 'Resumen', 1), ('questions', 'Preguntas', 52), ('fr', 'Requisitos', 30), ('ac', 'Casos', 17), ('api', 'API', 21), ('tasks', 'Tareas', 49), ('verification', 'Verificación', 5)]
+warnings []
+links {'summary': 'spec.md', 'questions': 'spec.md', 'fr': 'spec.md', 'ac': 'spec.md', 'api': 'contracts.md', 'tasks': 'tasks.md', 'verification': 'spec.md'} picker_id aidd-bd228f9f summary source generated
+embedded markdown? (## Functional requirements in html): False False
+second run: unchanged: C:\Users\jquimis\AppData\Local\Temp\claude\D--Fuentes-AIDD\0f143e53-0037-424b-ad64-ed0094e98386\scratchpad\runs\f28_page\specs\F28-DB-Unification-Sync\review.html mtime same True
+== AC-317/309 states via --check
+no review.md: 2 'STATE=pending approved=0/175 comments=0 stale=no legacy=no tag=[tasks:5c3cbb5b]\n'
+1 unchecked: 2 'STATE=pending approved=174/175 comments=0 stale=no legacy=no tag=[tasks:5c3cbb5b]\n'
+AC-323 170/175: 2 'STATE=pending approved=170/175 comments=0 stale=no legacy=no tag=[tasks:5c3cbb5b]\n'
+complete 2 comments: 0 'STATE=complete approved=175/175 comments=2 stale=no legacy=no tag=[tasks:5c3cbb5b]\n'
+AC-318 --comments: 0 'FR-001: line one - [x] FR-002\nT-02: SENTINEL-COMMENT\n'
+AC-309d --wait: 0 'STATE=complete approved=175/175 comments=2 stale=no legacy=no tag=[tasks:5c3cbb5b]\n' ''
+AC-306 FR-002 approved after forged comment: {'approved': False, 'comment': ''} FR-001 comment '- [x] FR-002 ---'
+older tasks_hash: 3 'STATE=stale approved=175/175 comments=0 stale=yes legacy=no tag=[tasks:5c3cbb5b]\n'
+  --comments stale: 3 ''
+  --wait stale(e) timeout: 2 'STATE=stale approved=175/175 comments=0 stale=yes legacy=no tag=[tasks:5c3cbb5b]\n'
+  --wait pending(c)+(f) timeout: 2 'STATE=pending approved=174/175 comments=0 stale=no legacy=no tag=[tasks:5c3cbb5b]\n' stray intact True
+== AC-307 legacy 007 review.md next to compact page
+--check: 3 'STATE=legacy approved=0/175 comments=0 stale=yes legacy=yes tag=[tasks:5c3cbb5b]\n'
+state: False True headings-v1 codes-v2 review.md uses the old per-heading grammar (spec 007): run aidd review <spec>, open the page and press Approve again
+--comments legacy: 3 ''
+--wait legacy: 2 'STATE=legacy approved=0/175 comments=0 stale=yes legacy=yes tag=[tasks:5c3cbb5b]\n'
+approve legacy: 1 Refused: a review exists for F28-DB-Unification-Sync (specs/F28-DB-Unification-Sync/review.html is current): complete it. Cause: review.md uses the old per-heading grammar (spec 007): run aidd review <spec>, open the page and press Approve again. | Fix: run `aidd review specs/F28-DB-Unification-Sync --wait` in the background (it prints one STATE line and nothing else; the owner opens specs/F28-DB-Un 
+== AC-319 sentinel
+sentinel absent: True [(0, 'STATE=complete approved=175/175 comments=1 stale=no legacy=no tag=[tasks:5c3cbb5b]\n'), (0, 'STATE=complete approved=175/175 comments=1 stale=no legacy=no tag=[tasks:5c3cbb5b]\n')]
+== AC-320 carry-over after editing T-17 text
+regen: 0 wrote: C:\Users\jquimis\AppData\Local\Temp\claude\D--Fuentes-AIDD\0f143e53-0037-424b-ad64-ed0094e98386\scratchpad\runs\f28_page\specs\F28-DB-Unification-Sync\review.html
+carry {'carried': 174, 'total': 175, 'pending': ['T-17']} prior count 174 FR-001 prior {'approved': True, 'comment': 'keep me'} T-17 in prior False
+review.md untouched True True
+--check after regen: 3 'STATE=stale approved=175/175 comments=1 stale=yes legacy=no tag=[tasks:ae09adfc]\n'
+Arrastrados text present in template js? True
+== AC-321 (a) no change, (b) risks prose edit
+(a): unchanged: C:\Users\jquimis\AppData\Local\Temp\claude\D--Fuentes-AIDD\0f143e53-0037-424b-ad64-ed0094e98386\scratchpad\runs\f28_page\specs\F28-DB-Unification-Sync\review.html
+(b): wrote: C:\Users\jquimis\AppData\Local\Temp\claude\D--Fuentes-AIDD\0f143e53-0037-424b-ad64-ed0094e98386\scratchpad\runs\f28_page\specs\F28-DB-Unification-Sync\review.html
+(b) carry {'carried': 175, 'total': 175, 'pending': []}
+== AC-322 remove FR-012, regen, re-add
+removed: codes 174 False carry 173 ['SUMMARY']
+re-added: codes 175 carry 173 ['SUMMARY', 'FR-012']
+== AC-325 (d) insert checklist row before Q4
+inserted: carried 165 pending ['SUMMARY', 'Q4', 'Q5', 'Q6', 'Q7', 'Q8', 'Q9', 'Q10', 'Q11', 'Q12', 'Q13']
+== AC-311 --full + 007 review.md
+--full: 0 wrote: C:\Users\jquimis\AppData\Local\Temp\claude\D--Fuentes-AIDD\0f143e53-0037-424b-ad64-ed0094e98386\scratchpad\runs\f28_full\specs\F28-DB-Unification-Sync\review.html
+full format headings-v1 keys 105
+007 md + full page: legacy False valid True reason review.md was generated for sources digest 26bdd3709ff5; current is 628660e579e5: run `aidd review` 
+  --check 3 'STATE=stale approved=104/105 comments=0 stale=yes legacy=no tag=[tasks:5c3cbb5b]\n'
+switch to compact: wrote: C:\Users\jquimis\AppData\Local\Temp\claude\D--Fuentes-AIDD\0f143e53-0037-424b-ad64-ed0094e98386\scratchpad\runs\f28_full\specs\F28-DB-Unification-Sync\review.html
+switch back to full: wrote: C:\Users\jquimis\AppData\Local\Temp\claude\D--Fuentes-AIDD\0f143e53-0037-424b-ad64-ed0094e98386\scratchpad\runs\f28_full\specs\F28-DB-Unification-Sync\review.html
+compact md + full page: legacy True review.md was saved from the compact page but review.html is a different page type: run aidd review <spec> aga
