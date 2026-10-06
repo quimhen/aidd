@@ -992,7 +992,8 @@ def latest_approved(root, spec, hash=None):
         return None
 
 
-_VERIFY_EXTRA = ('code_fp_start', 'code_fp_end', 'code_since', 'verify_lineage')
+_VERIFY_EXTRA = ('code_fp_start', 'code_fp_end', 'code_since', 'verify_lineage', 'code_scope',
+                 'code_changed', 'code_generated')
 
 
 def append_verify_run(root, session, spec, ok, verify_hash, results, started, fingerprint_start,
@@ -1040,10 +1041,24 @@ def latest_verify_run(root, spec):
         return None
 
 
-def last_code_edit_ts(root):
-    """aidd:FR-205 Newest `code_edit` ts of ANY spec (freshness rule), 0.0 when none or on error."""
+def last_code_edit_ts(root, scope=None, exclude=None):
+    """aidd:FR-205 Newest `code_edit` ts of ANY spec (freshness rule), 0.0 when none or on error.
+    With `scope` (a spec's `Scope:` globs) only edits of files inside it count, so work on other specs
+    does not make this spec's verification or audit stale; `exclude` drops generated outputs."""
     try:
-        return max((e['ts'] for e in events(root, kind='code_edit')), default=0.0)
+        srx, xrx = _scope_re(scope), _scope_re(exclude)
+        if srx is None and xrx is None:
+            return max((e['ts'] for e in events(root, kind='code_edit')), default=0.0)
+        base = Path(root).resolve()
+        best = 0.0
+        for e in events(root, kind='code_edit'):
+            try:
+                rel = Path(str(e['detail'].get('path') or '')).resolve().relative_to(base)
+            except Exception:
+                continue                 # outside the project root: not an edit of this scope
+            if in_scope(rel.as_posix(), srx) and not (xrx is not None and in_scope(rel.as_posix(), xrx)):
+                best = max(best, e['ts'])
+        return best
     except Exception:
         return 0.0
 
@@ -1353,7 +1368,17 @@ def affirmative_answer(root, session, topic_re, since_ts=0.0, label_re=None, mus
             or typed_approval(root, session, since_ts, label_re, must_contain))
 
 
-def _answer_event(root, session, topic_re, since_ts=0.0, label_re=None, must_contain=None):
+def tagged_answer_any_session(root, session, topic_re, since_ts=0.0, label_re=None, must_contain=None):
+    """The same answer lookup across ALL sessions of the machine, only for a question that carries a
+    `must_contain` tag (`[spec:<id>]`, `[tasks:<h8>]`): the tag binds the click to that spec/content, so a
+    click made in another window (a wrong session inference) still counts and the owner is never asked to
+    answer twice. None without a tag, so an untagged question can never be adopted from another window."""
+    if not must_contain:
+        return None
+    return _answer_event(root, session, topic_re, since_ts, label_re, must_contain, any_session=True)
+
+
+def _answer_event(root, session, topic_re, since_ts=0.0, label_re=None, must_contain=None, any_session=False):
     """The newest `answer` event (same session or 'unknown-session', ts > since_ts) that has a
     question matching `topic_re` (uses `pairs` ONLY, never raw text); returned only if the chosen
     answer matches `label_re` (default: a generic affirmative that contains no negative) AND is one of
@@ -1365,8 +1390,11 @@ def _answer_event(root, session, topic_re, since_ts=0.0, label_re=None, must_con
         rx = _rx(topic_re)
         need = re.sub(r'\s+', ' ', str(must_contain)).strip().lower() if must_contain else None
         lx = _rx(label_re) if label_re is not None else None
-        evs = [e for s in {session, 'unknown-session'}
-               for e in events(root, kind='answer', session=s, since=since_ts or 0.0)]
+        if any_session:
+            evs = list(events(root, kind='answer', since=since_ts or 0.0))
+        else:
+            evs = [e for s in {session, 'unknown-session'}
+                   for e in events(root, kind='answer', session=s, since=since_ts or 0.0)]
         for _i, e in sorted(enumerate(evs), key=lambda t: (t[1]['ts'], t[0]), reverse=True):
             pairs = e['detail'].get('pairs')
             options = e['detail'].get('options')
@@ -1744,22 +1772,39 @@ def _fp_is_doc(rel):
     return os.path.splitext(rel)[1].lower() in _FP_DOC_EXT
 
 
-def _code_fp_from_git(root, deadline):
-    """sha1[:16] of (path, blob sha of the WORKING-TREE content) for every tracked or untracked non-ignored
-    file outside specs/ and the AIDD bundle dir that is not documentation. No HEAD and no index state: a
-    commit, an amend or a `git add` of the same content leaves it unchanged; so does editing a .md file."""
+def _scope_re(globs):
+    """Compiled regex for a list of root-relative globs (`**` any depth, `*` within one segment); None = no scope."""
+    parts = []
+    for g in globs or []:
+        g = str(g).strip().strip('`').replace('\\', '/').lstrip('./')
+        if not g:
+            continue
+        rx = re.escape(g).replace(r'\*\*/', '(?:.*/)?').replace(r'\*\*', '.*').replace(r'\*', '[^/]*')
+        parts.append(rx + ('.*' if g.endswith('/') else ''))
+    return re.compile('^(?:' + '|'.join(parts) + ')$') if parts else None
+
+
+def in_scope(rel, scope_rx):
+    """True when `rel` (root-relative) is in the scope; everything is in scope when there is none."""
+    return scope_rx is None or bool(scope_rx.match(str(rel).replace('\\', '/')))
+
+
+def _code_state_git(root, deadline, srx):
+    """{rel: chunk} for every tracked or untracked non-ignored file outside specs/ and the AIDD bundle dir
+    that is not documentation and is in scope; chunk = `rel\\0<blob sha of the WORKING-TREE content>\\0`.
+    No HEAD and no index state: a commit, an amend or a `git add` of the same content changes nothing."""
     excl = ['--', '.', ':(exclude)specs', ':(exclude).aidd']
     raw = _fp_git(root, ['ls-files', '-c', '-o', '--exclude-standard', '-z', *excl], deadline)
     paths = sorted({p for p in raw.decode('utf-8', errors='surrogateescape').split('\0') if p})
     keep = []
     for rel in paths:
-        if _fp_is_doc(rel) or '\n' in rel or not _fp_outside(rel):
+        if _fp_is_doc(rel) or '\n' in rel or not _fp_outside(rel) or not in_scope(rel, srx):
             continue
         if os.path.isfile(os.path.join(str(root), rel)):
             keep.append(rel)
     if len(keep) > _FP_MAX_FILES:
         raise _FpOverBudget()
-    h = hashlib.sha1(b'code2\0')
+    state = {}
     if keep:
         timeout = _fp_left(deadline)
         env = dict(os.environ, GIT_OPTIONAL_LOCKS='0', LC_ALL='C')
@@ -1776,12 +1821,12 @@ def _code_fp_from_git(root, deadline):
         if r.returncode != 0 or len(shas) != len(keep):
             raise _FpUnavailable()
         for rel, sha in zip(keep, shas):
-            h.update(rel.encode('utf-8', errors='surrogateescape') + b'\0' + sha.encode('ascii') + b'\0')
-    return 'c2:' + h.hexdigest()[:16]
+            state[rel] = rel.encode('utf-8', errors='surrogateescape') + b'\0' + sha.encode('ascii') + b'\0'
+    return 'git', state
 
 
-def _code_fp_from_mtimes(root, deadline):
-    rows = []
+def _code_state_mtimes(root, deadline, srx):
+    state = {}
     base = os.path.abspath(str(root))
     for cur, dirs, files in os.walk(base):
         _fp_left(deadline)
@@ -1791,34 +1836,74 @@ def _code_fp_from_mtimes(root, deadline):
             if _fp_is_doc(f):
                 continue
             full = os.path.join(cur, f)
+            rel = os.path.relpath(full, base).replace('\\', '/')
+            if not in_scope(rel, srx):
+                continue
             try:
                 st = os.stat(full)
             except OSError:
                 continue
-            rows.append((os.path.relpath(full, base).replace('\\', '/'), st.st_size, st.st_mtime_ns))
-            if len(rows) > _FP_MAX_FILES:
+            state[rel] = f'{rel}\0{st.st_size}\0{st.st_mtime_ns}\n'.encode('utf-8', errors='surrogateescape')
+            if len(state) > _FP_MAX_FILES:
                 raise _FpOverBudget()
-    h = hashlib.sha1(b'code2m\0')
-    for rel, size, mt in sorted(rows):
-        h.update(f'{rel}\0{size}\0{mt}\n'.encode('utf-8', errors='surrogateescape'))
-    return 'c2:' + h.hexdigest()[:16]
+    return 'mtime', state
 
 
-def code_fingerprint(root, budget_s=8.0):
-    """Fingerprint of the project's CODE state outside specs/ and the AIDD bundle dir, ignoring
-    documentation (.md/.markdown/.rst/.adoc) and the git history: a doc edit, a commit or a push never
-    makes a passed verification stale; changing a code or data file does. 'c2:'-prefixed so it is never
-    confused with the legacy worktree_fingerprint. None over budget or on error (callers fail closed)."""
+def code_state(root, budget_s=8.0, scope=None):
+    """(kind, {rel: chunk}) of the project's CODE files (see _code_state_git), limited to `scope` globs, or None
+    over budget / on error. The per-file view lets `aidd verify` say WHICH files a command rewrote."""
     try:
         if root is None or not Path(root).is_dir():
             return None
+        srx = _scope_re([str(g).strip() for g in (scope or []) if str(g).strip()])
         deadline = time.monotonic() + float(budget_s)
         try:
-            return _code_fp_from_git(Path(root), deadline)
+            return _code_state_git(Path(root), deadline, srx)
         except _FpUnavailable:
-            return _code_fp_from_mtimes(Path(root), deadline)
+            return _code_state_mtimes(Path(root), deadline, srx)
     except Exception:
         return None
+
+
+def fingerprint_of(state, scope=None, exclude=None):
+    """'c2:'-prefixed sha1[:16] of a code_state, ignoring the files matching the `exclude` globs or exact paths
+    (generated outputs). The scope is part of the hash; a scope that matches no file gives None (it proves
+    nothing: fail closed). Same formula for git and mtime states, so recorded runs stay comparable."""
+    try:
+        if not state:
+            return None
+        kind, items = state
+        scope = sorted({str(g).strip() for g in (scope or []) if str(g).strip()})
+        xrx = _scope_re(exclude)
+        picked = sorted((r, c) for r, c in items.items() if not (xrx is not None and in_scope(r, xrx)))
+        if scope and not items:
+            return None
+        h = hashlib.sha1((b'code2\0' if kind == 'git' else b'code2m\0')
+                         + (('scope\0' + '\0'.join(scope)).encode('utf-8') if scope else b''))
+        for _r, chunk in picked:
+            h.update(chunk)
+        return 'c2:' + h.hexdigest()[:16]
+    except Exception:
+        return None
+
+
+def state_diff(a, b):
+    """Sorted root-relative paths whose content differs between two code_states (added, removed or changed)."""
+    try:
+        ia, ib = (a[1] if a else {}), (b[1] if b else {})
+        return sorted(r for r in set(ia) | set(ib) if ia.get(r) != ib.get(r))
+    except Exception:
+        return []
+
+
+def code_fingerprint(root, budget_s=8.0, scope=None, exclude=None):
+    """Fingerprint of the project's CODE state outside specs/ and the AIDD bundle dir, ignoring
+    documentation (.md/.markdown/.rst/.adoc) and the git history: a doc edit, a commit or a push never
+    makes a passed verification stale; changing a code or data file does. `scope` (root-relative globs, the
+    spec's `Scope:` line) limits it to the files that spec owns, so work on OTHER specs never invalidates it;
+    `exclude` (the spec's `Generated:` globs and the files a run rewrote) removes generated outputs. 'c2:'-
+    prefixed so it is never confused with the legacy worktree_fingerprint. None over budget or on error."""
+    return fingerprint_of(code_state(root, budget_s, scope), scope, exclude)
 
 
 # ---------------------------------------------------------------------------

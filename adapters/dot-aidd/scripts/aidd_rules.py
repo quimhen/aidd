@@ -1965,6 +1965,38 @@ def parse_verification(spec_text):
         return []
 
 
+def _verification_globs(spec_text, key):
+    """Sorted root-relative globs of the optional `<key>: a/**, b/c.py` line inside `## Verification`; a
+    template placeholder (`<...>`) is no value. Never raises ([] on any problem)."""
+    try:
+        t = _clean(spec_text if isinstance(spec_text, str) else '')
+        m = re.search(r'^#{2,3}[ \t]+verification[ \t]*$', t, re.I | re.M)
+        if not m:
+            return []
+        rest = t[m.end():]
+        nxt = re.search(r'^#{2,3}[ \t]+\S', rest, re.M)
+        sec = rest[:nxt.start()] if nxt else rest
+        ln = re.search(r'^[ \t>*_-]*' + key + r'\s*:\s*(.+?)\s*$', sec, re.I | re.M)
+        if not ln:
+            return []
+        globs = {g.strip().strip('`').replace('\\', '/') for g in re.split(r'[,;]', ln.group(1))}
+        return sorted(g for g in globs if g and '<' not in g and '>' not in g)
+    except Exception:
+        return []
+
+
+def verification_scope(spec_text):
+    """`Scope:` globs ([] = none: the whole tree counts). With a scope, only edits to files it covers make
+    the verification (and the audits that follow it) stale, so other specs can be built in parallel."""
+    return _verification_globs(spec_text, 'scope')
+
+
+def verification_generated(spec_text):
+    """`Generated:` globs: files the verification commands REWRITE (graph.json with a timestamp, reports,
+    snapshots). They are outputs, not inputs: a run that rewrote them is stable and they never make it stale."""
+    return _verification_globs(spec_text, 'generated')
+
+
 def _norm_cell(s):
     return re.sub(r'\s+', ' ', str(s or '')).strip()
 
@@ -2454,6 +2486,21 @@ class FingerprintOnce:
         return fp
 
 
+def _glob_hit(rel, globs):
+    """True when the root-relative `rel` matches any glob (`**` any depth, `*` inside one segment)."""
+    try:
+        for g in globs or []:
+            g = str(g).strip().strip('`').replace('\\', '/').lstrip('./')
+            if not g:
+                continue
+            rx = re.escape(g).replace(r'\*\*/', '(?:.*/)?').replace(r'\*\*', '.*').replace(r'\*', '[^/]*')
+            if re.match('^(?:' + rx + ('.*' if g.endswith('/') else '') + ')$', str(rel).replace('\\', '/')):
+                return True
+    except Exception:
+        pass
+    return False
+
+
 def _rows_already_executed(spec_text, run):
     """Amendment to spec 007: True when the run recorded the code fingerprint and EVERY current table row
     (same command and Expected) already has a passing result in it. A text-only table edit (wording, Covers,
@@ -2479,18 +2526,34 @@ def _run_problems(ev, root, spec_dir, spec_text, run, fingerprint=None):
     spec = d.name
     rerun = f'Run `aidd verify {spec}` again after the last code change, then close.'
     out = []
-    if run.get('ok') is not True:
+    changed = [str(x) for x in (run.get('code_changed') or [])]
+    res0 = run.get('results') or []
+    rows_ok = bool(res0) and all(isinstance(r, dict) and r.get('ok') is True for r in res0)
+    # files the run rewrote are outputs when the spec now declares them `Generated:`: THIS run is accepted
+    # as it is (no re-execution, no code edit); the only fix for the old "tree changed" failure is that line.
+    gen_now = verification_generated(spec_text)
+    explained = bool(changed) and rows_ok and all(_glob_hit(c, gen_now) for c in changed)
+    if run.get('ok') is not True and not explained:
         out.append(('failed', _v('R10', f'The last verify_run of {spec} failed.',
                                  f'Fix the failing rows (see specs/{spec}/evidence/verify-<n>.txt), then run '
                                  f'`aidd verify {spec}` again.')))
-    if run.get('stable') is not True:
-        out.append(('stale', _v('R10', 'tree changed while verification ran; re-run.', rerun)))
+    if run.get('stable') is not True and not explained:
+        if changed and rows_ok:
+            shown = ', '.join(changed[:6]) + (f' (+{len(changed) - 6} more)' if len(changed) > 6 else '')
+            out.append(('stale', _v('R10', f'The verification itself rewrote files: {shown}.',
+                                    f'They are outputs, not code: add `Generated: {", ".join(changed[:6])}` (globs allowed) under '
+                                    f'`## Verification` in specs/{spec}/spec.md. AIDD then accepts this same run: do NOT re-run it '
+                                    'and do NOT edit the generator.')))
+        else:
+            out.append(('stale', _v('R10', 'tree changed while verification ran; re-run.', rerun)))
     if str(run.get('verify_hash') or '') != verification_hash(spec_text) and not _rows_already_executed(spec_text, run):
         out.append(('stale', _v('R10', 'The Verification table changed after the last verify_run (a row was added or its command/expected changed).',
                                 f'Run `aidd verify {spec}`: it re-runs ONLY the changed rows and reuses the rest while the code is unchanged.')))
     f = getattr(ev, 'last_code_edit_ts', None)
+    scope = [str(x) for x in (run.get('code_scope') or [])]
+    excl = [str(x) for x in (run.get('code_generated') or [])] + changed      # outputs the run itself rewrote
     try:
-        last = float(f(root)) if callable(f) else None
+        last = ((float(f(root, scope, excl) if (scope or excl) else f(root))) if callable(f) else None)
         started = float(run.get('started') or 0.0)
     except Exception:
         last, started = None, 0.0
@@ -2506,9 +2569,11 @@ def _run_problems(ev, root, spec_dir, spec_text, run, fingerprint=None):
         # Documentation edits, commits, amends and pushes leave it equal, so they never force a re-run.
         g = getattr(ev, 'code_fingerprint', None)
         try:
-            cnow = g(root) if callable(g) else None
+            cnow = (g(root, scope=scope, exclude=excl) if (scope or excl) else g(root)) if callable(g) else None
         except Exception:
             cnow = None
+        if verification_scope(spec_text) != sorted(scope):
+            out.append(('stale', _v('R10', 'The Verification `Scope:` line changed after the last verify_run.', rerun)))
         if cnow != cfp_end:
             out.append(('stale', _v('R10', 'A code or data file changed since the last verify_run (documentation edits and commits do not count).',
                                     f'Run `aidd verify {spec}`: unchanged rows are reused only if the code is unchanged, so after a code change it re-runs them all.')))

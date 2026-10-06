@@ -945,6 +945,9 @@ def _consent(ev, root, sess, d, tag, rs, tty=None):
         ans = ev.affirmative_answer(root, sess, APPROVE_TOPIC, since, label_re=APPROVE_LABEL, must_contain=tag)
         if ans:
             return ('prompt' if ans.get('kind') == 'prompt' else 'answer'), float(ans['ts'])
+        ans = ev.tagged_answer_any_session(root, sess, APPROVE_TOPIC, since, label_re=APPROVE_LABEL, must_contain=tag)
+        if ans:                  # clicked in another window: the [tasks:<h8>] tag binds it to this tasks.md
+            return 'answer', float(ans['ts'])
     except Exception:
         pass
     rv = _review_mod()
@@ -1291,9 +1294,13 @@ def cmd_verify(spec_arg, full=False):
     sess = _current_session(root)
     started = time.time()
     fp_start = ev.worktree_fingerprint(root)
-    code_start = ev.code_fingerprint(root)
+    scope = rules.verification_scope(spec_text)               # [] = whole tree; else only this spec's files count
+    gen = rules.verification_generated(spec_text)             # files the commands rewrite on purpose (outputs)
+    st_start = ev.code_state(root, scope=scope)
     prior = ev.latest_verify_run(root, d.name)
-    reuse = _reusable_rows(d, prior, code_start, full)      # read BEFORE any evidence file is rewritten
+    pexcl = (list(prior.get('code_generated') or []) + list(prior.get('code_changed') or [])) if prior else []
+    prior_fp = ev.fingerprint_of(st_start, scope, exclude=pexcl) if (prior and st_start) else None
+    reuse = _reusable_rows(d, prior, prior_fp, full)        # read BEFORE any evidence file is rewritten
     results = []
     for i, r in enumerate(rows, 1):
         cmd, expected = r['cmd'], (r.get('expected') or 'exit 0')
@@ -1354,19 +1361,37 @@ def cmd_verify(spec_arg, full=False):
         print(f"{'PASS' if ok else 'FAIL'} row {n}: {one_line[:100]} (exit {code})"
               + (f' - {why}' if why and not ok else '') + f' → {rel}')
     fp_end = ev.worktree_fingerprint(root)
-    code_end = ev.code_fingerprint(root)
-    stable = (code_start == code_end) if code_start is not None else (fp_start == fp_end)   # docs may change meanwhile
+    st_end = ev.code_state(root, scope=scope)
+    # Files a command rewrote (a graph.json with a timestamp, a report): outputs, not code. Declared in `Generated:`
+    # they are fine; undeclared they fail THIS run, but the file list is recorded so adding the `Generated:` line
+    # later makes the gate accept the very same run (no re-execution, no edit of the generator).
+    changed = ev.state_diff(st_start, st_end) if (st_start and st_end) else []
+    unexplained = [c for c in changed if not rules._glob_hit(c, gen)]
+    excl = list(gen) + changed
+    code_start = ev.fingerprint_of(st_start, scope, exclude=excl) if st_start else None
+    code_end = ev.fingerprint_of(st_end, scope, exclude=excl) if st_end else None
+    stable = (not unexplained) if (st_start and st_end) else (fp_start == fp_end)       # docs may change meanwhile
     all_ok = all(x['ok'] for x in results) and stable
     # code_since: when this exact code state was first verified; lineage: the table hashes verified on it.
-    same_code = bool(prior and code_start is not None and prior.get('code_fp_end') == code_start)
+    same_code = bool(prior and prior_fp is not None and prior.get('code_fp_end') == prior_fp)
     code_since = (prior.get('code_since') or prior.get('started')) if same_code else started
     lineage = None
     if same_code:
         lineage = [x for x in (list(prior.get('verify_lineage') or []) + [prior.get('verify_hash')]) if x][-20:]
     recorded = ev.append_verify_run(root, sess, d.name, all_ok, vhash, results, started, fp_start, fp_end, stable,
                                     code_fp_start=code_start, code_fp_end=code_end,
-                                    code_since=code_since, verify_lineage=lineage)
-    if not stable:
+                                    code_since=code_since, verify_lineage=lineage, code_scope=scope or None,
+                                    code_changed=changed[:200] or None, code_generated=gen or None)
+    if scope:
+        print(f'scope: {", ".join(scope)} (edits outside it, e.g. other specs, do not invalidate this verification)')
+    if changed and not unexplained:
+        print(f'rewritten by the verification and declared Generated: {", ".join(changed[:6])}')
+    if not stable and unexplained:
+        print(f'FAIL the verification rewrote files: {", ".join(unexplained[:6])}'
+              + (f' (+{len(unexplained) - 6} more)' if len(unexplained) > 6 else '') + '.')
+        print(f'  They are outputs, not code. Add `Generated: {", ".join(unexplained[:6])}` (globs allowed) under '
+              f'`## Verification` in {d.name}/spec.md and the gate accepts THIS run: do NOT re-run it and do NOT edit the generator.')
+    elif not stable:
         print('FAIL the working tree changed while verification ran (a command wrote a file outside specs/); '
               're-run `aidd verify ' + d.name + '`.')
     if not recorded:
@@ -1410,7 +1435,9 @@ def _close_gaps(d, root):
         except Exception as e:      # fail closed
             gaps.append(f'R10 the verification check failed ({type(e).__name__}) → run `aidd verify {d.name}` again.')
         run = ev.latest_verify_run(root, d.name) or {}
-        since = max(ev.last_code_edit_ts(root), float(run.get('code_since') or run.get('ts') or 0.0))
+        rscope = [str(x) for x in (run.get('code_scope') or [])]
+        since = max((ev.last_code_edit_ts(root, rscope) if rscope else ev.last_code_edit_ts(root)),
+                    float(run.get('code_since') or run.get('ts') or 0.0))
         h8 = rules.approval_hash(tasks_t)[:8] if tasks_t.strip() else '????????'
         v8 = (str(run.get('verify_hash') or '') or '????????')[:8]
         missing = sorted(rules.uncovered_domains(root, None, d.name, since, spec_dir=d))
@@ -1462,6 +1489,9 @@ def cmd_close(spec_arg):
     # the answer must postdate qa-audit.md (a stale "yes" from before the audit does not count)
     ans = ev.affirmative_answer(root, sess, CLOSE_TOPIC, _mtime(d / 'qa-audit.md') or 0.0, label_re=CLOSE_LABEL,
                                must_contain=f'[spec:{d.name}]')
+    if ans is None:     # the click may have been recorded under another window's session: the tag binds it
+        ans = ev.tagged_answer_any_session(root, sess, CLOSE_TOPIC, _mtime(d / 'qa-audit.md') or 0.0,
+                                           label_re=CLOSE_LABEL, must_contain=f'[spec:{d.name}]')
     if ans is None:
         print('Refused: no recorded user answer "Yes, close" to a close question (asked after qa-audit.md).\n'
               'Fix: ' + _ASK_FIX.format(opt='Yes, close', what='closing the spec (e.g. "Close spec X as '
@@ -1533,6 +1563,9 @@ def cmd_abandon(spec_arg, reason=''):
     ans = ev.affirmative_answer(root, sess, ABANDON_TOPIC, _abandon_since(root, spec_id, d, sess),
                                label_re=ABANDON_LABEL,
                                must_contain=f'[spec:{spec_id}]')
+    if ans is None:
+        ans = ev.tagged_answer_any_session(root, sess, ABANDON_TOPIC, _abandon_since(root, spec_id, d, sess),
+                                           label_re=ABANDON_LABEL, must_contain=f'[spec:{spec_id}]')
     if ans is None:
         print('Refused: no recorded user answer "Abandon" to an abandon question in this session (a later '
               'typed "No, keep it" cancels an earlier Abandon).\n'

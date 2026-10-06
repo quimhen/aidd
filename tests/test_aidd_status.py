@@ -1126,11 +1126,29 @@ class TestCallerSession(CallerBase):
             (d / "qa-audit.md").write_text("# qa\n", encoding="utf-8")
             self.answer(root, "Close this spec? [spec:001-x]", "Yes, close", session="sB")
             self.prompt(root, "another window typing here", session="sA")
-            self.assertEqual(run_script("rules", "close", "001-x", cwd=root).returncode, 1)
-            self.write_marker(root, "sB")
+            # the inferred session is sA but the tagged click was recorded under sB's window: the `[spec:<id>]`
+            # tag binds it to this spec, so the owner is NOT asked to click or type again (no "listo" loop)
             r = run_script("rules", "close", "001-x", cwd=root)
             self.assertEqual(r.returncode, 0, r.stdout)
             self.assertEqual(ev.open_specs(root), [])
+
+    def test_untagged_close_answer_from_another_window_is_not_adopted(self):
+        tmp, root, d = make_project()
+        with tmp:
+            self.approve_legacy(root, d)
+            ev.set_active_spec(root, "001-x")
+            tick()
+            ev.append(root, "sB", "code_edit", path="src/a.py", spec="001-x")
+            for desc in ("functional auditor", "security auditor"):
+                tick()
+                ev.append(root, "sB", "subagent", type="x", desc=desc, head="best practice")
+            (d / "qa-audit.md").write_text("# qa\n", encoding="utf-8")
+            self.answer(root, "Close this spec?", "Yes, close", session="sB")          # no [spec:<id>] tag
+            self.prompt(root, "another window typing here", session="sA")
+            self.assertEqual(run_script("rules", "close", "001-x", cwd=root).returncode, 1)
+            self.write_marker(root, "sB")
+            self.assertEqual(run_script("rules", "close", "001-x", cwd=root).returncode, 1)   # untagged never counts
+            self.assertEqual(ev.open_specs(root), ["001-x"])
 
     def test_ac002_stale_marker_is_ignored(self):
         tmp, root, d = make_project()
@@ -1997,6 +2015,58 @@ class TestVerify(Spec007Base):
             r = run_script("verify", "F23-eDoc-POS", cwd=root)
             self.assertNotIn("REUSED", r.stdout)
 
+    def test_scope_lets_other_specs_change_code_while_this_one_stays_verified(self):
+        """A `Scope:` line in ## Verification: edits outside it (another spec in parallel) never make the run
+        stale or unstable; an edit inside it does."""
+        tmp, root, d = self.vproject([("python src/check.py", "exit 0")])
+        with tmp:
+            spec = d / "spec.md"
+            spec.write_text(spec.read_text(encoding="utf-8").replace("## Verification\n", "## Verification\n\nScope: src/check.py\n", 1),
+                            encoding="utf-8")
+            r = run_script("verify", "F23-eDoc-POS", cwd=root)
+            self.assertEqual(r.returncode, 0, r.stdout)
+            self.assertIn("scope: src/check.py", r.stdout)
+            self.assertEqual(ev.latest_verify_run(root, "F23-eDoc-POS")["code_scope"], ["src/check.py"])
+            tick()
+            (root / "src" / "other_spec.py").write_text("print('parallel work of another spec')\n", encoding="utf-8")
+            ev.append(root, "s1", "code_edit", path=str(root / "src" / "other_spec.py"), target="F99-other")
+            self.assertEqual(aidd_rules.verification_state(d, root)["status"], "passed")
+            cp = root / "src" / "check.py"
+            cp.write_text(cp.read_text(encoding="utf-8") + "\n# mine\n", encoding="utf-8")
+            self.assertEqual(aidd_rules.verification_state(d, root)["status"], "stale")
+
+    def test_generated_outputs_never_loop_the_verification(self):
+        """A command that rewrites a file with a new timestamp every run used to fail forever ("tree changed")
+        and pushed the agent to edit the generator, which staled the run again. Now the failure names the files,
+        and declaring `Generated:` makes the gate accept THAT run: no re-run, no code edit."""
+        tmp, root, d = self.vproject([("python src/stamp.py", "exit 0")])
+        with tmp:
+            (root / "src" / "stamp.py").write_text(
+                'import time\nopen("src/graph_out.json", "w").write(str(time.time()))\n'
+                'print("stamp ok: 3 assertions passed")\n', encoding="utf-8")
+            r = run_script("verify", "F23-eDoc-POS", cwd=root)
+            self.assertEqual(r.returncode, 1, r.stdout)
+            self.assertIn("rewrote files: src/graph_out.json", r.stdout)
+            self.assertIn("Generated: src/graph_out.json", r.stdout)
+            run = ev.latest_verify_run(root, "F23-eDoc-POS")
+            self.assertFalse(run["ok"])
+            self.assertEqual(run["code_changed"], ["src/graph_out.json"])
+            probs =aidd_rules.verification_gaps(ev, root, d)
+            self.assertTrue(any("rewrote files" in p["message"] and "Generated:" in p["fix"] for p in probs), probs)
+            spec = d / "spec.md"                                   # the ONLY fix: declare the output
+            spec.write_text(spec.read_text(encoding="utf-8").replace("## Verification\n", "## Verification\n\nGenerated: src/graph_out.json\n", 1),
+                            encoding="utf-8")
+            self.assertEqual(aidd_rules.verification_state(d, root)["status"], "passed")
+            self.assertEqual(ev.latest_verify_run(root, "F23-eDoc-POS")["ts"], run["ts"])    # same run, not re-executed
+            tick()
+            (root / "src" / "graph_out.json").write_text("rewritten by a later regeneration", encoding="utf-8")
+            self.assertEqual(aidd_rules.verification_state(d, root)["status"], "passed")     # outputs never stale it
+            (root / "src" / "stamp.py").write_text((root / "src" / "stamp.py").read_text(encoding="utf-8") + "\n# edit\n", encoding="utf-8")
+            self.assertEqual(aidd_rules.verification_state(d, root)["status"], "stale")      # real code still does
+            r = run_script("verify", "F23-eDoc-POS", cwd=root)
+            self.assertEqual(r.returncode, 0, r.stdout)                                      # declared: stable from the start
+            self.assertIn("declared Generated", r.stdout)
+
     def test_failing_zero_test_and_short_output_rows_fail(self):
         for cmd, why in (("python src/fail.py", "exit 3"), ("python src/zero.py", "zero tests ran"),
                          ("python src/billing.py", "output too short")):
@@ -2029,7 +2099,7 @@ class TestVerify(Spec007Base):
         with tmp:
             r = run_script("verify", "F23-eDoc-POS", cwd=root)
             self.assertEqual(r.returncode, 1, r.stdout)
-            self.assertIn("tree changed while verification ran", r.stdout)
+            self.assertIn("rewrote files: src/gen_out.txt", r.stdout)
             run = ev.latest_verify_run(root, "F23-eDoc-POS")
             self.assertFalse(run["stable"])
             self.assertNotEqual(run["fingerprint_start"], run["fingerprint_end"])

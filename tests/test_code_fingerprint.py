@@ -78,6 +78,68 @@ class TestCodeFingerprint(unittest.TestCase):
         self.assertNotEqual(ev.code_fingerprint(self.root), b)
 
 
+class TestScope(unittest.TestCase):
+    def test_verification_scope_parsing(self):
+        spec = "# S\n\n## Verification\n\nScope: `docs/db-graph/**`, src/a.py ; tools/*.py\n\n| # | Command | Expected |\n|---|---|---|\n| 1 | `pytest` | exit 0 |\n\n## Next\nScope: ignored/**\n"
+        self.assertEqual(rules.verification_scope(spec), ["docs/db-graph/**", "src/a.py", "tools/*.py"])
+        self.assertEqual(rules.verification_scope("# S\n\n## Verification\n\n| # | Command |\n"), [])
+        self.assertEqual(rules.verification_scope("no heading\nScope: x/**\n"), [])
+        self.assertEqual(rules.verification_scope(None), [])
+
+    def test_placeholder_and_empty_scopes_are_never_trusted(self):
+        self.assertEqual(rules.verification_scope("## Verification\n\nScope: <globs of the files this spec owns>\n"), [])
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / "a.py").write_text("x = 1\n", encoding="utf-8")
+            self.assertIsNone(ev.code_fingerprint(root, scope=["nothing/**"]))        # matches no file: fail closed
+            self.assertIsNotNone(ev.code_fingerprint(root, scope=["*.py"]))
+
+    def test_scoped_fingerprint_ignores_other_specs_but_not_its_own_files(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / "mine").mkdir()
+            (root / "other").mkdir()
+            (root / "mine" / "a.py").write_text("x = 1\n", encoding="utf-8")
+            (root / "other" / "b.py").write_text("y = 1\n", encoding="utf-8")
+            for use_git in (False, True):
+                if use_git:
+                    _git(root, "init", "-q")
+                scope = ["mine/**"]
+                a, whole = ev.code_fingerprint(root, scope=scope), ev.code_fingerprint(root)
+                (root / "other" / "b.py").write_text("y = 2\n", encoding="utf-8")
+                self.assertEqual(ev.code_fingerprint(root, scope=scope), a)          # another spec: untouched
+                self.assertNotEqual(ev.code_fingerprint(root), whole)                # the whole tree did change
+                (root / "mine" / "a.py").write_text("x = 2\n", encoding="utf-8")
+                self.assertNotEqual(ev.code_fingerprint(root, scope=scope), a)       # its own file: stale
+                self.assertNotEqual(ev.code_fingerprint(root, scope=["mine/**", "other/**"]), a)   # scope is part of the hash
+                (root / "mine" / "a.py").write_text("x = 1\n", encoding="utf-8")
+                (root / "other" / "b.py").write_text("y = 1\n", encoding="utf-8")
+
+    def test_last_code_edit_ts_with_scope(self):
+        import os as _os
+        with tempfile.TemporaryDirectory() as td, tempfile.TemporaryDirectory() as ed:
+            root = Path(td)
+            (root / "specs").mkdir()
+            old = {k: _os.environ.get(k) for k in ("AIDD_EVIDENCE_DIR", "AIDD_TESTING")}
+            _os.environ["AIDD_EVIDENCE_DIR"], _os.environ["AIDD_TESTING"] = ed, "1"
+            try:
+                ev.append(root, "s", "code_edit", path=str(root / "mine" / "a.py"))
+                import time as _t
+                _t.sleep(0.01)
+                ev.append(root, "s", "code_edit", path=str(root / "other" / "b.py"))
+                whole, mine, none = (ev.last_code_edit_ts(root), ev.last_code_edit_ts(root, ["mine/**"]),
+                                     ev.last_code_edit_ts(root, ["nothing/**"]))
+                self.assertGreater(whole, mine)
+                self.assertGreater(mine, 0)
+                self.assertEqual(none, 0.0)
+            finally:
+                for k, v in old.items():
+                    if v is None:
+                        _os.environ.pop(k, None)
+                    else:
+                        _os.environ[k] = v
+
+
 class TestRowsAlreadyExecuted(unittest.TestCase):
     SPEC = ("# S\n\n## Verification\n\n| # | Command | Expected | Covers |\n|---|---|---|---|\n"
             "| V-1 | `python src/a.py` | exit 0 | AC-1 |\n| V-2 | `python src/b.py` | exit 0 | AC-2 |\n")

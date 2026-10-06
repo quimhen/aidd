@@ -99,6 +99,14 @@ zero, a user with no rows). `Real data (id)` is a real record id/key from the sy
 
 How the close gate EXECUTES this spec (`aidd verify <spec>`). One row per check; `Expected` is `exit 0` (default) or `contains: <text>`. Lint: each command must be a real runner (`dotnet test`, `npm test`, `pytest`, `python -m unittest ...`, `cargo test`, `go test`, ...) or invoke an existing repo path, no inline-code interpreters (`python -c`, `node -e`, `cmd /c`, `powershell -Command`), and a `contains:` text must not appear literally in its own command. This section is mandatory for new approvals; the owner reviews it on its own in `review.html`. Legacy specs without it stay valid.
 
+Scope: <globs of the files this spec owns, e.g. `docs/db-graph/**, tools/foo.py`; optional>
+
+Generated: <files or globs the commands rewrite on purpose, e.g. `docs/db-graph/graph.json, docs/db-graph/metrics.json`; optional>
+
+`Generated:` (optional) lists outputs the commands regenerate (timestamps, reports, snapshots): they never make the run unstable or stale. Add it when `aidd verify` says "the verification rewrote files"; the gate then accepts that same run, no re-run and no change to the generator.
+
+`Scope:` (optional) limits what can make this verification stale: only edits to files inside it count, so another spec can be built in parallel while this one verifies. Without it the whole project tree counts. Documentation edits (`.md`) and commits never count either way.
+
 | # | Command | Expected | Covers |
 |---|---|---|---|
 | V-1 | | exit 0 | FR-001 |
