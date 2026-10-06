@@ -1234,7 +1234,33 @@ def _row_ok(code, body, expected):
     return code == 0
 
 
-def cmd_verify(spec_arg):
+def _reusable_rows(d, prior, code_fp, full):
+    """Amendment to spec 007: {(cmd, expected): (text, result)} of the PRIOR run's passing rows that may be
+    reused: the prior run was stable and recorded the same code fingerprint as now, the row passed and its
+    evidence file is intact (sha1). Empty with --full, with no prior code fingerprint or when the code changed."""
+    out = {}
+    try:
+        if full or not prior or code_fp is None or prior.get('code_fp_end') != code_fp or prior.get('stable') is not True:
+            return out
+        base = d.resolve()
+        for r in prior.get('results') or []:
+            if not isinstance(r, dict) or r.get('ok') is not True or 'expected' not in r:
+                continue
+            want = str(r.get('sha1') or '').lower()
+            p = (base / str(r.get('evidence') or '')).resolve()
+            try:
+                p.relative_to(base)
+                data = p.read_bytes()
+            except Exception:
+                continue
+            if len(want) >= 12 and hashlib.sha1(data).hexdigest().startswith(want):
+                out[(rules._norm_cell(r.get('cmd')), rules._norm_cell(r.get('expected')))] = (data, r)
+    except Exception:
+        return {}
+    return out
+
+
+def cmd_verify(spec_arg, full=False):
     """aidd:FR-205 aidd:AC-209 aidd:AC-216 aidd:AC-218 `aidd verify <spec>`: run every `## Verification` row
     (shell, project root, AIDD_VERIFY_TIMEOUT per row), save `evidence/verify-<n>.txt` (header line
     `# <cmd> | exit <code> | <ISO ts>` + combined output), mark zero-test / too-short output failed,
@@ -1265,6 +1291,9 @@ def cmd_verify(spec_arg):
     sess = _current_session(root)
     started = time.time()
     fp_start = ev.worktree_fingerprint(root)
+    code_start = ev.code_fingerprint(root)
+    prior = ev.latest_verify_run(root, d.name)
+    reuse = _reusable_rows(d, prior, code_start, full)      # read BEFORE any evidence file is rewritten
     results = []
     for i, r in enumerate(rows, 1):
         cmd, expected = r['cmd'], (r.get('expected') or 'exit 0')
@@ -1273,6 +1302,19 @@ def cmd_verify(spec_arg):
         rel = f'evidence/verify-{fid}.txt'
         final = d / rel
         tmp = evid / f'.verify-{fid}.{os.getpid()}.out'
+        hit = reuse.get((rules._norm_cell(cmd), rules._norm_cell(expected)))
+        if hit is not None:
+            try:
+                data = hit[0]
+                with open(final, 'wb') as fh:
+                    fh.write(data)
+                one_line = re.sub(r'[\r\n]+', ' ', cmd).strip()
+                results.append({'n': str(n), 'cmd': cmd, 'expected': expected, 'exit': hit[1].get('exit', 0), 'ok': True,
+                                'evidence': rel, 'sha1': hashlib.sha1(data).hexdigest(), 'reused': True})
+                print(f'REUSED row {n}: {one_line[:100]} (passed earlier on the same code) → {rel}')
+                continue
+            except Exception:
+                pass                                         # could not copy the evidence: run the row for real
         problem = rules.verification_command_problem(cmd, expected, root)
         if problem:
             code, note, body = -1, f'not run: {problem}', ''
@@ -1305,16 +1347,25 @@ def cmd_verify(spec_arg):
             sha1 = hashlib.sha1(data).hexdigest()
         except Exception as e:
             ok, why = False, f'evidence file not written ({type(e).__name__})'
-        res = {'n': str(n), 'cmd': cmd, 'exit': code, 'ok': bool(ok), 'evidence': rel, 'sha1': sha1}
+        res = {'n': str(n), 'cmd': cmd, 'expected': expected, 'exit': code, 'ok': bool(ok), 'evidence': rel, 'sha1': sha1}
         if why and not ok:
             res['problem'] = why
         results.append(res)
         print(f"{'PASS' if ok else 'FAIL'} row {n}: {one_line[:100]} (exit {code})"
               + (f' - {why}' if why and not ok else '') + f' → {rel}')
     fp_end = ev.worktree_fingerprint(root)
-    stable = fp_start == fp_end
+    code_end = ev.code_fingerprint(root)
+    stable = (code_start == code_end) if code_start is not None else (fp_start == fp_end)   # docs may change meanwhile
     all_ok = all(x['ok'] for x in results) and stable
-    recorded = ev.append_verify_run(root, sess, d.name, all_ok, vhash, results, started, fp_start, fp_end, stable)
+    # code_since: when this exact code state was first verified; lineage: the table hashes verified on it.
+    same_code = bool(prior and code_start is not None and prior.get('code_fp_end') == code_start)
+    code_since = (prior.get('code_since') or prior.get('started')) if same_code else started
+    lineage = None
+    if same_code:
+        lineage = [x for x in (list(prior.get('verify_lineage') or []) + [prior.get('verify_hash')]) if x][-20:]
+    recorded = ev.append_verify_run(root, sess, d.name, all_ok, vhash, results, started, fp_start, fp_end, stable,
+                                    code_fp_start=code_start, code_fp_end=code_end,
+                                    code_since=code_since, verify_lineage=lineage)
     if not stable:
         print('FAIL the working tree changed while verification ran (a command wrote a file outside specs/); '
               're-run `aidd verify ' + d.name + '`.')
@@ -1359,7 +1410,7 @@ def _close_gaps(d, root):
         except Exception as e:      # fail closed
             gaps.append(f'R10 the verification check failed ({type(e).__name__}) → run `aidd verify {d.name}` again.')
         run = ev.latest_verify_run(root, d.name) or {}
-        since = max(ev.last_code_edit_ts(root), float(run.get('ts') or 0.0))
+        since = max(ev.last_code_edit_ts(root), float(run.get('code_since') or run.get('ts') or 0.0))
         h8 = rules.approval_hash(tasks_t)[:8] if tasks_t.strip() else '????????'
         v8 = (str(run.get('verify_hash') or '') or '????????')[:8]
         missing = sorted(rules.uncovered_domains(root, None, d.name, since, spec_dir=d))
@@ -1508,8 +1559,8 @@ def main(argv=None):
         if len(argv) == 3 and argv[0] == 'rules' and argv[1] in ('check', 'approve', 'close', 'activate'):
             return {'check': cmd_check, 'approve': cmd_approve, 'close': cmd_close,
                     'activate': cmd_activate}[argv[1]](argv[2])
-        if len(argv) == 2 and argv[0] == 'verify':          # aidd:FR-205 `aidd verify <spec>`
-            return cmd_verify(argv[1])
+        if len(argv) in (2, 3) and argv[0] == 'verify' and (len(argv) == 2 or argv[2] == '--full'):
+            return cmd_verify(argv[1], full=len(argv) == 3)      # aidd:FR-205 `aidd verify <spec> [--full]`
         if len(argv) >= 3 and argv[0] == 'rules' and argv[1] == 'abandon':
             rest = argv[2:]
             reason = ''

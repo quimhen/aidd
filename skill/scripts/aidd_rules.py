@@ -2454,6 +2454,23 @@ class FingerprintOnce:
         return fp
 
 
+def _rows_already_executed(spec_text, run):
+    """Amendment to spec 007: True when the run recorded the code fingerprint and EVERY current table row
+    (same command and Expected) already has a passing result in it. A text-only table edit (wording, Covers,
+    a corrected note) or a dropped row then keeps the verification valid; no re-execution is demanded."""
+    try:
+        if run.get('code_fp_end') is None:
+            return False
+        rows = parse_verification(spec_text)
+        if not rows:
+            return False
+        done = {(_norm_cell(r.get('cmd')), _norm_cell(r.get('expected'))) for r in (run.get('results') or [])
+                if isinstance(r, dict) and r.get('ok') is True and 'expected' in r}
+        return all((_norm_cell(r['cmd']), _norm_cell(r['expected'])) in done for r in rows)
+    except Exception:
+        return False
+
+
 def _run_problems(ev, root, spec_dir, spec_text, run, fingerprint=None):
     """[(state, violation)] for an existing verify_run; state 'failed' | 'stale'. Fail closed.
     `fingerprint`: an optional FingerprintOnce (shared across the specs of one status run); without it the
@@ -2468,8 +2485,9 @@ def _run_problems(ev, root, spec_dir, spec_text, run, fingerprint=None):
                                  f'`aidd verify {spec}` again.')))
     if run.get('stable') is not True:
         out.append(('stale', _v('R10', 'tree changed while verification ran; re-run.', rerun)))
-    if str(run.get('verify_hash') or '') != verification_hash(spec_text):
-        out.append(('stale', _v('R10', 'The Verification table changed after the last verify_run (verify_hash differs).', rerun)))
+    if str(run.get('verify_hash') or '') != verification_hash(spec_text) and not _rows_already_executed(spec_text, run):
+        out.append(('stale', _v('R10', 'The Verification table changed after the last verify_run (a row was added or its command/expected changed).',
+                                f'Run `aidd verify {spec}`: it re-runs ONLY the changed rows and reuses the rest while the code is unchanged.')))
     f = getattr(ev, 'last_code_edit_ts', None)
     try:
         last = float(f(root)) if callable(f) else None
@@ -2482,7 +2500,19 @@ def _run_problems(ev, root, spec_dir, spec_text, run, fingerprint=None):
     elif last > started:
         out.append(('stale', _v('R10', 'A code edit happened after the last verify_run started (verification is stale).', rerun)))
     fp_end = run.get('fingerprint_end')
-    if fp_end is not None:
+    cfp_end = run.get('code_fp_end')
+    if cfp_end is not None:
+        # amendment to spec 007: a run that recorded the code fingerprint is judged ONLY by code changes.
+        # Documentation edits, commits, amends and pushes leave it equal, so they never force a re-run.
+        g = getattr(ev, 'code_fingerprint', None)
+        try:
+            cnow = g(root) if callable(g) else None
+        except Exception:
+            cnow = None
+        if cnow != cfp_end:
+            out.append(('stale', _v('R10', 'A code or data file changed since the last verify_run (documentation edits and commits do not count).',
+                                    f'Run `aidd verify {spec}`: unchanged rows are reused only if the code is unchanged, so after a code change it re-runs them all.')))
+    elif fp_end is not None:
         now = None
         if callable(fingerprint):
             try:
@@ -2672,9 +2702,16 @@ def closing_audit_covers(event, spec_dir, domains, gate2, ev, root):
             if not run:
                 return False
             vh = str(run.get('verify_hash') or '').lower()
-            if not vh or h['verify'] != vh[:8]:
+            # amendment to spec 007: a re-verify of the SAME code (docs/commit/table-wording only) keeps the
+            # auditors valid: the tag may name any hash of the run's lineage and the auditor only has to
+            # postdate the first verification of this code state (`code_since`), not the latest re-run.
+            tags = {vh[:8]} | {str(x).lower()[:8] for x in (run.get('verify_lineage') or []) if x}
+            if not vh or h['verify'] not in tags:
                 return False
-            if float(event.get('ts', 0) or 0) <= float(run.get('ts') or 0):
+            since = run.get('code_since')
+            if since is None:
+                since = run.get('ts')
+            if float(event.get('ts', 0) or 0) <= float(since or 0):
                 return False
         rc = _result_chars(event)
         return rc is not None and rc >= CLOSING_AUDIT_MIN_RESULT

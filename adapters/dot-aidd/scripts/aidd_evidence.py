@@ -989,9 +989,15 @@ def latest_approved(root, spec, hash=None):
         return None
 
 
+_VERIFY_EXTRA = ('code_fp_start', 'code_fp_end', 'code_since', 'verify_lineage')
+
+
 def append_verify_run(root, session, spec, ok, verify_hash, results, started, fingerprint_start,
-                      fingerprint_end, stable):
-    """aidd:FR-205 Record one executed `## Verification` run. Returns append()'s bool, never raises."""
+                      fingerprint_end, stable, **extra):
+    """aidd:FR-205 Record one executed `## Verification` run. Returns append()'s bool, never raises.
+    `extra` (amendment to spec 007): code_fp_start/code_fp_end (code_fingerprint: documentation- and
+    commit-proof), code_since (when the current code state was first verified) and verify_lineage
+    (earlier verify hashes of that same state); only those keys, and only when not None, are stored."""
     try:
         clean = []
         for r in (results or []):
@@ -1001,7 +1007,8 @@ def append_verify_run(root, session, spec, ok, verify_hash, results, started, fi
         return append(root, session, 'verify_run', spec=str(spec), ok=bool(ok),
                       verify_hash=str(verify_hash or ''), started=float(started),
                       fingerprint_start=fingerprint_start, fingerprint_end=fingerprint_end,
-                      stable=bool(stable), results=clean)
+                      stable=bool(stable), results=clean,
+                      **{k: v for k, v in extra.items() if k in _VERIFY_EXTRA and v is not None})
     except Exception:
         return False
 
@@ -1018,10 +1025,14 @@ def latest_verify_run(root, spec):
             return None
         d = best['detail']
         res = d.get('results')
-        return {'ts': best['ts'], 'ok': d.get('ok') is True, 'verify_hash': str(d.get('verify_hash') or ''),
-                'started': float(d.get('started') or 0.0), 'fingerprint_start': d.get('fingerprint_start'),
-                'fingerprint_end': d.get('fingerprint_end'), 'stable': d.get('stable') is True,
-                'results': res if isinstance(res, list) else []}
+        out = {'ts': best['ts'], 'ok': d.get('ok') is True, 'verify_hash': str(d.get('verify_hash') or ''),
+               'started': float(d.get('started') or 0.0), 'fingerprint_start': d.get('fingerprint_start'),
+               'fingerprint_end': d.get('fingerprint_end'), 'stable': d.get('stable') is True,
+               'results': res if isinstance(res, list) else []}
+        for k in _VERIFY_EXTRA:      # only on runs recorded by the new `aidd verify`
+            if d.get(k) is not None:
+                out[k] = d[k]
+        return out
     except Exception:
         return None
 
@@ -1715,6 +1726,94 @@ def worktree_fingerprint(root, budget_s=8.0):
             return _fp_from_git(Path(root), deadline)
         except _FpUnavailable:
             return _fp_from_mtimes(Path(root), deadline)
+    except Exception:
+        return None
+
+
+# ---------------------------------------------------------------------------
+# Code fingerprint (amendment to spec 007): documentation-proof and commit-proof
+# ---------------------------------------------------------------------------
+
+_FP_DOC_EXT = frozenset({'.md', '.markdown', '.rst', '.adoc'})
+
+
+def _fp_is_doc(rel):
+    return os.path.splitext(rel)[1].lower() in _FP_DOC_EXT
+
+
+def _code_fp_from_git(root, deadline):
+    """sha1[:16] of (path, blob sha of the WORKING-TREE content) for every tracked or untracked non-ignored
+    file outside specs/ and the AIDD bundle dir that is not documentation. No HEAD and no index state: a
+    commit, an amend or a `git add` of the same content leaves it unchanged; so does editing a .md file."""
+    excl = ['--', '.', ':(exclude)specs', ':(exclude).aidd']
+    raw = _fp_git(root, ['ls-files', '-c', '-o', '--exclude-standard', '-z', *excl], deadline)
+    paths = sorted({p for p in raw.decode('utf-8', errors='surrogateescape').split('\0') if p})
+    keep = []
+    for rel in paths:
+        if _fp_is_doc(rel) or '\n' in rel or not _fp_outside(rel):
+            continue
+        if os.path.isfile(os.path.join(str(root), rel)):
+            keep.append(rel)
+    if len(keep) > _FP_MAX_FILES:
+        raise _FpOverBudget()
+    h = hashlib.sha1(b'code2\0')
+    if keep:
+        timeout = _fp_left(deadline)
+        env = dict(os.environ, GIT_OPTIONAL_LOCKS='0', LC_ALL='C')
+        try:
+            r = subprocess.run(['git', 'hash-object', '--stdin-paths'], cwd=str(root), env=env,
+                               input=('\n'.join(keep) + '\n').encode('utf-8', errors='surrogateescape'),
+                               stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=timeout,
+                               creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
+        except subprocess.TimeoutExpired:
+            raise _FpOverBudget()
+        except (OSError, ValueError):
+            raise _FpUnavailable()
+        shas = r.stdout.decode('ascii', errors='replace').split()
+        if r.returncode != 0 or len(shas) != len(keep):
+            raise _FpUnavailable()
+        for rel, sha in zip(keep, shas):
+            h.update(rel.encode('utf-8', errors='surrogateescape') + b'\0' + sha.encode('ascii') + b'\0')
+    return 'c2:' + h.hexdigest()[:16]
+
+
+def _code_fp_from_mtimes(root, deadline):
+    rows = []
+    base = os.path.abspath(str(root))
+    for cur, dirs, files in os.walk(base):
+        _fp_left(deadline)
+        top = os.path.normcase(os.path.abspath(cur)) == os.path.normcase(base)
+        dirs[:] = sorted(d for d in dirs if d not in _FP_SKIP_ANY and not (top and d in _FP_SKIP_TOP))
+        for f in files:
+            if _fp_is_doc(f):
+                continue
+            full = os.path.join(cur, f)
+            try:
+                st = os.stat(full)
+            except OSError:
+                continue
+            rows.append((os.path.relpath(full, base).replace('\\', '/'), st.st_size, st.st_mtime_ns))
+            if len(rows) > _FP_MAX_FILES:
+                raise _FpOverBudget()
+    h = hashlib.sha1(b'code2m\0')
+    for rel, size, mt in sorted(rows):
+        h.update(f'{rel}\0{size}\0{mt}\n'.encode('utf-8', errors='surrogateescape'))
+    return 'c2:' + h.hexdigest()[:16]
+
+
+def code_fingerprint(root, budget_s=8.0):
+    """Fingerprint of the project's CODE state outside specs/ and the AIDD bundle dir, ignoring
+    documentation (.md/.markdown/.rst/.adoc) and the git history: a doc edit, a commit or a push never
+    makes a passed verification stale; changing a code or data file does. 'c2:'-prefixed so it is never
+    confused with the legacy worktree_fingerprint. None over budget or on error (callers fail closed)."""
+    try:
+        if root is None or not Path(root).is_dir():
+            return None
+        deadline = time.monotonic() + float(budget_s)
+        try:
+            return _code_fp_from_git(Path(root), deadline)
+        except _FpUnavailable:
+            return _code_fp_from_mtimes(Path(root), deadline)
     except Exception:
         return None
 

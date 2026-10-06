@@ -1967,6 +1967,36 @@ class TestVerify(Spec007Base):
                     self.assertLessEqual(run["started"], run["ts"])
                     self.assertEqual(aidd_rules.verification_state(d, root)["status"], "passed")
 
+    def test_reverify_is_incremental_and_full_reruns_everything(self):
+        """Amendment to spec 007: after a table edit only the new/changed rows run; the rest are REUSED while
+        the code is unchanged; --full and a code change re-run everything."""
+        rows = [("python src/check.py", "exit 0")]
+        tmp, root, d = self.vproject(rows)
+        with tmp:
+            self.assertEqual(run_script("verify", "F23-eDoc-POS", cwd=root).returncode, 0)
+            first = ev.latest_verify_run(root, "F23-eDoc-POS")
+            self.assertEqual(first["results"][0]["expected"], "exit 0")
+            self.assertTrue(first["code_fp_end"].startswith("c2:"))
+            (d / "spec.md").write_text(spec_with_rows(rows + [("python src/check.py", "contains: assertions passed")]),
+                                       encoding="utf-8")
+            self.assertEqual(aidd_rules.verification_state(d, root)["status"], "stale")   # a row was added
+            r = run_script("verify", "F23-eDoc-POS", cwd=root)
+            self.assertEqual(r.returncode, 0, r.stdout)
+            self.assertIn("REUSED row 1", r.stdout)
+            self.assertIn("PASS row 2", r.stdout)
+            second = ev.latest_verify_run(root, "F23-eDoc-POS")
+            self.assertEqual([x.get("reused") for x in second["results"]], [True, None])
+            self.assertEqual(second["code_since"], first["started"])
+            self.assertEqual(aidd_rules.verification_state(d, root)["status"], "passed")
+            r = run_script("verify", "F23-eDoc-POS", "--full", cwd=root)
+            self.assertEqual(r.returncode, 0, r.stdout)
+            self.assertNotIn("REUSED", r.stdout)
+            cp = root / "src" / "check.py"
+            cp.write_text(cp.read_text(encoding="utf-8") + "\n# changed\n", encoding="utf-8")
+            self.assertEqual(aidd_rules.verification_state(d, root)["status"], "stale")   # a code change
+            r = run_script("verify", "F23-eDoc-POS", cwd=root)
+            self.assertNotIn("REUSED", r.stdout)
+
     def test_failing_zero_test_and_short_output_rows_fail(self):
         for cmd, why in (("python src/fail.py", "exit 3"), ("python src/zero.py", "zero tests ran"),
                          ("python src/billing.py", "output too short")):
@@ -2105,10 +2135,31 @@ class TestGate2Close(Spec007Base):
             self.assertEqual(r.returncode, 1, r.stdout)
             self.assertIn("CLOSING AUDIT [domains: functional, security]", r.stdout)
             self.closing_auditor(root, d, run)
-            self.verify(root, "F23-eDoc-POS")                           # a newer run: the auditor is now older
+            tick()
+            (root / "billing_changed.py").write_text("x = 1\n", encoding="utf-8")   # the CODE changes
+            self.verify(root, "F23-eDoc-POS")                           # a newer run on new code: the auditor is older
             r = self.close(root, "F23-eDoc-POS", answer=False)
             self.assertEqual(r.returncode, 1, r.stdout)
             self.assertIn("R7", r.stdout)
+
+    def test_docs_edit_and_reverify_of_same_code_keep_verification_and_auditor(self):
+        """Amendment to spec 007: a management error (docs edited, re-verify of identical code) never forces
+        a re-execution nor a new auditor."""
+        tmp, root, d = self.gate2()
+        with tmp:
+            run = self.verify(root, "F23-eDoc-POS")
+            self.closing_auditor(root, d, run)
+            self.qa(d)
+            tick()
+            (root / "NOTES.md").write_text("management notes edited after verify\n", encoding="utf-8")
+            st = aidd_rules.verification_state(d, root)
+            self.assertEqual(st["status"], "passed", st)                # a doc edit is not a code change
+            run2 = self.verify(root, "F23-eDoc-POS")                    # re-verify: rows are REUSED, same code
+            self.assertTrue(all(r.get("reused") for r in run2["results"]), run2["results"])
+            self.assertEqual(run2["code_since"], run["started"])
+            self.assertIn(run["verify_hash"], run2["verify_lineage"])
+            r = self.close(root, "F23-eDoc-POS")
+            self.assertEqual(r.returncode, 0, r.stdout)
 
     def test_qa_audit_must_cite_the_closing_auditor(self):
         tmp, root, d = self.gate2()
