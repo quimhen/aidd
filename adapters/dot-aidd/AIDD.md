@@ -134,6 +134,13 @@ Step 4's approved task list has a dependency order (`COMP-nnn` before the `SCREE
 ### Take the fast lane for a small, contained change
 The full pipeline (mockup audit → flow diagram → plan → tasks → implement → converge → handoff doc) is overkill for a one-screen, one-control fix with no new use case and no new component — forcing the full ceremony on a trivial change is itself a time cost this skill exists to eliminate. Fast lane conditions (all must hold): touches exactly one existing `SCREEN-XX`, no new `US-nnn`, no new `COMP-nnn`, no navigation change. When they hold: skip `visual-flow.toon` and `comprehensive-documentation.md` entirely, amend `mockup-audit.md` and `qa-audit.md` directly (still under Step -1's amend-don't-duplicate rule), and run it as a single task with the same four-part Definition of Done. The moment any fast-lane condition stops holding mid-work, stop and go back to the full pipeline from Step 1 — don't keep stretching the fast lane past its conditions.
 
+### S1 — Automation first, parallel agents, never hand-estimate (working rule, applies before ANY estimate or proposal)
+Before you quote a duration, a cost or "this needs N hours", run this check and quote the result of it, not the manual path:
+1. **Can a tool do the heavy part?** A script, a catalog or metadata query (`information_schema`, `pg_depend`, `git`, the compiler/AST, a parser), a generator, a codegen, an existing runner or the `aidd` CLI. If yes, the estimate is the SCRIPTED path (write the script, run it, check coverage). Work done by hand or by an agent row by row (per column, per file, per record) is the exception and the plan must say why a tool cannot do it.
+2. **What is independent?** Everything without a true dependency runs at the same time: dispatch the agents of a wave in ONE message (one owner per file), fan out read-only searches/audits to separate agents, and run long jobs (`aidd verify`, builds, suites, DB extraction) in the background while other independent work continues. Never serialize what has no dependency and never idle-wait on a job you can overlap.
+3. **Report wall time, not effort.** Quote the automated, parallel wall time and tokens; keep hand-hours only as the derived `Human ref`. If the user questions a long estimate, that is a signal the check above was skipped: redo it instead of defending the number.
+Record the outcome in the spec's `## Optimization brief` (which tool does the heavy lifting, which tasks fan out) and in `tasks.md` (`Agent role:` / waves). This is guidance, not a gate: it never blocks, but a plan that estimates manual work where a tool or parallel agents exist is a defective plan.
+
 ### W1 — Graph first, filter first (working rule for every agent, subagents included)
 Before reading any file, ask the graph and filter; read only what the answer points to.
 1. **Graph first:** `python <AIDD_HOME>/scripts/find_spec.py <keywords|code>` and `--tree <spec-id>` return the spec, use case, screen, component, control and API relations without opening any spec file. Memory the same way: `aidd mem search`, then `aidd mem show <id>` for the one hit you need.
@@ -512,7 +519,7 @@ Detail each task with the same four-dimension rubric as a requirements-analysis 
 
 **Estimates are agent minutes AND tokens, not human hours (hard rule R1).** Plan with the calibration baselines (`templates/calibration.toon`: roughly 50-75k tokens per one-file task; Low 45k, Medium 62k, High 90k; minutes are REAL wall time: 3-10 min per one-file task, 15-25 min for a coupled task or one running the suite). Each task states `Agent min:`, `Tokens (est):`, `Agent role:` and `Model tier:`; the human reference is DERIVED (Agent min x 3 / 60), never hand-estimated. `tasks.md` carries a `## Waves` table `| Wave | Tasks | Roles | Agent time (min) | Tokens (k) | Human ref (h) |`: waves run sequentially, tasks inside a wave in parallel, so a wave's agent time is the **maximum** `Agent min` of its tasks, its tokens the **sum** of its tasks, and the lines `Total agent time (critical path): N min` and `Total tokens (k): N` are the **sums** over the waves. Organize each wave with specialized agents (role + model tier per task, one file per task, disjoint files per wave). After closing a spec run `aidd calibrate record specs/<id>` to feed the log. A bare `Estimated hours:` is not accepted — it is how human effort ends up quoted as if it were agent time.
 
-**Six planning rules (Step 4).**
+**Seven planning rules (Step 4).**
 
 | # | Rule |
 |---|---|
@@ -522,6 +529,7 @@ Detail each task with the same four-dimension rubric as a requirements-analysis 
 | 4 | Subagent tasks run only their own targeted tests; the main agent runs the full suite once per wave. |
 | 5 | After audits, fixes go back to the original owner of each file (SendMessage resume), not to a new agent. |
 | 6 | A fix batch fixes only CONFIRMED medium+ findings; the rest are documented open exceptions. |
+| 7 | Automation first (S1): estimate the scripted/tool path, not manual work; independent tasks go to parallel agents in one message; long jobs run in the background while other work continues. |
 
 **Present the task list as a dry-run and wait for approval before writing any code.** The compact table is what gets reviewed first (code | file | new-or-reuse); the per-task rubric detail is what justifies it. Any mismatch caught here costs one edit instead of a rewritten PR. Never start Step 5 on tasks that weren't approved. Code gating is scoped to the gate target spec (`aidd rules activate <id>`).
 

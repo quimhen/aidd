@@ -129,9 +129,13 @@ _HINT_FULL = (
     "[aidd] This looks like a requirement, change or fix. AIDD applies to ANY change (UI or not): before "
     "responding, invoke the aidd skill (Skill tool, skill: \"aidd\") and follow its pipeline (Step -1 find existing "
     "spec -> Step 0 visual source only if there is a mockup -> Align -> Plan -> Tasks -> Build -> Converge) "
-    "instead of improvising. Do not ask the user to run anything; the pipeline runs in this response."
+    "instead of improvising. Do not ask the user to run anything; the pipeline runs in this response. "
+    "Optimize time and resources (rule S1): before estimating, check whether a script, catalog query, parser or "
+    "existing tool can do the heavy part and estimate THAT path, not manual work; run independent work in several "
+    "agents at once (one message) and long jobs in the background."
 )
-_HINT_SHORT = '[aidd] Requirement/change detected: follow the aidd skill pipeline (already explained this session).'
+_HINT_SHORT = ('[aidd] Requirement/change detected: follow the aidd skill pipeline (already explained this session). '
+               'Rule S1: tools/scripts first, parallel agents for independent work.')
 
 
 def _hint(sid):

@@ -109,6 +109,11 @@ Optional for legacy specs. Before Step 3 the AI thinks about what could be bette
 
 Optimization targets, in order: (1) correct result on real data, (2) fewer moving parts, (3) reuse of existing code, (4) smaller PRs, (5) lower token cost. When a proposal trades one target for another, say so.
 
+Automation first (rule S1): before costing any option, name the tool, script, catalog query or parser that does the heavy lifting and the tasks that fan out to parallel agents. Cost the scripted, parallel path; hand or row-by-row work needs a stated reason.
+
+Automation / parallelism: <tool or script that does the heavy part> | <tasks that run in parallel agents> | <long jobs run in background>
+
+
 | Option | Cost (tokens / min) | Risk | Recommended? |
 |---|---|---|---|
 | A | | | |
