@@ -21,7 +21,7 @@ This file is host-agnostic on purpose: the same copy adapts to whichever tool lo
 | a `question` tool and a `subagent` tool | OpenCode | `subagent` tool | `question` tool |
 | neither | any other agent (Codex, Gemini CLI, Cursor, …) | whatever separate-context mechanism the host offers | plain text in your reply |
 
-From here on, **`AskUserQuestion` means "the host's ask-the-user tool"** and **`Agent tool` / `Task tool` / `Workflow tool` mean "dispatch a separate subagent"** — substitute your row. Step 6's independence rule is about *context isolation*, not about a product feature: a different agent audits what you built; if the host has no subagents, do it as an explicitly separate pass over the diff with the implementer's reasoning withheld.
+From here on, **`AskUserQuestion` means "the host's ask-the-user tool"** and **`Agent tool` / `Task tool` mean "dispatch a separate subagent" (the `Workflow` tool does too, but its subagents are not recorded by AIDD's hooks, so never use it for Step 6 auditors)** — substitute your row. Step 6's independence rule is about *context isolation*, not about a product feature: a different agent audits what you built; if the host has no subagents, do it as an explicitly separate pass over the diff with the implementer's reasoning withheld.
 
 **2. Resolve `<AIDD_HOME>` before running any command below.** It is the folder containing this `SKILL.md`:
 
@@ -304,6 +304,8 @@ Each step below has a natural agent boundary. **Step 6's Auditor must not be the
 | 7 | **Documentador** | Mechanical assembly pass, any agent | None |
 
 This is a description of the discipline, not a requirement to use any specific tool — apply it with whatever mechanism is already in use as long as the Step 6 independence rule holds.
+
+**Step 6 dispatch rule (Claude Code):** launch the closing auditors with the `Agent` tool, all in ONE message so they run in parallel, and only after the full verification has passed (it runs alone, before any auditor). Do NOT use the `Workflow` tool for them: the dispatch hooks match `Task|Agent` only, so workflow-spawned auditors are never recorded and the close gate does not count them.
 
 ## Engineering standards — restate these in every agent's instructions
 

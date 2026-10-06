@@ -174,6 +174,8 @@ Each step below has a natural agent boundary. Using it matters most for one reas
 
 This is a description of the discipline, not a requirement to use Claude Code's Workflow tool — apply it with whatever mechanism is already in use (separate Agent tool calls, a fresh conversation, or a manual second pass) as long as the Step 6 independence rule holds.
 
+**Step 6 dispatch rule (Claude Code):** launch the closing auditors with the `Agent` tool, all in ONE message so they run in parallel, and only after the full verification has passed (it runs alone, before any auditor). Do NOT use the `Workflow` tool for them: the dispatch hooks match `Task|Agent` only, so workflow-spawned auditors are never recorded and the close gate does not count them.
+
 ### Step 6's audit is not one generic pass — it's specialized per domain, each with its own context and checklist
 
 **The audit covers everything implemented, not just UI/mockup fidelity — and no single generic "review everything" auditor can do that competently.** An auditor checking whether a screenshot matches a mockup and an auditor checking whether a stored procedure uses the right isolation level need different expertise and a different checklist; conflating them into one pass produces a shallow review of both. Dispatch one specialized auditor per domain actually touched by this convergence, and brief each one with exactly two things: **its scope** (which codes/files it's checking — never "the whole feature") and **its checklist** (the matching `qa-audit.md` section, not the whole file):
