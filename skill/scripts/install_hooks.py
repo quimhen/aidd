@@ -32,6 +32,9 @@ session on this machine, not just projects that already use aidd). 12 hooks:
                        non-blocking nudge toward the graph before reading raw files
   - PreToolUse     -> hooks/record_dispatch_pre.py (matcher: Task|Agent) spec 006 FR-004:
                        records the subagent dispatch (attribution) before it runs
+  - PostToolUse    -> hooks/graph_refresh.py (matcher: Write|Edit|MultiEdit|NotebookEdit)
+                       refreshes, in the background and silently, any registered project
+                       graph that watches the edited file (AIDD_GRAPHS=off disables)
 
 MIGRATION: the three old aidd PreToolUse entries (require_aidd.py,
 require_independent_audit.py, require_graph_coherence_audit.py) are REMOVED from
@@ -78,6 +81,7 @@ HOOK_DEFS = [
     ('Stop', None, SKILL_DIR / 'hooks' / 'stop_gate.py'),
     ('PreToolUse', 'Read', SKILL_DIR / 'hooks' / 'read_hint.py'),
     ('PreToolUse', 'Task|Agent', SKILL_DIR / 'hooks' / 'record_dispatch_pre.py'),
+    ('PostToolUse', 'Write|Edit|MultiEdit|NotebookEdit', SKILL_DIR / 'hooks' / 'graph_refresh.py'),
 ]
 
 # Seconds a hook may run before Claude Code kills it (a killed gate is a skipped gate, so every

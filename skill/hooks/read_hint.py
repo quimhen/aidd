@@ -47,6 +47,27 @@ def _first_time(session_id, path):
         return True
 
 
+def _sql_hint(event, file_path):
+    """One nudge per file per session: whole-file read of a .sql file in a project that has a DB graph."""
+    sid = event.get('session_id')
+    sid = sid if isinstance(sid, str) and sid else 'unknown-session'
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent / 'scripts'))
+    import aidd_graphs
+    root = None
+    for parent in Path(file_path).resolve().parents:
+        if (parent / 'charter.md').is_file() or (parent / 'specs').is_dir() or (parent / '.git').exists():
+            root = parent
+            break
+    if root is None or not any(g['kind'] == 'db' for g in aidd_graphs.load_registry(root)):
+        return
+    if not _first_time(sid, file_path):
+        return
+    msg = ("AIDD G1: this project has a DB graph. Before reading SQL, ask it: `aidd graphs show db <table-or-column>` "
+           "(columns carry their purpose, FKs, and the views/functions that use them), then read only the lines it points to.")
+    sys.stdout.write(json.dumps({"hookSpecificOutput": {
+        "hookEventName": "PreToolUse", "additionalContext": msg}}, ensure_ascii=False) + '\n')
+
+
 def main():
     if hasattr(sys.stdout, 'reconfigure'):
         sys.stdout.reconfigure(encoding='utf-8')
@@ -63,6 +84,8 @@ def main():
         return
     name = _is_target(file_path)
     if not name:
+        if file_path.lower().endswith('.sql') and not (ti.get('limit') or ti.get('offset')):
+            _sql_hint(event, file_path)         # G1: a column or table question starts at the graph
         return
     if ti.get('limit') or ti.get('offset'):
         return

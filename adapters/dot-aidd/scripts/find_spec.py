@@ -1102,6 +1102,19 @@ def print_tree(entry):
     rec(nested, 1)
 
 
+def print_structure_graphs(root, words):
+    """Same Step -1 pass as the spec graph: when the project has a DB/code graph (charter `## Graphs` or
+    auto-detected SQL migrations) start its background refresh if stale and print the matching nodes.
+    No questions, no blocking; silent when there is none or aidd_graphs is unavailable."""
+    try:
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        import aidd_graphs
+        for line in aidd_graphs.auto(root, sorted(words)):
+            print(line)
+    except Exception:
+        pass
+
+
 def main():
     args = sys.argv[1:]
     if not args:
@@ -1166,6 +1179,8 @@ def main():
         print("Query had no usable codes or keywords after stripping stopwords — "
               "be more specific (a SCREEN-XX/CTL-nnn code, or a few distinct words).")
         sys.exit(2)
+
+    print_structure_graphs(specs_root.parent, words)    # DB/code graphs: refreshed in the background, queried first
 
     if not spec_dirs:
         print(f"{specs_root}: no spec folders yet. Safe to create the first one.")

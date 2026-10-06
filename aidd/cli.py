@@ -285,6 +285,12 @@ def build_parser():
     p_rules.add_argument("rules_args", nargs=argparse.REMAINDER, help="forwarded to aidd_status.py (try: aidd rules check specs/001-x)")
     p_rules.set_defaults(func=cmd_rules)
 
+    p_graphs = sub.add_parser(
+        "graphs", help="Project graphs registry: list | status | refresh <name|all> | show <name> <query> | explorer <name>",
+        add_help=False)
+    p_graphs.add_argument("graphs_args", nargs=argparse.REMAINDER, help="forwarded to aidd_graphs.py")
+    p_graphs.set_defaults(func=lambda a: _run("aidd_graphs.py", a.graphs_args))
+
     p_review = sub.add_parser(
         "review", help="aidd review <spec> [--open] [--check] [--wait] [--comments] [--summary] [--full] [--timeout S] [--interval S]: generate specs/<id>/review.html (compact page) or read the approval state")
     p_review.add_argument("spec_dir", help="spec folder, e.g. specs/008-x (first, then the flags)")
@@ -453,6 +459,8 @@ def main(argv=None):
         # Same passthrough for the hard-rules commands (aidd_status.py owns the parsing);
         # `aidd verify <spec>` -> `aidd_status.py verify <spec>` (aidd:FR-205).
         sys.exit(_run("aidd_status.py", argv))
+    if argv and argv[0] == "graphs":
+        sys.exit(_run("aidd_graphs.py", argv[1:]))
     if argv and argv[0] == "review":
         # aidd:FR-313 — aidd_review.py owns the parsing, so the flags work in any order
         # (`aidd review --summary <spec>` as well as `aidd review <spec> --summary`); the

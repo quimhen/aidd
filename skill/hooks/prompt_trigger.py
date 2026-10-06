@@ -132,7 +132,9 @@ _HINT_FULL = (
     "instead of improvising. Do not ask the user to run anything; the pipeline runs in this response. "
     "Optimize time and resources (rule S1): before estimating, check whether a script, catalog query, parser or "
     "existing tool can do the heavy part and estimate THAT path, not manual work; run independent work in several "
-    "agents at once (one message) and long jobs in the background."
+    "agents at once (one message) and long jobs in the background. Rule G1: for DB/code/screen structure ask "
+    "`aidd graphs show <name> <query>` before reading SQL or source, and start `aidd graphs refresh <name> "
+    "--background` when the spec touches the database."
 )
 _HINT_SHORT = ('[aidd] Requirement/change detected: follow the aidd skill pipeline (already explained this session). '
                'Rule S1: tools/scripts first, parallel agents for independent work.')

@@ -50,6 +50,20 @@ trade-off, a reason a normal rule doesn't apply here, a deliberate exception).
   means this project has no mechanically-checkable charter rules yet, not that the table was
   forgotten.
 
+## Graphs (structure graphs AIDD may use and keep fresh in the background — optional)
+
+Declare the project's structure graphs so an agent can ask them instead of reading SQL or code
+(`aidd graphs show <name> <query>`), and so they refresh themselves in the background when a watched file is
+edited (a hook starts the `Refresh` command detached; it never blocks and never needs the user). `Kind` is
+`db`, `code`, `ui` or `spec`. `Output` is the node-link JSON (`nodes` + `edges`/`links`). `Refresh` is a shell
+command, `builtin:sql` (AIDD's SQL-migrations scanner, no database needed) or empty (read-only graph).
+`Watch` is a comma-separated list of globs relative to the project root. With no table AIDD auto-detects
+`graphify-out/graph.json`, SQL migration folders and `specs/index.toon`. Delete this section if unused.
+
+| Name | Kind | Output | Refresh | Watch |
+|---|---|---|---|---|
+| db | db | `.aidd/graphs/db.json` | `builtin:sql` | `migrations/**` |
+
 ## SAP pitfalls (only if this project integrates with SAP Business One — delete otherwise)
 
 These families of error recurred across sessions and cost many correction rounds each. The one that a
