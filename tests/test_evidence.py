@@ -88,6 +88,16 @@ class TestStorage(EvidenceCase):
     def test_missing_log_is_empty(self):
         self.assertEqual(ev.events(self.root), [])
 
+    def test_lone_surrogate_is_recorded_not_lost(self):
+        """A text with a lone surrogate (non-UTF-8 bytes via surrogateescape) used to raise 'surrogates not
+        allowed' and the row was lost; now it is stored as a JSON escape and read back."""
+        bad = b"salida \x8d rara".decode("utf-8", errors="surrogateescape")
+        self.assertTrue(ev.append(self.root, "s1", "prompt", text=bad))
+        rows = ev.events(self.root, session="s1", kind="prompt")
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["detail"]["text"], bad)
+        self.assertEqual(ev._row(1.0, "s", "k", {"t": "ok ñ"}).encode("utf-8").decode("utf-8").count("ñ"), 1)
+
     def test_corrupt_rows_skipped(self):
         ev.append(self.root, "s", "prompt", text="good1")
         path = ev._session_path("s")

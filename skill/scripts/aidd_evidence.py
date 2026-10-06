@@ -397,7 +397,10 @@ def _row(ts, session, kind, detail):
     js = ''.join(_JSON_ESC.get(c, c) for c in js)          # keep the data, as JSON escapes
     buf = io.StringIO()
     csv.writer(buf, lineterminator='').writerow([f'{ts:.3f}', sanitize_line(session), sanitize_line(kind), js])
-    return '  ' + sanitize_line(buf.getvalue()) + '\n'      # backstop: always one physical line
+    out = '  ' + sanitize_line(buf.getvalue()) + '\n'       # backstop: always one physical line
+    # A lone surrogate (non-UTF-8 bytes read with surrogateescape, e.g. from a command's output) cannot be
+    # encoded and used to lose the whole row ("surrogates not allowed"): keep it as the JSON escape `\udc8d`.
+    return out.encode('utf-8', 'backslashreplace').decode('utf-8')
 
 
 def _read_rows(path):
