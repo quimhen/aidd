@@ -1294,7 +1294,7 @@ def cmd_verify(spec_arg, full=False):
     sess = _current_session(root)
     started = time.time()
     fp_start = ev.worktree_fingerprint(root)
-    scope = rules.verification_scope(spec_text)               # [] = whole tree; else only this spec's files count
+    scope = rules.verification_scope(spec_text, _read(d / 'tasks.md'))   # [] = whole tree; else only these files count
     gen = rules.verification_generated(spec_text)             # files the commands rewrite on purpose (outputs)
     st_start = ev.code_state(root, scope=scope)
     prior = ev.latest_verify_run(root, d.name)

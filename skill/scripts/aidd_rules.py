@@ -1979,16 +1979,49 @@ def _verification_globs(spec_text, key):
         ln = re.search(r'^[ \t>*_-]*' + key + r'\s*:\s*(.+?)\s*$', sec, re.I | re.M)
         if not ln:
             return []
+        if re.search(r'<[^>]*>', ln.group(1)) or re.search(r'\be\.g\.', ln.group(1)):
+            return []                      # an unfilled template placeholder (it may contain commas) is no value
         globs = {g.strip().strip('`').replace('\\', '/') for g in re.split(r'[,;]', ln.group(1))}
         return sorted(g for g in globs if g and '<' not in g and '>' not in g)
     except Exception:
         return []
 
 
-def verification_scope(spec_text):
+def task_targets(tasks_text):
+    """Root-relative files named in the `Target file` column of the tasks table (backticked paths, `+`-joined),
+    sorted, without anything under specs/. [] when there is no such column. Never raises."""
+    try:
+        out = set()
+        idx = None
+        for ln in _clean(tasks_text if isinstance(tasks_text, str) else '').split('\n'):
+            s = ln.strip()
+            if not s.startswith('|'):
+                idx = None if s and not s.startswith('|') else idx
+                continue
+            cells = [c.strip() for c in s.strip('|').split('|')]
+            low = [c.lower() for c in cells]
+            if 'target file' in low:
+                idx = low.index('target file')
+                continue
+            if idx is not None and idx < len(cells):
+                for p in re.findall(r'`([^`\n]+)`', cells[idx]):
+                    p = p.strip().replace('\\', '/').lstrip('./')
+                    if p and '<' not in p and not p.startswith('specs/') and ('/' in p or '.' in p):
+                        out.add(p)
+        return sorted(out)
+    except Exception:
+        return []
+
+
+def verification_scope(spec_text, tasks_text=''):
     """`Scope:` globs ([] = none: the whole tree counts). With a scope, only edits to files it covers make
-    the verification (and the audits that follow it) stale, so other specs can be built in parallel."""
-    return _verification_globs(spec_text, 'scope')
+    the verification (and the audits that follow it) stale, so other specs can be built in parallel.
+    `auto` expands to the files in the tasks table's `Target file` column (this spec's own files); other
+    globs in the same line are kept, e.g. `Scope: auto, eDoc/supabase/migrations/**` for inputs it reads."""
+    globs = _verification_globs(spec_text, 'scope')
+    if any(g.lower() == 'auto' for g in globs):
+        globs = sorted({g for g in globs if g.lower() != 'auto'} | set(task_targets(tasks_text)))
+    return globs
 
 
 def verification_generated(spec_text):
@@ -2572,11 +2605,14 @@ def _run_problems(ev, root, spec_dir, spec_text, run, fingerprint=None):
             cnow = (g(root, scope=scope, exclude=excl) if (scope or excl) else g(root)) if callable(g) else None
         except Exception:
             cnow = None
-        if verification_scope(spec_text) != sorted(scope):
+        if verification_scope(spec_text, _read(d / 'tasks.md')) != sorted(scope):
             out.append(('stale', _v('R10', 'The Verification `Scope:` line changed after the last verify_run.', rerun)))
         if cnow != cfp_end:
             out.append(('stale', _v('R10', 'A code or data file changed since the last verify_run (documentation edits and commits do not count).',
-                                    f'Run `aidd verify {spec}`: unchanged rows are reused only if the code is unchanged, so after a code change it re-runs them all.')))
+                                    f'Run `aidd verify {spec}`: unchanged rows are reused only if the code is unchanged, so after a code change it re-runs them all. '
+                                    + ('' if scope else 'If the changed files belong to ANOTHER spec being built in parallel, add `Scope: auto` (this spec\'s '
+                                       f'tasks.md Target files; add inputs it reads, e.g. `Scope: auto, db/migrations/**`) under `## Verification` of specs/{spec}/spec.md '
+                                       'before that run, so other specs stop invalidating it.'))))
     elif fp_end is not None:
         now = None
         if callable(fingerprint):

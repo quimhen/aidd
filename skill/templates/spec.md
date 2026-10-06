@@ -99,7 +99,7 @@ zero, a user with no rows). `Real data (id)` is a real record id/key from the sy
 
 How the close gate EXECUTES this spec (`aidd verify <spec>`). One row per check; `Expected` is `exit 0` (default) or `contains: <text>`. Lint: each command must be a real runner (`dotnet test`, `npm test`, `pytest`, `python -m unittest ...`, `cargo test`, `go test`, ...) or invoke an existing repo path, no inline-code interpreters (`python -c`, `node -e`, `cmd /c`, `powershell -Command`), and a `contains:` text must not appear literally in its own command. This section is mandatory for new approvals; the owner reviews it on its own in `review.html`. Legacy specs without it stay valid.
 
-Scope: <globs of the files this spec owns, e.g. `docs/db-graph/**, tools/foo.py`; optional>
+Scope: auto<!-- optional; `auto` = the Target files of tasks.md, add inputs it reads: `auto, db/migrations/**`; or explicit globs -->
 
 Generated: <files or globs the commands rewrite on purpose, e.g. `docs/db-graph/graph.json, docs/db-graph/metrics.json`; optional>
 

@@ -86,6 +86,24 @@ class TestScope(unittest.TestCase):
         self.assertEqual(rules.verification_scope("no heading\nScope: x/**\n"), [])
         self.assertEqual(rules.verification_scope(None), [])
 
+    def test_scope_auto_takes_the_task_target_files(self):
+        tasks = ("# T\n\n| Task | Codes | Target file | View / logic |\n|---|---|---|---|\n"
+                 "| T-01 | FR-1 | `docs/db-graph/a.py` + `docs/db-graph/test_a.py` | LOGIC |\n"
+                 "| T-02 | FR-2 | `tools/b.sql` | LOGIC |\n| T-03 | FR-3 | `specs/F1/qa-audit.md` | LOGIC |\n\n"
+                 "| Other | Table |\n|---|---|\n| x | `not/a/target.py` |\n")
+        self.assertEqual(rules.task_targets(tasks), ["docs/db-graph/a.py", "docs/db-graph/test_a.py", "tools/b.sql"])
+        spec = "## Verification\n\nScope: auto, eDoc/supabase/migrations/**\n\n| # | Command |\n|---|---|\n"
+        self.assertEqual(rules.verification_scope(spec, tasks),
+                         ["docs/db-graph/a.py", "docs/db-graph/test_a.py", "eDoc/supabase/migrations/**", "tools/b.sql"])
+        self.assertEqual(rules.verification_scope("## Verification\n\nScope: auto\n", "no table here"), [])   # nothing: whole tree
+        self.assertEqual(rules.verification_scope("## Verification\n\nScope: src/**\n", tasks), ["src/**"])
+
+    def test_the_shipped_template_declares_scope_auto_and_it_parses(self):
+        tpl = (Path(__file__).resolve().parent.parent / "skill" / "templates" / "spec.md").read_text(encoding="utf-8")
+        tasks = "| Task | Target file |\n|---|---|\n| T-01 | `a/b.py` |\n"
+        self.assertEqual(rules.verification_scope(tpl, tasks), ["a/b.py"])       # comment ignored, auto expanded
+        self.assertEqual(rules.verification_generated(tpl), [])                  # the Generated placeholder is no value
+
     def test_placeholder_and_empty_scopes_are_never_trusted(self):
         self.assertEqual(rules.verification_scope("## Verification\n\nScope: <globs of the files this spec owns>\n"), [])
         with tempfile.TemporaryDirectory() as td:
