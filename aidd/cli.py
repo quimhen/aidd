@@ -83,6 +83,15 @@ def cmd_status(args):
     return _run("aidd_status.py", ["status", *args.status_args])
 
 
+def cmd_progress(args):
+    out = list(args.spec_dirs)
+    if args.root:
+        out += ["--root", args.root]
+    out += [f for f, on in (("--json", args.json), ("--detail", args.detail), ("--no-write", args.no_write),
+                            ("--quiet", args.quiet)) if on]
+    return _run("aidd_progress.py", out)
+
+
 def cmd_pending(args):
     # Passthrough to aidd_pending.py (`<spec_dir|tasks.md> [--root DIR] [--json]`).
     return _run("aidd_pending.py", args.pending_args)
@@ -289,6 +298,17 @@ def build_parser():
         add_help=False)
     p_pending.add_argument("pending_args", nargs=argparse.REMAINDER, help="forwarded to aidd_pending.py (try: aidd pending specs/001-x --json)")
     p_pending.set_defaults(func=cmd_pending)
+
+    p_progress = sub.add_parser(
+        "progress", help="Implementation % per spec (target files present / marked aidd:<code>) plus approved/verify/audit/closed stages; no LLM, no third-party graph; writes .aidd/graphs/progress.json",
+        add_help=False)
+    p_progress.add_help = True
+    p_progress.add_argument("spec_dirs", nargs="*", help="spec folders (default: every specs/*/tasks.md)")
+    p_progress.add_argument("--root", help="project root (default: current directory)")
+    for flag, text in (("--json", "machine-readable summary"), ("--detail", "list missing/stub/not-measurable tasks"),
+                       ("--no-write", "do not write .aidd/graphs/progress.json"), ("--quiet", "write the graph, print nothing")):
+        p_progress.add_argument(flag, action="store_true", help=text)
+    p_progress.set_defaults(func=cmd_progress)
 
     p_rules = sub.add_parser(
         "rules", help="Hard rules: check <spec_dir> | approve <spec_dir> | close <spec_id> | abandon <spec_id> [--reason TEXT]",

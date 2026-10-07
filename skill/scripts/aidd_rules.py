@@ -1421,9 +1421,66 @@ def required_domains(spec_dir):
             doms.add('database')
         if doms & {'ui', 'database'} or _HOT_PATH_RE.search(tasks):
             doms.add('performance')
+        # amendment to spec 006: an amendment declares the domains its diff touches (`Audit-Domains:` under
+        # `## Verification`, approved with the spec); `functional` is never dropped.
+        spec_text = _read(d / 'spec.md')
+        # Size the change instead of auditing everything: a SMALL change (1-2 `Target file`s) is audited for the
+        # domains its files touch; medium/large changes and `Risk: high` specs keep the full rule above.
+        imp = impact_summary(d)
+        if (imp['magnitude'] == 'small' and imp['files'] > 0
+                and not re.search(r'^[ \t>*_-]*risk\s*:\s*\**\s*high', spec_text, re.I | re.M)):
+            doms = set(imp['domains'])
+        ov = audit_domains_override(spec_text)
+        if ov:
+            doms = ov | {'functional'}
     except Exception:
         pass
     return doms
+
+
+_IMPACT_UI_RE = re.compile(r'\.(tsx|jsx|vue|svelte|css|scss|html|xaml|dart)$|/(components?|pages?|screens?|views?)/', re.I)
+_IMPACT_BACKEND_RE = re.compile(r'/(api|controllers?|routes?|handlers?|services?|endpoints?)/', re.I)
+_IMPACT_DB_RE = re.compile(r'\.sql$|/(migrations?|procedures?|sp)/', re.I)
+_IMPACT_SECURITY_RE = re.compile(r'auth|secret|token|password|crypt|permission|credential|login|rls', re.I)
+
+
+def impact_summary(spec_dir):
+    """Size and reach of a change from the `Target file` column of tasks.md (any spec, not only amendments):
+    {'files': n, 'magnitude': 'small|medium|large', 'domains': set, 'suggest': 'Audit-Domains: ...'}.
+    small = at most 2 files; medium = 3-8; large = more. `functional` is always suggested; `security` only
+    when a target path names an auth/secret/permission surface; `performance` only for a large change or a
+    database change that is not small. A suggestion, never a gate. Never raises."""
+    try:
+        files = task_targets(_read(Path(spec_dir) / 'tasks.md'))
+        n = len(files)
+        mag = 'small' if n <= 2 else ('medium' if n <= 8 else 'large')
+        doms = {'functional'}
+        for f in files:
+            p = '/' + f.lower().replace('\\', '/')
+            if _IMPACT_UI_RE.search(p):
+                doms.add('ui')
+            if _IMPACT_BACKEND_RE.search(p):
+                doms.add('backend')
+            if _IMPACT_DB_RE.search(p):
+                doms.add('database')
+            if _IMPACT_SECURITY_RE.search(p):
+                doms.add('security')
+        if mag == 'large' or ('database' in doms and mag != 'small') or 'ui' in doms and mag != 'small':
+            doms.add('performance')
+        return {'files': n, 'magnitude': mag, 'domains': doms,
+                'suggest': 'Audit-Domains: ' + ', '.join(sorted(doms))}
+    except Exception:
+        return {'files': 0, 'magnitude': 'unknown', 'domains': {'functional'}, 'suggest': ''}
+
+
+def audit_domains_override(spec_text):
+    """Known domains named in the optional `Audit-Domains: functional, database` line of `## Verification`
+    (empty set = no override). Unknown words are ignored; never raises."""
+    try:
+        words = {g.lower() for g in _verification_globs(spec_text, 'audit-domains')}
+        return {w for w in words if w in {'security', 'functional', 'ui', 'backend', 'database', 'performance'}}
+    except Exception:
+        return set()
 
 
 def is_low_tier(model):

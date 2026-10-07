@@ -87,6 +87,10 @@ def _autodetect(root):
             break
     if (root / "specs" / "index.toon").is_file():
         out.append({"name": "spec", "kind": "spec", "output": "specs/index.toon", "refresh": "", "watch": []})
+    if any((root / "specs").glob("*/tasks.md")):
+        # amendment to spec 004: AIDD's own implementation-progress graph (no third-party tool)
+        out.append({"name": "progress", "kind": "progress", "output": ".aidd/graphs/progress.json",
+                    "refresh": "builtin:progress", "watch": ["specs/**"]})
     return out
 
 
@@ -241,6 +245,8 @@ def _command(root, e):
     if r.lower() == "builtin:sql":
         dirs = [w[:-3] if w.endswith("/**") else w for w in e["watch"]]
         return [sys.executable, str(HERE / "sql_graph.py"), "--root", str(root), "--out", e["output"], *dirs], False
+    if r.lower() == "builtin:progress":
+        return [sys.executable, str(HERE / "aidd_progress.py"), "--root", str(root), "--quiet"], False
     return r, True
 
 
@@ -367,7 +373,8 @@ def show(root, name, query, limit=25):
         for n in hits:
             nid = _nid(n)
             lines.append("%s  [%s]" % (nid, n.get("type", n.get("kind", n.get("file_type", "?")))))
-            for k in ("data_type", "nullable", "purpose", "purpose_source"):
+            for k in ("data_type", "nullable", "purpose", "purpose_source", "impl_pct", "marked_pct", "tasks", "state",
+                      "status", "stage_approved", "stage_verify", "stage_audit", "stage_closed"):
                 if n.get(k) not in (None, ""):
                     lines.append("  %s: %s" % (k, n[k]))
             if n.get("source_file"):

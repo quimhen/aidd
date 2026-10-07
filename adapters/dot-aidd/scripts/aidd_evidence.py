@@ -1772,6 +1772,73 @@ def _fp_is_doc(rel):
     return os.path.splitext(rel)[1].lower() in _FP_DOC_EXT
 
 
+# Amendment to spec 006: a comment- or whitespace-only edit of a .sql file is documentation, not code. It
+# neither counts as a `code_edit` nor changes the code fingerprint, so it never forces a re-verify or a
+# re-audit of the closing domains. Strings and [bracketed]/"quoted" identifiers are kept verbatim.
+_SQL_TOKEN_RE = re.compile(r"'(?:[^']|'')*'|\[[^\]]*\]|\"[^\"]*\"|(?:\s|--[^\n]*|/\*.*?\*/)+", re.S)
+_SQL_MAX_BYTES = 5 * 1024 * 1024
+
+
+def sql_semantic(text):
+    """`text` without SQL comments, with whitespace runs collapsed to one space (string literals and quoted
+    identifiers untouched). Two scripts with the same result run the same statements."""
+    def rep(m):
+        s = m.group(0)
+        return ' ' if (s[0].isspace() or s.startswith('--') or s.startswith('/*')) else s
+    return _SQL_TOKEN_RE.sub(rep, str(text or '')).strip()
+
+
+def _decode_sql(data):
+    if data[:2] in (b'\xff\xfe', b'\xfe\xff'):
+        return data.decode('utf-16', errors='replace')
+    try:
+        return data.decode('utf-8-sig')
+    except UnicodeDecodeError:
+        return data.decode('cp1252', errors='replace')
+
+
+def sql_digest(data):
+    """sha1 hex of the comment/whitespace-free form of a .sql file's bytes (UTF-8, UTF-8 BOM, UTF-16 or cp1252)."""
+    return hashlib.sha1(sql_semantic(_decode_sql(data)).encode('utf-8', errors='replace')).hexdigest()
+
+
+def comment_only_edit(path, tool_input):
+    """True when an Edit/MultiEdit of the .sql file at `path` (already applied on disk) changed only comments
+    or whitespace. The pre-edit text is rebuilt by undoing the edits; anything ambiguous (a Write, a missing or
+    repeated new_string, a file over 5 MB, any error) is False so the edit still counts as code (fail closed)."""
+    try:
+        p = Path(path)
+        if p.suffix.lower() != '.sql' or not isinstance(tool_input, dict):
+            return False
+        edits = tool_input.get('edits')
+        if not isinstance(edits, list) or not edits:
+            edits = [tool_input]
+        if p.stat().st_size > _SQL_MAX_BYTES:
+            return False
+        after = _decode_sql(p.read_bytes())
+        before = after
+        for e in reversed(edits):
+            old, new = e.get('old_string'), e.get('new_string')
+            if not isinstance(old, str) or not isinstance(new, str) or not old or not new:
+                return False
+            if before.count(new) == 0 or (before.count(new) > 1 and not e.get('replace_all')):
+                return False
+            before = before.replace(new, old) if e.get('replace_all') else before.replace(new, old, 1)
+        return sql_semantic(before) == sql_semantic(after)
+    except Exception:
+        return False
+
+
+def _fp_sql_chunk(root, rel):
+    try:
+        data = Path(root, rel).read_bytes()
+        if len(data) > _SQL_MAX_BYTES:
+            return None
+        return rel.encode('utf-8', errors='surrogateescape') + b'\0sql:' + sql_digest(data).encode('ascii') + b'\0'
+    except Exception:
+        return None
+
+
 def _scope_re(globs):
     """Compiled regex for a list of root-relative globs (`**` any depth, `*` within one segment); None = no scope."""
     parts = []
@@ -1822,6 +1889,8 @@ def _code_state_git(root, deadline, srx):
             raise _FpUnavailable()
         for rel, sha in zip(keep, shas):
             state[rel] = rel.encode('utf-8', errors='surrogateescape') + b'\0' + sha.encode('ascii') + b'\0'
+            if rel.lower().endswith('.sql'):
+                state[rel] = _fp_sql_chunk(root, rel) or state[rel]
     return 'git', state
 
 
@@ -1844,6 +1913,8 @@ def _code_state_mtimes(root, deadline, srx):
             except OSError:
                 continue
             state[rel] = f'{rel}\0{st.st_size}\0{st.st_mtime_ns}\n'.encode('utf-8', errors='surrogateescape')
+            if rel.lower().endswith('.sql'):
+                state[rel] = _fp_sql_chunk(base, rel) or state[rel]
             if len(state) > _FP_MAX_FILES:
                 raise _FpOverBudget()
     return 'mtime', state

@@ -1443,6 +1443,11 @@ def _close_gaps(d, root):
         missing = sorted(rules.uncovered_domains(root, None, d.name, since, spec_dir=d))
         if missing:
             doms = ', '.join(sorted(rules.required_domains(d)))
+            imp = rules.impact_summary(d)
+            if imp.get('suggest') and set(rules.required_domains(d)) > imp['domains']:
+                gaps.append(f"R7 note: this is a {imp['magnitude']} change ({imp['files']} target file(s)); it needs "
+                            f"only {', '.join(sorted(imp['domains']))}. Declare `{imp['suggest']}` under `## Verification` "
+                            'in spec.md (the owner approves it with the spec) instead of auditing every domain.')
             for dom in missing:
                 gaps.append(f'R7 no distinct {dom} auditor subagent ran after the last code edit and the last '
                             f'verify_run → dispatch ONE closing auditor whose prompt starts '

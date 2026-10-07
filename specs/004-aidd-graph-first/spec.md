@@ -56,6 +56,9 @@ Out: any LLM or embedding; reading source code into the graph; changing R1–R12
 | FR-008 | A non-blocking `PreToolUse Read` hint: when a whole `spec.md`/`plan.md`/`contracts.md`/`tasks.md`/`events.toon` is read with no `limit` and no graph query this session, print one line pointing to `find_spec.py --code` | AC-006 |
 | FR-009 | Auditor prompt scope: `aidd-converge` and SKILL.md tell each auditor to start from `find_spec.py --code` per changed code plus `check_spec.py`, not from full files | AC-006 |
 | FR-010 | Index format stays backward compatible: an old `index.toon` is detected by `version` and rebuilt, never misread | AC-005 |
+| FR-011 | Amendment 2026-10-07 (owner: AIDD stays independent of third-party graph tools). `aidd progress` measures implementation per spec with no LLM and no third-party tool: for each task of `tasks.md` it resolves the `Target file` paths in the project (also by path suffix, for specs that write paths relative to a sub-folder) and classifies it `missing`, `stub` (< 40 bytes), `present` or `marked` (file carries `aidd:<code>` of the codes the task satisfies, or `aidd:T-nn`); a cell with no path (waves, prose) is `n/a` and counted apart. Per spec: `Impl%` = (present+marked)/measurable, `Mark%` = marked/measurable, `Decl%` = tasks whose Status cell says done (declared, not measured) | AC-007 |
+| FR-012 | `aidd progress` adds the stages AIDD already records: approved, `aidd verify` result (none/passed/failed), closing-audit coverage (covered/required domains, `closed` once the spec is closed) and closed | AC-007 |
+| FR-013 | The result is written to `.aidd/graphs/progress.json` (nodes `spec` and `T` with their state, edges `contains` and `targets`) and registered as the built-in graph `progress` (`refresh: builtin:progress`), so `aidd graphs show progress <spec or T>` answers without reading files | AC-008 |
 
 ## Acceptance cases
 
@@ -67,6 +70,8 @@ Out: any LLM or embedding; reading source code into the graph; changing R1–R12
 | AC-004 | `D:\Fuentes\AIDD`, a code with a memory entry | the entry id appears as a neighbour | no |
 | AC-005 | edit one task row, rerun | only `tasks.md` re-parsed; a `version: 3` index is rebuilt once, not crashed on | yes |
 | AC-006 | Read of `plan.md` (171 lines) with no `limit` | one-line hint, read not blocked; no hint when `limit` is set | yes |
+| AC-007 | `D:\Fuentes\b1SycLink`, `aidd progress` | one table for every spec: F25 98,7 % (75 of 76, only the closing `qa-audit.md` missing), F27 (no `Target file` column) shown as `n/a` with its declared %, F28 `closed` | yes |
+| AC-008 | same project, `aidd graphs show progress F25-eDoc-Approvals` | the spec node with `impl_pct`, stages and its tasks, no spec file read | no |
 
 ## Optional Align questions
 

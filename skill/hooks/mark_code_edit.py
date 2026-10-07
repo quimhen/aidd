@@ -55,7 +55,9 @@ def _paths(tool_input):
 _paths_in = _paths(event.get('tool_input'))
 
 try:  # legacy timestamp
-    if any(is_code_file(p) for p in _paths_in):
+    sys.path.insert(0, str(Path(__file__).parent.parent / 'scripts'))
+    import aidd_evidence as _ev0
+    if any(is_code_file(p) and not _ev0.comment_only_edit(p, event.get('tool_input')) for p in _paths_in):
         write_timestamp(_sid, 'last_code_edit_ts')
 except Exception:
     pass
@@ -113,6 +115,11 @@ try:  # evidence recorder
                 _gated = is_r6_gated(_canon, _outer)
             except Exception:
                 _gated = False
+            try:  # amendment to spec 006: a comment/whitespace-only .sql edit is documentation, not code
+                if _gated and _ev.comment_only_edit(_p, event.get('tool_input')):
+                    _gated = False
+            except Exception:
+                pass
             if _gated:
                 for _r in _roots:
                     _stamp = {}

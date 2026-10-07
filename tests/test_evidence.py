@@ -200,6 +200,44 @@ class TestStorage(EvidenceCase):
         self.assertEqual(len(ev.events(self.root)), 1)
 
 
+class TestSqlCommentOnly(EvidenceCase):
+    """Amendment to spec 006: comment/whitespace-only .sql edits are not code."""
+
+    def _edit(self, name, before, after, enc='utf-8', **kw):
+        p = Path(self.root) / name
+        p.write_bytes(after.encode(enc))
+        old, new = kw.pop('old'), kw.pop('new')
+        return ev.comment_only_edit(p, {'old_string': old, 'new_string': new, **kw})
+
+    def test_semantic_ignores_comments_and_whitespace_keeps_strings(self):
+        a = "SELECT 1 -- c\n/* b */ FROM t WHERE x = '--keep'"
+        b = "SELECT   1\nFROM t   WHERE x='--keep'".replace("x='", "x = '")
+        self.assertEqual(ev.sql_semantic(a), ev.sql_semantic(b))
+        self.assertNotEqual(ev.sql_semantic("WHERE x = 'a'"), ev.sql_semantic("WHERE x = 'b'"))
+
+    def test_comment_edit_is_not_code(self):
+        self.assertTrue(self._edit('a.sql', '', 'SELECT 1 -- nuevo\nFROM t', old='-- viejo', new='-- nuevo'))
+        self.assertTrue(self._edit('b.sql', '', 'SELECT 1 /* x\n nuevo texto */ FROM t', old=' viejo', new=' nuevo'))
+
+    def test_logic_edit_is_code(self):
+        self.assertFalse(self._edit('c.sql', '', 'WHERE d >= @FECINIant', old='@FECINI', new='@FECINIant'))
+
+    def test_utf16_and_non_sql_and_ambiguous(self):
+        self.assertTrue(self._edit('d.sql', '', 'SELECT 1 -- n', enc='utf-16', old='-- v', new='-- n'))
+        self.assertFalse(self._edit('e.py', '', '# n', old='# v', new='# n'))
+        self.assertFalse(self._edit('f.sql', '', 'SELECT 1 -- n -- n', old='-- v', new='-- n'))   # new twice
+        self.assertFalse(ev.comment_only_edit(Path(self.root) / 'f.sql', {'content': 'x'}))      # a Write
+
+    def test_fingerprint_survives_comment_edit(self):
+        p = Path(self.root) / 'g.sql'
+        p.write_text('SELECT 1 -- a\n', encoding='utf-8')
+        h1 = ev.fingerprint_of(ev.code_state(self.root))
+        p.write_text('SELECT 1 -- b, longer\n', encoding='utf-8')
+        self.assertEqual(h1, ev.fingerprint_of(ev.code_state(self.root)))
+        p.write_text('SELECT 2 -- b\n', encoding='utf-8')
+        self.assertNotEqual(h1, ev.fingerprint_of(ev.code_state(self.root)))
+
+
 class TestNormaliseAndQuotes(EvidenceCase):
     def test_normalise(self):
         self.assertEqual(ev.normalise("  Sí,  PUEDES   Aprobar!! "), "si puedes aprobar")

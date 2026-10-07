@@ -403,6 +403,41 @@ class TestDomains(unittest.TestCase):
         self.assertEqual(R.required_domains(self.mk('SCREEN-1 API-2 schema')),
                          B | {'performance', 'ui', 'backend', 'database'})
 
+    def test_audit_domains_override_narrows_an_amendment(self):
+        d = self.mk('stored procedure change .sql')
+        self.assertEqual(R.required_domains(d), self.BASE | {'performance', 'database'})
+        (d / 'spec.md').write_text('## Verification\nAudit-Domains: database\n| # | cmd |\n', encoding='utf-8')
+        self.assertEqual(R.required_domains(d), {'functional', 'database'})   # functional is never dropped
+        (d / 'spec.md').write_text('## Verification\nAudit-Domains: bogus\n', encoding='utf-8')
+        self.assertEqual(R.required_domains(d), self.BASE | {'performance', 'database'})   # unknown words: no override
+        (d / 'spec.md').write_text('## Verification\n| # | cmd |\n', encoding='utf-8')
+        self.assertEqual(R.required_domains(d), self.BASE | {'performance', 'database'})
+
+    def test_small_change_audits_only_what_it_touches_by_default(self):
+        hdr = '| Task | Desc | Target file | Agent min: | Tokens |\n|---|---|---|---|---|\n'
+        small = self.mk(hdr + '| T-01 | x | `db/deploy.sql` | 5 | 50 |\n')
+        self.assertEqual(R.required_domains(small), {'functional', 'database'})
+        (small / 'spec.md').write_text('Risk: high\n', encoding='utf-8')               # money/security: full rule
+        self.assertEqual(R.required_domains(small), self.BASE | {'performance', 'database'})
+        (small / 'spec.md').write_text('## Verification\nAudit-Domains: security, functional\n', encoding='utf-8')
+        self.assertEqual(R.required_domains(small), {'security', 'functional'})     # the declared set wins
+        big = self.mk(hdr + ''.join(f'| T-{i} | x | `db/p{i}.sql` | 5 | 50 |\n' for i in range(3)))
+        self.assertEqual(R.required_domains(big), self.BASE | {'performance', 'database'})   # medium: full rule
+
+    def test_impact_summary_sizes_the_change(self):
+        row = '| T-01 | x | `db/deploy.sql` | 5 | 50 |\n'
+        hdr = '| Task | Desc | Target file | Agent min: | Tokens |\n|---|---|---|---|---|\n'
+        d = self.mk(hdr + row)
+        s = R.impact_summary(d)
+        self.assertEqual((s['files'], s['magnitude']), (1, 'small'))
+        self.assertEqual(s['domains'], {'functional', 'database'})   # no security/performance for a 1-file SQL change
+        self.assertIn('Audit-Domains: database, functional', s['suggest'])
+        d2 = self.mk(hdr + ''.join(f'| T-{i} | x | `src/auth/f{i}.ts` | 5 | 50 |\n' for i in range(9)))
+        s2 = R.impact_summary(d2)
+        self.assertEqual(s2['magnitude'], 'large')
+        self.assertTrue({'security', 'performance'} <= s2['domains'])
+        self.assertEqual(R.impact_summary('/does/not/exist')['domains'], {'functional'})
+
     def test_performance_matrix_hot_path_db_ui_only(self):
         B = self.BASE
         for txt in ('hot path', 'hot-path loop', 'reduce latency', 'baja latencia', 'performance goal', 'mejor rendimiento'):
