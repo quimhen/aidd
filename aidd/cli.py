@@ -83,6 +83,11 @@ def cmd_status(args):
     return _run("aidd_status.py", ["status", *args.status_args])
 
 
+def cmd_pending(args):
+    # Passthrough to aidd_pending.py (`<spec_dir|tasks.md> [--root DIR] [--json]`).
+    return _run("aidd_pending.py", args.pending_args)
+
+
 def cmd_calibrate(args):
     # Passthrough to aidd_calibrate.py (`record <spec_dir>`).
     return _run("aidd_calibrate.py", [args.action, args.spec_dir])
@@ -278,6 +283,12 @@ def build_parser():
         add_help=False)
     p_status.add_argument("status_args", nargs=argparse.REMAINDER, help="forwarded to aidd_status.py (try: aidd status [spec_dir] --json)")
     p_status.set_defaults(func=cmd_status)
+
+    p_pending = sub.add_parser(
+        "pending", help="Script prefilter: which tasks.md tasks still lack their Target file, grouped into lanes (no agents, no tokens)",
+        add_help=False)
+    p_pending.add_argument("pending_args", nargs=argparse.REMAINDER, help="forwarded to aidd_pending.py (try: aidd pending specs/001-x --json)")
+    p_pending.set_defaults(func=cmd_pending)
 
     p_rules = sub.add_parser(
         "rules", help="Hard rules: check <spec_dir> | approve <spec_dir> | close <spec_id> | abandon <spec_id> [--reason TEXT]",

@@ -66,6 +66,7 @@ VERBATIM_SCRIPTS = [
     "aidd_memory_import.py",
     "aidd_rules.py",
     "aidd_evidence.py",
+    "aidd_pending.py",
     "aidd_status.py",
     "aidd_review.py",
     "aidd_review_items.py",

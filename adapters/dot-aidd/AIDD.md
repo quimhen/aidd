@@ -534,7 +534,7 @@ Detail each task with the same four-dimension rubric as a requirements-analysis 
 | 1 | ONE owner agent per target file/class, who makes ALL the small changes to it. Two task rows with the same Target file are one task; keep both only with `same owner as T-nn` (the opt-out `check_spec.py` gap G6 understands). One code, one file, one PR is a review-size concern, not an agent split. |
 | 2 | Derive waves from an explicit dependency graph. Only a true dependency (needs another task's output or file) goes in a later wave; everything independent (docs, tests against an interface fixed by `plan.md`, read-only audits of already-stable code) goes in the SAME wave. Target 2-3 waves. |
 | 3 | `Agent min` is REAL wall time, not ideal agent minutes (measured: one-file task 3-10 min, coupled task or one running the suite 15-25 min). |
-| 4 | Subagent tasks run only their own targeted tests; the main agent runs the full suite once per wave. |
+| 4 | Subagent tasks run only their own targeted tests; the main agent runs the full suite once per SPEC, after its last wave (E3). |
 | 5 | After audits, fixes go back to the original owner of each file (SendMessage resume), not to a new agent. |
 | 6 | A fix batch fixes only CONFIRMED medium+ findings; the rest are documented open exceptions. |
 | 7 | Automation first (S1): estimate the scripted/tool path, not manual work; independent tasks go to parallel agents in one message; long jobs run in the background while other work continues. |
@@ -554,6 +554,14 @@ Detail each task with the same four-dimension rubric as a requirements-analysis 
 ### Step 5 — Implement, one PR at a time, gated
 
 **Think, then propose.** During build, propose improvements and record them in the brief instead of waiting for audits; do not dispatch per-domain audits while building. Validation is concentrated at close (Step 6).
+
+**E — Orchestration budget (multi-spec / multi-wave runs).** Measured: a run of ~900 tasks across many specs burned 7 h because 149 of 290 agents answered "already done", one agent was launched per task, and every wave ran the full suites (memory exhaustion). Rules:
+1. **E1 Script prefilter before any agent.** Run `aidd pending <spec>` (checks each task's Target file on disk; prints done/pending/unknown and the lanes). Launch agents ONLY for `pending`; `unknown` rows get one decision, not one agent each. An orchestrator that launches an agent to find out whether work exists is defective.
+2. **E2 One agent per lane, not per task.** A lane = one feature folder / one set of exclusive files; the agent receives all its pending tasks and reads the spec once.
+3. **E3 One full run per spec, at the end.** Lanes and waves run only targeted tests; full `tsc` / test suites / DB verification run once per spec after its last wave, serially, never in parallel across specs.
+4. **E4 Bounded loops.** At most ONE audit pass per spec at close and ONE fix batch (CONFIRMED medium+ only); the rest become open exceptions. Never re-audit the fixes of an audit.
+5. **E5 Cap the run.** Declare an agent/token/wall-time budget in the Optimization brief before launching; with half the budget spent and under half the tasks done, stop and re-plan. Items blocked on external data (real ERP data, client schema) are excluded up front and listed, not dispatched.
+6. **E6 Shared files have one owner** (CI config, conftest, router/app registries): lanes request lines; the owner or the integrator applies them once.
 
 **Definition of Done for every UI PR — all four, not "looks right" (plus executed evidence at close, hard rule R10):**
 1. **Code** — implements exactly the codes the task cites, in exactly the target file, one class per file, following the plan's Naming & File Contract, SOLID, and the Antifragile/Design-for-Failure standard above (timeouts, retry/backoff, graceful degradation, and a recoverable trace for anything that crosses a boundary). For an `API-nnn` task: the database access it needs goes through a stored procedure (or a written exception), and it isn't done until its Swagger/OpenAPI doc exists and matches `contracts.md`.
