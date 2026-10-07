@@ -962,10 +962,10 @@ def load_real(spec_dir):
 class TestRealFiles(unittest.TestCase):
     """The real b1SycLink files (only the five sources are read)."""
 
-    def test_f28_175_codes_absolute_and_relative(self):
+    def test_f28_175_codes_absolute_and_relative(self):  # F28 now has 177 codes
         d = REAL_ROOT / 'F28-DB-Unification-Sync'
         r = I.extract_items(load_real(d.resolve()))
-        self.assertEqual(len(r['order']), 175)
+        self.assertEqual(len(r['order']), 177)
         self.assertEqual(r['warnings'], [])
         self.assertEqual([t['id'] for t in r['tabs']],
                          ['summary', 'questions', 'fr', 'ac', 'api', 'tasks', 'verification'])

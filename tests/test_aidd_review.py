@@ -1402,7 +1402,7 @@ class TestRealModules(_Tmp):
         codes = aidd_review.reviewable_keys(d)
         tag = f"[tasks:{_th(d)[:8]}]"
         if tag == "[tasks:5c3cbb5b]":
-            self.assertEqual(len(codes), 175)
+            self.assertEqual(len(codes), 177)
         data = self._save(d, page)
         self.assertEqual(data["codes"], codes)
         code, line = self._line(d, "--check")
