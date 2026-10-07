@@ -99,4 +99,4 @@ Approved: PENDING
 1. Code implements exactly the codes cited, in exactly the target file, one class per file, following the plan's Naming & File Contract, SOLID, and the Antifragile standard above (timeouts, retry/backoff, graceful degradation, recoverable trace for anything crossing a boundary).
 2. Mapping row added/updated in `qa-audit.md` for every code touched, with file/class/resource-id evidence.
 3. PR/Spec ref written back into `mockup-audit.md`, `contracts.md` (if applicable), and `plan.md` for every code touched — appended, not overwritten, if the code was already touched by an earlier PR.
-4. Screenshot of the changed screen compared against the mockup for that SCREEN-XX — per task, not batched.
+4. Executed verification (screenshot vs mockup, run of the SQL/command/query, tests) — NOT per task: verifier agent(s) (`Agent role: tests`; several only if each covers something different) run it once per wave, only after ALL builders of that wave finished, and write the evidence rows (R10) for every code of the wave. A builder only does a static self-check (parse / compile / lint) and never runs the full verification.

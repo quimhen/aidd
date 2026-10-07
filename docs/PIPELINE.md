@@ -590,7 +590,7 @@ All four, together. Not "looks right."
 3. **PR/Spec ref written back** — as soon as the PR exists, write it into the `PR/Spec ref` column
    of every code it touches. Append on amendment — never overwrite an earlier PR's ref.
 4. **Screenshot diff** — run/build, screenshot the changed screen, compare against the mockup — per
-   PR, not batched at the end.
+   WAVE by verifier agent(s) after all the wave's builders finish (rule E7), not per task.
 
 ## Convergence log
 
