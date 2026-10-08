@@ -1829,12 +1829,20 @@ def comment_only_edit(path, tool_input):
         return False
 
 
+_SQL_MEMO = {}     # (path, size, mtime_ns) -> digest: an unchanged .sql is normalised once per process
+
+
 def _fp_sql_chunk(root, rel):
     try:
-        data = Path(root, rel).read_bytes()
-        if len(data) > _SQL_MAX_BYTES:
+        p = Path(root, rel)
+        stt = p.stat()
+        if stt.st_size > _SQL_MAX_BYTES:
             return None
-        return rel.encode('utf-8', errors='surrogateescape') + b'\0sql:' + sql_digest(data).encode('ascii') + b'\0'
+        key = (str(p), stt.st_size, stt.st_mtime_ns)
+        dig = _SQL_MEMO.get(key)
+        if dig is None:
+            dig = _SQL_MEMO[key] = sql_digest(p.read_bytes())
+        return rel.encode('utf-8', errors='surrogateescape') + b'\0sql:' + dig.encode('ascii') + b'\0'
     except Exception:
         return None
 

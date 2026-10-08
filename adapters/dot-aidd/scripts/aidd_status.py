@@ -889,6 +889,11 @@ def cmd_check(spec_arg):
             print(f'PASS {rid}')
     for v in vs:
         print(f"FAIL {v['rule']} {v['message']} → {v['fix']}")
+    try:
+        for note in rules.wave_agent_advice(_read(d / 'tasks.md')):
+            print(f'NOTE {note}')          # advice only: never changes the exit code
+    except Exception:
+        pass
     return 1 if vs else 0
 
 
@@ -1302,7 +1307,8 @@ def cmd_verify(spec_arg, full=False):
     prior_fp = ev.fingerprint_of(st_start, scope, exclude=pexcl) if (prior and st_start) else None
     reuse = _reusable_rows(d, prior, prior_fp, full)        # read BEFORE any evidence file is rewritten
     results = []
-    for i, r in enumerate(rows, 1):
+
+    def _one(i, r):
         cmd, expected = r['cmd'], (r.get('expected') or 'exit 0')
         n = r.get('n') or str(i)
         fid = _row_file_id(n, i)
@@ -1316,17 +1322,19 @@ def cmd_verify(spec_arg, full=False):
                 with open(final, 'wb') as fh:
                     fh.write(data)
                 one_line = re.sub(r'[\r\n]+', ' ', cmd).strip()
-                results.append({'n': str(n), 'cmd': cmd, 'expected': expected, 'exit': hit[1].get('exit', 0), 'ok': True,
-                                'evidence': rel, 'sha1': hashlib.sha1(data).hexdigest(), 'reused': True})
-                print(f'REUSED row {n}: {one_line[:100]} (passed earlier on the same code) → {rel}')
-                continue
+                res = {'n': str(n), 'cmd': cmd, 'expected': expected, 'exit': hit[1].get('exit', 0), 'ok': True,
+                       'evidence': rel, 'sha1': hashlib.sha1(data).hexdigest(), 'reused': True}
+                print(f'REUSED row {n}: {one_line[:100]} (passed earlier on the same code) → {rel}', flush=True)
+                return res
             except Exception:
                 pass                                         # could not copy the evidence: run the row for real
         problem = rules.verification_command_problem(cmd, expected, root)
         if problem:
-            code, note, body = -1, f'not run: {problem}', ''
+            code, note, body, secs = -1, f'not run: {problem}', '', 0.0
         else:
+            t_row = time.monotonic()
             code, note = _run_row(cmd, root, tmp, timeout)
+            secs = round(time.monotonic() - t_row, 1)
             try:
                 body = tmp.read_bytes().decode('utf-8', errors='replace')
             except Exception:
@@ -1354,12 +1362,35 @@ def cmd_verify(spec_arg, full=False):
             sha1 = hashlib.sha1(data).hexdigest()
         except Exception as e:
             ok, why = False, f'evidence file not written ({type(e).__name__})'
-        res = {'n': str(n), 'cmd': cmd, 'expected': expected, 'exit': code, 'ok': bool(ok), 'evidence': rel, 'sha1': sha1}
+        res = {'n': str(n), 'cmd': cmd, 'expected': expected, 'exit': code, 'ok': bool(ok), 'evidence': rel,
+               'sha1': sha1, 'secs': secs}
         if why and not ok:
             res['problem'] = why
-        results.append(res)
-        print(f"{'PASS' if ok else 'FAIL'} row {n}: {one_line[:100]} (exit {code})"
-              + (f' - {why}' if why and not ok else '') + f' → {rel}')
+        print(f"{'PASS' if ok else 'FAIL'} row {n}: {one_line[:100]} (exit {code}, {secs} s)"
+              + (f' - {why}' if why and not ok else '') + f' → {rel}', flush=True)
+        return res
+
+    # Amendment to spec 007: rows run in series unless the spec declares `Jobs: N` under `## Verification`
+    # (the owner approves it: it says the rows are independent: no shared database, port or build output),
+    # or AIDD_VERIFY_JOBS is set. Results keep the table order whatever finishes first.
+    try:
+        jobs = int(float(os.environ.get('AIDD_VERIFY_JOBS', '') or (rules._verification_globs(spec_text, 'jobs') or ['1'])[0]))
+    except Exception:
+        jobs = 1
+    jobs = max(1, min(jobs, len(rows), 8))
+    t_all = time.monotonic()
+    if jobs > 1:
+        print(f'running {len(rows)} row(s) with {jobs} in parallel (Jobs: {jobs})', flush=True)
+        from concurrent.futures import ThreadPoolExecutor
+        with ThreadPoolExecutor(max_workers=jobs) as pool:
+            results = list(pool.map(lambda ir: _one(*ir), enumerate(rows, 1)))
+    else:
+        results = [_one(i, r) for i, r in enumerate(rows, 1)]
+    timed = sorted((x.get('secs') or 0.0, x['n']) for x in results if not x.get('reused'))
+    if timed:
+        print(f'verify wall time {round(time.monotonic() - t_all, 1)} s; slowest row: {timed[-1][1]} ({timed[-1][0]} s)'
+              + ('; add `Jobs: N` under ## Verification to run independent rows in parallel' if jobs == 1 and len(rows) > 1 else ''),
+              flush=True)
     fp_end = ev.worktree_fingerprint(root)
     st_end = ev.code_state(root, scope=scope)
     # Files a command rewrote (a graph.json with a timestamp, a report): outputs, not code. Declared in `Generated:`

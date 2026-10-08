@@ -300,7 +300,7 @@ def build_parser():
     p_pending.set_defaults(func=cmd_pending)
 
     p_progress = sub.add_parser(
-        "progress", help="Implementation % per spec (target files present / marked aidd:<code>) plus approved/verify/audit/closed stages; no LLM, no third-party graph; writes .aidd/graphs/progress.json",
+        "progress", help="Implementation %% per spec (target files present / marked aidd:<code>) plus approved/verify/audit/closed stages; no LLM, no third-party graph; writes .aidd/graphs/progress.json",
         add_help=False)
     p_progress.add_help = True
     p_progress.add_argument("spec_dirs", nargs="*", help="spec folders (default: every specs/*/tasks.md)")

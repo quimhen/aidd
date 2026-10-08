@@ -43,10 +43,11 @@ def run_hook(name: str, event: dict, timeout: int = 10) -> subprocess.CompletedP
     env = dict(os.environ)
     env.setdefault("AIDD_EVIDENCE_DIR", _SCRATCH_EVDIR)
     env.setdefault("AIDD_TESTING", "1")           # AIDD_EVIDENCE_DIR is honoured only with this
-    return subprocess.run(
-        [sys.executable, str(HOOKS_DIR / name)],
-        input=json.dumps(event), capture_output=True, text=True, timeout=timeout, env=env,
-    )
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from gate_fixtures import run_script_inprocess      # runs the hook in this process: no interpreter start
+    r = run_script_inprocess(HOOKS_DIR / name, json.dumps(event).encode("utf-8"), env, timeout)
+    return subprocess.CompletedProcess(r.args, r.returncode, r.stdout.decode("utf-8", "replace"),
+                                       r.stderr.decode("utf-8", "replace"))
 
 
 class HookTestCase(unittest.TestCase):

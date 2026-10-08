@@ -277,7 +277,8 @@ def main(argv):
         elif not a.startswith('--'):
             rest.append(a)
     root = (root or Path.cwd()).resolve()
-    dirs = [Path(a) for a in rest] or sorted(p.parent for p in (root / 'specs').glob('*/tasks.md'))
+    dirs = [Path(a) if Path(a).is_dir() else root / 'specs' / a for a in rest] \
+        or sorted(p.parent for p in (root / 'specs').glob('*/tasks.md'))
     results = [measure(root, d) for d in dirs if (d / 'tasks.md').is_file()]
     if not results:
         print('No spec with a tasks.md found under %s' % (root / 'specs'), file=sys.stderr)

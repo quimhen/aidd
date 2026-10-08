@@ -413,6 +413,20 @@ class TestDomains(unittest.TestCase):
         (d / 'spec.md').write_text('## Verification\n| # | cmd |\n', encoding='utf-8')
         self.assertEqual(R.required_domains(d), self.BASE | {'performance', 'database'})
 
+    def test_wave_advice_one_agent_per_lane(self):
+        hdr = '| Task | Desc | Codes | Target file | Status |\n|---|---|---|---|---|\n'
+        rows = ''.join(f'| T-{i:02d} | x | FR-1 | `eDoc/web/src/f{i}.ts` | |\n' for i in range(1, 6)) + \
+               ''.join(f'| T-{i:02d} | x | FR-1 | `eDoc/engine/e{i}.py` | |\n' for i in range(6, 9))
+        waves = '\n## Waves\n\n| Wave | Tasks | Roles | Agent time (min) | Tokens (k) | Human ref (h) |\n|---|---|---|---|---|---|\n' \
+                '| 1 | T-01, T-02, T-03, T-04, T-05, T-06, T-07, T-08 | builder | 5 | 400 | 0.25 |\n'
+        adv = R.wave_agent_advice(hdr + rows + waves)
+        self.assertEqual(len(adv), 1)
+        self.assertIn('8 tasks in 2 lane', adv[0])
+        self.assertIn('Plan 2 owner agent', adv[0])
+        small = waves.replace('T-01, T-02, T-03, T-04, T-05, T-06, T-07, T-08', 'T-01, T-02')
+        self.assertEqual(R.wave_agent_advice(hdr + rows + small), [])      # below the 6-task threshold
+        self.assertEqual(R.wave_agent_advice('nothing'), [])
+
     def test_small_change_audits_only_what_it_touches_by_default(self):
         hdr = '| Task | Desc | Target file | Agent min: | Tokens |\n|---|---|---|---|---|\n'
         small = self.mk(hdr + '| T-01 | x | `db/deploy.sql` | 5 | 50 |\n')

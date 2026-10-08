@@ -2082,6 +2082,20 @@ class TestVerify(Spec007Base):
                     self.assertFalse(run["ok"])
                     self.assertFalse(run["results"][0]["ok"])
 
+    def test_rows_report_their_time_and_may_run_in_parallel(self):
+        """Amendment to spec 007: every row records `secs`; `Jobs: N` / AIDD_VERIFY_JOBS runs independent rows
+        concurrently, the results keep the table order, and the slowest row is named."""
+        tmp, root, d = self.vproject([("python src/check.py", "exit 0"),
+                                      ("python src/check.py", "contains: assertions passed")])
+        with tmp, mock.patch.dict(os.environ, {"AIDD_VERIFY_JOBS": "2"}):
+            r = run_script("verify", "F23-eDoc-POS", cwd=root)
+            self.assertEqual(r.returncode, 0, r.stdout)
+            self.assertIn("2 in parallel", r.stdout)
+            self.assertIn("slowest row:", r.stdout)
+            run = ev.latest_verify_run(root, "F23-eDoc-POS")
+            self.assertEqual([x["n"] for x in run["results"]], ["1", "2"])
+            self.assertTrue(all("secs" in x for x in run["results"]))
+
     def test_timeout_kills_the_row(self):
         tmp, root, d = self.vproject([("python src/sleep.py", "exit 0")])
         with tmp, mock.patch.dict(os.environ, {"AIDD_VERIFY_TIMEOUT": "2"}):

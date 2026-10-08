@@ -19,6 +19,88 @@ import _common  # noqa: E402
 import aidd_evidence as EV  # noqa: E402
 import aidd_rules as R  # noqa: E402
 
+_SCRIPT_DIRS = (str(HOOKS_DIR), str(REPO / "skill" / "scripts"))
+
+
+_CODE_CACHE = {}
+
+
+def _hook_code(script):
+    """Compiled code of a hook script, cached by (path, mtime): runpy would recompile it on every call."""
+    p = Path(script)
+    key = (str(p), p.stat().st_mtime_ns)
+    code = _CODE_CACHE.get(key)
+    if code is None:
+        code = _CODE_CACHE[key] = compile(p.read_text(encoding="utf-8"), str(p), "exec")
+    return code
+
+
+def run_script_inprocess(script, data, env, timeout=30):
+    """Run a hook script like `python script < data` (exit code, stdout, stderr) WITHOUT a new interpreter.
+
+    Starting Python costs ~180-300 ms here and the gate tests start it ~1000 times; running the script with
+    runpy in this process takes a few ms. Each call is isolated the way a process is: a fresh environment, fresh
+    stdin/stdout/stderr, and the AIDD modules re-imported (a snapshot of sys.modules/sys.path is restored after).
+    A crash prints its traceback to stderr and returns 1, exactly like the interpreter. AIDD_TEST_SUBPROCESS=1
+    (or the real thing needing it) falls back to a real subprocess, which is how to check the two agree."""
+    if os.environ.get("AIDD_TEST_SUBPROCESS") == "1":
+        return subprocess.run([sys.executable, str(script)], input=data, capture_output=True, timeout=timeout, env=env)
+    import io
+    import runpy
+    import traceback
+
+    saved_env, saved_path, saved_argv = dict(os.environ), list(sys.path), list(sys.argv)
+    saved_io = (sys.stdin, sys.stdout, sys.stderr)
+    saved_mods = {k: v for k, v in sys.modules.items()
+                  if k in ("_common", "aidd_evidence", "aidd_rules", "aidd_status", "aidd_review", "aidd_graphs")
+                  or str(getattr(v, "__file__", "") or "").startswith(_SCRIPT_DIRS)}
+    out, err = io.BytesIO(), io.BytesIO()
+    got_out = got_err = b""
+    rc = 0
+    try:
+        os.environ.clear()
+        os.environ.update(env)
+        if os.environ.get("AIDD_TEST_FRESH") == "1":      # re-import the libraries on every call (slow, strictest)
+            for k in saved_mods:
+                sys.modules.pop(k, None)
+        sys.argv = [str(script)]
+        sys.stdin = io.TextIOWrapper(io.BytesIO(data or b""), encoding="utf-8")
+        sys.stdout = io.TextIOWrapper(out, encoding="utf-8", write_through=True)
+        sys.stderr = io.TextIOWrapper(err, encoding="utf-8", write_through=True)
+        try:
+            exec(_hook_code(script), {"__name__": "__main__", "__file__": str(script), "__builtins__": __builtins__})
+        except SystemExit as ex:
+            code = ex.code
+            if code is None:
+                rc = 0
+            elif isinstance(code, int):
+                rc = code
+            else:
+                sys.stderr.write(str(code) + "\n")
+                rc = 1
+        except BaseException:
+            traceback.print_exc()
+            rc = 1
+        finally:
+            for s in (sys.stdout, sys.stderr):
+                try:
+                    s.flush()
+                except Exception:
+                    pass
+            got_out, got_err = out.getvalue(), err.getvalue()      # read before the wrappers are dropped (they close)
+    finally:
+        sys.stdin, sys.stdout, sys.stderr = saved_io
+        sys.argv = saved_argv
+        sys.path[:] = saved_path
+        for k in [k for k, v in sys.modules.items()
+                  if k not in saved_mods and str(getattr(v, "__file__", "") or "").startswith(_SCRIPT_DIRS)]:
+            sys.modules.pop(k, None)
+        sys.modules.update(saved_mods)
+        os.environ.clear()
+        os.environ.update(saved_env)
+    return subprocess.CompletedProcess([str(script)], rc, got_out, got_err)
+
+
 QUOTE = "no hace falta el flowmap"          # 5 words (M3: a prompt quote needs >= 5 words)
 CHECKLIST_QUOTE = "es el modulo de checkout"  # 5 words
 SID = "s-test"
@@ -343,8 +425,7 @@ class Base(unittest.TestCase):
             else:
                 e[k] = v
         data = raw if raw is not None else json.dumps(event).encode("utf-8")
-        r = subprocess.run([sys.executable, str(HOOKS_DIR / name)], input=data, capture_output=True,
-                           timeout=30, env=e)
+        r = run_script_inprocess(HOOKS_DIR / name, data, e)
         r.out = r.stdout.decode("utf-8", "replace")
         r.err = r.stderr.decode("utf-8", "replace")
         return r

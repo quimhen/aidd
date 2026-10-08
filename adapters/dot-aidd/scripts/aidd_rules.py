@@ -2044,6 +2044,66 @@ def _verification_globs(spec_text, key):
         return []
 
 
+def _lane_of(path):
+    parts = Path(str(path)).parts
+    return '/'.join(parts[:2]) if len(parts) > 2 else (parts[0] if parts else '?')
+
+
+def task_lanes(tasks_text):
+    """{T-nn: lane} from the tasks table's `Target file` column; the lane is the first two path folders (same
+    grouping as `aidd pending`: one lane = one set of exclusive files = one owner agent). Never raises."""
+    out = {}
+    try:
+        idx = None
+        for ln in _clean(tasks_text if isinstance(tasks_text, str) else '').split('\n'):
+            s = ln.strip()
+            if not s.startswith('|'):
+                idx = None
+                continue
+            cells = [c.strip() for c in s.strip('|').split('|')]
+            low = [c.lower() for c in cells]
+            if 'target file' in low:
+                idx = low.index('target file')
+                continue
+            m = re.match(r'^[`*\s]*(T-\d+)[`*\s]*$', cells[0], re.I) if cells else None
+            if m and idx is not None and idx < len(cells):
+                ps = [p.strip().replace('\\', '/').lstrip('./') for p in re.findall(r'`([^`\n]+)`', cells[idx])]
+                ps = [p for p in ps if p and '<' not in p and ('/' in p or '.' in p)]
+                if ps:
+                    out[m.group(1).upper()] = _lane_of(ps[0])
+    except Exception:
+        return out
+    return out
+
+
+WAVE_ADVICE_MIN_TASKS = 6
+
+
+def wave_agent_advice(tasks_text):
+    """Non-blocking advice (amendment to spec 005, rule E2): a wave that lists more tasks than lanes must be
+    run with ONE owner agent per lane (all its tasks), not one agent per task. [] when every wave is small or
+    has no more tasks than lanes. Never raises."""
+    out = []
+    try:
+        t = _clean(tasks_text if isinstance(tasks_text, str) else '')
+        tbl = _table(t, r'waves\b')
+        if tbl is None:
+            return out
+        lanes = task_lanes(t)
+        for r in tbl[1]:
+            if len(r) < 2:
+                continue
+            ids = [i.upper() for i in _TASK_ID_RE.findall(r[1])]
+            ln = {lanes[i] for i in ids if i in lanes}
+            if len(ids) >= WAVE_ADVICE_MIN_TASKS and ln and len(ids) > len(ln):
+                out.append(f'Wave {r[0] or "?"}: {len(ids)} tasks in {len(ln)} lane(s). Plan {len(ln)} owner '
+                           f'agent(s), one per lane with all its tasks (rule E2), not {len(ids)} agents; '
+                           f'builders only self-check statically and one verifier runs once the wave ends (E7).')
+    except Exception:
+        return out
+    return out
+
+
 def task_targets(tasks_text):
     """Root-relative files named in the `Target file` column of the tasks table (backticked paths, `+`-joined),
     sorted, without anything under specs/. [] when there is no such column. Never raises."""
