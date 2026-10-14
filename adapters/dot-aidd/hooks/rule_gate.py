@@ -37,6 +37,9 @@ RESIDUAL LIMIT (stated, not hidden): the Bash check is lexical. Obfuscation — 
 that build the directory name, base64/eval, running a separate script file that does the write, changing
 directory and using unrelated relative names — is NOT detected; Bash edits of CODE files remain ungated
 (same documented limitation as before). R9 for Bash raises the bar; it is not a sandbox.
+Spec 010 (FR-1001/1002): `_locate` is memoized by (path, CLAUDE_PROJECT_DIR) and `_abs_path` by (token, base), and
+`decide` empties both memos first (`_clear_caches`). In `_shell_block` the per-argument protected-path check is lazy:
+only the verbs that consume it (writers/deleters/movers/copiers, sed -i, find -delete, git rm...) resolve arguments.
 Rev 3: any command whose text contains AIDD_TESTING / AIDD_EVIDENCE_DIR / AIDD_SESSION_ID in ANY form is blocked, and
 quoted bodies of `powershell -c "..."` / `node -e` are parsed one level deep - still purely lexical (a token
 assembled from pieces that never appears whole, or a script file written elsewhere, is not seen). The approval
@@ -1183,9 +1186,27 @@ def _nested_project(d):
         return False
 
 
+_ABS_CACHE = {}       # aidd:FR-1001 (tok, base) -> _abs_path result; never keyed by tok alone (base = tracked cwd)
+_LOCATE_CACHE = {}    # aidd:FR-1001 (path, CLAUDE_PROJECT_DIR) -> _locate result
+
+
+def _clear_caches():
+    """aidd:FR-1001 empty the per-decision memos (called at the start of every `decide`)."""
+    _ABS_CACHE.clear()
+    _LOCATE_CACHE.clear()
+
+
 def _abs_path(tok, base=None):
     """Absolute normalised native path of a path token / `cd` target (relative ones joined to `base`), else None
-    (a variable, a glob, `-`, or a relative token with no base)."""
+    (a variable, a glob, `-`, or a relative token with no base). Memoized by the pair (tok, base)."""
+    key = (tok, base)
+    if key in _ABS_CACHE:
+        return _ABS_CACHE[key]
+    r = _ABS_CACHE[key] = _abs_path_raw(tok, base)
+    return r
+
+
+def _abs_path_raw(tok, base=None):
     import re
     t = _unquote(tok).strip()
     if t.startswith('-') and ':' in t[:30]:
@@ -1208,7 +1229,16 @@ def _locate(p):
     """closing audit 007 N-1: the lowercased segments of absolute path `p` RELATIVE TO ITS PROJECT ROOT
     (CLAUDE_PROJECT_DIR when `p` lies under it, else the nearest ancestor with specs/ or .aidd/, re-rooted at a
     nested project under a folder named specs). No root on disk: the segments after the last `specs` segment
-    (lexical fallback, prefixed with 'specs'), or [] when there is none."""
+    (lexical fallback, prefixed with 'specs'), or [] when there is none. Memoized by (p, CLAUDE_PROJECT_DIR);
+    every caller gets its own copy of the list."""
+    key = (p, os.environ.get('CLAUDE_PROJECT_DIR'))
+    if key not in _LOCATE_CACHE:
+        _LOCATE_CACHE[key] = _locate_raw(p)
+    r = _LOCATE_CACHE[key]
+    return list(r) if r is not None else None
+
+
+def _locate_raw(p):
     from pathlib import Path
     try:
         ev = _ev()
@@ -1477,7 +1507,8 @@ def _shell_block(cmd, ctx, depth=0):
         def hit(a):
             return (_prot_tok(a, ctx_aidd, cwd_prot) or (verb not in ('mkdir', 'md') and _specs_tok(a, cwd_specs, cwd_abs))
                     or _host_tok(a, cwd_abs, dirs=verb in _DELETERS or verb in _MOVERS))   # aidd:FR-911
-        prot_args = [a for a in args if hit(a)]
+        def any_hit():                                         # aidd:FR-1002 lazy: only the verbs that consume it
+            return any(hit(a) for a in args)                   # (hit() is pure; `echo`/`cat`/... resolve nothing)
         pos = [a for a in args if not a.startswith('-') and not (a.startswith('/') and len(a) <= 3)]
         if verb == 'aidd':
             continue                                           # the sanctioned writer
@@ -1501,14 +1532,12 @@ def _shell_block(cmd, ctx, depth=0):
         if verb in _DELETERS or verb in _MOVERS or verb in _WRITERS:
             if args:
                 ctx['writes'] = True
-            if prot_args:
+            if any_hit():
                 return True
         elif verb in _COPIERS:
             ctx['writes'] = True
-            dest = [a for a in pos[1:] if hit(a)]
-            tflag = [args[j + 1] for j, a in enumerate(args[:-1]) if a in ('-t', '--target-directory')
-                     and hit(args[j + 1])]
-            if dest or tflag:
+            if (any(hit(a) for a in pos[1:])
+                    or any(a in ('-t', '--target-directory') and hit(args[j + 1]) for j, a in enumerate(args[:-1]))):
                 return True
         elif verb in ('sed', 'perl', 'awk', 'gawk', 'ruby'):
             inplace = any(a == '--in-place' or a.startswith('--in-place=')
@@ -1516,15 +1545,15 @@ def _shell_block(cmd, ctx, depth=0):
                               and len(a) <= 6) or (a == '-i') or (a == 'inplace') for a in args)
             if inplace:
                 ctx['writes'] = True
-                if prot_args:
+                if any_hit():
                     return True
         elif verb == 'find':
             if '-delete' in args or '-exec' in args or '-fprint' in args or '-ok' in args:
                 ctx['writes'] = True
-                if prot_args:
+                if any_hit():
                     return True
         elif verb == 'git':
-            if prot_args and any(a in ('clean', 'checkout', 'restore', 'rm', 'stash', 'mv') for a in args):
+            if any(a in ('clean', 'checkout', 'restore', 'rm', 'stash', 'mv') for a in args) and any_hit():
                 return True
         if verb in _SHELLS and depth < 3 and len(words) > 1:
             body = list(args)
@@ -1613,6 +1642,7 @@ def _decide_bash(event, ti):
 
 def decide(event):
     """Return (blocked, message). `event` must be a dict."""
+    _clear_caches()                                            # aidd:FR-1001 every decision starts clean
     import _common as C
     ti = C.tool_input_of(event)
     if event.get('tool_name') in SHELL_TOOLS:

@@ -72,7 +72,13 @@ below additionally gives Gemini CLI real per-step native slash commands
   2 ms per word on commands that mention a protected path: a 2 KB such command stalls about 4 s and
   roughly 7 KB hits the limit (shorten the command). Making the tokenizer linear is a recorded
   follow-up, not part of spec 009.
-- Real-binary verification is still pending; manual script in
+- Real-binary status (2026-10-14): OpenCode 1.18.30 was driven with a model session and the plugin
+  blocked a code write and a shell write to its own file. Gemini CLI could not be run here (its free
+  personal tier is retired; no model session without an API key) so its hook rests on the public
+  docs and the tests; in headless mode it also needs a trusted folder (`--skip-trust` or
+  `GEMINI_CLI_TRUST_WORKSPACE=true`), and in an untrusted folder the project hooks may not load.
+  Antigravity (`.agents/skills`, no hook mechanism found in public docs) is NOT covered by these
+  adapters: do not symlink `skill/` there, it would load the 70 KB Claude `SKILL.md`. Details in
   `specs/009-aidd-host-parity/evidence/verify-summary.md`.
 
 **Tier 3 — OpenCode:** OpenCode has its own native skill format (confirmed identical in shape to

@@ -1,0 +1,4 @@
+# python -m pytest tests/test_rule_gate_shell_speed.py -q | exit 0 | 2026-10-13T22:22:37
+.......... [ 90%]
+.                                                                        [100%]
+11 passed, 422 subtests passed in 11.27s
