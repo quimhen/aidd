@@ -232,5 +232,185 @@ class TestNeverDeletes(HostInstallBase):
                 self.assertEqual(ev.read_text(encoding="utf-8"), "evidence")
 
 
+# ---------------------------------------------------------------- spec 011 (T-07)
+import os
+import shutil
+
+HOOKS_CMD = "python ../.aidd/hooks/host_adapter.py antigravity {}"
+
+
+def expected_aidd_entry():
+    def grp(kind):
+        return [{"matcher": "*", "hooks": [{"type": "command",
+                                            "command": HOOKS_CMD.format(kind), "timeout": 30}]}]
+    return {"enabled": True, "PreToolUse": grp("pre"), "PostToolUse": grp("post")}
+
+
+def make_dir_link(link, target):
+    """Directory symlink, or a junction on Windows. Returns True when a link exists."""
+    link = Path(link)
+    try:
+        os.symlink(str(target), str(link), target_is_directory=True)
+        return True
+    except (OSError, NotImplementedError, AttributeError):
+        pass
+    if os.name == "nt":
+        r = subprocess.run(["cmd", "/c", "mklink", "/J", str(link), str(target)],
+                           capture_output=True, text=True)
+        return r.returncode == 0 and link.exists()
+    return False
+
+
+def is_link(p):
+    p = Path(p)
+    if os.path.islink(p):
+        return True
+    if os.name == "nt":
+        import stat
+        try:
+            tag = getattr(os.lstat(p), "st_reparse_tag", 0)
+        except OSError:
+            return False
+        return tag in (getattr(stat, "IO_REPARSE_TAG_SYMLINK", 0xA000000C),
+                       getattr(stat, "IO_REPARSE_TAG_MOUNT_POINT", 0xA0000003))
+    return False
+
+
+class TestAntigravityInstall(HostInstallBase):
+    def hooks(self):
+        return json.loads((self.root / ".agents" / "hooks.json").read_text(encoding="utf-8"))
+
+    def test_fresh_install_files(self):
+        self.ok(install("antigravity", self.root))
+        self.assertTrue((self.root / ".aidd" / "CORE.md").is_file())
+        self.assertTrue((self.root / ".aidd" / "hooks" / "host_adapter.py").is_file())
+        self.assertTrue((self.root / ".agents" / "skills" / "aidd" / "SKILL.md").is_file())
+        rule = (self.root / ".agents" / "rules" / "aidd.md").read_text(encoding="utf-8")
+        self.assertIn("always_on", rule)
+        self.assertEqual(self.hooks()["aidd"], expected_aidd_entry())
+
+    def test_second_run_unchanged(self):
+        self.ok(install("antigravity", self.root))
+        before = snapshot(self.root)
+        out = self.ok(install("antigravity", self.root))
+        self.assertEqual(before, snapshot(self.root), "second run changed bytes or mtime")
+        for rel in (".aidd/CORE.md", ".agents/skills/aidd/SKILL.md", ".agents/rules/aidd.md",
+                    ".agents/hooks.json"):
+            ls = lines_with(out, rel)
+            self.assertTrue(ls, f"{rel} not reported")
+            self.assertTrue(all("unchanged" in ln for ln in ls), ls)
+        self.assertFalse([ln for ln in out.splitlines() if ln.lstrip().startswith("skipped")], out)
+
+    def test_modified_skill_skipped_then_force(self):
+        self.ok(install("antigravity", self.root))
+        sk = self.root / ".agents" / "skills" / "aidd" / "SKILL.md"
+        original = sk.read_bytes()
+        sk.write_text("my local edit\n", encoding="utf-8")
+        out = self.ok(install("antigravity", self.root))
+        self.assertEqual(sk.read_text(encoding="utf-8"), "my local edit\n")
+        self.assertTrue(any("skipped" in ln for ln in lines_with(out, ".agents/skills/aidd/SKILL.md")), out)
+        self.ok(install("antigravity", self.root, force=True))
+        self.assertEqual(sk.read_bytes(), original)
+
+    def test_foreign_hook_survives_and_aidd_once(self):
+        adir = self.root / ".agents"
+        adir.mkdir()
+        other = {"enabled": True, "PreToolUse": [{"matcher": "run_command", "hooks": [
+            {"type": "command", "command": "echo hi", "timeout": 5}]}]}
+        (adir / "hooks.json").write_text(json.dumps({"other": other, "custom_key": 7}), encoding="utf-8")
+        self.ok(install("antigravity", self.root))
+        self.ok(install("antigravity", self.root, force=True))
+        raw = (adir / "hooks.json").read_text(encoding="utf-8")
+        data = json.loads(raw)
+        self.assertEqual(data["other"], other)
+        self.assertEqual(data["custom_key"], 7)
+        self.assertEqual(data["aidd"], expected_aidd_entry())
+        self.assertEqual(raw.count('"aidd"'), 1)
+        self.assertEqual(raw.count("host_adapter.py antigravity pre"), 1)
+        self.assertEqual(raw.count("host_adapter.py antigravity post"), 1)
+
+    def test_corrupt_hooks_json_not_overwritten(self):
+        adir = self.root / ".agents"
+        adir.mkdir()
+        (adir / "hooks.json").write_text("{ not json", encoding="utf-8")
+        out = self.ok(install("antigravity", self.root))
+        self.assertEqual((adir / "hooks.json").read_text(encoding="utf-8"), "{ not json")
+        self.assertTrue(any("skipped" in ln for ln in lines_with(out, "hooks.json")), out)
+
+    def test_memory_survives_install_and_force(self):
+        self.ok(install("antigravity", self.root))
+        mem = self.root / ".aidd" / "memory" / "x"
+        mem.parent.mkdir(parents=True, exist_ok=True)
+        mem.write_text("keep me", encoding="utf-8")
+        self.ok(install("antigravity", self.root))
+        self.ok(install("antigravity", self.root, force=True))
+        self.assertEqual(mem.read_text(encoding="utf-8"), "keep me")
+
+    def test_cli_accepts_host_antigravity(self):
+        env = dict(os.environ, PYTHONPATH=str(REPO), PYTHONIOENCODING="utf-8")
+        r = subprocess.run([sys.executable, "-m", "aidd.cli", "install", "--host", "antigravity",
+                            str(self.root)], cwd=str(REPO), env=env,
+                           capture_output=True, text=True, encoding="utf-8")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertTrue((self.root / ".agents" / "rules" / "aidd.md").is_file())
+
+
+class TestSymlinkSafety(HostInstallBase):
+    """AC-1103 / FR-1104: never write through a link; --force removes ONLY the link."""
+
+    def setUp(self):
+        super().setUp()
+        self.target = self.root.parent / (self.root.name + "-target")
+        self.target.mkdir()
+        self.addCleanup(shutil.rmtree, str(self.target), True)
+        self.sentinel = self.target / "sentinel.txt"
+        self.sentinel.write_text("do not touch", encoding="utf-8")
+        self.target_before = sorted(p.name for p in self.target.iterdir())
+
+    def assert_target_untouched(self):
+        self.assertEqual(self.sentinel.read_text(encoding="utf-8"), "do not touch")
+        self.assertEqual(sorted(p.name for p in self.target.iterdir()), self.target_before)
+
+    def link_skill_dir(self):
+        skills = self.root / ".agents" / "skills"
+        skills.mkdir(parents=True)
+        link = skills / "aidd"
+        if not make_dir_link(link, self.target):
+            self.skipTest("cannot create a directory symlink or junction on this machine")
+        return link
+
+    def test_linked_skill_dir_skipped_without_force(self):
+        link = self.link_skill_dir()
+        out = self.ok(install("antigravity", self.root))
+        ls = lines_with(out, ".agents/skills/aidd/SKILL.md")
+        self.assertTrue(any("skipped" in ln and "symlink" in ln for ln in ls), out)
+        self.assertTrue(any(self.target.name in ln for ln in ls), "line must name the link target: " + out)
+        self.assertTrue(is_link(link), "link must still be a link")
+        self.assert_target_untouched()
+        self.assertFalse((self.target / "SKILL.md").exists())
+
+    def test_linked_skill_dir_replaced_by_real_folder_with_force(self):
+        link = self.link_skill_dir()
+        self.ok(install("antigravity", self.root, force=True))
+        self.assertFalse(is_link(link), "link must be replaced")
+        self.assertTrue(link.is_dir())
+        self.assertTrue((link / "SKILL.md").is_file())
+        self.assert_target_untouched()
+        self.assertTrue(self.target.is_dir())
+
+    def test_linked_dot_aidd_skipped_then_force(self):
+        link = self.root / ".aidd"
+        if not make_dir_link(link, self.target):
+            self.skipTest("cannot create a directory symlink or junction on this machine")
+        out = self.ok(install("antigravity", self.root))
+        self.assertTrue(any("skipped" in ln and "symlink" in ln for ln in lines_with(out, ".aidd/CORE.md")), out)
+        self.assertTrue(is_link(link))
+        self.assert_target_untouched()
+        self.ok(install("antigravity", self.root, force=True))
+        self.assertFalse(is_link(link))
+        self.assertTrue((link / "CORE.md").is_file())
+        self.assert_target_untouched()
+
+
 if __name__ == "__main__":
     unittest.main()

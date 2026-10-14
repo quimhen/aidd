@@ -19,6 +19,7 @@ This file is host-agnostic on purpose: the same copy adapts to whichever tool lo
 |---|---|---|---|
 | an `AskUserQuestion` tool | Claude Code | `Task` / `Agent` tool | `AskUserQuestion` |
 | a `question` tool and a `subagent` tool | OpenCode | `subagent` tool | `question` tool |
+| `write_to_file` / `replace_file_content` / `run_command` tools | Antigravity | a fresh session or separate diff pass | plain text in your reply |
 | neither | any other agent (Codex, Gemini CLI, Cursor, …) | whatever separate-context mechanism the host offers | plain text in your reply |
 
 From here on, **`AskUserQuestion` means "the host's ask-the-user tool"** and **`Agent tool` / `Task tool` mean "dispatch a separate subagent" (the `Workflow` tool does too, but its subagents are not recorded by AIDD's hooks, so never use it for Step 6 auditors)** — substitute your row. Step 6's independence rule is about *context isolation*, not about a product feature: a different agent audits what you built; if the host has no subagents, do it as an explicitly separate pass over the diff with the implementer's reasoning withheld.
@@ -38,6 +39,7 @@ Never paste the literal token `<AIDD_HOME>` into a shell — substitute the reso
 | Claude Code | The hooks in "Installation — Claude Code": real `exit 2` gates plus an append-only evidence log. |
 | OpenCode | `aidd install --host opencode` registers the `aidd.js` plugin: `tool.execute.before` runs the same `rule_gate.py` through `.aidd/hooks/host_adapter.py`, and a thrown error **blocks** the write. Verify with `aidd doctor --host opencode`. Shell edits of code files are not gated; an OpenCode `patch` is gated by path only. |
 | Gemini CLI | `aidd install --host gemini` registers a `BeforeTool` hook (exit 2 blocks) in `.gemini/settings.json`, same adapter and gate. Verify with `aidd doctor --host gemini`. Same shell-edit limit. |
+| Antigravity | `aidd install --host antigravity` writes `.agents/hooks.json` (PreToolUse, matcher `*`), an always-on rule `.agents/rules/aidd.md` and a thin skill; the hook answers `{"decision":"deny"}` on stdout through the same adapter and gate. Verified on `agy` 1.3.5, even with `--dangerously-skip-permissions`. Verify with `aidd doctor --host antigravity`. Never symlink this folder into `.agents/skills`. |
 | any other host | The same CLI, run by hand: `aidd status`, `aidd rules check / approve / close / abandon`. |
 
 The rules (R1–R12) are identical on every host — only who checks them changes. Rows and sections marked **Claude Code only** (hooks, evidence log, `SessionStart` / `Stop`) describe machinery that host has; they are not a requirement elsewhere, and their absence does not waive the rule behind them.

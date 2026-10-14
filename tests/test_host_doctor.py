@@ -215,5 +215,134 @@ class TestSizeGuardFR910(unittest.TestCase):
             self.assertIn("CORE.md", txt, f"{rel} must point to CORE.md")
 
 
+# ---------------------------------------------------------------- spec 011 (T-07)
+import os
+import shutil
+
+
+def _make_link(link, target):
+    try:
+        os.symlink(str(target), str(link), target_is_directory=True)
+        return True
+    except (OSError, NotImplementedError):
+        pass
+    if os.name == "nt":
+        r = subprocess.run(["cmd", "/c", "mklink", "/J", str(link), str(target)],
+                           capture_output=True, text=True)
+        return r.returncode == 0 and Path(link).exists()
+    return False
+
+
+def _checks(r):
+    data = json.loads(r.stdout)
+    if isinstance(data, dict):
+        data = next(v for v in data.values() if isinstance(v, list))
+    return data
+
+
+class TestAntigravityDoctor(DoctorBase):
+    def hooks_path(self):
+        return self.root / ".agents" / "hooks.json"
+
+    def test_healthy_install_passes(self):
+        install("antigravity", self.root)
+        r = doctor("antigravity", self.root)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        for cid in ("D1", "D2", "D3", "D4", "D5"):
+            self.assertTrue(passed(r, cid), f"{cid}\n{r.stdout}{r.stderr}")
+
+    def test_d4_matcher_altered(self):
+        install("antigravity", self.root)
+        hp = self.hooks_path()
+        data = json.loads(hp.read_text(encoding="utf-8"))
+        data["aidd"]["PreToolUse"][0]["matcher"] = "write_to_file"
+        hp.write_text(json.dumps(data), encoding="utf-8")
+        r = doctor("antigravity", self.root)
+        self.assertTrue(failed(r, "D4"), r.stdout + r.stderr)
+        self.assertEqual(r.returncode, 1)
+
+    def test_d4_command_altered(self):
+        install("antigravity", self.root)
+        hp = self.hooks_path()
+        hp.write_text(hp.read_text(encoding="utf-8").replace("host_adapter.py", "noop.py"),
+                      encoding="utf-8")
+        r = doctor("antigravity", self.root)
+        self.assertTrue(failed(r, "D4"), r.stdout + r.stderr)
+        self.assertEqual(r.returncode, 1)
+
+    def test_rule_file_deleted_fails(self):
+        install("antigravity", self.root)
+        (self.root / ".agents" / "rules" / "aidd.md").unlink()
+        r = doctor("antigravity", self.root)
+        self.assertTrue(failed(r, "D3") or failed(r, "D1"), r.stdout + r.stderr)
+        self.assertEqual(r.returncode, 1)
+
+    def test_d3_skill_dir_is_a_link(self):
+        install("antigravity", self.root)
+        skill_dir = self.root / ".agents" / "skills" / "aidd"
+        target = self.root.parent / (self.root.name + "-linktarget")
+        shutil.copytree(skill_dir, target)
+        self.addCleanup(shutil.rmtree, str(target), True)
+        shutil.rmtree(skill_dir)
+        if not _make_link(skill_dir, target):
+            self.skipTest("cannot create a directory symlink or junction on this machine")
+        r = doctor("antigravity", self.root)
+        self.assertTrue(failed(r, "D3"), r.stdout + r.stderr)
+        line = next(ln for ln in (r.stdout + r.stderr).splitlines() if re.search(r"FAIL\s+D3\b", ln))
+        self.assertIn("--force", line)
+        self.assertEqual(r.returncode, 1)
+
+    def test_no_aidd_fails_d1_with_install_command(self):
+        r = doctor("antigravity", self.root)
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertTrue(failed(r, "D1"), r.stdout + r.stderr)
+        self.assertIn("aidd install --host antigravity", r.stdout + r.stderr)
+
+    def test_json_output(self):
+        install("antigravity", self.root)
+        r = doctor("antigravity", self.root, "--json")
+        data = _checks(r)
+        ids = set()
+        for c in data:
+            for key in ("id", "status", "message", "fix"):
+                self.assertIn(key, c)
+            ids.add(c["id"])
+        self.assertTrue({"D1", "D2", "D3", "D4", "D5"} <= ids, ids)
+
+    def test_cli_accepts_host_antigravity(self):
+        install("antigravity", self.root)
+        env = dict(os.environ, PYTHONPATH=str(REPO), PYTHONIOENCODING="utf-8")
+        r = subprocess.run([sys.executable, "-m", "aidd.cli", "doctor", "--host", "antigravity",
+                            "--root", str(self.root)], cwd=str(REPO), env=env,
+                           capture_output=True, text=True, encoding="utf-8")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertTrue(passed(r, "D1"), r.stdout + r.stderr)
+
+
+class TestAntigravityTemplatesFR1105(unittest.TestCase):
+    RULE = REPO / "adapters" / "antigravity" / "rules" / "aidd.md"
+    SKILL = REPO / "adapters" / "antigravity" / "skills" / "aidd" / "SKILL.md"
+
+    def test_templates_exist_and_are_small(self):
+        for p in (self.RULE, self.SKILL):
+            self.assertTrue(p.is_file(), p)
+            self.assertLess(p.stat().st_size, 24000, p)
+
+    def test_rule_is_always_on(self):
+        txt = self.RULE.read_text(encoding="utf-8")
+        self.assertTrue(txt.startswith("---"), "rule needs frontmatter")
+        front = txt.split("---", 2)[1]
+        self.assertRegex(front, r"trigger:\s*always_on")
+        self.assertIn(".aidd/CORE.md", txt)
+
+    def test_skill_frontmatter_and_pointer(self):
+        txt = self.SKILL.read_text(encoding="utf-8")
+        self.assertTrue(txt.startswith("---"), "skill needs frontmatter")
+        front = txt.split("---", 2)[1]
+        self.assertRegex(front, r"(?m)^name:\s*aidd\s*$")
+        self.assertRegex(front, r"(?m)^description:\s*\S")
+        self.assertIn(".aidd/CORE.md", txt)
+
+
 if __name__ == "__main__":
     unittest.main()

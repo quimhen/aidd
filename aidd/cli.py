@@ -259,7 +259,7 @@ def cmd_init(args):
     print("agent tool actually reads it — `aidd init` alone doesn't wire that up.")
     print("For Gemini CLI, Cursor, Windsurf, Cline, or GitHub Copilot, also run:")
     print(f"  aidd adapters generate all {args.target}")
-    print("For Gemini CLI or OpenCode with enforced gates, run: aidd install --host <gemini|opencode>")
+    print("For Gemini CLI, OpenCode or Antigravity with enforced gates, run: aidd install --host <gemini|opencode|antigravity>")
     return 0
 
 
@@ -322,9 +322,9 @@ def build_parser():
     p_pending.set_defaults(func=cmd_pending)
 
     p_install = sub.add_parser(
-        "install", help="Install AIDD for one host (gemini|opencode) into a project: methodology + enforced gate hooks; never deletes existing files",
+        "install", help="Install AIDD for one host (gemini|opencode|antigravity) into a project: methodology + enforced gate hooks; never deletes existing files",
     )
-    p_install.add_argument("--host", required=True, choices=["gemini", "opencode"], help="host to install for")
+    p_install.add_argument("--host", required=True, choices=["gemini", "opencode", "antigravity"], help="host to install for")
     p_install.add_argument("project_root", nargs="?", default=".", help="project root (default: current directory)")
     p_install.add_argument("--force", action="store_true", help="overwrite locally modified shipped files")
     p_install.add_argument("--json", action="store_true", help="print a JSON list of {path,status,reason}")
@@ -333,7 +333,7 @@ def build_parser():
     p_doctor = sub.add_parser(
         "doctor", help="Check that a host install is complete and its gates are wired (exit code from aidd_doctor.py)",
     )
-    p_doctor.add_argument("--host", choices=["gemini", "opencode"], help="check one host (default: every detected host)")
+    p_doctor.add_argument("--host", choices=["gemini", "opencode", "antigravity"], help="check one host (default: every detected host)")
     p_doctor.add_argument("--root", default=".", help="project root (default: current directory)")
     p_doctor.add_argument("--json", action="store_true", help="print the report as JSON")
     p_doctor.set_defaults(func=cmd_doctor)

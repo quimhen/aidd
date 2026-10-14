@@ -1,9 +1,10 @@
 """install_host.py — non-destructive AIDD install for a non-Claude host.
 
 aidd:FR-901 aidd:FR-902 aidd:FR-903 aidd:AC-005 (spec 009, plan Interface 2, task T-04)
+aidd:FR-1103 aidd:FR-1104 aidd:AC-1103 (spec 011, plan Interface 2, task T-02)
 
 Usage:
-    python install_host.py install <gemini|opencode> <project-root> [--force] [--json]
+    python install_host.py install <gemini|opencode|antigravity> <project-root> [--force] [--json]
 
 What it does (and what it never does):
 - Copies the shipped `adapters/dot-aidd/` bundle into `<project-root>/.aidd/`
@@ -14,6 +15,14 @@ What it does (and what it never does):
   or `.aidd/active_spec`.
 - Writes the host files and merges the host registration JSON by key, keeping
   every foreign entry and key; a corrupt existing JSON is left as is (`skipped`).
+- Never writes through a symlink or junction (every host, spec 011 FR-1104):
+  before any write, every path component from the project root down to the
+  destination is checked. A link -> the file is `skipped (symlink -> <target>)`
+  and nothing is written. With `--force` ONLY the link itself is removed
+  (`os.unlink` / `os.rmdir`, never rmtree) and a real folder is created in its
+  place; the link target is never followed for writing and never modified.
+  Windows detection uses the reparse TAG (symlink or mount point/junction), not
+  the plain reparse-point attribute (OneDrive placeholders set that one too).
 
 The shipped source is located the same way `aidd/cli.py` does it: relative to
 this file (skill/scripts/ -> repo root -> adapters/). There is no AIDD_HOME
@@ -29,13 +38,25 @@ Gemini CLI hook schema — taken from the official docs, fetched 2026-10-13:
        "hooks": [{"name": ..., "type": "command", "command": ..., "timeout": ...}]}]}})
   https://geminicli.com/docs/reference/tools  (tool names: `write_file`,
       `replace`, `run_shell_command`)
+
+Antigravity contract — observed with `agy` 1.0.13 (spec 011):
+  project hooks live in `<project>/.agents/hooks.json`, a JSON object keyed by
+  hook NAME; each entry has `enabled` and per-event arrays (`PreToolUse`,
+  `PostToolUse`) of `{matcher, hooks: [{type: "command", command, timeout}]}`.
+  The hook runs with cwd = `<project>/.agents`, hence the relative command
+  `python ../.aidd/hooks/host_adapter.py antigravity pre|post`. Matcher `*` is
+  the only syntax observed (the adapter itself allows non-write tools). The
+  skill goes to `.agents/skills/aidd/SKILL.md` and the always-on rule to
+  `.agents/rules/aidd.md`, both copied from `adapters/antigravity/`.
 """
 import argparse
 import json
+import os
+import stat
 import sys
 from pathlib import Path
 
-HOSTS = ("gemini", "opencode")
+HOSTS = ("gemini", "opencode", "antigravity")
 PROTECTED_NAMES = {"memory", "evidence", "gate_spec", "active_spec"}
 IGNORED_DIRS = {"__pycache__"}
 IGNORED_SUFFIXES = {".pyc", ".pyo"}
@@ -47,6 +68,62 @@ GEMINI_HOOKS = (
 )
 AIDD_NAMES = {name for _, name, _ in GEMINI_HOOKS}
 OPENCODE_PLUGIN_ENTRY = ".opencode/plugins/aidd.js"
+
+ANTIGRAVITY_HOOK_NAME = "aidd"
+ANTIGRAVITY_MATCHER = "*"
+ANTIGRAVITY_TIMEOUT = 30
+ANTIGRAVITY_COMMANDS = (
+    ("PreToolUse", "python ../.aidd/hooks/host_adapter.py antigravity pre"),
+    ("PostToolUse", "python ../.aidd/hooks/host_adapter.py antigravity post"),
+)
+
+# Windows reparse tags (stat exposes them since 3.8; literal fallback just in case).
+_TAG_SYMLINK = getattr(stat, "IO_REPARSE_TAG_SYMLINK", 0xA000000C)
+_TAG_MOUNT_POINT = getattr(stat, "IO_REPARSE_TAG_MOUNT_POINT", 0xA0000003)
+_ATTR_DIRECTORY = getattr(stat, "FILE_ATTRIBUTE_DIRECTORY", 0x10)
+
+
+def antigravity_entry() -> dict:
+    """The `aidd` entry of `.agents/hooks.json` (a fresh dict on every call)."""
+    entry = {"enabled": True}
+    for event, command in ANTIGRAVITY_COMMANDS:
+        entry[event] = [{"matcher": ANTIGRAVITY_MATCHER,
+                         "hooks": [{"type": "command", "command": command,
+                                    "timeout": ANTIGRAVITY_TIMEOUT}]}]
+    return entry
+
+
+def is_link(path: Path) -> bool:
+    """True for a symlink or a junction; never follows the link.
+
+    On Windows the reparse TAG decides (symlink or mount point); the plain
+    reparse-point attribute is NOT used because cloud placeholders set it on
+    real folders. Elsewhere, or if the tag is unavailable, os.path.islink.
+    """
+    try:
+        st = os.lstat(path)
+    except OSError:
+        return False
+    if os.name == "nt":
+        try:
+            tag = st.st_reparse_tag
+        except AttributeError:
+            return os.path.islink(path)
+        return tag in (_TAG_SYMLINK, _TAG_MOUNT_POINT)
+    return os.path.islink(path)
+
+
+def link_target(path: Path) -> str:
+    """Best-effort text of a link's target (never raises)."""
+    try:
+        target = os.readlink(path)
+    except (OSError, ValueError, NotImplementedError):
+        return "<unknown target>"
+    target = str(target)
+    for prefix in ("\\\\?\\", "\\??\\"):
+        if target.startswith(prefix):
+            target = target[len(prefix):]
+    return target
 
 
 class HostInstaller:
@@ -60,6 +137,7 @@ class HostInstaller:
         self.adapters_dir = repo_root / "adapters"
         self.results = []  # list of {path, status, reason}
         self.failed = False  # an unwritable target
+        self._link_notes = {}  # target -> note about a link replaced with --force
 
     # -- reporting ---------------------------------------------------------
     def _record(self, target: Path, status: str, reason: str = "") -> None:
@@ -67,7 +145,63 @@ class HostInstaller:
             rel = target.relative_to(self.project_root).as_posix()
         except ValueError:
             rel = str(target)
+        note = self._link_notes.pop(target, "")
+        if note:
+            reason = f"{note}; {reason}" if reason else note
         self.results.append({"path": rel, "status": status, "reason": reason})
+
+    # -- symlink safety ----------------------------------------------------
+    @staticmethod
+    def _remove_link(link: Path) -> None:
+        """Remove ONLY the link itself (never its target, never rmtree)."""
+        if os.name == "nt":
+            try:
+                attrs = os.lstat(link).st_file_attributes
+            except (OSError, AttributeError):
+                attrs = 0
+            if attrs & _ATTR_DIRECTORY:
+                os.rmdir(link)  # directory symlink or junction: removes the link only
+                return
+        os.unlink(link)  # file link (Windows) or any symlink (POSIX)
+
+    def _guard_links(self, target: Path) -> bool:
+        """Check every component from the project root down to target.
+
+        Returns True when the path is safe to write. A link component makes the
+        file `skipped (symlink -> <target>)` unless --force, which removes only
+        the link and creates a real folder in its place (not for the final
+        component: that one becomes the written file).
+        """
+        try:
+            rel = target.relative_to(self.project_root)
+        except ValueError:
+            self._record(target, "skipped", "outside the project root")
+            return False
+        parts = rel.parts
+        for depth in range(1, len(parts) + 1):
+            comp = self.project_root.joinpath(*parts[:depth])
+            if not is_link(comp):
+                if not os.path.lexists(comp):
+                    return True  # nothing below exists yet: no link possible
+                continue
+            dest = link_target(comp)
+            comp_rel = Path(*parts[:depth]).as_posix()
+            if not self.force:
+                where = "" if depth == len(parts) else f" at {comp_rel}"
+                self._record(target, "skipped",
+                             f"symlink{where} -> {dest}; pass --force to replace the link with a real folder")
+                return False
+            try:
+                self._remove_link(comp)
+                if depth < len(parts):
+                    comp.mkdir()
+            except OSError as exc:
+                self._record(target, "skipped", f"cannot replace symlink {comp_rel} -> {dest}: {exc}")
+                self.failed = True
+                return False
+            what = "real folder" if depth < len(parts) else "real file"
+            self._link_notes[target] = f"symlink {comp_rel} -> {dest} replaced by a {what} (--force)"
+        return True
 
     # -- low-level io ------------------------------------------------------
     @staticmethod
@@ -78,6 +212,8 @@ class HostInstaller:
             return None, f"cannot read {path}: {exc}"
 
     def _write_bytes(self, target: Path, data: bytes) -> bool:
+        if not self._guard_links(target):
+            return False
         try:
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_bytes(data)
@@ -88,6 +224,8 @@ class HostInstaller:
             return False
 
     def _copy_file(self, source: Path, target: Path) -> None:
+        if not self._guard_links(target):
+            return  # before is_dir/exists: those follow links
         data, err = self._read_bytes(source)
         if data is None:
             self._record(target, "skipped", err)
@@ -150,10 +288,10 @@ class HostInstaller:
             return None, "top-level JSON is not an object, left untouched"
         return data, ""
 
-    def _save_json(self, target: Path, data: dict, existed: bool) -> None:
+    def _save_json(self, target: Path, data: dict, existed: bool, reason: str = "") -> None:
         text = json.dumps(data, indent=2, ensure_ascii=False) + "\n"
         if self._write_bytes(target, text.encode("utf-8")):
-            self._record(target, "written", "merged" if existed else "created")
+            self._record(target, "written", reason or ("merged" if existed else "created"))
 
     # -- gemini --------------------------------------------------------------
     def _merge_gemini_hooks(self, data: dict):
@@ -198,6 +336,8 @@ class HostInstaller:
     def install_gemini(self) -> None:
         self._copy_file(self.adapters_dir / "GEMINI.md", self.project_root / "GEMINI.md")
         target = self.project_root / ".gemini" / "settings.json"
+        if not self._guard_links(target):
+            return  # never read or merge through a link
         data, err = self._load_json(target)
         if data is None:
             self._record(target, "skipped", err)
@@ -224,6 +364,8 @@ class HostInstaller:
         self._copy_file(oc_src / "skills" / "aidd" / "SKILL.md", oc_dst / "skills" / "aidd" / "SKILL.md")
         self._copy_file(oc_src / "plugins" / "aidd.js", oc_dst / "plugins" / "aidd.js")
         target = oc_dst / "opencode.json"
+        if not self._guard_links(target):
+            return  # never read or merge through a link
         data, err = self._load_json(target)
         if data is None:
             self._record(target, "skipped", err)
@@ -238,11 +380,40 @@ class HostInstaller:
         plugins.append(OPENCODE_PLUGIN_ENTRY)
         self._save_json(target, data, target.exists())
 
+    # -- antigravity ---------------------------------------------------------
+    def install_antigravity(self) -> None:
+        ag_src = self.adapters_dir / "antigravity"
+        ag_dst = self.project_root / ".agents"
+        self._copy_file(ag_src / "skills" / "aidd" / "SKILL.md", ag_dst / "skills" / "aidd" / "SKILL.md")
+        self._copy_file(ag_src / "rules" / "aidd.md", ag_dst / "rules" / "aidd.md")
+        target = ag_dst / "hooks.json"
+        if not self._guard_links(target):
+            return  # never read or merge through a link
+        data, err = self._load_json(target)
+        if data is None:
+            self._record(target, "skipped", err)
+            return
+        wanted = antigravity_entry()
+        current = data.get(ANTIGRAVITY_HOOK_NAME)
+        if current == wanted:
+            self._record(target, "unchanged")
+            return
+        existed = target.exists()
+        if current is not None and not self.force:
+            self._record(target, "skipped",
+                         f"the `{ANTIGRAVITY_HOOK_NAME}` entry differs from the shipped one; pass --force to update it")
+            return
+        data[ANTIGRAVITY_HOOK_NAME] = wanted
+        reason = f"updated the `{ANTIGRAVITY_HOOK_NAME}` entry (--force)" if current is not None else ""
+        self._save_json(target, data, existed, reason)
+
     # -- entry ---------------------------------------------------------------
     def run(self) -> None:
         self.install_dot_aidd()
         if self.host == "gemini":
             self.install_gemini()
+        elif self.host == "antigravity":
+            self.install_antigravity()
         else:
             self.install_opencode()
 
@@ -254,7 +425,7 @@ def _repo_root() -> Path:
 
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(prog="install_host.py",
-                                     description="Non-destructive AIDD install for Gemini CLI or OpenCode.")
+                                     description="Non-destructive AIDD install for Gemini CLI, OpenCode or Antigravity.")
     sub = parser.add_subparsers(dest="action", required=True)
     p_install = sub.add_parser("install", help="install AIDD for one host into a project")
     p_install.add_argument("host", choices=HOSTS)

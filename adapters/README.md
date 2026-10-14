@@ -30,8 +30,8 @@ OpenCode runs `tool.execute.before` (a thrown error blocks it). Both go through
 `.aidd/hooks/host_adapter.py`, which spawns `rule_gate.py` (the same gate Claude Code uses) and
 passes its message through; an `AfterTool` / `tool.execute.after` call records `code_edit` and
 `spec_edit` evidence. The host registration files (`.gemini/settings.json`,
-`.opencode/opencode.json`, the plugin) are protected (R9). Antigravity's plugin/hook system was not
-inspected, so it only gets the instructional layer. This is the always-read context layer; Tier 5
+`.opencode/opencode.json`, the plugin) are protected (R9). Antigravity has its own hook tier
+(Tier 3b below). This is the always-read context layer; Tier 5
 below additionally gives Gemini CLI real per-step native slash commands
 (`.gemini/commands/aidd-*.toml`) — the two are complementary.
 
@@ -77,9 +77,55 @@ below additionally gives Gemini CLI real per-step native slash commands
   personal tier is retired; no model session without an API key) so its hook rests on the public
   docs and the tests; in headless mode it also needs a trusted folder (`--skip-trust` or
   `GEMINI_CLI_TRUST_WORKSPACE=true`), and in an untrusted folder the project hooks may not load.
-  Antigravity (`.agents/skills`, no hook mechanism found in public docs) is NOT covered by these
-  adapters: do not symlink `skill/` there, it would load the 70 KB Claude `SKILL.md`. Details in
+  Antigravity is covered by Tier 3b (spec 011). Never symlink `skill/` into `.agents/skills/`: a
+  symlinked skill folder loads the 70 KB Claude `SKILL.md`. Details in
   `specs/009-aidd-host-parity/evidence/verify-summary.md`.
+
+**Tier 3b — Antigravity (`agy` CLI):** `aidd install --host antigravity [project]`, then
+`aidd doctor --host antigravity`. Written (same adapter and gate as Gemini/OpenCode):
+
+| Path | What |
+|---|---|
+| `.aidd/**` | portable bundle, incl. `hooks/host_adapter.py` and `CORE.md` |
+| `.agents/skills/aidd/SKILL.md` | thin pointer (~1.5 KB), not the 70 KB skill |
+| `.agents/rules/aidd.md` | always-on rule (`trigger: always_on`, `@[CORE](../../.aidd/CORE.md)`) |
+| `.agents/hooks.json` | `aidd` entry, matcher `*`, command `python ../.aidd/hooks/host_adapter.py antigravity pre\|post` |
+
+Observed contract (real `agy` 1.3.5; first seen on 1.0.13; 2026-10-14):
+- The hook runs with cwd `<project>/.agents`, hence the `../.aidd/...` command path.
+- The PreToolUse payload has `toolCall {name, args}`, `conversationId`, `workspacePaths` and no cwd.
+  Tools: `write_to_file {TargetFile, CodeContent}`, `replace_file_content {TargetFile, TargetContent,
+  ReplacementContent, StartLine, EndLine}`, `run_command {CommandLine, Cwd}`, `view_file {AbsolutePath}`.
+- The hook denies on stdout with `{"decision":"deny","reason":...}` (exit code unused); the model sees
+  `tool call denied by pre-tool hook: <reason>`. The adapter always exits 0.
+- The matcher `*` is the only syntax observed; the adapter allows non-write tools. The hook never sees
+  the event name, so the phase is an argument (`pre` / `post`).
+
+Verified with the real host in a scratch project with an unapproved spec:
+- A `write_to_file` of `src/app.py` was denied (file absent, full R6 message seen by the model); an
+  overwrite of `.agents/hooks.json` was denied by R9 and the file stayed byte-identical.
+- `--dangerously-skip-permissions` does NOT skip the hooks (the write was still denied).
+- The always-on rule injects the core: the model quoted the first line of `CORE.md` with no tool use.
+- The installer never writes through a symlink or junction: without `--force` it reports
+  `skipped (symlink at <path> -> <target>)`; with `--force` it replaces only the link by a real
+  folder (exercised on b1SycLink, whose `.agents/skills/aidd` pointed at the repo's `skill/`, which
+  stayed unchanged).
+
+Not verified: the Antigravity app and IDE flavours (same `.agents/hooks.json` per the docs, but hook
+cwd and payload were only observed on the CLI); `Stop` hooks (not used); `multi_replace_file_content`
+arguments (the adapter tolerates several shapes); the host's exit-code semantics and crash behaviour
+(undocumented). The user-level `~/.gemini/config/hooks.json` is NOT protected (outside the project).
+Other known limits of the Antigravity gate (closing audit of spec 011): (1) `.agents/plugins/<name>/hooks.json`
+is NOT protected (the docs list it as another hook location; whether the CLI loads project plugin hooks and
+how decisions from several hooks combine is not verified); (2) the registered command is bare `python`
+run with cwd `.agents` and `.agents/**` is writable: a planted `.agents/python.bat` did NOT replace the
+interpreter with agy 1.3.5 (tested with the real host), but `.cmd`/`.exe`/`.com`, the app and the IDE were
+not tried; the stronger fixes (an absolute interpreter path at install time, or protecting `.agents/python.*`
+and `.agents/*.{bat,cmd,exe,com}`) are not done; (3) JSON nested deeper than about 1,500 levels in the hook's
+stdin makes the adapter answer allow (only reachable if the host forwards attacker-chosen extra fields,
+not verified); (4) a `TargetFile` that is not a string, or a relative one with no `workspacePaths`, is
+allowed; (5) a HARD link planted as `.agents/rules/aidd.md` is not detected by the installer (an owner-run
+`--force` install would overwrite the linked file with the AIDD template text).
 
 **Tier 3 — OpenCode:** OpenCode has its own native skill format (confirmed identical in shape to
 Claude Code's: YAML frontmatter + markdown body) and a plugin system with at least one confirmed
@@ -139,7 +185,8 @@ Kilocode, Qwen, ...) is one new entry in `adapter_targets.py`, not a new integra
 ```bash
 aidd install --host gemini   "<project>"   # .aidd/ + GEMINI.md + BeforeTool/AfterTool hooks
 aidd install --host opencode "<project>"   # .aidd/ + OpenCode skill + plugin + opencode.json entry
-aidd doctor --host gemini|opencode --root "<project>"   # PASS/FAIL per check, with the exact fix
+aidd install --host antigravity "<project>" # .aidd/ + .agents/{skills,rules,hooks.json}
+aidd doctor --host gemini|opencode|antigravity --root "<project>"   # PASS/FAIL per check, with the exact fix
 cat AGENTS.md.snippet >> "<project>/AGENTS.md"   # Codex etc.; create AGENTS.md first if needed
 python ../skill/scripts/generate_adapters.py all "<project>"   # Gemini CLI, Cursor, Windsurf, Cline, Copilot commands
 ```

@@ -10,6 +10,7 @@ find the section you need and read only that range (see "Reading AIDD.md" below)
 |---|---|---|---|
 | `AskUserQuestion` | Claude Code | `AskUserQuestion` | `Agent` / `Task` |
 | `question` + subagent tool | OpenCode | `question` | the subagent tool |
+| `write_to_file` + `replace_file_content` + `run_command` | Antigravity | plain text, then STOP and wait | a fresh session; else a separate pass over the diff. Gate: PreToolUse hook; check with `aidd doctor --host antigravity` |
 | neither (Gemini CLI, Codex, Cursor, ...) | other | plain text, then STOP and wait | the host's sub-agent / a fresh session; else a separate pass over the diff without the implementer's reasoning |
 
 Everywhere below, "ask" and "subagent" mean your row. The rules are identical on every host; only

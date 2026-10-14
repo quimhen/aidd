@@ -7,6 +7,7 @@ One process instead of four. For file-writing tools, in order:
   1. R9  the WHOLE `.aidd/` directory (evidence log, active_spec pointer, ...) is never writable by
          the agent, EXCEPT `.aidd/memory/**`; nor are the host gate registrations (FR-911, project-relative:
          `.gemini/settings.json`, `.gemini/.env`, `.opencode/opencode.json`, `.opencode/plugins/aidd.js`) - reading them stays allowed
+         spec 011: also the Antigravity registration `.agents/hooks.json` (only that file; `.agents/**` stays writable)
          nor may a file tool ADD an AIDD_RULES/TESTING/EVIDENCE_DIR/SESSION_ID line to any `.env`/`.env.*` (S1)
   2. the three legacy gates, in-process (require_aidd, require_independent_audit,
      require_graph_coherence_audit — fail-closed for specs/<id>/plan.md|tasks.md), fed the CANONICAL path
@@ -64,10 +65,11 @@ SCRIPTS_DIR = os.path.join(os.path.dirname(HOOKS_DIR), 'scripts')
 BASH_MARKERS = ('.aidd', 'events.toon', 'active_spec', 'evidence', 'aidd_', 'specs', 'tasks.md', 'aidd-hooks',
                 'review.md', 'review.html',
                 # aidd:FR-911 the host gate registrations (and their folders, so `rm -r .gemini` is examined too)
-                '.gemini', '.opencode', 'settings.json', 'opencode.json', 'aidd.js')
+                '.gemini', '.opencode', 'settings.json', 'opencode.json', 'aidd.js',
+                '.agents', 'hooks.json')      # spec 011: the Antigravity registration `.agents/hooks.json`
 # aidd:FR-911 project-relative files that carry the gate on each host (R9-protected like `.aidd/`; reads allowed)
 HOST_GATE_FILES = (('.gemini', 'settings.json'), ('.gemini', '.env'), ('.opencode', 'opencode.json'),
-                   ('.opencode', 'plugins', 'aidd.js'))
+                   ('.opencode', 'plugins', 'aidd.js'), ('.agents', 'hooks.json'))
 # aidd:FR-911 S1 the AIDD control variables; a `.env` / `.env.*` file may never be given one by a file tool
 ENV_CONTROL_RE = r'(?i)AIDD_(RULES|TESTING|EVIDENCE_DIR|SESSION_ID)'
 SHELL_TOOLS = ('Bash', 'PowerShell')
@@ -93,8 +95,8 @@ R9_BASH_MESSAGE = ('aidd R9 (Bash/PowerShell): this command writes, deletes, mov
                    'that. (Owner-only override: AIDD_RULES=warn|off in the environment that launches the host '
                    '(for Claude Code: the env block of settings.json).)')
 HOST_GATE_MESSAGE = ('aidd R9 (FR-911): this is a protected AIDD gate file (the host registration that runs the AIDD '
-                     'gate: .gemini/settings.json, .gemini/.env, .opencode/opencode.json or '
-                     '.opencode/plugins/aidd.js); the agent '
+                     'gate: .gemini/settings.json, .gemini/.env, .opencode/opencode.json, '
+                     '.opencode/plugins/aidd.js or .agents/hooks.json); the agent '
                      'may not write, move or delete it. Reading it is fine.\nNext action: do not edit it. The owner '
                      'edits it, or reruns `aidd install --host <h>` to restore it; ask the user if it needs a change.')
 # aidd:FR-204 aidd:AC-207
@@ -1038,9 +1040,10 @@ def _prot_tok(tok, ctx_aidd, cwd_prot):
 
 _HOST_GATE_RE = (r'(?<![\w-])\.gemini[. ]*/[./]*settings\.json(?![\w-])'
                  r'|(?<![\w-])\.gemini[. ]*/\.env(?![\w.-])'
-                 r'|(?<![\w-])\.opencode[. ]*/[./]*(?:opencode\.json|plugins[. ]*/[./]*aidd\.js)(?![\w-])')
+                 r'|(?<![\w-])\.opencode[. ]*/[./]*(?:opencode\.json|plugins[. ]*/[./]*aidd\.js)(?![\w-])'
+                 r'|(?<![\w-])\.agents[. ]*/[./]*hooks\.json(?![\w-])')         # spec 011 Antigravity
 # a deleter / mover naming one of these folders removes the registration with it (writes INTO them stay allowed)
-_HOST_GATE_DIRS = {('.gemini',), ('.opencode',), ('.opencode', 'plugins')}
+_HOST_GATE_DIRS = {('.gemini',), ('.opencode',), ('.opencode', 'plugins'), ('.agents',)}
 
 
 def _host_mention(lown):

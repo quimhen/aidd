@@ -579,5 +579,190 @@ class TestSecurityRegressions(HostBase):
                     self.assertOk(self.adapt(host, "pre", ev, cwd=b))
 
 
+def agy_payload(tool, root, rel=None, command=None, conv=None, phase="pre", cwd_arg=None, workspace=True):
+    """An Antigravity (agy 1.0.13) hook payload, key names as captured from the real binary (spec 011).
+
+    `tool` is write_to_file | replace_file_content | run_command | view_file | None (toolCall null)."""
+    target = str(Path(root) / rel).replace("\\", "/") if rel else None
+    if tool == "write_to_file":
+        call = {"name": tool, "args": {"TargetFile": target, "CodeContent": "x = 1\n", "Overwrite": True,
+                                       "Description": "write a file", "toolAction": "Creating file",
+                                       "toolSummary": "create"}}
+    elif tool == "replace_file_content":
+        call = {"name": tool, "args": {"TargetFile": target, "TargetContent": "x1 = 1",
+                                       "ReplacementContent": "x1 = 2", "StartLine": 1, "EndLine": 1,
+                                       "AllowMultiple": False, "Instruction": "change x1"}}
+    elif tool == "run_command":
+        call = {"name": tool, "args": {"CommandLine": command, "Cwd": str(cwd_arg or root).replace("\\", "/"),
+                                       "WaitMsBeforeAsync": 500}}
+    elif tool == "view_file":
+        call = {"name": tool, "args": {"AbsolutePath": target}}
+    else:
+        call = None
+    ev = {"toolCall": call, "conversationId": conv or SID, "stepIdx": 3, "modelName": "gemini-3",
+          "transcriptPath": "", "artifactDirectoryPath": ""}
+    if workspace:
+        ev["workspacePaths"] = [str(root).replace("\\", "/")]
+    if phase == "post":
+        ev["error"] = None
+    return ev
+
+
+class AgyBase(HostBase):
+    """Runs `host_adapter.py antigravity pre|post`: exit 0 always, ONE JSON object on stdout."""
+
+    def agy(self, phase, event=None, raw=None, cwd=None):
+        r = self.adapt("antigravity", phase, event, raw=raw, cwd=cwd)
+        self.assertEqual(r.returncode, 0, f"antigravity exits 0 always: rc={r.returncode} err={r.err!r}")
+        self.assertNotIn("Traceback", r.err)
+        try:
+            r.obj = json.loads(r.out)
+        except ValueError:
+            self.fail(f"stdout must be ONE JSON object, got {r.out!r}")
+        self.assertIsInstance(r.obj, dict)
+        return r
+
+    def apre(self, tool, rel=None, command=None, conv=None, cwd=None, **kw):
+        return self.agy("pre", agy_payload(tool, self.root, rel, command, conv=conv or self.session, **kw), cwd=cwd)
+
+    def apost(self, tool, rel=None, command=None, **kw):
+        return self.agy("post", agy_payload(tool, self.root, rel, command, conv=self.session, phase="post", **kw))
+
+    def assertDeny(self, r, *needles):
+        self.assertEqual(r.obj.get("decision"), "deny", f"expected deny, got {r.out!r}")
+        self.assertTrue(str(r.obj.get("reason", "")).strip(), "a deny always carries a reason")
+        for n in needles:
+            self.assertIn(n.lower(), r.obj["reason"].lower(), r.obj["reason"])
+
+    def assertAllow(self, r):
+        self.assertEqual(r.obj.get("decision"), "allow", f"expected allow, got {r.out!r}")
+
+
+class TestAgyAdapterProtocol(AgyBase):
+    def test_ac1101_write_to_file_denied_without_approval(self):
+        r = self.apre("write_to_file", "src/app.py")
+        self.assertDeny(r, "R6")
+
+    def test_ac1102_replace_file_content_denied_and_plain_command_allowed(self):
+        self.assertDeny(self.apre("replace_file_content", "src/cart.py"), "R6")
+        self.assertAllow(self.apre("run_command", command="echo done"))
+
+    def test_ac1102_run_command_writing_a_protected_path_is_denied(self):
+        self.assertDeny(self.apre("run_command", command="echo x > specs/001-x/tasks.md"))
+
+    def test_approved_write_allowed_and_post_records_code_edit(self):
+        self.approve()
+        for tool, rel in (("write_to_file", "src/app.py"), ("replace_file_content", "src/cart.py")):
+            with self.subTest(tool=tool):
+                r = self.apre(tool, rel)
+                self.assertAllow(r)
+                self.assertEqual(r.obj, {"decision": "allow"})
+        before = len(self.events("code_edit"))
+        r = self.apost("write_to_file", "src/app.py")
+        self.assertEqual(r.obj, {})
+        evs = self.events("code_edit")
+        self.assertGreater(len(evs), before, "post must append a code_edit event")
+        self.assertTrue(any("app.py" in str((e.get("detail") or {}).get("path", "")) for e in evs), evs)
+
+    def test_view_file_is_allowed_untouched(self):
+        self.assertAllow(self.apre("view_file", "src/cart.py"))
+
+    def test_ac1104_post_with_null_toolcall_prints_empty_object(self):
+        r = self.agy("post", {"toolCall": None})
+        self.assertEqual(r.obj, {})
+        r = self.apost(None)
+        self.assertEqual(r.obj, {})
+
+    def test_pre_with_null_toolcall_is_allowed(self):
+        self.assertAllow(self.apre(None))
+
+    def test_post_of_a_non_write_tool_prints_empty_object(self):
+        self.assertEqual(self.apost("view_file", "src/cart.py").obj, {})
+
+
+class TestAgyProjectRoot(AgyBase):
+    def test_root_from_workspace_paths_when_process_cwd_is_foreign(self):
+        with tempfile.TemporaryDirectory() as other:
+            self.assertDeny(self.apre("write_to_file", "src/app.py", cwd=other), "R6")
+
+    def test_root_from_workspace_paths_when_process_cwd_is_dot_agents(self):
+        agents = self.root / ".agents"
+        agents.mkdir(exist_ok=True)
+        self.assertDeny(self.apre("write_to_file", "src/app.py", cwd=agents), "R6")
+        self.approve()
+        self.assertAllow(self.apre("write_to_file", "src/app.py", cwd=agents))
+
+    def test_root_from_the_target_file_when_workspace_paths_is_missing(self):
+        with tempfile.TemporaryDirectory() as other:
+            self.assertDeny(self.apre("write_to_file", "src/app.py", cwd=other, workspace=False), "R6")
+
+    def test_no_project_anywhere_is_allowed(self):
+        with tempfile.TemporaryDirectory() as a, tempfile.TemporaryDirectory() as b:
+            ev = agy_payload("write_to_file", a, "src/app.py", conv=self.session)
+            self.assertAllow(self.agy("pre", ev, cwd=b))
+            self.assertEqual(self.agy("post", agy_payload("write_to_file", a, "src/app.py", phase="post"),
+                                      cwd=b).obj, {})
+
+
+class TestAgyMalformedInput(AgyBase):
+    def test_garbage_empty_and_invalid_utf8_stdin_allow(self):
+        for raw in (b"{not json", b"", b"[1, 2]", b"\xff\xfe", b"null"):
+            with self.subTest(raw=raw):
+                self.assertAllow(self.agy("pre", raw=raw))
+                self.assertEqual(self.agy("post", raw=raw).obj, {})
+
+    def test_event_without_toolcall_key_allows(self):
+        self.assertAllow(self.agy("pre", {"conversationId": self.session, "workspacePaths": [str(self.root)]}))
+
+    def test_hostile_conversation_id_is_sanitized_and_decisions_hold(self):
+        for conv in ("../../evil\\x:*?\"<>|", "a\nb\r\n\t", "x" * 600, "é中😀", ""):
+            with self.subTest(conv=conv):
+                ev = agy_payload("write_to_file", self.root, "src/app.py", conv=conv or None)
+                ev["conversationId"] = conv
+                self.assertDeny(self.agy("pre", ev), "R6")
+                self.assertAllow(self.agy("pre", agy_payload("view_file", self.root, "src/cart.py", conv=conv)))
+
+
+class TestAgyFailClosed(AgyBase):
+    def test_padded_command_touching_a_protected_path_is_denied(self):
+        """Either the guard or the gate timeout must answer deny (fail-closed), never allow."""
+        cmd = "echo " + "a " * 6000 + "; echo x > specs/001-x/tasks.md"
+        self.assertGreater(len(cmd), 10000)
+        self.assertDeny(self.apre("run_command", command=cmd))
+
+
+class TestAgyFr1106ProtectedHooksFile(AgyBase):
+    """FR-1106 / AC-1107: `.agents/hooks.json` is a gate file. Spec APPROVED so only the protection can block."""
+
+    def setUp(self):
+        super().setUp()
+        self.approve()
+
+    def test_writes_to_hooks_json_are_denied(self):
+        for tool in ("write_to_file", "replace_file_content"):
+            with self.subTest(tool=tool):
+                r = self.apre(tool, ".agents/hooks.json")
+                self.assertDeny(r)
+                reason = r.obj["reason"].lower()
+                self.assertTrue("protected" in reason or "gate" in reason, reason)
+
+    def test_shell_redirect_into_hooks_json_is_denied(self):
+        self.assertDeny(self.apre("run_command", command="echo x >> .agents/hooks.json"))
+
+    def test_shell_removal_of_dot_agents_is_denied(self):
+        self.assertDeny(self.apre("run_command", command="rm -r .agents"))
+
+    def test_rules_and_skills_stay_writable(self):
+        self.assertAllow(self.apre("write_to_file", ".agents/rules/x.md"))
+        self.assertAllow(self.apre("write_to_file", ".agents/skills/y/SKILL.md"))
+
+
+class TestAgyOtherHostsRegression(HostBase):
+    def test_gemini_and_opencode_still_exit_2_on_a_blocked_write(self):
+        for host in HOSTS:
+            with self.subTest(host=host):
+                self.assertBlockedBy(self.pre(host, "write", "src/app.py"), "R6")
+
+
 if __name__ == "__main__":
     unittest.main()
