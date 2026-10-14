@@ -8,6 +8,8 @@ One process instead of four. For file-writing tools, in order:
          the agent, EXCEPT `.aidd/memory/**`; nor are the host gate registrations (FR-911, project-relative:
          `.gemini/settings.json`, `.gemini/.env`, `.opencode/opencode.json`, `.opencode/plugins/aidd.js`) - reading them stays allowed
          spec 011: also the Antigravity registration `.agents/hooks.json` (only that file; `.agents/**` stays writable)
+         Amendment 1 (FR-1110/1111): also `.agents/plugins/*/hooks.json`, `~/.gemini/config/hooks.json` and the direct
+         children of `.agents` named `python*` or `*.bat|cmd|exe|com|ps1` (`.agents/rules/**`, `skills/**` stay writable)
          nor may a file tool ADD an AIDD_RULES/TESTING/EVIDENCE_DIR/SESSION_ID line to any `.env`/`.env.*` (S1)
   2. the three legacy gates, in-process (require_aidd, require_independent_audit,
      require_graph_coherence_audit — fail-closed for specs/<id>/plan.md|tasks.md), fed the CANONICAL path
@@ -70,6 +72,14 @@ BASH_MARKERS = ('.aidd', 'events.toon', 'active_spec', 'evidence', 'aidd_', 'spe
 # aidd:FR-911 project-relative files that carry the gate on each host (R9-protected like `.aidd/`; reads allowed)
 HOST_GATE_FILES = (('.gemini', 'settings.json'), ('.gemini', '.env'), ('.opencode', 'opencode.json'),
                    ('.opencode', 'plugins', 'aidd.js'), ('.agents', 'hooks.json'))
+# aidd:FR-1110 aidd:FR-1111 more project-relative protected files, as per-component fnmatch patterns (`_gate_match`):
+# the plugin hook registrations and the direct children of `.agents` that could shadow the hook interpreter
+HOST_GATE_EXTRA_FILES = (('.agents', 'plugins', '*', 'hooks.json'), ('.agents', 'python*'), ('.agents', '*.bat'),
+                         ('.agents', '*.cmd'), ('.agents', '*.exe'), ('.agents', '*.com'), ('.agents', '*.ps1'))
+# aidd:FR-1110 the user-level Antigravity hook file (outside any project): file tools compare its canonical path,
+# the shell guard treats this trailing suffix as protected on ANY token (absolute, relative, $HOME, %USERPROFILE%)
+USER_GATE_FILE = '~/.gemini/config/hooks.json'
+USER_GATE_SUFFIX = ('.gemini', 'config', 'hooks.json')
 # aidd:FR-911 S1 the AIDD control variables; a `.env` / `.env.*` file may never be given one by a file tool
 ENV_CONTROL_RE = r'(?i)AIDD_(RULES|TESTING|EVIDENCE_DIR|SESSION_ID)'
 SHELL_TOOLS = ('Bash', 'PowerShell')
@@ -99,6 +109,11 @@ HOST_GATE_MESSAGE = ('aidd R9 (FR-911): this is a protected AIDD gate file (the 
                      '.opencode/plugins/aidd.js or .agents/hooks.json); the agent '
                      'may not write, move or delete it. Reading it is fine.\nNext action: do not edit it. The owner '
                      'edits it, or reruns `aidd install --host <h>` to restore it; ask the user if it needs a change.')
+# aidd:FR-1110 aidd:FR-1111 appended to HOST_GATE_MESSAGE (kept byte-identical) only when a new-pattern file is hit
+HOST_GATE_EXTRA_MESSAGE = ('aidd R9 (FR-1110/FR-1111): also protected: the Antigravity plugin hook registrations '
+                           '.agents/plugins/<name>/hooks.json, the user-level ~/.gemini/config/hooks.json and the '
+                           'direct children of .agents named python* or ending .bat, .cmd, .exe, .com or .ps1 (they '
+                           'could shadow the hook interpreter); .agents/rules/** and .agents/skills/** stay writable.')
 # aidd:FR-204 aidd:AC-207
 REVIEW_MESSAGE = ('aidd R6 (review): `specs/<id>/review.html` is generated only by `aidd review <spec_dir>` and '
                   '`specs/<id>/review.md` is the OWNER\'s answer (the page saves it itself); the agent may not write, '
@@ -639,14 +654,25 @@ def _protected(ev, cp, segs):
     return _session_log(ev, cp) or _transcript_path(cp)
 
 
-def _host_gate_file(ev, cp):
+def _host_gate_file(ev, cp, patterns=HOST_GATE_FILES):
     """aidd:FR-911 R9: `cp` (canonical) is a host gate registration RELATIVE TO a project root (an ancestor with
-    specs/ or .aidd/), so `~/.gemini/settings.json` or `.opencode/plugins/graphify.js` stay writable."""
+    specs/ or .aidd/), so `~/.gemini/settings.json` or `.opencode/plugins/graphify.js` stay writable.
+    aidd:FR-1110 aidd:FR-1111 `patterns` are matched per component (`_gate_match`; exact tuples match themselves)."""
     for root in ev.project_roots(cp):
         rel = ev.rel_to_root(cp, root)
-        if rel and tuple(_norm_comp(s) for s in rel.split('/') if s) in HOST_GATE_FILES:
-            return True
+        if rel:
+            segs = tuple(_norm_comp(s) for s in rel.split('/') if s)
+            if any(_gate_match(segs, h) for h in patterns):
+                return True
     return False
+
+
+def _user_gate_file(ev, cp):
+    """aidd:FR-1110 `cp` (canonical) is the user-level Antigravity hook file, computed at call time (HOME/USERPROFILE)."""
+    try:
+        return cp == ev.canon_path(os.path.expanduser(USER_GATE_FILE))
+    except Exception:
+        return False
 
 
 def _env_control_write(ti, rp, name):
@@ -730,6 +756,8 @@ def _decide_path(event, ti, fp):
         return True, R9_MESSAGE
     if _host_gate_file(ev, cp):
         return True, HOST_GATE_MESSAGE
+    if _host_gate_file(ev, cp, HOST_GATE_EXTRA_FILES) or _user_gate_file(ev, cp):   # aidd:FR-1110 aidd:FR-1111
+        return True, HOST_GATE_MESSAGE + '\n' + HOST_GATE_EXTRA_MESSAGE
     if _env_control_write(ti, rp, _norm_comp(name)):            # aidd:FR-911 S1 `.env` cannot switch the gate off
         return True, ENV_MESSAGE
 
@@ -977,6 +1005,17 @@ def _norm_comp(s):
     return s.split(':', 1)[0].rstrip('. ').lower()
 
 
+def _gate_match(segs, pattern):
+    """aidd:FR-1110 aidd:FR-1111 `segs` (`_norm_comp` output) matches the protected `pattern` component by component
+    (`fnmatch.fnmatchcase`, equal lengths); a pattern without wildcards matches only itself."""
+    if len(segs) != len(pattern):
+        return False
+    if tuple(segs) == tuple(pattern):
+        return True
+    import fnmatch
+    return all(fnmatch.fnmatchcase(s, p) for s, p in zip(segs, pattern))
+
+
 def _mentions(low):
     """True iff the (lowercased) text names a protected path: `.aidd` (not only `.aidd/memory`),
     events.toon, active_spec, or an 8.3 alias of `.aidd`."""
@@ -1042,6 +1081,11 @@ _HOST_GATE_RE = (r'(?<![\w-])\.gemini[. ]*/[./]*settings\.json(?![\w-])'
                  r'|(?<![\w-])\.gemini[. ]*/\.env(?![\w.-])'
                  r'|(?<![\w-])\.opencode[. ]*/[./]*(?:opencode\.json|plugins[. ]*/[./]*aidd\.js)(?![\w-])'
                  r'|(?<![\w-])\.agents[. ]*/[./]*hooks\.json(?![\w-])')         # spec 011 Antigravity
+# aidd:FR-1110 aidd:FR-1111 the Amendment 1 files (plugin hook registrations, user-level hooks, interpreter shadows)
+_HOST_GATE_EXTRA_RE = (r'(?<![\w-])\.agents[. ]*/[./]*plugins[. ]*/[^/\s\'"]+/[./]*hooks\.json(?![\w-])'
+                       r'|(?<![\w-])\.agents[. ]*/[./]*python[^/\s\'"]*(?![\w/-])'
+                       r'|(?<![\w-])\.agents[. ]*/[./]*[^/\s\'"]+\.(?:bat|cmd|exe|com|ps1)(?![\w-])'
+                       r'|(?<![\w-])\.gemini[. ]*/[./]*config[. ]*/[./]*hooks\.json(?![\w-])')
 # a deleter / mover naming one of these folders removes the registration with it (writes INTO them stay allowed)
 _HOST_GATE_DIRS = {('.gemini',), ('.opencode',), ('.opencode', 'plugins'), ('.agents',)}
 
@@ -1049,28 +1093,79 @@ _HOST_GATE_DIRS = {('.gemini',), ('.opencode',), ('.opencode', 'plugins'), ('.ag
 def _host_mention(lown):
     """aidd:FR-911 the (lowercased, `/`-normalised) text names a host gate registration."""
     import re
-    return bool(re.search(_HOST_GATE_RE, lown))
+    return bool(re.search(_HOST_GATE_RE, lown)) or _host_extra_mention(lown)
 
 
-def _host_tok(tok, cwd_abs=None, dirs=False):
+def _host_extra_mention(lown):
+    """aidd:FR-1110 aidd:FR-1111 the text names one of the Amendment 1 protected files."""
+    import re
+    return bool(re.search(_HOST_GATE_EXTRA_RE, lown))
+
+
+def _user_gate_segs(segs):
+    """aidd:FR-1110 normalised components that END with `.gemini/config/hooks.json` (any prefix, lexical)."""
+    return len(segs) >= len(USER_GATE_SUFFIX) and tuple(segs[-len(USER_GATE_SUFFIX):]) == USER_GATE_SUFFIX
+
+
+def _host_tok(tok, cwd_abs=None, dirs=False, extra=False):
     """aidd:FR-911 a path token naming a host gate registration (or, with `dirs`, one of its folders). A relative
     token counts on its trailing segments (`../.gemini/settings.json`) or, resolved against the tracked shell cwd,
     on its ROOT-relative path (`cd .opencode/plugins && echo x > aidd.js`); an absolute one only on its
-    root-relative path, so `~/.gemini/settings.json` outside a project stays writable."""
+    root-relative path, so `~/.gemini/settings.json` outside a project stays writable.
+    aidd:FR-1110 aidd:FR-1111 both compares go through `_gate_match` (patterns `HOST_GATE_EXTRA_FILES` too), and a
+    token (or its cwd-resolved path) ending `.gemini/config/hooks.json` always counts; `extra` = only the new files."""
     t = _tok_norm(tok)
     if not t:
         return False
     segs = tuple(_norm_comp(x) for x in t.split('/') if x and x != '.')
     if not segs:
         return False
-    targets = set(HOST_GATE_FILES) | (_HOST_GATE_DIRS if dirs else set())
-    if not _is_abs(t) and any(segs[-len(h):] == h for h in targets if len(segs) >= len(h)):
+    if _user_gate_segs(segs):
+        return True
+    if extra:
+        targets = HOST_GATE_EXTRA_FILES
+    else:
+        targets = tuple(HOST_GATE_FILES) + HOST_GATE_EXTRA_FILES + (tuple(_HOST_GATE_DIRS) if dirs else ())
+    if not _is_abs(t) and any(_gate_match(segs[-len(h):], h) for h in targets if len(segs) >= len(h)):
         return True
     p = _abs_path(tok, cwd_abs)
     if p is None:
         return False
+    if _user_gate_segs([_norm_comp(x) for x in p.replace('\\', '/').split('/') if x]):
+        return True
     rel = _locate(p)
-    return bool(rel) and tuple(rel) in targets
+    return bool(rel) and any(_gate_match(tuple(rel), h) for h in targets)
+
+
+def _mark_host_extra(ctx, toks, cwd_abs):
+    """aidd:FR-1110 aidd:FR-1111 after a block only (never on the allow path): remember whether one of `toks` names
+    an Amendment 1 file, so the message appends HOST_GATE_EXTRA_MESSAGE (after a `cd`, the hook cwd alone cannot tell)."""
+    if not ctx.get('host_extra') and any(_host_tok(a, cwd_abs, extra=True) for a in toks):
+        ctx['host_extra'] = True
+
+
+def _host_copy_hit(verb, args, pos, cwd_abs, lown):
+    """aidd:FR-1111 aidd:FR-1110 a copier whose DESTINATION is a folder (`cp python.exe .agents/`, `cp x .`
+    inside `.agents`): each source basename joined to that folder is matched against the Amendment 1 files only.
+    Destinations: the last positional, robocopy's second one, and the value of -t / --target-directory /
+    -destination. Cheap pre-filter: the text or the tracked cwd names `.agents` or `.gemini`."""
+    cw = (cwd_abs or '').lower().replace('\\', '/')
+    if not ('.agents' in lown or '.gemini' in lown or '.agents' in cw or '.gemini' in cw):
+        return False
+    dests = [args[j + 1] for j, a in enumerate(args[:-1])
+             if a.lower() in ('-t', '--target-directory', '-destination')]
+    if not dests:
+        dests = list(pos[-1:])
+        if verb == 'robocopy' and len(pos) > 1:
+            dests.append(pos[1])
+    srcs = [a for a in pos if a not in dests]
+    for d in dests:
+        base = _unquote(d.replace('\\', '/')).rstrip('/') or '/'
+        for s in srcs:
+            leaf = _tok_norm(s).rstrip('/').split('/')[-1]
+            if leaf and leaf not in ('.', '..') and _host_tok(base + '/' + leaf, cwd_abs, extra=True):
+                return True
+    return False
 
 
 REVIEW_FILE_NAMES = ('review.md', 'review.html')
@@ -1492,6 +1587,7 @@ def _shell_block(cmd, ctx, depth=0):
                 ctx['writes'] = True
                 if (_prot_tok(tgt, ctx_aidd, cwd_prot) or _specs_tok(tgt, cwd_specs, cwd_abs)
                         or _host_tok(tgt, cwd_abs)):
+                    _mark_host_extra(ctx, [tgt], cwd_abs)
                     return True
         words = [t for t in toks if not _is_redirect_out(t)]
         k = 0
@@ -1511,7 +1607,10 @@ def _shell_block(cmd, ctx, depth=0):
             return (_prot_tok(a, ctx_aidd, cwd_prot) or (verb not in ('mkdir', 'md') and _specs_tok(a, cwd_specs, cwd_abs))
                     or _host_tok(a, cwd_abs, dirs=verb in _DELETERS or verb in _MOVERS))   # aidd:FR-911
         def any_hit():                                         # aidd:FR-1002 lazy: only the verbs that consume it
-            return any(hit(a) for a in args)                   # (hit() is pure; `echo`/`cat`/... resolve nothing)
+            if any(hit(a) for a in args):                      # (hit() is pure; `echo`/`cat`/... resolve nothing)
+                _mark_host_extra(ctx, args, cwd_abs)           # aidd:FR-1110 message only, after a block
+                return True
+            return False
         pos = [a for a in args if not a.startswith('-') and not (a.startswith('/') and len(a) <= 3)]
         if verb == 'aidd':
             continue                                           # the sanctioned writer
@@ -1541,6 +1640,10 @@ def _shell_block(cmd, ctx, depth=0):
             ctx['writes'] = True
             if (any(hit(a) for a in pos[1:])
                     or any(a in ('-t', '--target-directory') and hit(args[j + 1]) for j, a in enumerate(args[:-1]))):
+                _mark_host_extra(ctx, args, cwd_abs)
+                return True
+            if _host_copy_hit(verb, args, pos, cwd_abs, lown):        # aidd:FR-1111 `cp python.exe .agents/`
+                ctx['host_extra'] = True
                 return True
         elif verb in ('sed', 'perl', 'awk', 'gawk', 'ruby'):
             inplace = any(a == '--in-place' or a.startswith('--in-place=')
@@ -1563,7 +1666,10 @@ def _shell_block(cmd, ctx, depth=0):
             while body and (re.match(r'^[-/][a-z]{1,20}$', body[0].lower())
                             or body[0].lower() in ('bypass', 'unrestricted', 'remotesigned')):
                 body.pop(0)
-            if body and _shell_block(' '.join(body), dict(ctx, cwd_prot=cwd_prot), depth + 1):
+            sub = dict(ctx, cwd_prot=cwd_prot)
+            if body and _shell_block(' '.join(body), sub, depth + 1):
+                if sub.get('host_extra'):
+                    ctx['host_extra'] = True                   # aidd:FR-1110 message only
                 return True
     if depth > 0:
         return False
@@ -1602,6 +1708,8 @@ def _needs_check(low, cwd):
     """Cheap pre-check (no imports): can this command text / cwd matter at all?"""
     if any(m in low for m in BASH_MARKERS) or '.aidd' in cwd.lower() or 'specs' in cwd.lower():
         return True                                            # F-1: cwd inside specs/ makes `> spec.md` matter
+    if '.agents' in cwd.lower():
+        return True                                            # aidd:FR-1111 cwd `.agents`: `echo x > python.bat`
     if 'join-path' in low and 'aidd' in low:
         return True
     if '.jsonl' in low and '.claude' in low:
@@ -1634,9 +1742,16 @@ def _decide_bash(event, ti):
         if ctx.get('review_named') or _names_review(low, [w for toks in _tokenize(cmd) for w in toks],
                                                     ctx.get('cwd_specs_seen', False)):
             return True, R9_BASH_MESSAGE + '\n' + REVIEW_MESSAGE
-        if _host_mention(low.replace('\\', '/')) or any(_host_tok(w, cwd_abs, dirs=True)
-                                                        for toks in _tokenize(cmd) for w in toks):
-            return True, R9_BASH_MESSAGE + '\n' + HOST_GATE_MESSAGE   # aidd:FR-911 names the gate file
+        lown = low.replace('\\', '/')
+        words = [w for toks in _tokenize(cmd) for w in toks]
+        if _host_mention(lown) or any(_host_tok(w, cwd_abs, dirs=True) for w in words):
+            msg = R9_BASH_MESSAGE + '\n' + HOST_GATE_MESSAGE    # aidd:FR-911 names the gate file
+            if (ctx.get('host_extra') or _host_extra_mention(lown)
+                    or any(_host_tok(w, cwd_abs, extra=True) for w in words)):
+                msg += '\n' + HOST_GATE_EXTRA_MESSAGE           # aidd:FR-1110 aidd:FR-1111 only for the new files
+            return True, msg
+        if ctx.get('host_extra'):
+            return True, R9_BASH_MESSAGE + '\n' + HOST_GATE_MESSAGE + '\n' + HOST_GATE_EXTRA_MESSAGE
         return True, R9_BASH_MESSAGE
     return False, ''
 

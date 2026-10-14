@@ -42,8 +42,9 @@ Normalisation:
     Antigravity replace_file_content {TargetFile, TargetContent, ReplacementContent}
                                                            -> Edit {file_path, old_string, new_string}
     Antigravity multi_replace_file_content {TargetFile, ReplacementChunks[{TargetContent, ReplacementContent}]}
-                                                           -> MultiEdit {file_path, edits[...]}; chunks that are
-                                                              not a list (or JSON list) -> path-only MultiEdit
+                                                           -> MultiEdit {file_path, edits[...]}; chunks that
+                                                              cannot be read as edits -> deny in pre (path-only
+                                                              MultiEdit in post)
     Antigravity run_command {CommandLine, Cwd}             -> Bash {command}; callee cwd = Cwd if inside the project
     unknown write-like tool (see below)                    -> patch-like / Write fallback
     anything else                                          -> exit 0, no gate call
@@ -60,7 +61,7 @@ through verbatim (Windows paths stay intact; relative paths are resolved by the 
 Antigravity envelope: tool name `toolCall.name`, args `toolCall.args` (keys read tolerantly), session
 `conversationId` (same S6 sanitising); there is no `cwd` (the hook runs in `<project>/.agents`), so the
 project root is the nearest `.aidd/AIDD.md` ancestor of a `workspacePaths` entry, else of the absolute
-target file, else allow; the normalised `cwd` handed to the callees is that project root.
+target file, else of the process cwd, else allow; the normalised `cwd` handed to the callees is that root.
 
 Audited facts this relies on: rule_gate.main() (not decide()) does the AIDD_RULES off/warn handling,
 the `rules_override` record (FR-908), the transcript sync, the caller marker and the fail-open
@@ -72,6 +73,12 @@ Fail-open: any internal exception, a gate crash or a `mark_code_edit` timeout ->
 `aidd_evidence.record_hook_error(cwd, session, 'host_adapter', ...)`; this module never raises.
 Fail-CLOSED: a `rule_gate` timeout in the pre phase returns exit 2 ("the gate did not answer"), so padding
 a command until the lexical shell guard is too slow can never skip a block.
+Amendment 1 (FR-1109, FR-1113), `pre` only (`post` never denies): stdin nested deeper than 100 brackets (outside
+strings; scanned only when the text holds more than 100 `[`/`{`) or a parse RecursionError/MemoryError denies on
+every host (exit 2 / Antigravity deny); empty stdin and plain garbage still allow. Inside an AIDD project an
+Antigravity gated write is denied when a path key is present but not a string, or when `ReplacementChunks`
+cannot be read as edits; with no project from `workspacePaths` or an absolute target, the project is found from
+the process cwd (the hook's `.agents`) and relative targets are resolved against the project root.
 """
 import json
 import os
@@ -97,16 +104,52 @@ _SID_BAD_RE = re.compile(r'[^A-Za-z0-9_-]')
 SID_MAX = 64
 _AG_PATH_KEYS = ('TargetFile', 'AbsolutePath', 'FilePath', 'file_path', 'path')
 _AG_CONTENT_KEYS = ('CodeContent', 'Content', 'content')
+_AG_KNOWN = frozenset(('write_to_file', 'replace_file_content', 'multi_replace_file_content', 'run_command'))
+_AG_UNKNOWN_PATH_KEYS = _AG_PATH_KEYS + ('filePath', 'filename', 'file')
+DEPTH_LIMIT = 100
+# a whole JSON string (escapes skipped; an unterminated one runs to the end, so the scan stays linear) or a bracket
+_JSON_TOKEN_RE = re.compile(r'"[^"\\]*(?:\\.[^"\\]*)*"?|[\[\]{}]', re.DOTALL)
+DEEP_MESSAGE = 'aidd: the hook payload is nested too deeply (limit %d); the call is blocked.' % DEPTH_LIMIT
+
+
+class _AgDeny(Exception):
+    """Y1/Y5: an Antigravity gated write whose target cannot be read; `args[0]` is the deny reason."""
 
 
 # ------------------------------------------------------------------ input
 
-def _read_stdin_event():
-    """Host JSON from stdin as a dict; BOM / bad bytes / non-dict JSON -> {}."""
+def _too_deep(text, limit=DEPTH_LIMIT):
+    """Y1: True when the bracket nesting of `text` (outside JSON strings) goes above `limit`."""
+    if text.count('[') + text.count('{') <= limit:  # cannot be deeper: skip the scan (multi-MB content)
+        return False
+    depth = 0
+    for m in _JSON_TOKEN_RE.finditer(text):
+        tok = m.group()
+        if tok == '[' or tok == '{':
+            depth += 1
+            if depth > limit:
+                return True
+        elif tok == ']' or tok == '}':
+            depth = max(0, depth - 1)
+    return False
+
+
+def _read_stdin_event(check_depth=False):
+    """Host JSON from stdin as a dict; BOM / bad bytes / non-dict JSON -> {}.
+
+    With `check_depth` (the pre phase) a payload nested above DEPTH_LIMIT, or one whose parse raises
+    RecursionError/MemoryError, returns None (the caller denies); without it those become {} as before.
+    """
     try:
         raw = sys.stdin.buffer.read()
         text = raw.decode('utf-8', 'replace').lstrip('﻿')
-        event = json.loads(text) if text.strip() else {}
+        if not text.strip():
+            return {}
+        if check_depth and _too_deep(text):
+            return None
+        event = json.loads(text)
+    except (RecursionError, MemoryError):
+        return None if check_depth else {}
     except Exception:
         return {}
     return event if isinstance(event, dict) else {}
@@ -170,14 +213,27 @@ def _project_root(cwd):
 
 
 def _ag_root(event, norm):
-    """Antigravity project root: from each `workspacePaths` entry, else from the absolute target file."""
+    """Antigravity project root: from each `workspacePaths` entry, else from the absolute target file, else
+    (Y5) from the process cwd (the hook runs in `<project>/.agents`)."""
     paths = event.get('workspacePaths')
     for p in paths if isinstance(paths, list) else []:
         if isinstance(p, str) and p.strip():
             r = _project_root(p)
             if r is not None:
                 return r
-    return _root_from_paths(norm)
+    r = _root_from_paths(norm)
+    return r if r is not None else _project_root(os.getcwd())
+
+
+def _ag_resolve(norm, root):
+    """Y5: make the relative target path(s) of a normalised Antigravity event absolute under `root`."""
+    ti = (norm or {}).get('tool_input')
+    if not isinstance(ti, dict):
+        return
+    for d in [ti] + [e for e in (ti.get('edits') or []) if isinstance(e, dict)]:
+        p = d.get('file_path')
+        if isinstance(p, str) and p.strip() and not os.path.isabs(p):
+            d['file_path'] = str(root / p)
 
 
 def _inside(path, root):
@@ -287,18 +343,38 @@ def _norm_opencode(tool, args):
 
 
 def _ag_chunks(raw):
-    """ReplacementChunks as a list of dicts (a JSON string or a single dict tolerated), else None."""
+    """ReplacementChunks as a list of dicts (a JSON string or a single dict tolerated), else None
+    (also None when the list is empty or holds a non-object entry: it cannot be read as edits)."""
     if isinstance(raw, str):
         try:
             raw = json.loads(raw)
-        except Exception:
+        except Exception:  # RecursionError included
             return None
     if isinstance(raw, dict):
         raw = [raw]
-    if not isinstance(raw, list):
+    if not isinstance(raw, list) or not raw or not all(isinstance(c, dict) for c in raw):
         return None
-    chunks = [c for c in raw if isinstance(c, dict)]
-    return chunks or None
+    return raw
+
+
+def _bad_path(d, keys):
+    """Y5: True when one of `keys` is present in dict `d` with a value that is neither null nor a string."""
+    return isinstance(d, dict) and any(d.get(k) is not None and not isinstance(d.get(k), str) for k in keys)
+
+
+def _ag_deny_reason(tool, args):
+    """Y1/Y5: why a GATED Antigravity write cannot be gated (unreadable target), else ''."""
+    if _bad_path(args, _AG_PATH_KEYS if tool in _AG_KNOWN else _AG_UNKNOWN_PATH_KEYS):
+        return 'aidd: the target path of %s is not a string (unrecognised target); the call is blocked.' % tool
+    if tool == 'multi_replace_file_content':
+        chunks = _ag_chunks(args.get('ReplacementChunks'))
+        if chunks is None:
+            return ('aidd: the ReplacementChunks of multi_replace_file_content cannot be read as edits; '
+                    'the call is blocked.')
+        if any(_bad_path(c, _AG_PATH_KEYS) for c in chunks):
+            return ('aidd: a chunk target path of multi_replace_file_content is not a string (unrecognised '
+                    'target); the call is blocked.')
+    return ''
 
 
 def _norm_antigravity(tool, args):
@@ -310,7 +386,7 @@ def _norm_antigravity(tool, args):
                         'new_string': _text(args, 'ReplacementContent')}
     if tool == 'multi_replace_file_content':
         chunks = _ag_chunks(args.get('ReplacementChunks'))
-        if chunks is None:  # unparseable chunks: gate by path only (rule_gate skips edits without old_string)
+        if chunks is None:  # unparseable chunks: denied in pre (normalise strict); post records by path only
             edits = [{'file_path': fp}] if fp else []
         else:
             edits = [{'file_path': _str(c, *_AG_PATH_KEYS) or fp, 'old_string': _text(c, 'TargetContent'),
@@ -372,13 +448,20 @@ def unmapped_write_tool(host, event):
     return tool if tool and _is_gated(tool) else ''
 
 
-def normalise(host, event):
-    """Claude-shaped event, or None when the tool is not a write/shell tool (or has no path)."""
+def normalise(host, event, strict=False):
+    """Claude-shaped event, or None when the tool is not a write/shell tool (or has no path).
+
+    `strict` (Antigravity pre phase): a gated write whose target cannot be read raises _AgDeny(reason).
+    """
     tool = _tool_of(event, host)
     args = _args_of(event, host)
     name, ti = _NORMALISERS.get(host, _norm_opencode)(tool, args)
     if not name and tool and _is_gated(tool):
         name, ti = (_norm_unknown_antigravity if host == AG else _norm_unknown)(tool, args)
+    if strict and host == AG and name != 'Bash' and tool and _is_gated(tool):
+        reason = _ag_deny_reason(tool, args)
+        if reason:
+            raise _AgDeny(reason)
     if not name:
         return None
     if host == AG:
@@ -440,11 +523,18 @@ def _run_core(host, phase, event):
     cwd, sid = _cwd_of(event), _session_of(event, host)
     try:
         if host == AG:
-            norm = normalise(host, event)
+            deny = ''
+            try:
+                norm = normalise(host, event, strict=(phase == 'pre'))
+            except _AgDeny as e:  # unreadable target: deny, but only inside an AIDD project (FR-912)
+                deny, norm = str(e), normalise(host, event)
             root = _ag_root(event, norm)
             if root is None:
                 return 0, b''
             cwd = str(root)
+            if deny:
+                return 2, deny.encode('utf-8')
+            _ag_resolve(norm, root)
             if norm is not None and not (norm['tool_name'] == 'Bash' and _inside(norm.get('cwd'), root)):
                 norm['cwd'] = cwd  # the project root, never the hook's own `<project>/.agents`
         else:
@@ -530,12 +620,27 @@ def run_antigravity(phase, event):
     return 0
 
 
+def _deny_deep(host):
+    """Y1: answer a too-deeply nested pre payload with a deny on every host. Never raises."""
+    _hook_error(os.getcwd(), '', 'hook payload nested deeper than %d: call blocked' % DEPTH_LIMIT)
+    if host == AG:
+        _emit_json({'decision': 'deny', 'reason': DEEP_MESSAGE})
+        return 0
+    if host in HOSTS:
+        _pass_stderr(DEEP_MESSAGE.encode('utf-8'))
+        return 2
+    _hook_error(os.getcwd(), '', 'bad arguments: host %r' % (host,))
+    return 0
+
+
 def main(argv=None):
     argv = sys.argv[1:] if argv is None else argv
     try:
         host = argv[0].strip().lower() if len(argv) > 0 else ''
         phase = argv[1].strip().lower() if len(argv) > 1 else ''
-        event = _read_stdin_event()
+        event = _read_stdin_event(check_depth=(phase == 'pre'))  # Y1: the depth limit applies to pre only
+        if event is None:
+            return _deny_deep(host)
         if host == AG:
             return run_antigravity(phase, event)
         if host not in HOSTS or phase not in PHASES:

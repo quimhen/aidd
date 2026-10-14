@@ -2,6 +2,7 @@
 
 aidd:FR-901 aidd:FR-902 aidd:FR-903 aidd:AC-005 (spec 009, plan Interface 2, task T-04)
 aidd:FR-1103 aidd:FR-1104 aidd:AC-1103 (spec 011, plan Interface 2, task T-02)
+aidd:FR-1112 aidd:FR-1113 aidd:AC-1111 aidd:AC-1112 (spec 011 Amendment 1, task T-13)
 
 Usage:
     python install_host.py install <gemini|opencode|antigravity> <project-root> [--force] [--json]
@@ -23,6 +24,11 @@ What it does (and what it never does):
   place; the link target is never followed for writing and never modified.
   Windows detection uses the reparse TAG (symlink or mount point/junction), not
   the plain reparse-point attribute (OneDrive placeholders set that one too).
+- Writes every file atomically (spec 011 FR-1112): a temp file in the same
+  folder, then `os.replace`, so a HARD link at the destination is broken, never
+  written through. If the replace fails the file is `skipped` and the run fails.
+- Exits 1 when the gate registration (`.agents/hooks.json`, `.gemini/settings.json`,
+  `.opencode/opencode.json`) is `skipped` for any reason (spec 011 FR-1113).
 
 The shipped source is located the same way `aidd/cli.py` does it: relative to
 this file (skill/scripts/ -> repo root -> adapters/). There is no AIDD_HOME
@@ -68,6 +74,8 @@ GEMINI_HOOKS = (
 )
 AIDD_NAMES = {name for _, name, _ in GEMINI_HOOKS}
 OPENCODE_PLUGIN_ENTRY = ".opencode/plugins/aidd.js"
+# The files that register the AIDD gate with each host; skipping one exits 1.
+GATE_REGISTRATIONS = {".agents/hooks.json", ".gemini/settings.json", ".opencode/opencode.json"}
 
 ANTIGRAVITY_HOOK_NAME = "aidd"
 ANTIGRAVITY_MATCHER = "*"
@@ -149,6 +157,8 @@ class HostInstaller:
         if note:
             reason = f"{note}; {reason}" if reason else note
         self.results.append({"path": rel, "status": status, "reason": reason})
+        if status == "skipped" and rel in GATE_REGISTRATIONS:
+            self.failed = True  # spec 011 FR-1113: a skipped gate registration fails the install
 
     # -- symlink safety ----------------------------------------------------
     @staticmethod
@@ -214,14 +224,45 @@ class HostInstaller:
     def _write_bytes(self, target: Path, data: bytes) -> bool:
         if not self._guard_links(target):
             return False
+        # Atomic write (spec 011 FR-1112): a temp file in the same folder, then
+        # os.replace. A hard link at the destination is broken (the name gets a
+        # new inode), never written through. No in-place fallback, ever.
+        tmp = None
         try:
             target.parent.mkdir(parents=True, exist_ok=True)
-            target.write_bytes(data)
-            return True
+            tmp = target.parent / f".{target.name}.{os.getpid()}.{os.urandom(4).hex()}.aidd-tmp"
+            fd = os.open(tmp, os.O_CREAT | os.O_EXCL | os.O_WRONLY | getattr(os, "O_BINARY", 0), 0o666)
+            try:
+                view = memoryview(data)
+                while view:
+                    view = view[os.write(fd, view):]
+            finally:
+                os.close(fd)
         except OSError as exc:
             self._record(target, "skipped", f"cannot write: {exc}")
             self.failed = True
+            self._unlink_quiet(tmp)
             return False
+        try:
+            os.replace(tmp, target)
+            return True
+        except OSError as exc:
+            self._record(target, "skipped", f"cannot replace the destination (held open?), left as is: {exc}")
+            self.failed = True
+            return False
+        finally:
+            self._unlink_quiet(tmp)
+
+    @staticmethod
+    def _unlink_quiet(path) -> None:
+        """Remove a leftover temp file; never raises."""
+        if path is None:
+            return
+        try:
+            if os.path.lexists(path):
+                os.unlink(path)
+        except OSError:
+            pass
 
     def _copy_file(self, source: Path, target: Path) -> None:
         if not self._guard_links(target):
@@ -466,7 +507,7 @@ def main(argv=None) -> int:
                   for s in ("written", "unchanged", "skipped")}
         print(f"AIDD install ({args.host}) into {project_root}: "
               f"{counts['written']} written, {counts['unchanged']} unchanged, {counts['skipped']} skipped"
-              + (" -- some targets were not writable" if installer.failed else ""))
+              + (" -- some targets were not writable or the gate registration was skipped" if installer.failed else ""))
     return 1 if installer.failed else 0
 
 

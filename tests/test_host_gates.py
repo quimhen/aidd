@@ -764,5 +764,273 @@ class TestAgyOtherHostsRegression(HostBase):
                 self.assertBlockedBy(self.pre(host, "write", "src/app.py"), "R6")
 
 
+# ---------------------------------------------------------------------------------------------------------------
+# Amendment 1 (T-14): Y1 depth guard, Y2/Y3 wildcard protections, Y5 unresolved targets. Written against the contract.
+# ---------------------------------------------------------------------------------------------------------------
+DEEP_LEVELS = (1200, 3000)
+_DEEP_TOKEN = "__DEEP__"
+
+
+def _deep_raw(event, levels):
+    """The event's JSON text with every "__DEEP__" string replaced by `levels` nested arrays (built by loop)."""
+    text = json.dumps(event)
+    deep = "[" * levels + "]" * levels
+    return text.replace('"%s"' % _DEEP_TOKEN, deep).encode("utf-8")
+
+
+def _protected_text(case, r_text):
+    case.assertTrue("protected" in r_text.lower() or "gate" in r_text.lower(), r_text)
+
+
+class TestAmendY1DepthGuard(AgyBase):
+    """FR-1109: PRE stdin nested deeper than 100 is denied on every host; POST never denies."""
+
+    def _top_level(self, host, phase, extra):
+        if host == "antigravity":
+            ev = agy_payload("write_to_file", self.root, "src/app.py", conv=self.session, phase=phase)
+        else:
+            ev = payload(host, "write", self.root, "src/app.py", session=self.session, phase=phase)
+        ev["extra"] = extra
+        return ev
+
+    def test_deep_top_level_key_is_denied_in_pre_on_every_host(self):
+        self.approve()                       # only the depth guard can block a write to src/app.py now
+        for levels in DEEP_LEVELS:
+            for host in HOSTS:
+                with self.subTest(host=host, levels=levels):
+                    r = self.adapt(host, "pre", raw=_deep_raw(self._top_level(host, "pre", _DEEP_TOKEN), levels))
+                    self.assertBlockedBy(r)
+            with self.subTest(host="antigravity", levels=levels):
+                r = self.agy("pre", raw=_deep_raw(self._top_level("antigravity", "pre", _DEEP_TOKEN), levels))
+                self.assertDeny(r)
+
+    def test_deep_extra_key_inside_a_replacement_chunk_is_denied(self):
+        for levels in DEEP_LEVELS:
+            with self.subTest(levels=levels):
+                ev = agy_payload(None, self.root, conv=self.session)
+                ev["toolCall"] = {"name": "multi_replace_file_content", "args": {
+                    "TargetFile": str(self.root / ".agents" / "hooks.json").replace("\\", "/"),
+                    "ReplacementChunks": [{"TargetContent": "a", "ReplacementContent": "b", "StartLine": 1,
+                                           "EndLine": 1, "Extra": _DEEP_TOKEN}]}}
+                self.assertDeny(self.agy("pre", raw=_deep_raw(ev, levels)))
+        self.approve()
+        self.assertDeny(self.agy("pre", raw=_deep_raw(ev, DEEP_LEVELS[0])))
+
+    def test_same_deep_inputs_in_post_are_never_denied(self):
+        for levels in DEEP_LEVELS:
+            for host in HOSTS:
+                with self.subTest(host=host, levels=levels):
+                    r = self.adapt(host, "post", raw=_deep_raw(self._top_level(host, "post", _DEEP_TOKEN), levels))
+                    self.assertOk(r)
+            with self.subTest(host="antigravity", levels=levels):
+                r = self.agy("post", raw=_deep_raw(self._top_level("antigravity", "post", _DEEP_TOKEN), levels))
+                self.assertNotEqual(r.obj.get("decision"), "deny", r.out)
+
+    def test_depth_50_payload_still_passes(self):
+        self.approve()
+        for host in HOSTS:
+            with self.subTest(host=host):
+                self.assertOk(self.adapt(host, "pre", raw=_deep_raw(self._top_level(host, "pre", _DEEP_TOKEN), 50)))
+        r = self.agy("pre", raw=_deep_raw(self._top_level("antigravity", "pre", _DEEP_TOKEN), 50))
+        self.assertAllow(r)
+
+    def test_garbage_and_empty_stdin_keep_their_behaviour(self):
+        for raw in (b"{not json", b"", b"\xff\xfe"):
+            for host in HOSTS:
+                with self.subTest(host=host, raw=raw):
+                    r = self.adapt(host, "pre", raw=raw)
+                    self.assertEqual(r.returncode, 0, r.err)
+            with self.subTest(host="antigravity", raw=raw):
+                self.assertAllow(self.agy("pre", raw=raw))
+                self.assertEqual(self.agy("post", raw=raw).obj, {})
+
+    def test_real_small_payloads_still_pass(self):
+        self.approve()
+        for host in HOSTS:
+            with self.subTest(host=host):
+                self.assertOk(self.pre(host, "write", "src/app.py"))
+        self.assertAllow(self.apre("write_to_file", "src/app.py"))
+        self.assertAllow(self.apre("replace_file_content", "src/cart.py"))
+        self.assertAllow(self.apre("run_command", command="echo done"))
+
+
+# protected by Y2/Y3 and the allowed neighbours (relative to the project root)
+Y_DENIED = (".agents/plugins/p/hooks.json", ".agents/python.bat", ".agents/python.exe", ".agents/Python.BAT",
+            ".agents/x.cmd", ".agents/y.ps1", ".agents/z.com")
+Y_ALLOWED = (".agents/rules/x.md", ".agents/skills/y/SKILL.md", ".agents/plugins/p/readme.md")
+
+
+class TestAmendY2Y3Antigravity(AgyBase):
+    """FR-1110 / FR-1111 / AC-1108: the wildcard protections, spec APPROVED so only the protection can block."""
+
+    def setUp(self):
+        super().setUp()
+        self.approve()
+
+    def test_file_tools_are_denied_on_every_protected_path(self):
+        for rel in Y_DENIED:
+            for tool in ("write_to_file", "replace_file_content"):
+                with self.subTest(rel=rel, tool=tool):
+                    r = self.apre(tool, rel)
+                    self.assertDeny(r)
+                    _protected_text(self, r.obj["reason"])
+
+    def test_shell_writers_are_denied_on_every_protected_path(self):
+        cmds = ("echo x > {p}", "echo x >> {p}", "rm {p}", "cp a.md {p}", "mv a.md {p}", "echo x | tee {p}",
+                "Set-Content {p} x")
+        for rel in Y_DENIED:
+            for c in cmds:
+                with self.subTest(rel=rel, cmd=c):
+                    r = self.apre("run_command", command=c.format(p=rel))
+                    self.assertDeny(r)
+                    _protected_text(self, r.obj["reason"])
+
+    def test_copier_of_an_interpreter_into_dot_agents_is_denied(self):
+        for c in ("cp python.exe .agents/", "cp python.exe .agents", "cp ./python.exe .agents/"):
+            with self.subTest(cmd=c):
+                r = self.apre("run_command", command=c)
+                self.assertDeny(r)
+                _protected_text(self, r.obj["reason"])
+
+    def test_allowed_neighbours_stay_writable(self):
+        for rel in Y_ALLOWED:
+            for tool in ("write_to_file", "replace_file_content"):
+                with self.subTest(rel=rel, tool=tool):
+                    self.assertAllow(self.apre(tool, rel))
+        self.assertAllow(self.apre("run_command", command="echo x > .agents/rules/x.md"))
+
+    def test_reading_and_copying_into_rules_is_allowed(self):
+        self.assertAllow(self.apre("run_command", command="cat .agents/python.bat"))
+        self.assertAllow(self.apre("run_command", command="cp a.md .agents/rules/"))
+
+
+class TestAmendY2Y3OtherHosts(HostBase):
+    def setUp(self):
+        super().setUp()
+        self.approve()
+
+    def test_gemini_and_opencode_deny_plugin_hooks_json_and_python_bat(self):
+        for host in HOSTS:
+            for rel in (".agents/plugins/p/hooks.json", ".agents/python.bat"):
+                for kind in ("write", "edit"):
+                    with self.subTest(host=host, rel=rel, kind=kind):
+                        r = self.pre(host, kind, rel)
+                        self.assertBlockedBy(r)
+                        _protected_text(self, r.err)
+                with self.subTest(host=host, rel=rel, kind="bash"):
+                    r = self.pre(host, "bash", command="echo x > " + rel)
+                    self.assertBlockedBy(r)
+                    _protected_text(self, r.err)
+
+    def test_gemini_and_opencode_allow_the_neighbours(self):
+        for host in HOSTS:
+            for rel in Y_ALLOWED:
+                with self.subTest(host=host, rel=rel):
+                    self.assertOk(self.pre(host, "write", rel))
+            with self.subTest(host=host, what="read"):
+                self.assertOk(self.pre(host, "bash", command="cat .agents/python.bat"))
+            with self.subTest(host=host, what="cp"):
+                self.assertOk(self.pre(host, "bash", command="cp a.md .agents/rules/"))
+
+
+class TestAmendY2UserLevelHooksFile(AgyBase):
+    """The user-level ~/.gemini/config/hooks.json lives OUTSIDE the project: HOME and USERPROFILE point at a temp home."""
+
+    def setUp(self):
+        super().setUp()
+        self.approve()
+        self.home = Path(tempfile.mkdtemp(prefix="aidd-home-"))
+        self.addCleanup(shutil.rmtree, str(self.home), True)
+        self.henv = {"HOME": str(self.home), "USERPROFILE": str(self.home)}
+        self.target = str(self.home / ".gemini" / "config" / "hooks.json").replace("\\", "/")
+
+    def _agy_pre(self, call):
+        ev = agy_payload(None, self.root, conv=self.session)
+        ev["toolCall"] = call
+        r = self.adapt("antigravity", "pre", ev, env=self.henv)
+        self.assertEqual(r.returncode, 0, r.err)
+        r.obj = json.loads(r.out)
+        return r
+
+    def test_antigravity_file_tools_by_absolute_path_are_denied(self):
+        for name, args in (("write_to_file", {"TargetFile": self.target, "CodeContent": "{}"}),
+                           ("replace_file_content", {"TargetFile": self.target, "TargetContent": "a",
+                                                     "ReplacementContent": "b"})):
+            with self.subTest(tool=name):
+                r = self._agy_pre({"name": name, "args": args})
+                self.assertDeny(r)
+                _protected_text(self, r.obj["reason"])
+
+    def test_antigravity_shell_forms_are_denied(self):
+        for cmd in ("echo x > " + self.target, "echo x > $HOME/.gemini/config/hooks.json",
+                    "echo x > ~/.gemini/config/hooks.json", "rm " + self.target,
+                    "cp a.json $HOME/.gemini/config/hooks.json"):
+            with self.subTest(cmd=cmd):
+                r = self._agy_pre({"name": "run_command", "args": {"CommandLine": cmd,
+                                                                    "Cwd": str(self.root).replace("\\", "/")}})
+                self.assertDeny(r)
+                _protected_text(self, r.obj["reason"])
+
+    def test_gemini_write_file_by_absolute_path_is_denied(self):
+        ev = payload("gemini", "write", self.home, ".gemini/config/hooks.json", session=self.session, cwd=self.root)
+        r = self.adapt("gemini", "pre", ev, env=self.henv)
+        self.assertBlockedBy(r)
+        _protected_text(self, r.err)
+
+    def test_gemini_and_opencode_shell_by_home_variable_is_denied(self):
+        for host in HOSTS:
+            with self.subTest(host=host):
+                ev = payload(host, "bash", self.root, command="echo x > $HOME/.gemini/config/hooks.json",
+                             session=self.session)
+                self.assertBlockedBy(self.adapt(host, "pre", ev, env=self.henv))
+
+
+class TestAmendY5UnresolvedTargets(AgyBase):
+    """FR-1113 / AC-1109 / AC-1112: a target that cannot be resolved is denied, never allowed."""
+
+    def _call(self, name, args, **kw):
+        ev = agy_payload(None, self.root, conv=self.session, **kw)
+        ev["toolCall"] = {"name": name, "args": args}
+        return ev
+
+    def test_non_string_target_file_is_denied(self):
+        for approved in (False, True):
+            if approved:
+                self.approve()
+            for bad in (["src/app.py"], {"p": "src/app.py"}, 12345):
+                for name, extra in (("write_to_file", {"CodeContent": "x = 1\n"}),
+                                    ("replace_file_content", {"TargetContent": "a", "ReplacementContent": "b"})):
+                    with self.subTest(approved=approved, bad=repr(bad), tool=name):
+                        self.assertDeny(self.agy("pre", self._call(name, {"TargetFile": bad, **extra})))
+
+    def test_unparseable_replacement_chunks_are_denied(self):
+        self.approve()
+        for chunks in ("not json {", 12345, None, [1, 2], "[]", []):
+            with self.subTest(chunks=repr(chunks)):
+                args = {"TargetFile": str(self.root / "src" / "app.py").replace("\\", "/"),
+                        "ReplacementChunks": chunks}
+                self.assertDeny(self.agy("pre", self._call("multi_replace_file_content", args)))
+
+    def test_parseable_replacement_chunks_still_follow_the_normal_gate(self):
+        args = {"TargetFile": str(self.root / "src" / "app.py").replace("\\", "/"),
+                "ReplacementChunks": [{"TargetContent": "a", "ReplacementContent": "b", "StartLine": 1,
+                                       "EndLine": 1}]}
+        self.assertDeny(self.agy("pre", self._call("multi_replace_file_content", args)), "R6")
+        self.approve()
+        self.assertAllow(self.agy("pre", self._call("multi_replace_file_content", args)))
+
+    def test_relative_target_without_workspace_paths_and_cwd_dot_agents_is_gated(self):
+        agents = self.root / ".agents"
+        agents.mkdir(exist_ok=True)
+        ev = self._call("write_to_file", {"TargetFile": "src/app.py", "CodeContent": "x = 1\n"}, workspace=False)
+        self.assertDeny(self.agy("pre", ev, cwd=agents), "R6")
+        hooks = self._call("write_to_file", {"TargetFile": ".agents/hooks.json", "CodeContent": "{}"},
+                           workspace=False)
+        self.assertDeny(self.agy("pre", hooks, cwd=agents))
+        self.approve()
+        self.assertAllow(self.agy("pre", ev, cwd=agents))
+        self.assertDeny(self.agy("pre", hooks, cwd=agents))
+
+
 if __name__ == "__main__":
     unittest.main()

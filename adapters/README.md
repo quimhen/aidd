@@ -115,17 +115,24 @@ Not verified: the Antigravity app and IDE flavours (same `.agents/hooks.json` pe
 cwd and payload were only observed on the CLI); `Stop` hooks (not used); `multi_replace_file_content`
 arguments (the adapter tolerates several shapes); the host's exit-code semantics and crash behaviour
 (undocumented). The user-level `~/.gemini/config/hooks.json` is NOT protected (outside the project).
-Other known limits of the Antigravity gate (closing audit of spec 011): (1) `.agents/plugins/<name>/hooks.json`
-is NOT protected (the docs list it as another hook location; whether the CLI loads project plugin hooks and
-how decisions from several hooks combine is not verified); (2) the registered command is bare `python`
-run with cwd `.agents` and `.agents/**` is writable: a planted `.agents/python.bat` did NOT replace the
-interpreter with agy 1.3.5 (tested with the real host), but `.cmd`/`.exe`/`.com`, the app and the IDE were
-not tried; the stronger fixes (an absolute interpreter path at install time, or protecting `.agents/python.*`
-and `.agents/*.{bat,cmd,exe,com}`) are not done; (3) JSON nested deeper than about 1,500 levels in the hook's
-stdin makes the adapter answer allow (only reachable if the host forwards attacker-chosen extra fields,
-not verified); (4) a `TargetFile` that is not a string, or a relative one with no `workspacePaths`, is
-allowed; (5) a HARD link planted as `.agents/rules/aidd.md` is not detected by the installer (an owner-run
-`--force` install would overwrite the linked file with the AIDD template text).
+Hardened in Amendment 1 of spec 011 (the five limits the closing audit had accepted): (1) the plugin hook
+registrations `.agents/plugins/<name>/hooks.json` and the user-level `~/.gemini/config/hooks.json` are now
+protected from agent writes (file tools by path, the shell guard by name, including `$HOME` and
+`%USERPROFILE%` forms); whether the CLI loads project plugin hooks and how decisions from several hooks combine
+is still not verified; (2) the files that could shadow the interpreter when the hook runs with cwd `.agents`
+(direct children named `python*` or ending `.bat`, `.cmd`, `.exe`, `.com`, `.ps1`, also through a copy into the
+folder) are protected; `.agents/rules/**` and `.agents/skills/**` stay writable; the hijack itself was never
+reproduced with agy 1.3.5 (a planted `python.bat` did not replace the interpreter), so this is defence in
+depth, and a non-`python` interpreter name or an absolute interpreter path at install time are not done;
+(3) hook stdin nested deeper than 100 levels is denied in the PRE phase on every host (the POST phase never
+denies; plain non-JSON garbage and empty stdin keep allowing with a hook error); (4) the installer writes
+every file through a temporary file and `os.replace`, so a hard link at the destination is broken instead of
+written through; (5) a `TargetFile` that is not a string and an unreadable `ReplacementChunks` are denied, a
+relative `TargetFile` with no `workspacePaths` is resolved against the project found from the hook's cwd, and
+`aidd install` exits 1 when a gate registration file (`.agents/hooks.json`, `.gemini/settings.json`,
+`.opencode/opencode.json`) is skipped. Still open: the Antigravity app and IDE flavours,
+`multi_replace_file_content` arguments seen in a real run, the host's exit-code semantics, and the file-symlink
+gap of the shell guard (spec 010 X1).
 
 **Tier 3 — OpenCode:** OpenCode has its own native skill format (confirmed identical in shape to
 Claude Code's: YAML frontmatter + markdown body) and a plugin system with at least one confirmed

@@ -142,7 +142,9 @@ class TestGeminiInstall(HostInstallBase):
         bad = "{ this is not json"
         (gdir / "settings.json").write_text(bad, encoding="utf-8")
         for force in (False, True):
-            out = self.ok(install("gemini", self.root, force=force))
+            r = install("gemini", self.root, force=force)
+            self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+            out = r.stdout + r.stderr
             self.assertEqual((gdir / "settings.json").read_text(encoding="utf-8"), bad)
             self.assertTrue(
                 any("skipped" in ln for ln in lines_with(out, "settings.json")), out)
@@ -210,7 +212,9 @@ class TestOpencodeInstall(HostInstallBase):
         odir.mkdir()
         bad = "{ nope"
         (odir / "opencode.json").write_text(bad, encoding="utf-8")
-        out = self.ok(install("opencode", self.root, force=True))
+        r = install("opencode", self.root, force=True)
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        out = r.stdout + r.stderr
         self.assertEqual((odir / "opencode.json").read_text(encoding="utf-8"), bad)
         self.assertTrue(any("skipped" in ln for ln in lines_with(out, "opencode.json")), out)
 
@@ -333,7 +337,9 @@ class TestAntigravityInstall(HostInstallBase):
         adir = self.root / ".agents"
         adir.mkdir()
         (adir / "hooks.json").write_text("{ not json", encoding="utf-8")
-        out = self.ok(install("antigravity", self.root))
+        r = install("antigravity", self.root)
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        out = r.stdout + r.stderr
         self.assertEqual((adir / "hooks.json").read_text(encoding="utf-8"), "{ not json")
         self.assertTrue(any("skipped" in ln for ln in lines_with(out, "hooks.json")), out)
 
@@ -410,6 +416,109 @@ class TestSymlinkSafety(HostInstallBase):
         self.assertFalse(is_link(link))
         self.assertTrue((link / "CORE.md").is_file())
         self.assert_target_untouched()
+
+
+class TestAmendment1Hardening(HostInstallBase):
+    """Amendment 1 (T-15): Y4 hard-link safe writes, Y5 exit 1 when a gate registration is skipped."""
+
+    def make_outside(self, text="SENTINEL-outside"):
+        outside_dir = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, str(outside_dir), True)
+        outside = outside_dir / "outside.md"
+        outside.write_text(text, encoding="utf-8")
+        return outside_dir, outside
+
+    def hard_link_rule(self, outside):
+        rules = self.root / ".agents" / "rules"
+        rules.mkdir(parents=True)
+        rule = rules / "aidd.md"
+        try:
+            os.link(str(outside), str(rule))
+        except (OSError, NotImplementedError, AttributeError) as e:
+            self.skipTest(f"cannot create a hard link on this machine: {e}")
+        return rule
+
+    def template_bytes(self):
+        # A fresh install in a scratch root yields the shipped template.
+        with tempfile.TemporaryDirectory() as td:
+            r = install("antigravity", td)
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+            return (Path(td) / ".agents" / "rules" / "aidd.md").read_bytes()
+
+    # ---- Y4
+    def test_hard_linked_rule_replaced_not_written_through_with_force(self):
+        _, outside = self.make_outside()
+        rule = self.hard_link_rule(outside)
+        self.ok(install("antigravity", self.root, force=True))
+        self.assertEqual(rule.read_bytes(), self.template_bytes())
+        self.assertEqual(outside.read_text(encoding="utf-8"), "SENTINEL-outside")
+
+    def test_hard_linked_rule_with_other_content_skipped_without_force(self):
+        _, outside = self.make_outside()
+        rule = self.hard_link_rule(outside)
+        out = self.ok(install("antigravity", self.root))
+        self.assertTrue(any("skipped" in ln for ln in lines_with(out, ".agents/rules/aidd.md")), out)
+        self.assertEqual(outside.read_text(encoding="utf-8"), "SENTINEL-outside")
+        self.assertEqual(rule.read_text(encoding="utf-8"), "SENTINEL-outside")
+
+    def test_hard_linked_rule_equal_to_template_is_unchanged(self):
+        tpl = self.template_bytes()
+        outside_dir, outside = self.make_outside()
+        outside.write_bytes(tpl)
+        self.hard_link_rule(outside)
+        out = self.ok(install("antigravity", self.root))
+        ls = lines_with(out, ".agents/rules/aidd.md")
+        self.assertTrue(ls and all("unchanged" in ln for ln in ls), out)
+        self.assertEqual(outside.read_bytes(), tpl)
+
+    # ---- Y5
+    def test_corrupt_registration_exits_1_all_hosts_even_with_force(self):
+        cases = (("antigravity", ".agents/hooks.json"),
+                 ("gemini", ".gemini/settings.json"),
+                 ("opencode", ".opencode/opencode.json"))
+        for host, rel in cases:
+            for force in (False, True):
+                with self.subTest(host=host, force=force):
+                    with tempfile.TemporaryDirectory() as td:
+                        f = Path(td) / rel
+                        f.parent.mkdir(parents=True)
+                        f.write_text("{ not json", encoding="utf-8")
+                        r = install(host, td, force=force)
+                        out = r.stdout + r.stderr
+                        self.assertEqual(r.returncode, 1, out)
+                        self.assertEqual(f.read_text(encoding="utf-8"), "{ not json")
+                        self.assertTrue(any("skipped" in ln for ln in lines_with(out, Path(rel).name)), out)
+
+    def test_healthy_install_still_exits_0_all_hosts(self):
+        for host in ("antigravity", "gemini", "opencode"):
+            with self.subTest(host=host):
+                with tempfile.TemporaryDirectory() as td:
+                    self.ok(install(host, td))
+                    self.ok(install(host, td))
+                    self.ok(install(host, td, force=True))
+
+    def test_linked_agents_dir_exits_1_without_force_and_0_with_force(self):
+        target = self.root.parent / (self.root.name + "-agents-target")
+        target.mkdir()
+        self.addCleanup(shutil.rmtree, str(target), True)
+        sentinel = target / "sentinel.txt"
+        sentinel.write_text("do not touch", encoding="utf-8")
+        before = sorted(p.name for p in target.iterdir())
+        link = self.root / ".agents"
+        if not make_dir_link(link, target):
+            self.skipTest("cannot create a directory symlink or junction on this machine")
+        r = install("antigravity", self.root)
+        out = r.stdout + r.stderr
+        self.assertEqual(r.returncode, 1, out)
+        self.assertTrue(any("skipped" in ln for ln in lines_with(out, ".agents/hooks.json")), out)
+        self.assertTrue(is_link(link))
+        self.assertEqual(sentinel.read_text(encoding="utf-8"), "do not touch")
+        self.assertEqual(sorted(p.name for p in target.iterdir()), before)
+        self.ok(install("antigravity", self.root, force=True))
+        self.assertFalse(is_link(link), "link must be replaced with --force")
+        self.assertTrue((link / "hooks.json").is_file())
+        self.assertEqual(sentinel.read_text(encoding="utf-8"), "do not touch")
+        self.assertEqual(sorted(p.name for p in target.iterdir()), before)
 
 
 if __name__ == "__main__":

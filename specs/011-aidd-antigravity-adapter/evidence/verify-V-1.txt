@@ -1,4 +1,4 @@
-# python -m pytest tests/test_host_gates.py -q | exit 0 | 2026-10-13T23:11:29
-.............................................. [ 85%]
-........                                                   [100%]
-54 passed, 112 subtests passed in 77.71s (0:01:17)
+# python -m pytest tests/test_host_gates.py -q | exit 0 | 2026-10-14T02:13:52
+.............................................. [ 61%]
+.............................                          [100%]
+75 passed, 260 subtests passed in 96.50s (0:01:36)

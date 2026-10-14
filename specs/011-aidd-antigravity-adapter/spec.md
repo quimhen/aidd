@@ -21,7 +21,7 @@ Risk: high
 
 - **Objective:** Make AIDD enforce its rules on Antigravity (install, short always-on rule, write gate) and replace the symlinked 70 KB skill in b1SycLink.
 - **Scope:** `antigravity` host in `host_adapter.py` (event normalisation and the stdout JSON decision protocol), `aidd install --host antigravity`, `aidd doctor` checks, protection of `.agents/hooks.json`, a thin `SKILL.md` and an always-on rule in `adapters/antigravity/`, docs; then run the install in b1SycLink. Out: Gemini CLI, OpenCode, Antigravity app/IDE verification beyond the CLI, the file-symlink gap of spec 010 (X1).
-- **Cost:** 10 tasks, 3 waves, about 36 min and 565k tokens.
+- **Cost:** 18 tasks, 6 waves, about 70 min and 1020k tokens (the original 10 tasks T-01 to T-10, 3 waves, 36 min, 565k tokens, plus Amendment 1: 8 tasks T-11 to T-18, 3 waves, 34 min, 455k tokens, hardening the closing-audit exceptions Y1 to Y5 as FR-1109 to FR-1113).
 - **Risks:** the installer must never write through a symlink (it would edit the repo's skill folder): detected and tested; the hook relative path depends on the hook cwd (observed `.agents`): the command is `../.aidd/hooks/host_adapter.py` and doctor D5 proves it; `--dangerously-skip-permissions` may skip hooks (to be measured and documented).
 - **Open decisions:** none.
 
@@ -57,6 +57,11 @@ None: no `SCREEN-nn` code appears in this spec.
 | FR-1106 | `.agents/hooks.json` is protected from agent writes like the other host gate files (R9), for file tools and the shell guard; other files under `.agents/` stay writable | — |
 | FR-1107 | The docs state the Antigravity install and its limits: hook cwd, `--dangerously-skip-permissions` behaviour as measured, app and IDE not verified, no `Stop` hook, user-level hooks file not protected; `CORE.md` lists the Antigravity tool names in its host table | — |
 | FR-1108 | In b1SycLink the symlinked skill is replaced by the real install and `aidd doctor --host antigravity` passes there | — |
+| FR-1109 | Amendment 1 (Y1): in the PRE phase `host_adapter.py` never lets a JSON nesting bomb turn into allow: stdin whose nesting depth exceeds 100 is denied (exit-code hosts: exit 2 with a message; Antigravity: `{"decision":"deny","reason":...}`), a `RecursionError` while parsing is treated the same, an Antigravity `ReplacementChunks` value that cannot be parsed into edits is denied, while plain non-JSON garbage and empty stdin keep their current behaviour and the POST phase never denies | — |
+| FR-1110 | Amendment 1 (Y2): `rule_gate.py` protects the plugin hook registrations `.agents/plugins/<name>/hooks.json` (project) and the user-level Antigravity hook file `~/.gemini/config/hooks.json` (for file tools by its canonical absolute path, for the shell guard by the suffix `.gemini/config/hooks.json` on ANY token, absolute, relative, `$HOME` or `%USERPROFILE%` forms); other `.agents/**` files stay writable | — |
+| FR-1111 | Amendment 1 (Y3): `rule_gate.py` protects the files that could shadow the hook interpreter when the hook runs with cwd `.agents`: direct children of `.agents` named `python*` or ending `.bat`, `.cmd`, `.exe`, `.com`, `.ps1` (file tools and shell guard, including a copier whose destination is the `.agents` folder: its source basenames are matched against the same patterns); `.agents/rules/**` and `.agents/skills/**` stay writable | — |
+| FR-1112 | Amendment 1 (Y4): the installer writes every file through a temporary file in the same folder and `os.replace`, so a hard link at the destination is broken instead of written through (the linked outside file is never modified) | — |
+| FR-1113 | Amendment 1 (Y5): the adapter denies a gated write whose target path is present but not a string, resolves a relative target against the project found from the process cwd (the hook's own `.agents`) when `workspacePaths` is missing, and `aidd install` exits 1 when the gate registration file (`.agents/hooks.json`, `.gemini/settings.json`, `.opencode/opencode.json`) is skipped | — |
 
 ## Acceptance cases
 
@@ -69,6 +74,11 @@ None: no `SCREEN-nn` code appears in this spec.
 | AC-1105 | real `agy` in a scratch project installed with `aidd install --host antigravity` and an unapproved spec | a `write_to_file` of `src/app.py` is denied and the file does not exist; the model sees the R6 message | no |
 | AC-1106 | the same real `agy` with `--dangerously-skip-permissions` | outcome measured and written in the README (hooks run or not) | yes |
 | AC-1107 | an agent edit of `.agents/hooks.json` through `write_to_file` or `run_command` | denied (R9, FR-1106) | no |
+| AC-1108 | Amendment 1: the real payload of `write_to_file` with an extra key nested 3,000 levels deep (the security audit showed deny up to depth 1,200 and allow at 3,000) | denied on every host, never allow | yes |
+| AC-1109 | Amendment 1: `write_to_file` of `<project>/.agents/plugins/p/hooks.json` and of `~/.gemini/config/hooks.json`; `echo x > .agents/plugins/p/hooks.json` | denied; `.agents/rules/x.md` still allowed | yes |
+| AC-1110 | Amendment 1: the real agy asked to create `.agents/python.bat` (the probe file of the real hijack test) | denied by the gate, the file does not exist; `.agents/rules/x.md` is still creatable | yes |
+| AC-1111 | Amendment 1: `.agents/rules/aidd.md` planted as a HARD link to an outside file containing a sentinel; `aidd install --host antigravity --force` | the rule file is replaced by the template, the outside file and its sentinel are untouched | yes |
+| AC-1112 | Amendment 1: `TargetFile` given as a list; a relative `TargetFile` with `workspacePaths` missing and the process cwd `<project>/.agents`; `.agents` linked and no `--force` | denied; resolved against the project and gated; the install exits 1 | yes |
 
 ## Verification
 
@@ -80,6 +90,7 @@ Scope: auto
 | V-2 | python -m pytest tests/test_host_install.py tests/test_host_doctor.py -q | exit 0 | FR-1103, FR-1104, FR-1105 |
 | V-3 | python -m pytest tests/test_dot_aidd_mirror.py tests/test_rule_gate.py -q | exit 0 | FR-1106 |
 | V-4 | python tests/run_parallel.py | exit 0 | FR-1101 |
+| V-5 | python -m pytest tests/test_host_gates.py tests/test_host_install.py tests/test_rule_gate.py tests/test_rule_gate_shell_speed.py -q | exit 0 | FR-1109, FR-1110, FR-1111, FR-1112, FR-1113 |
 
 ## Optimization brief
 
