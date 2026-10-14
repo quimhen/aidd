@@ -471,18 +471,47 @@ def _global(root):
         'stop_block_exhausted': ev.count(root, 'stop_block_exhausted'),
         'hook_errors': len(errs),
         'last_hook_error': (errs[-1]['detail'] if errs else None),
+        'last_hook_error_ts': (errs[-1]['ts'] if errs else None),
         'open_specs': ev.open_specs(root),
         # aidd:FR-201 aidd:FR-208 gate pointer + its last changes, warn/off overrides, effective modes
         'gate_pointer': _safe(lambda: ev.get_gate_spec(root), ''),
         'gate_pointer_changes': _safe(lambda: ev.recent_gate_pointer_changes(root, 5), []),
-        'overrides': _safe(lambda: ev.count(root, 'rules_override'), 0),
         'rules_mode': _rules_mode(),
         'r5_mode': _safe(rules.r5_audit_mode, 'advisory'),
+        **_safe(lambda: _override_stats(root), {'overrides': 0, 'overrides_recent': 0,
+                                                'overrides_newest_ts': None}),
     }
 
 
+OVERRIDE_RECENT_DAYS = 7
+
+
+def _override_stats(root):
+    """aidd:FR-914 `rules_override` events: total, those in the last 7 days, newest ts. `overrides` stays
+    the total (existing key)."""
+    tss = [e['ts'] for e in ev.events(root, kind='rules_override')]
+    cut = time.time() - OVERRIDE_RECENT_DAYS * 86400
+    return {'overrides': len(tss), 'overrides_recent': sum(1 for t in tss if t >= cut),
+            'overrides_newest_ts': (max(tss) if tss else None)}
+
+
+def _date_text(ts):
+    """YYYY-MM-DD (local) of an epoch ts; 'unknown date' when absent or invalid."""
+    try:
+        return datetime.fromtimestamp(float(ts)).strftime('%Y-%m-%d')
+    except (TypeError, ValueError, OverflowError, OSError):
+        return 'unknown date'
+
+
+def _overrides_text(g):
+    """'rules_override: 0 in the last 7 days (199 total, newest 2026-10-05)'."""
+    return (f"rules_override: {g.get('overrides_recent', 0)} in the last {OVERRIDE_RECENT_DAYS} days "
+            f"({g.get('overrides', 0)} total, newest {_date_text(g.get('overrides_newest_ts'))})")
+
+
 _DEGRADED_GLOBAL = {'answers': 0, 'questions': 0, 'user_answered': False, 'stop_blocks': {},
-                    'stop_block_exhausted': 0, 'hook_errors': 0, 'last_hook_error': None, 'open_specs': [],
+                    'stop_block_exhausted': 0, 'hook_errors': 0, 'last_hook_error': None, 'last_hook_error_ts': None,
+                    'open_specs': [], 'overrides_recent': 0, 'overrides_newest_ts': None,
                     'gate_pointer': '', 'gate_pointer_changes': [], 'overrides': 0, 'r5_mode': 'advisory'}
 
 
@@ -618,8 +647,9 @@ def format_global(g):
         + f" · questions asked: {g['questions']}",
         f"Stop blocks: {stops}" + (f" · exhausted: {g['stop_block_exhausted']}" if g['stop_block_exhausted'] else ''),
         f"Hook errors: {g['hook_errors']}"
-        + (f" (last: {g['last_hook_error'].get('hook')}: {g['last_hook_error'].get('error')})"
-           if g['last_hook_error'] else ''),
+        + (f" total, last {_date_text(g.get('last_hook_error_ts'))}"
+           f" ({g['last_hook_error'].get('hook')}: {g['last_hook_error'].get('error')})"
+           if g['last_hook_error'] else ' total'),
         format_pointer(g),
     ]
     # aidd:FR-208 aidd:AC-214 shown only when they carry information (default output stays as before)
@@ -627,7 +657,9 @@ def format_global(g):
     if rm.get('mode') in ('warn', 'off'):
         lines.append(f"AIDD_RULES={rm['mode']} ({rm['note']}) - a last-resort diagnostic, not a workflow")
     if g.get('overrides'):
-        lines.append(f"warn overrides: {g['overrides']}")
+        # a recent override stays prominent (the owner must know the gate was bypassed lately)
+        lines.append(("warn overrides ACTIVE: " if g.get('overrides_recent') else "warn overrides: ")
+                     + _overrides_text(g))
     return '\n'.join(lines)
 
 
@@ -800,7 +832,7 @@ def _derived_facts(root, focus=None, fingerprint=None):
     facts['git'] = _safe(lambda: _git_facts(root), {'available': False})
     facts['gate_pointer'] = _safe(lambda: ev.get_gate_spec(root), '')
     facts['gate_pointer_changes'] = _safe(lambda: ev.recent_gate_pointer_changes(root, 5), [])
-    facts['overrides'] = _safe(lambda: ev.count(root, 'rules_override'), 0)
+    facts.update(_safe(lambda: _override_stats(root), {}))
     listed = set(_safe(lambda: ev.open_specs(root, include_approved=True), []))
     for extra in (facts['gate_pointer'], focus):
         if extra:
@@ -862,7 +894,7 @@ def format_refresh(facts):
     lines.append('  ' + format_pointer(f))
     rm = f.get('rules_mode') or {}
     lines.append(f"  AIDD_RULES={rm.get('mode', 'enforce')}" + (f" ({rm['note']})" if rm.get('note') else ''))
-    lines.append(f"  warn overrides: {f.get('overrides', 0)} · R5 audits: {f.get('r5_mode', 'advisory')}")
+    lines.append(f"  warn overrides: {_overrides_text(f)} · R5 audits: {f.get('r5_mode', 'advisory')}")
     return '\n'.join(lines)
 
 

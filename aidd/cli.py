@@ -97,6 +97,27 @@ def cmd_pending(args):
     return _run("aidd_pending.py", args.pending_args)
 
 
+def cmd_install(args):
+    # Passthrough to install_host.py (`install <host> <root> [--force] [--json]`).
+    # Deliberately not cmd_init: that one rmtree's .aidd/; install_host never deletes.
+    out = ["install", args.host, args.project_root]
+    if args.force:
+        out.append("--force")
+    if args.json:
+        out.append("--json")
+    return _run("install_host.py", out)
+
+
+def cmd_doctor(args):
+    # Passthrough to aidd_doctor.py (`[--host H] [--root DIR] [--json]`).
+    out = ["--root", args.root]
+    if args.host:
+        out += ["--host", args.host]
+    if args.json:
+        out.append("--json")
+    return _run("aidd_doctor.py", out)
+
+
 def cmd_calibrate(args):
     # Passthrough to aidd_calibrate.py (`record <spec_dir>`).
     return _run("aidd_calibrate.py", [args.action, args.spec_dir])
@@ -238,6 +259,7 @@ def cmd_init(args):
     print("agent tool actually reads it — `aidd init` alone doesn't wire that up.")
     print("For Gemini CLI, Cursor, Windsurf, Cline, or GitHub Copilot, also run:")
     print(f"  aidd adapters generate all {args.target}")
+    print("For Gemini CLI or OpenCode with enforced gates, run: aidd install --host <gemini|opencode>")
     return 0
 
 
@@ -298,6 +320,23 @@ def build_parser():
         add_help=False)
     p_pending.add_argument("pending_args", nargs=argparse.REMAINDER, help="forwarded to aidd_pending.py (try: aidd pending specs/001-x --json)")
     p_pending.set_defaults(func=cmd_pending)
+
+    p_install = sub.add_parser(
+        "install", help="Install AIDD for one host (gemini|opencode) into a project: methodology + enforced gate hooks; never deletes existing files",
+    )
+    p_install.add_argument("--host", required=True, choices=["gemini", "opencode"], help="host to install for")
+    p_install.add_argument("project_root", nargs="?", default=".", help="project root (default: current directory)")
+    p_install.add_argument("--force", action="store_true", help="overwrite locally modified shipped files")
+    p_install.add_argument("--json", action="store_true", help="print a JSON list of {path,status,reason}")
+    p_install.set_defaults(func=cmd_install)
+
+    p_doctor = sub.add_parser(
+        "doctor", help="Check that a host install is complete and its gates are wired (exit code from aidd_doctor.py)",
+    )
+    p_doctor.add_argument("--host", choices=["gemini", "opencode"], help="check one host (default: every detected host)")
+    p_doctor.add_argument("--root", default=".", help="project root (default: current directory)")
+    p_doctor.add_argument("--json", action="store_true", help="print the report as JSON")
+    p_doctor.set_defaults(func=cmd_doctor)
 
     p_progress = sub.add_parser(
         "progress", help="Implementation %% per spec (target files present / marked aidd:<code>) plus approved/verify/audit/closed stages; no LLM, no third-party graph; writes .aidd/graphs/progress.json",

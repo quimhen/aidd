@@ -5,9 +5,9 @@ description: AIDD — the default analysis-and-planning pipeline for ANY change 
 
 # AIDD — AI-Driven Development
 
-Full methodology lives in `.aidd/AIDD.md` (shared across every agent tool in this project, not
-duplicated per tool) — **read it in full before planning or implementing anything**. This file
-is a thin pointer, not a second copy, so the methodology never drifts between tools.
+Thin pointer. The short core is `.aidd/CORE.md` (~6 KB): **read it first (it is short)**. The full
+methodology `.aidd/AIDD.md` is ~120 KB and OpenCode truncates a read at ~50 KB, so never load it
+whole — `CORE.md` section 6 shows how to read one section at a time.
 
 ## Before anything else: search, don't duplicate
 
@@ -17,13 +17,17 @@ python .aidd/scripts/find_spec.py <keywords describing the request, or a SCREEN-
 
 - Exit code 0 → **amendment** to the top-ranked existing spec under `specs/` — reopen it, never a new folder.
 - Exit code 1 → safe to create a new `specs/[###-feature]/`.
-- `find_spec.py --tree <spec-id>` prints that spec's use-case → screen → component → control → API graph.
 
-State the classification before proceeding: `AIDD intake: NEW SPEC | AMENDMENT | AMENDMENT — Fast Lane — <reason>`.
+State the classification: `AIDD intake: NEW SPEC | AMENDMENT | AMENDMENT — Fast Lane — <reason>`.
 
-## Then follow `.aidd/AIDD.md`
+## OpenCode specifics
 
-Search (above) → Step 0 (visual source, only if the change has a UI) → Step 1/1.5 (mockup audit
-+ flow) → Step 2 Align → Step 3 Plan → Step 4 Tasks → Step 5 Build → Step 6 Converge → Step 7
-Documentation — or the Fast Lane for a small, contained change. Run
-`python .aidd/scripts/check_spec.py specs/[###-feature]/` before a manual audit pass (Step 6).
+- Ask the owner with the `question` tool; dispatch independent work with the subagent tool.
+- The `aidd.js` plugin gate blocks gated writes once installed (`aidd install --host opencode`;
+  verify with `aidd doctor --host opencode`). If it is missing, run the checks yourself
+  (`CORE.md` section 2): `aidd rules check specs/<id>` before the first code edit,
+  `check_spec.py` after editing spec/plan/tasks, `aidd status` before ending.
+- A task is done only when executed (and compared with the mockup for a screen): `CORE.md` section 4.
+
+Pipeline: Step -1 search → 0/1/1.5 visual (only with a mockup) → 2 Align → 3 Plan → 4 Tasks →
+5 Build → 6 Converge → 7 Doc, or the Fast Lane for a small contained change.

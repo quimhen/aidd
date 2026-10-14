@@ -5,7 +5,9 @@ PreToolUse hook (matcher: "Write|Edit|MultiEdit|NotebookEdit|Bash") — the sing
 
 One process instead of four. For file-writing tools, in order:
   1. R9  the WHOLE `.aidd/` directory (evidence log, active_spec pointer, ...) is never writable by
-         the agent, EXCEPT `.aidd/memory/**`
+         the agent, EXCEPT `.aidd/memory/**`; nor are the host gate registrations (FR-911, project-relative:
+         `.gemini/settings.json`, `.gemini/.env`, `.opencode/opencode.json`, `.opencode/plugins/aidd.js`) - reading them stays allowed
+         nor may a file tool ADD an AIDD_RULES/TESTING/EVIDENCE_DIR/SESSION_ID line to any `.env`/`.env.*` (S1)
   2. the three legacy gates, in-process (require_aidd, require_independent_audit,
      require_graph_coherence_audit — fail-closed for specs/<id>/plan.md|tasks.md), fed the CANONICAL path
   1b. FR-204: `specs/<any-id>/review.md` and `review.html` are owner-only (USER_ONLY_SPEC_FILES), whatever the id
@@ -40,7 +42,8 @@ quoted bodies of `powershell -c "..."` / `node -e` are parsed one level deep - s
 assembled from pieces that never appears whole, or a script file written elsewhere, is not seen). The approval
 gate itself mints the `approved` event after verifying the tagged Approve answer ([tasks:<hash8>]).
 
-Environment (owner-only escape hatch, set by the human in settings.json `env`):
+Environment (owner-only escape hatch, set by the human in the environment that launches the host; for Claude Code
+the `env` block of settings.json):
   AIDD_RULES=off|0|false|no  do nothing        AIDD_RULES=warn  print what would block, never block
   anything else (trimmed, case-insensitive) enforces.
 
@@ -56,7 +59,14 @@ SCRIPTS_DIR = os.path.join(os.path.dirname(HOOKS_DIR), 'scripts')
 
 # aidd:FR-204 review.md / review.html are markers too: `echo x > review.md` run with cwd = specs/<id>/ names no other one
 BASH_MARKERS = ('.aidd', 'events.toon', 'active_spec', 'evidence', 'aidd_', 'specs', 'tasks.md', 'aidd-hooks',
-                'review.md', 'review.html')
+                'review.md', 'review.html',
+                # aidd:FR-911 the host gate registrations (and their folders, so `rm -r .gemini` is examined too)
+                '.gemini', '.opencode', 'settings.json', 'opencode.json', 'aidd.js')
+# aidd:FR-911 project-relative files that carry the gate on each host (R9-protected like `.aidd/`; reads allowed)
+HOST_GATE_FILES = (('.gemini', 'settings.json'), ('.gemini', '.env'), ('.opencode', 'opencode.json'),
+                   ('.opencode', 'plugins', 'aidd.js'))
+# aidd:FR-911 S1 the AIDD control variables; a `.env` / `.env.*` file may never be given one by a file tool
+ENV_CONTROL_RE = r'(?i)AIDD_(RULES|TESTING|EVIDENCE_DIR|SESSION_ID)'
 SHELL_TOOLS = ('Bash', 'PowerShell')
 # aidd:FR-313 same negative lookahead as aidd_status.APPROVE_LABEL: a label starting `aprobar con resum...` never
 # matches the generic tagged-answer route (only the exact label, through `_summary_answer`, mints source=summary)
@@ -69,7 +79,7 @@ MAX_LISTED = 6
 R9_MESSAGE = ('aidd R9: the `.aidd/` directory (evidence log, active_spec, ...) is written by hooks only; the agent '
               'may not write it (only `.aidd/memory/**` is writable).\nNext action: do not edit these files. If the '
               'evidence log is wrong, ask the user; they can reset it themselves (owner-only: AIDD_RULES=warn|off in '
-              'settings.json env).')
+              'the environment that launches the host (for Claude Code: the env block of settings.json)).')
 R9_BASH_MESSAGE = ('aidd R9 (Bash/PowerShell): this command writes, deletes, moves, copies or redirects into the '
                    'protected `.aidd/` directory (evidence log / active_spec), the per-session evidence logs or '
                    'specs/, imports the aidd evidence libraries, sets AIDD_* control variables or forges the tasks '
@@ -77,7 +87,13 @@ R9_BASH_MESSAGE = ('aidd R9 (Bash/PowerShell): this command writes, deletes, mov
                    '(cat, ls, grep, type, Get-Content, `aidd status`) are fine. If the evidence log is wrong, ask '
                    'the user. Note: this Bash check is lexical - obfuscated forms (variables, globs, base64, a '
                    'separate script) are NOT detected, and Bash edits of code files are not gated; do not rely on '
-                   'that. (Owner-only override: AIDD_RULES=warn|off in settings.json env.)')
+                   'that. (Owner-only override: AIDD_RULES=warn|off in the environment that launches the host '
+                   '(for Claude Code: the env block of settings.json).)')
+HOST_GATE_MESSAGE = ('aidd R9 (FR-911): this is a protected AIDD gate file (the host registration that runs the AIDD '
+                     'gate: .gemini/settings.json, .gemini/.env, .opencode/opencode.json or '
+                     '.opencode/plugins/aidd.js); the agent '
+                     'may not write, move or delete it. Reading it is fine.\nNext action: do not edit it. The owner '
+                     'edits it, or reruns `aidd install --host <h>` to restore it; ask the user if it needs a change.')
 # aidd:FR-204 aidd:AC-207
 REVIEW_MESSAGE = ('aidd R6 (review): `specs/<id>/review.html` is generated only by `aidd review <spec_dir>` and '
                   '`specs/<id>/review.md` is the OWNER\'s answer (the page saves it itself); the agent may not write, '
@@ -86,7 +102,14 @@ REVIEW_MESSAGE = ('aidd R6 (review): `specs/<id>/review.html` is generated only 
                   'on the page); when it returns, ask the owner ONE question with the tag `[tasks:<hash8>]` and run '
                   '`aidd rules approve specs/<id>`. Agents never read review.md/review.html: they only run '
                   '`aidd review <spec> --check`, `--wait` or `--comments`. '
-                  '(Owner-only override: AIDD_RULES=warn|off in settings.json env.)')
+                  '(Owner-only override: AIDD_RULES=warn|off in the environment that launches the host '
+                  '(for Claude Code: the env block of settings.json).)')
+# aidd:FR-911 S1 a host loads `.env` at startup, so writing a control variable there would switch the gate off
+ENV_MESSAGE = ('aidd R9 (FR-911): this write would put an AIDD control variable (AIDD_RULES, AIDD_TESTING, '
+               'AIDD_EVIDENCE_DIR or AIDD_SESSION_ID) into a `.env` file, which the host loads at startup. AIDD '
+               'control variables may only be set by the owner in the environment that launches the host, never '
+               'written by the agent.\nNext action: remove the AIDD_* line from this write; other `.env` content '
+               'stays writable. Ask the user if the gate mode needs to change.')
 
 
 # ----------------------------------------------------------------------------- utils
@@ -611,6 +634,38 @@ def _protected(ev, cp, segs):
     return _session_log(ev, cp) or _transcript_path(cp)
 
 
+def _host_gate_file(ev, cp):
+    """aidd:FR-911 R9: `cp` (canonical) is a host gate registration RELATIVE TO a project root (an ancestor with
+    specs/ or .aidd/), so `~/.gemini/settings.json` or `.opencode/plugins/graphify.js` stay writable."""
+    for root in ev.project_roots(cp):
+        rel = ev.rel_to_root(cp, root)
+        if rel and tuple(_norm_comp(s) for s in rel.split('/') if s) in HOST_GATE_FILES:
+            return True
+    return False
+
+
+def _env_control_write(ti, rp, name):
+    """aidd:FR-911 S1: a file-tool write to a `.env` / `.env.*` file (any folder) that ADDS an AIDD control variable.
+    Cheap: the basename is checked first; only then the inserted text (content / new_string / each edit's
+    new_string / new_source) is scanned, plus the would-be file against the current one (so a name assembled from
+    an edit around existing text is caught, while an owner-set line already in the file does not freeze it)."""
+    if not (name == '.env' or name.startswith('.env.')):
+        return False
+    import re
+    pieces = [ti.get(k) for k in ('content', 'new_string', 'new_source')]
+    edits = ti.get('edits')
+    if isinstance(edits, list):
+        pieces += [e.get('new_string') for e in edits if isinstance(e, dict)]
+    if any(isinstance(p, str) and re.search(ENV_CONTROL_RE, p) for p in pieces):
+        return True
+    new_text, _whole, cur_text, too_big = _would_be(ti, rp, 2 * 1024 * 1024)
+    if too_big:
+        return False
+    if new_text is not None:
+        return len(re.findall(ENV_CONTROL_RE, new_text)) > len(re.findall(ENV_CONTROL_RE, cur_text or ''))
+    return False
+
+
 def _transcript_path(p):
     """R9: host transcript files (.claude/projects/<proj>/<session>.jsonl) are not agent-writable."""
     import re
@@ -668,6 +723,10 @@ def _decide_path(event, ti, fp):
     # (1) R9
     if _protected(ev, cp, segs):
         return True, R9_MESSAGE
+    if _host_gate_file(ev, cp):
+        return True, HOST_GATE_MESSAGE
+    if _env_control_write(ti, rp, _norm_comp(name)):            # aidd:FR-911 S1 `.env` cannot switch the gate off
+        return True, ENV_MESSAGE
 
     # (1b) aidd:FR-204 aidd:AC-207 owner-only review artifacts, any spec id, after canonicalisation
     if C.is_user_only_spec_file(cp):
@@ -972,6 +1031,40 @@ def _prot_tok(tok, ctx_aidd, cwd_prot):
     if cwd_prot and not t.startswith('-') and not (t.startswith('/') or ':' in t[:3]):
         return True   # relative name while the shell sits inside .aidd/
     return False
+
+
+_HOST_GATE_RE = (r'(?<![\w-])\.gemini[. ]*/[./]*settings\.json(?![\w-])'
+                 r'|(?<![\w-])\.gemini[. ]*/\.env(?![\w.-])'
+                 r'|(?<![\w-])\.opencode[. ]*/[./]*(?:opencode\.json|plugins[. ]*/[./]*aidd\.js)(?![\w-])')
+# a deleter / mover naming one of these folders removes the registration with it (writes INTO them stay allowed)
+_HOST_GATE_DIRS = {('.gemini',), ('.opencode',), ('.opencode', 'plugins')}
+
+
+def _host_mention(lown):
+    """aidd:FR-911 the (lowercased, `/`-normalised) text names a host gate registration."""
+    import re
+    return bool(re.search(_HOST_GATE_RE, lown))
+
+
+def _host_tok(tok, cwd_abs=None, dirs=False):
+    """aidd:FR-911 a path token naming a host gate registration (or, with `dirs`, one of its folders). A relative
+    token counts on its trailing segments (`../.gemini/settings.json`) or, resolved against the tracked shell cwd,
+    on its ROOT-relative path (`cd .opencode/plugins && echo x > aidd.js`); an absolute one only on its
+    root-relative path, so `~/.gemini/settings.json` outside a project stays writable."""
+    t = _tok_norm(tok)
+    if not t:
+        return False
+    segs = tuple(_norm_comp(x) for x in t.split('/') if x and x != '.')
+    if not segs:
+        return False
+    targets = set(HOST_GATE_FILES) | (_HOST_GATE_DIRS if dirs else set())
+    if not _is_abs(t) and any(segs[-len(h):] == h for h in targets if len(segs) >= len(h)):
+        return True
+    p = _abs_path(tok, cwd_abs)
+    if p is None:
+        return False
+    rel = _locate(p)
+    return bool(rel) and tuple(rel) in targets
 
 
 REVIEW_FILE_NAMES = ('review.md', 'review.html')
@@ -1364,7 +1457,8 @@ def _shell_block(cmd, ctx, depth=0):
                 if tgt.startswith('&') or _name(tgt) in ('nul', 'null'):
                     continue
                 ctx['writes'] = True
-                if _prot_tok(tgt, ctx_aidd, cwd_prot) or _specs_tok(tgt, cwd_specs, cwd_abs):
+                if (_prot_tok(tgt, ctx_aidd, cwd_prot) or _specs_tok(tgt, cwd_specs, cwd_abs)
+                        or _host_tok(tgt, cwd_abs)):
                     return True
         words = [t for t in toks if not _is_redirect_out(t)]
         k = 0
@@ -1381,7 +1475,8 @@ def _shell_block(cmd, ctx, depth=0):
         args = words[k + 1:]
 
         def hit(a):
-            return _prot_tok(a, ctx_aidd, cwd_prot) or (verb not in ('mkdir', 'md') and _specs_tok(a, cwd_specs, cwd_abs))
+            return (_prot_tok(a, ctx_aidd, cwd_prot) or (verb not in ('mkdir', 'md') and _specs_tok(a, cwd_specs, cwd_abs))
+                    or _host_tok(a, cwd_abs, dirs=verb in _DELETERS or verb in _MOVERS))   # aidd:FR-911
         prot_args = [a for a in args if hit(a)]
         pos = [a for a in args if not a.startswith('-') and not (a.startswith('/') and len(a) <= 3)]
         if verb == 'aidd':
@@ -1397,11 +1492,11 @@ def _shell_block(cmd, ctx, depth=0):
             ctx['review_named'] = True
             return True                                        # F-3: `rm *` / `rm *.html` while THIS segment sits in specs/<id>/
         if (verb in _DELETERS or verb in _MOVERS) and not pos and (
-                ctx_aidd or 'specs' in lown or 'aidd-hooks' in lown):
+                ctx_aidd or 'specs' in lown or 'aidd-hooks' in lown or _host_mention(lown)):
             return True                                        # `gci .aidd | ri` - the targets come from the pipeline
         if has_xargs and (verb in _DELETERS or verb in _MOVERS or verb in _WRITERS or verb in _COPIERS):
             ctx['writes'] = True
-            if ctx_aidd or 'specs' in lown or 'aidd-hooks' in lown:
+            if ctx_aidd or 'specs' in lown or 'aidd-hooks' in lown or _host_mention(lown):
                 return True                                    # `... | xargs rm`: targets come from stdin
         if verb in _DELETERS or verb in _MOVERS or verb in _WRITERS:
             if args:
@@ -1445,7 +1540,8 @@ def _shell_block(cmd, ctx, depth=0):
         return True                                            # N1/N2: never let a command touch these variables
     if _lib_import(low, all_words):
         return True
-    mention = _mentions(lown) or 'aidd-hooks' in lown or any(_specs_tok(w) for w in all_words)
+    mention = (_mentions(lown) or 'aidd-hooks' in lown or any(_specs_tok(w) for w in all_words)
+               or _host_mention(lown))                         # aidd:FR-911 host gate registrations
     if mention and _script_write(low):
         return True
     scripty = bool(set(verbs) & _INTERPRETERS) or '<<' in cmd or 'node -e' in low
@@ -1506,6 +1602,9 @@ def _decide_bash(event, ti):
         if ctx.get('review_named') or _names_review(low, [w for toks in _tokenize(cmd) for w in toks],
                                                     ctx.get('cwd_specs_seen', False)):
             return True, R9_BASH_MESSAGE + '\n' + REVIEW_MESSAGE
+        if _host_mention(low.replace('\\', '/')) or any(_host_tok(w, cwd_abs, dirs=True)
+                                                        for toks in _tokenize(cmd) for w in toks):
+            return True, R9_BASH_MESSAGE + '\n' + HOST_GATE_MESSAGE   # aidd:FR-911 names the gate file
         return True, R9_BASH_MESSAGE
     return False, ''
 

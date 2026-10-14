@@ -81,6 +81,21 @@ VERBATIM_SCRIPTS = [
     "sync_issues.py",
 ]
 
+SKILL_HOOKS = REPO_ROOT / "skill" / "hooks"
+DOTAIDD_HOOKS = REPO_ROOT / "adapters" / "dot-aidd" / "hooks"
+
+# Hooks carried BYTE-IDENTICAL into adapters/dot-aidd/hooks/ (host-parity
+# closure: the gate, its host adapter and the helpers they import).
+VERBATIM_HOOKS = [
+    "host_adapter.py",
+    "rule_gate.py",
+    "_common.py",
+    "require_aidd.py",
+    "require_independent_audit.py",
+    "require_graph_coherence_audit.py",
+    "mark_code_edit.py",
+]
+
 # Bundled provider extensions mirrored on both sides.
 PROVIDER_IDS = ["github", "azure_devops", "bitbucket"]
 
@@ -114,6 +129,24 @@ class TestScriptMirrorTextual(unittest.TestCase):
             "adapters/dot-aidd/scripts/ has drifted from skill/scripts/ for: "
             f"{mismatches}. These files must stay byte-identical hand-copies — "
             "re-copy skill/scripts/<name> over adapters/dot-aidd/scripts/<name>."
+        )
+
+
+class TestHookMirrorTextual(unittest.TestCase):
+    def test_verbatim_hooks_match(self):
+        mismatches = []
+        for name in VERBATIM_HOOKS:
+            skill_path = SKILL_HOOKS / name
+            dot_path = DOTAIDD_HOOKS / name
+            self.assertTrue(skill_path.is_file(), f"missing {skill_path}")
+            self.assertTrue(dot_path.is_file(), f"missing {dot_path}")
+            if skill_path.read_bytes() != dot_path.read_bytes():
+                mismatches.append(name)
+        self.assertEqual(
+            mismatches, [],
+            "adapters/dot-aidd/hooks/ has drifted from skill/hooks/ for: "
+            f"{mismatches}. These files must stay byte-identical hand-copies — "
+            "re-copy skill/hooks/<name> over adapters/dot-aidd/hooks/<name>."
         )
 
 
