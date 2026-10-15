@@ -20,7 +20,8 @@ def _find_scripts_dir() -> Path:
     skill/ bundled as package data at the same relative position — until
     this is published that way, this lookup is the one source of truth."""
     here = Path(__file__).resolve()
-    candidates = [here.parent.parent / "skill" / "scripts"]
+    candidates = [here.parent.parent / "skill" / "scripts",     # repo checkout / editable install
+                  here.parent / "_data" / "skill" / "scripts"]  # bundled in the wheel
     # Wheel install (e.g. Cowork, CI): use the skill installed for the current user, so the
     # command needs neither the source repo nor any particular drive or user name.
     if os.environ.get("AIDD_HOME"):
@@ -246,8 +247,10 @@ def cmd_init(args):
     step does — automated, so it's one command instead of a copy-paste."""
     import shutil
 
-    repo_root = Path(__file__).resolve().parent.parent
-    source = repo_root / "adapters" / "dot-aidd"
+    here = Path(__file__).resolve()
+    source = next((r / "adapters" / "dot-aidd" for r in (here.parent.parent, here.parent / "_data")
+                   if (r / "adapters" / "dot-aidd").is_dir()),
+                  here.parent.parent / "adapters" / "dot-aidd")
     if not source.is_dir():
         print(f"Could not find the .aidd bundle to install (looked at {source}).", file=sys.stderr)
         return 2
