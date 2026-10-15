@@ -7,6 +7,7 @@ channels (this CLI for a human at a terminal or CI; the skill's hooks for an
 AI agent) — never two copies of the logic to keep in sync.
 """
 import argparse
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -19,14 +20,19 @@ def _find_scripts_dir() -> Path:
     skill/ bundled as package data at the same relative position — until
     this is published that way, this lookup is the one source of truth."""
     here = Path(__file__).resolve()
-    candidate = here.parent.parent / "skill" / "scripts"
-    if candidate.is_dir():
-        return candidate
+    candidates = [here.parent.parent / "skill" / "scripts"]
+    # Wheel install (e.g. Cowork, CI): use the skill installed for the current user, so the
+    # command needs neither the source repo nor any particular drive or user name.
+    if os.environ.get("AIDD_HOME"):
+        candidates.append(Path(os.environ["AIDD_HOME"]).expanduser() / "scripts")
+    candidates.append(Path.home() / ".claude" / "skills" / "aidd" / "scripts")
+    for candidate in candidates:
+        if (candidate / "find_spec.py").is_file():
+            return candidate
     raise SystemExit(
-        "Could not locate skill/scripts/ relative to the installed aidd package "
-        f"(looked at {candidate}). If you're running from a wheel install rather "
-        "than a repo checkout or `pip install -e .`, this lookup doesn't support "
-        "that yet — see aidd/cli.py's _find_scripts_dir()."
+        "Could not locate the aidd scripts. Looked at:\n  "
+        + "\n  ".join(str(c) for c in candidates)
+        + "\nInstall the skill (copy it to ~/.claude/skills/aidd) or set AIDD_HOME to its folder."
     )
 
 
