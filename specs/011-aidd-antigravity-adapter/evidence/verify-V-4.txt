@@ -1,0 +1,8 @@
+# python tests/run_parallel.py | exit 0 | 2026-10-13T23:16:19
+  (flaky under load, passed alone: tests.test_aidd_rules_r10.TestR10)
+  (flaky under load, passed alone: tests.test_aidd_rules_r10.TestR11)
+  slowest: tests.test_host_doctor.TestChecksFail   36.4s
+  slowest: tests.test_aidd_status.TestVerify      27.4s
+  slowest: tests.test_aidd_status.TestSummaryRoute   22.0s
+
+48 module(s) in 327 unit(s), 0 failed, 105s wall with 8 workers

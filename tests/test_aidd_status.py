@@ -521,7 +521,9 @@ class TestStatusCommand(EvBase):
             out = run_script("status", cwd=root).stdout
             self.assertIn("(AskUserQuestion answered): 1", out)
             self.assertIn("Stop blocks: 001-x x2", out)
-            self.assertIn("Hook errors: 1 (last: stop_gate: oops)", out)
+            # FR-914: the line carries the date of the last error (was "Hook errors: 1 (last: ...)")
+            today = time.strftime("%Y-%m-%d")
+            self.assertIn(f"Hook errors: 1 total, last {today} (stop_gate: oops)", out)
 
     def test_pointer_is_informational_only(self):
         tmp, root, d = make_project()
@@ -2322,10 +2324,42 @@ class TestStatus007(Spec007Base):
             with mock.patch.dict(os.environ, {"AIDD_RULES": "warn"}):
                 out = run_script("status", cwd=root).stdout
                 self.assertIn("AIDD_RULES=warn", out)
-                self.assertIn("warn overrides: 2", out)
+                # FR-914: recent overrides headline (was "warn overrides: 2")
+                today = time.strftime("%Y-%m-%d")
+                self.assertIn(f"warn overrides ACTIVE: rules_override: 2 in the last 7 days "
+                              f"(2 total, newest {today})", out)
                 j = json.loads(run_script("status", "--json", cwd=root).stdout)
                 self.assertEqual(j["evidence"]["rules_mode"]["mode"], "warn")
                 self.assertEqual(j["evidence"]["overrides"], 2)
+                self.assertEqual(j["evidence"]["overrides_recent"], 2)
+                self.assertIsInstance(j["evidence"]["overrides_newest_ts"], float)
+
+    def test_old_overrides_and_hook_errors_are_dated_not_alarming(self):
+        """FR-914: only the last 7 days headline the overrides; old history shows dates."""
+        tmp, root, d = self.project()
+        with tmp:
+            old = time.time() - 30 * 86400
+            with mock.patch.object(ev.time, "time", return_value=old):
+                ev.append(root, "s1", "rules_override", hook="rule_gate", mode="warn")
+                ev.append(root, "s1", "rules_override", hook="stop_gate", mode="warn")
+                ev.append_hook_error(root, "s1", "old_hook", "fixed long ago")
+            old_day = time.strftime("%Y-%m-%d", time.localtime(old))
+            with mock.patch.dict(os.environ, {"AIDD_RULES": "enforce"}):
+                out = run_script("status", cwd=root).stdout
+                self.assertIn(f"warn overrides: rules_override: 0 in the last 7 days "
+                              f"(2 total, newest {old_day})", out)
+                self.assertNotIn("ACTIVE", out)
+                self.assertIn(f"Hook errors: 1 total, last {old_day} (old_hook: fixed long ago)", out)
+                j = json.loads(run_script("status", "--json", cwd=root).stdout)["evidence"]
+                self.assertEqual((j["overrides"], j["overrides_recent"]), (2, 0))
+                self.assertAlmostEqual(j["overrides_newest_ts"], old, delta=1)
+                self.assertAlmostEqual(j["last_hook_error_ts"], old, delta=1)
+                tick()
+                ev.append(root, "s1", "rules_override", hook="rule_gate", mode="warn")
+                out = run_script("status", cwd=root).stdout
+                today = time.strftime("%Y-%m-%d")
+                self.assertIn(f"warn overrides ACTIVE: rules_override: 1 in the last 7 days "
+                              f"(3 total, newest {today})", out)
 
     def test_refresh_without_git_is_unavailable_and_exit_zero(self):
         tmp, root, d = self.project("F23-eDoc-POS")

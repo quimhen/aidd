@@ -19,7 +19,7 @@ Risk: low | medium | high
 | Business objective (1 sentence — what it achieves and why) | | | → Step 2 align question |
 | Expected visual fidelity level (if there's a mockup): exact \| functional behavior only | | | → Step 2 align question |
 
-**Source (rule R3) — every answered row needs exactly one of:** `user — "<the user's own words, 3+ words>"` ·
+**Source (rule R3) — every answered row needs exactly one of:** `user — "<the user's own words: 5+ words typed after the first spec.md draft, or 2+ words when quoting an answer to a question>"` ·
 `repo — <path[:line]>` · `[Proposed — unconfirmed]`. An answer YOU chose yourself is always
 `[Proposed — unconfirmed]`; draft with it if you must, but planning (Step 3) is blocked until the user
 confirms each one and the Source becomes `user — "..."`. Quotes are checked against the recorded prompts.
@@ -43,7 +43,7 @@ Each bullet is capped (long text is cut). A legacy spec without this section sti
 ## Pipeline route
 
 Declare, for every step, whether it runs. Skipping a step needs the user: `waived` requires a Reason and a
-Confirmation of the form `user — "<their words, 3+ words>"` (verified against recorded prompts). Steps 0/1/1.5
+Confirmation of the form `user — "<their words: 5+ words typed after the first spec.md draft, or 2+ words when quoting an answer to a question>"` (verified against recorded prompts). Steps 0/1/1.5
 may only be waived for a change with no visual surface. Never waive a step on your own initiative.
 
 | Step | Status | Reason | Confirmation |
@@ -133,7 +133,7 @@ Owner pick:
 
 Not part of the Minimum Requirements Checklist above (those 7 rows stay as they are, and old specs without
 this section stay valid). Ask the ones that apply in Step 2 and record the answer with its Source
-(`user — "<their words, 3+ words>"` or `repo — <path[:line]>`). Blank = not asked yet, never guessed.
+(`user — "<their words: 5+ words typed after the first spec.md draft, or 2+ words when quoting an answer to a question>"` or `repo — <path[:line]>`). Blank = not asked yet, never guessed.
 
 | Question | Answer | Source |
 |---|---|---|

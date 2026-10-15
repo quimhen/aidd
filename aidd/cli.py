@@ -7,6 +7,7 @@ channels (this CLI for a human at a terminal or CI; the skill's hooks for an
 AI agent) — never two copies of the logic to keep in sync.
 """
 import argparse
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -19,14 +20,20 @@ def _find_scripts_dir() -> Path:
     skill/ bundled as package data at the same relative position — until
     this is published that way, this lookup is the one source of truth."""
     here = Path(__file__).resolve()
-    candidate = here.parent.parent / "skill" / "scripts"
-    if candidate.is_dir():
-        return candidate
+    candidates = [here.parent.parent / "skill" / "scripts",     # repo checkout / editable install
+                  here.parent / "_data" / "skill" / "scripts"]  # bundled in the wheel
+    # Wheel install (e.g. Cowork, CI): use the skill installed for the current user, so the
+    # command needs neither the source repo nor any particular drive or user name.
+    if os.environ.get("AIDD_HOME"):
+        candidates.append(Path(os.environ["AIDD_HOME"]).expanduser() / "scripts")
+    candidates.append(Path.home() / ".claude" / "skills" / "aidd" / "scripts")
+    for candidate in candidates:
+        if (candidate / "find_spec.py").is_file():
+            return candidate
     raise SystemExit(
-        "Could not locate skill/scripts/ relative to the installed aidd package "
-        f"(looked at {candidate}). If you're running from a wheel install rather "
-        "than a repo checkout or `pip install -e .`, this lookup doesn't support "
-        "that yet — see aidd/cli.py's _find_scripts_dir()."
+        "Could not locate the aidd scripts. Looked at:\n  "
+        + "\n  ".join(str(c) for c in candidates)
+        + "\nInstall the skill (copy it to ~/.claude/skills/aidd) or set AIDD_HOME to its folder."
     )
 
 
@@ -95,6 +102,27 @@ def cmd_progress(args):
 def cmd_pending(args):
     # Passthrough to aidd_pending.py (`<spec_dir|tasks.md> [--root DIR] [--json]`).
     return _run("aidd_pending.py", args.pending_args)
+
+
+def cmd_install(args):
+    # Passthrough to install_host.py (`install <host> <root> [--force] [--json]`).
+    # Deliberately not cmd_init: that one rmtree's .aidd/; install_host never deletes.
+    out = ["install", args.host, args.project_root]
+    if args.force:
+        out.append("--force")
+    if args.json:
+        out.append("--json")
+    return _run("install_host.py", out)
+
+
+def cmd_doctor(args):
+    # Passthrough to aidd_doctor.py (`[--host H] [--root DIR] [--json]`).
+    out = ["--root", args.root]
+    if args.host:
+        out += ["--host", args.host]
+    if args.json:
+        out.append("--json")
+    return _run("aidd_doctor.py", out)
 
 
 def cmd_calibrate(args):
@@ -219,8 +247,10 @@ def cmd_init(args):
     step does — automated, so it's one command instead of a copy-paste."""
     import shutil
 
-    repo_root = Path(__file__).resolve().parent.parent
-    source = repo_root / "adapters" / "dot-aidd"
+    here = Path(__file__).resolve()
+    source = next((r / "adapters" / "dot-aidd" for r in (here.parent.parent, here.parent / "_data")
+                   if (r / "adapters" / "dot-aidd").is_dir()),
+                  here.parent.parent / "adapters" / "dot-aidd")
     if not source.is_dir():
         print(f"Could not find the .aidd bundle to install (looked at {source}).", file=sys.stderr)
         return 2
@@ -238,6 +268,7 @@ def cmd_init(args):
     print("agent tool actually reads it — `aidd init` alone doesn't wire that up.")
     print("For Gemini CLI, Cursor, Windsurf, Cline, or GitHub Copilot, also run:")
     print(f"  aidd adapters generate all {args.target}")
+    print("For Gemini CLI, OpenCode or Antigravity with enforced gates, run: aidd install --host <gemini|opencode|antigravity>")
     return 0
 
 
@@ -298,6 +329,23 @@ def build_parser():
         add_help=False)
     p_pending.add_argument("pending_args", nargs=argparse.REMAINDER, help="forwarded to aidd_pending.py (try: aidd pending specs/001-x --json)")
     p_pending.set_defaults(func=cmd_pending)
+
+    p_install = sub.add_parser(
+        "install", help="Install AIDD for one host (gemini|opencode|antigravity) into a project: methodology + enforced gate hooks; never deletes existing files",
+    )
+    p_install.add_argument("--host", required=True, choices=["gemini", "opencode", "antigravity"], help="host to install for")
+    p_install.add_argument("project_root", nargs="?", default=".", help="project root (default: current directory)")
+    p_install.add_argument("--force", action="store_true", help="overwrite locally modified shipped files")
+    p_install.add_argument("--json", action="store_true", help="print a JSON list of {path,status,reason}")
+    p_install.set_defaults(func=cmd_install)
+
+    p_doctor = sub.add_parser(
+        "doctor", help="Check that a host install is complete and its gates are wired (exit code from aidd_doctor.py)",
+    )
+    p_doctor.add_argument("--host", choices=["gemini", "opencode", "antigravity"], help="check one host (default: every detected host)")
+    p_doctor.add_argument("--root", default=".", help="project root (default: current directory)")
+    p_doctor.add_argument("--json", action="store_true", help="print the report as JSON")
+    p_doctor.set_defaults(func=cmd_doctor)
 
     p_progress = sub.add_parser(
         "progress", help="Implementation %% per spec (target files present / marked aidd:<code>) plus approved/verify/audit/closed stages; no LLM, no third-party graph; writes .aidd/graphs/progress.json",

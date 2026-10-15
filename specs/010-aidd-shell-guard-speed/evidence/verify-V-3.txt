@@ -1,0 +1,9 @@
+# python tests/run_parallel.py | exit 0 | 2026-10-13T22:25:40
+  (flaky under load, passed alone: tests.test_aidd_rules_r10.TestR10)
+  (flaky under load, passed alone: tests.test_aidd_rules_r10.TestR11)
+  (flaky under load, passed alone: tests.test_host_gates.TestS3UnknownTools)
+  slowest: tests.test_host_doctor.TestChecksFail   41.6s
+  slowest: tests.test_rule_gate_shell_speed       36.6s
+  slowest: tests.test_rule_gate.TestModesAndRobustness   25.6s
+
+48 module(s) in 317 unit(s), 0 failed, 112s wall with 8 workers

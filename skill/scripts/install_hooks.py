@@ -103,8 +103,40 @@ OPTIONAL_HOOK_DEFS = [
 ]
 
 
+GLOBAL_HOOKS_REL = '~/.claude/skills/aidd/hooks'
+
+
 def command_for(script_path):
+    """Command line that runs `script_path`.
+
+    An aidd hook (anything under SKILL_DIR/hooks) is addressed through the user's global install,
+    resolved at run time with expanduser (USERPROFILE on Windows, HOME on Linux/macOS), so
+    settings.json never carries a drive letter or a user name and works from bash, cmd and
+    PowerShell alike. Any other script keeps its absolute path.
+    """
+    script_path = Path(script_path)
+    if script_path.parent == SKILL_DIR / 'hooks':
+        target = f'{GLOBAL_HOOKS_REL}/{script_path.name}'
+        return ('python -c "import os,sys,runpy;'
+                f"p=os.path.expanduser('{target}');"
+                "sys.path.insert(0,os.path.dirname(p));"
+                "runpy.run_path(p,run_name='__main__')\"")
     return f'python "{script_path}"'
+
+
+def drop_absolute_variants(event_entries, script_name, keep):
+    """Remove `python "<abs path>/hooks/<script_name>"` entries left by older installs (they pin a
+    drive or a user); the portable command `keep` is untouched. Returns (entries, removed_count)."""
+    stale = []
+    for entry in event_entries:
+        for h in entry.get('hooks', []):
+            c = h.get('command') or ''
+            norm = c.replace(chr(92), '/')
+            if c != keep and c.startswith('python "') and norm.rstrip('" ').endswith('/hooks/' + script_name):
+                stale.append(c)
+    for c in stale:
+        event_entries = drop_command(event_entries, c)
+    return event_entries, len(stale)
 
 
 def load_settings():
@@ -189,6 +221,11 @@ def main(argv=None):
         timeout = timeout_for(script_path)
         settings['hooks'].setdefault(event_name, [])
         entries = settings['hooks'][event_name]
+
+        entries, n_abs = drop_absolute_variants(entries, Path(script_path).name, command)
+        settings['hooks'][event_name] = entries
+        if n_abs:                          # an older install pinned an absolute path: re-add portable
+            upgraded.append(event_name)
 
         if already_installed(entries, command, matcher, timeout):
             continue

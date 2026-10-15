@@ -1,0 +1,3 @@
+graft skill
+graft adapters
+global-exclude __pycache__ *.pyc *.bak *.spill

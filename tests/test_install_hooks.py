@@ -165,7 +165,7 @@ class TestInstallHooks(unittest.TestCase):
                 for e in entries:
                     for h in e["hooks"]:
                         seen += 1
-                        want = 15 if h["command"].rstrip('"').endswith(("rule_gate.py", "stop_gate.py")) else 10
+                        want = 15 if ("rule_gate.py'" in h["command"] or "stop_gate.py'" in h["command"]) else 10
                         self.assertEqual(h.get("timeout"), want, h["command"])
             self.assertEqual(seen, 14)
 
@@ -281,6 +281,25 @@ class TestInstallHooks(unittest.TestCase):
                 {"hooks": [{"type": "command", "command": command_old("require_aidd.py")}]}]}}), encoding="utf-8")
             r = install_hooks.remove_legacy(json.loads(settings_path.read_text(encoding="utf-8")))
             self.assertEqual(r, 1)
+
+    def test_aidd_hook_commands_are_portable_and_old_absolute_ones_migrate(self):
+        absolute = 'python "D:\\Fuentes\\AIDD\\skill\\hooks\\prompt_trigger.py"'
+        with TemporaryDirectory() as d:
+            settings_path = Path(d) / "settings.json"
+            settings_path.write_text(json.dumps({"hooks": {"UserPromptSubmit": [
+                {"hooks": [{"type": "command", "command": absolute, "timeout": 10}]}]}}), encoding="utf-8")
+            with patch.object(install_hooks, "SETTINGS_PATH", settings_path):
+                install_hooks.main([])
+                first = settings_path.read_text(encoding="utf-8")
+                install_hooks.main([])
+                self.assertEqual(first, settings_path.read_text(encoding="utf-8"))
+            cmds = [h["command"] for v in json.loads(first)["hooks"].values() for e in v for h in e["hooks"]]
+            self.assertNotIn(absolute, cmds)
+            for c in cmds:
+                self.assertNotRegex(c, r"[A-Za-z]:[\\/]")        # no drive letter
+                self.assertNotIn("jquimis", c)                   # no user name
+                self.assertIn("expanduser('~/.claude/skills/aidd/hooks/", c)
+            self.assertEqual(sum("prompt_trigger.py" in c for c in cmds), 1)
 
     def test_command_for_quotes_the_path(self):
         result = install_hooks.command_for(Path("/some/dir/hook.py"))

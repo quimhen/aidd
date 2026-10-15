@@ -1,0 +1,3 @@
+# python -m pytest tests/test_host_gates.py -q | exit 0 | 2026-10-13T21:56:28
+.................................                [100%]
+33 passed, 96 subtests passed in 73.86s (0:01:13)
