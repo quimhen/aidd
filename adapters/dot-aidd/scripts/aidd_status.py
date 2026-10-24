@@ -18,6 +18,9 @@ Usage:
     aidd_status.py rules activate <spec_dir>    point the per-spec code gate (.aidd/gate_spec) at an open spec
     aidd_status.py verify <spec_dir>            run every `## Verification` row, save evidence/verify-<n>.txt
                                                 and record a `verify_run` event (exit 1 when a row fails)
+    aidd_status.py verify <specA> <specB> ...   ONE ROUND: a row (same command, same code) that already passed for
+                                                an earlier spec of the round is reused, not re-run (ROUND-REUSED);
+                                                `--full` or AIDD_VERIFY_ROUND=off disables it
     aidd_status.py rules close <spec_id>        record spec_closed(completed): needs a valid approval,
                                                 qa-audit.md, every required domain audited (spec 007 specs:
                                                 plus a fresh passing verify_run) and the user's
@@ -1417,6 +1420,101 @@ def _reusable_rows(d, prior, code_fp, full):
     return out
 
 
+ROUND_TTL_DEFAULT = 6 * 3600
+ROUND_MAX_ENTRIES = 300
+
+
+def _round_enabled(full):
+    """Cross-spec round cache is on unless --full or AIDD_VERIFY_ROUND=off."""
+    return not full and os.environ.get('AIDD_VERIFY_ROUND', '').strip().lower() not in ('off', '0', 'false', 'no')
+
+
+def _round_paths(root):
+    base = Path(root) / '.aidd' / 'evidence'
+    return base / 'verify-round.json', base / 'round'
+
+
+def _round_load(root):
+    try:
+        idx = json.loads(_round_paths(root)[0].read_text(encoding='utf-8'))
+        return [e for e in idx.get('entries', []) if isinstance(e, dict)]
+    except Exception:
+        return []
+
+
+def _round_lookup(root, entries, cmd, expected, st_all):
+    """(bytes, entry) of a passing run of the SAME command that saw the SAME code (whole tree, minus the files
+    that run rewrote), still fresh and intact; else None. A hit proves the command already ran on this exact
+    code in this round, so it is never run again (a db_verify run builds a whole database)."""
+    try:
+        ttl = int(float(os.environ.get('AIDD_VERIFY_ROUND_TTL', '') or ROUND_TTL_DEFAULT))
+        key = (rules._norm_cell(cmd), rules._norm_cell(expected))
+        for e in reversed(entries):
+            if (rules._norm_cell(e.get('cmd')), rules._norm_cell(e.get('expected'))) != key:
+                continue
+            if time.time() - float(e.get('ts') or 0) > ttl:
+                continue
+            if ev.fingerprint_of(st_all, None, exclude=list(e.get('excl') or [])) != e.get('fp'):
+                continue
+            p = _round_paths(root)[1] / f"{e.get('sha1')}.txt"
+            data = p.read_bytes()
+            if hashlib.sha1(data).hexdigest() == e.get('sha1'):
+                return data, e
+    except Exception:
+        pass
+    return None
+
+
+def _round_store(root, entries, results, d, st_all_start, st_all_end, gen):
+    """Remember this run's passing, non-reused rows so the next spec of the round can skip them. Only when the
+    whole tree was stable (nothing but declared `Generated:` outputs changed). Never raises."""
+    try:
+        changed = ev.state_diff(st_all_start, st_all_end)
+        if [c for c in changed if not rules._glob_hit(c, gen)]:
+            return
+        excl = list(gen) + changed
+        fp = ev.fingerprint_of(st_all_end, None, exclude=excl)
+        if fp is None:
+            return
+        jpath, ddir = _round_paths(root)
+        ddir.mkdir(parents=True, exist_ok=True)
+        for r in results:
+            # A FAILING row is deterministic too (same command, same code, same red tests): remembering it
+            # saves re-running a whole suite per spec. Timeouts / spawn errors (exit -1) are never remembered.
+            if r.get('reused') or not r.get('sha1') or r.get('exit') == -1:
+                continue
+            data = (d / r['evidence']).read_bytes()
+            sha1 = hashlib.sha1(data).hexdigest()
+            (ddir / f'{sha1}.txt').write_bytes(data)
+            entries.append({'cmd': r['cmd'], 'expected': r['expected'], 'exit': r.get('exit', 0),
+                            'ok': bool(r.get('ok')), 'ts': time.time(),
+                            'fp': fp, 'excl': excl[:200], 'sha1': sha1, 'spec': d.name})
+        entries = entries[-ROUND_MAX_ENTRIES:]
+        jpath.write_text(json.dumps({'entries': entries}), encoding='utf-8')
+        keep = {e['sha1'] for e in entries}
+        for f in ddir.glob('*.txt'):
+            if f.stem not in keep:
+                f.unlink()
+        print(f'round cache: stored {sum(1 for e in entries if e.get("spec") == d.name)} row(s) of {d.name}', flush=True)
+    except Exception as e:
+        print(f'note: round cache not stored ({type(e).__name__}: {e})', flush=True)
+
+
+def cmd_verify_many(spec_args, full=False):
+    """`aidd verify <specA> <specB> ...`: one ROUND. Identical rows (same command, same code) run once for the
+    whole round and are reused by the others (see _round_lookup); the summary lists each spec's result."""
+    worst, out = 0, []
+    for s in spec_args:
+        print(f'\n=== aidd verify {s} ===', flush=True)
+        rc = cmd_verify(s, full=full)
+        out.append((s, rc))
+        worst = max(worst, rc)
+    print('\n=== round summary ===')
+    for s, rc in out:
+        print(f"{'PASS' if rc == 0 else 'FAIL'}  {s}")
+    return worst
+
+
 def cmd_verify(spec_arg, full=False):
     """aidd:FR-205 aidd:AC-209 aidd:AC-216 aidd:AC-218 `aidd verify <spec>`: run every `## Verification` row
     (shell, project root, AIDD_VERIFY_TIMEOUT per row), save `evidence/verify-<n>.txt` (header line
@@ -1455,6 +1553,13 @@ def cmd_verify(spec_arg, full=False):
     pexcl = (list(prior.get('code_generated') or []) + list(prior.get('code_changed') or [])) if prior else []
     prior_fp = ev.fingerprint_of(st_start, scope, exclude=pexcl) if (prior and st_start) else None
     reuse = _reusable_rows(d, prior, prior_fp, full)        # read BEFORE any evidence file is rewritten
+    round_on = _round_enabled(full)
+    round_entries = _round_load(root) if round_on else []
+    # whole tree: the round cache key ignores Scope; the default 8 s budget is too short for a large dirty tree
+    # (the state came back None and the cache silently never worked), so it gets a generous one.
+    st_all_start = ev.code_state(root, budget_s=120) if round_on else None
+    if round_on and not st_all_start:
+        print('note: whole-tree fingerprint unavailable (budget); the round cache is off for this run', flush=True)
     results = []
 
     def _one(i, r):
@@ -1477,6 +1582,23 @@ def cmd_verify(spec_arg, full=False):
                 return res
             except Exception:
                 pass                                         # could not copy the evidence: run the row for real
+        rhit = _round_lookup(root, round_entries, cmd, expected, st_all_start) if (round_on and st_all_start) else None
+        if rhit is not None:
+            try:
+                data = rhit[0]
+                with open(final, 'wb') as fh:
+                    fh.write(data)
+                one_line = re.sub(r'[\r\n]+', ' ', cmd).strip()
+                r_ok = bool(rhit[1].get('ok', True))
+                print(f"ROUND-REUSED row {n} ({'PASS' if r_ok else 'FAIL'}): {one_line[:100]} (same command, same code, "
+                      f"already run this round in {rhit[1].get('spec', '?')}) → {rel}", flush=True)
+                res = {'n': str(n), 'cmd': cmd, 'expected': expected, 'exit': rhit[1].get('exit', 0), 'ok': r_ok,
+                       'evidence': rel, 'sha1': hashlib.sha1(data).hexdigest(), 'reused': True, 'round': True}
+                if not r_ok:
+                    res['problem'] = f"failed in this round ({rhit[1].get('spec', '?')}); see evidence"
+                return res
+            except Exception:
+                pass
         problem = rules.verification_command_problem(cmd, expected, root)
         if problem:
             code, note, body, secs = -1, f'not run: {problem}', '', 0.0
@@ -1552,6 +1674,8 @@ def cmd_verify(spec_arg, full=False):
     code_end = ev.fingerprint_of(st_end, scope, exclude=excl) if st_end else None
     stable = (not unexplained) if (st_start and st_end) else (fp_start == fp_end)       # docs may change meanwhile
     all_ok = all(x['ok'] for x in results) and stable
+    if round_on and stable and st_all_start:
+        _round_store(root, round_entries, results, d, st_all_start, ev.code_state(root, budget_s=120), gen)
     # code_since: when this exact code state was first verified; lineage: the table hashes verified on it.
     same_code = bool(prior and prior_fp is not None and prior.get('code_fp_end') == prior_fp)
     code_since = (prior.get('code_since') or prior.get('started')) if same_code else started
@@ -1777,8 +1901,13 @@ def main(argv=None):
         if len(argv) == 3 and argv[0] == 'rules' and argv[1] in ('check', 'approve', 'close', 'activate'):
             return {'check': cmd_check, 'approve': cmd_approve, 'close': cmd_close,
                     'activate': cmd_activate}[argv[1]](argv[2])
-        if len(argv) in (2, 3) and argv[0] == 'verify' and (len(argv) == 2 or argv[2] == '--full'):
-            return cmd_verify(argv[1], full=len(argv) == 3)      # aidd:FR-205 `aidd verify <spec> [--full]`
+        if len(argv) >= 2 and argv[0] == 'verify':
+            full = '--full' in argv[1:]
+            specs = [a for a in argv[1:] if a != '--full']
+            if len(specs) == 1:
+                return cmd_verify(specs[0], full=full)           # aidd:FR-205 `aidd verify <spec> [--full]`
+            if len(specs) > 1:
+                return cmd_verify_many(specs, full=full)         # one round: identical rows run once
         if len(argv) >= 3 and argv[0] == 'rules' and argv[1] == 'abandon':
             rest = argv[2:]
             reason = ''
