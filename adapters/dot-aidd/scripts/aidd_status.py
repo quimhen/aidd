@@ -21,6 +21,8 @@ Usage:
     aidd_status.py verify <specA> <specB> ...   ONE ROUND: a row (same command, same code) that already passed for
                                                 an earlier spec of the round is reused, not re-run (ROUND-REUSED);
                                                 `--full` or AIDD_VERIFY_ROUND=off disables it
+    aidd_status.py verify ... --bail            stop a spec's remaining rows at its first failing row (they are
+                                                recorded as "not run"); use it to save time while things are broken
     aidd_status.py rules close <spec_id>        record spec_closed(completed): needs a valid approval,
                                                 qa-audit.md, every required domain audited (spec 007 specs:
                                                 plus a fresh passing verify_run) and the user's
@@ -1500,13 +1502,13 @@ def _round_store(root, entries, results, d, st_all_start, st_all_end, gen):
         print(f'note: round cache not stored ({type(e).__name__}: {e})', flush=True)
 
 
-def cmd_verify_many(spec_args, full=False):
+def cmd_verify_many(spec_args, full=False, bail=False):
     """`aidd verify <specA> <specB> ...`: one ROUND. Identical rows (same command, same code) run once for the
     whole round and are reused by the others (see _round_lookup); the summary lists each spec's result."""
     worst, out = 0, []
     for s in spec_args:
         print(f'\n=== aidd verify {s} ===', flush=True)
-        rc = cmd_verify(s, full=full)
+        rc = cmd_verify(s, full=full, bail=bail)
         out.append((s, rc))
         worst = max(worst, rc)
     print('\n=== round summary ===')
@@ -1515,7 +1517,7 @@ def cmd_verify_many(spec_args, full=False):
     return worst
 
 
-def cmd_verify(spec_arg, full=False):
+def cmd_verify(spec_arg, full=False, bail=False):
     """aidd:FR-205 aidd:AC-209 aidd:AC-216 aidd:AC-218 `aidd verify <spec>`: run every `## Verification` row
     (shell, project root, AIDD_VERIFY_TIMEOUT per row), save `evidence/verify-<n>.txt` (header line
     `# <cmd> | exit <code> | <ISO ts>` + combined output), mark zero-test / too-short output failed,
@@ -1656,7 +1658,24 @@ def cmd_verify(spec_arg, full=False):
         with ThreadPoolExecutor(max_workers=jobs) as pool:
             results = list(pool.map(lambda ir: _one(*ir), enumerate(rows, 1)))
     else:
-        results = [_one(i, r) for i, r in enumerate(rows, 1)]
+        results = []
+        for i, r in enumerate(rows, 1):
+            bad = next((x for x in results if not x['ok']), None)
+            if bail and bad is not None:
+                # --bail: a row failed, so the rest of this spec is not run (the verification is FAILED anyway and
+                # must be re-run after the fix); each skipped row says why instead of burning minutes.
+                n = r.get('n') or str(i)
+                rel = f'evidence/verify-{_row_file_id(n, i)}.txt'
+                why = f"not run: --bail after row {bad['n']} failed"
+                one_line = re.sub(r'[\r\n]+', ' ', r['cmd']).strip()
+                body = f'# {one_line} | exit -1 | {datetime.now().isoformat(timespec="seconds")}\n[aidd verify] {why}\n'
+                (d / rel).write_text(body, encoding='utf-8')
+                print(f"SKIP row {n}: {one_line[:100]} ({why})", flush=True)
+                results.append({'n': str(n), 'cmd': r['cmd'], 'expected': r.get('expected') or 'exit 0', 'exit': -1,
+                                'ok': False, 'evidence': rel, 'sha1': hashlib.sha1(body.encode('utf-8')).hexdigest(),
+                                'problem': why})
+                continue
+            results.append(_one(i, r))
     timed = sorted((x.get('secs') or 0.0, x['n']) for x in results if not x.get('reused'))
     if timed:
         print(f'verify wall time {round(time.monotonic() - t_all, 1)} s; slowest row: {timed[-1][1]} ({timed[-1][0]} s)'
@@ -1903,11 +1922,12 @@ def main(argv=None):
                     'activate': cmd_activate}[argv[1]](argv[2])
         if len(argv) >= 2 and argv[0] == 'verify':
             full = '--full' in argv[1:]
-            specs = [a for a in argv[1:] if a != '--full']
+            bail = '--bail' in argv[1:]                          # stop a spec's rows at its first failure
+            specs = [a for a in argv[1:] if a not in ('--full', '--bail')]
             if len(specs) == 1:
-                return cmd_verify(specs[0], full=full)           # aidd:FR-205 `aidd verify <spec> [--full]`
+                return cmd_verify(specs[0], full=full, bail=bail)  # aidd:FR-205 `aidd verify <spec> [--full] [--bail]`
             if len(specs) > 1:
-                return cmd_verify_many(specs, full=full)         # one round: identical rows run once
+                return cmd_verify_many(specs, full=full, bail=bail)  # one round: identical rows run once
         if len(argv) >= 3 and argv[0] == 'rules' and argv[1] == 'abandon':
             rest = argv[2:]
             reason = ''
