@@ -59,6 +59,17 @@ from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
 
+# specs/index.toon is one CSV row per spec, and a row's `tree`/`graph` cell grows
+# with that spec's code graph — P04-Payrol-Rubros-Plugins' tree cell alone is
+# ~366 KB, well past csv's 128 KB default field limit. Without this, loads_index()
+# raised _csv.Error and find_spec.py died before reporting a single match, i.e.
+# before the mandatory first step of the pipeline could run at all.
+_MAX_CSV_FIELD = 2 ** 31 - 1  # fits in a 32-bit C long (Windows), so it never overflows
+try:
+    csv.field_size_limit(max(csv.field_size_limit(), _MAX_CSV_FIELD))
+except (OverflowError, ValueError):  # pragma: no cover - platform C long is smaller
+    pass
+
 if hasattr(sys.stdout, 'reconfigure'):
     sys.stdout.reconfigure(encoding='utf-8')
 
@@ -776,7 +787,9 @@ def load_index(specs_root: Path):
         return None
     try:
         data = loads_index(idx_path.read_text(encoding='utf-8'))
-    except OSError:
+    except (OSError, csv.Error):
+        # A corrupt index (truncated write, hand edit) must not be fatal either:
+        # returning None makes the caller rebuild it instead of dying here.
         return None
     if data.get('version') != INDEX_VERSION:
         return None

@@ -1,0 +1,6 @@
+$ python -m pytest tests/test_aidd_guard.py tests/test_aidd_next.py -q --no-header -p no:cacheprovider
+2 failed, 42 passed, 20 subtests passed in 160.96s
+FAILED tests/test_aidd_guard.py::TestCommitOtherFindings::test_r5_and_r6_in_why_blocked_do_block
+  AssertionError: False is not true : []   (evaluate returned no findings; tests\test_aidd_guard.py:205)
+FAILED tests/test_aidd_guard.py::TestPush::test_push_never_blocks_but_prints_the_same_findings
+  AssertionError: 'R6' not found in ''     (tests\test_aidd_guard.py:231)

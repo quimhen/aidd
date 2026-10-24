@@ -1,0 +1,4 @@
+# python -m pytest tests/test_host_install.py tests/test_host_doctor.py -q | exit 0 | 2026-10-21T09:26:04
+..................................................... [ 72%]
+....................                                                 [100%]
+73 passed, 23 subtests passed in 502.81s (0:08:22)

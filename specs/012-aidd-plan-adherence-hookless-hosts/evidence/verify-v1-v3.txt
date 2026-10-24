@@ -1,0 +1,23 @@
+Spec 012 T-18 verifier - raw output, V-1..V-3 (2026-10-21, D:\Fuentes\AIDD, branch feat/009-aidd-host-parity)
+Commands run serially, one at a time, in PowerShell; output pasted verbatim (progress dots trimmed).
+
+=== V-1
+$ python -m pytest tests/test_aidd_next.py tests/test_aidd_guard.py -q --no-header -p no:cacheprovider
+............................................         [100%]
+44 passed, 20 subtests passed in 59.92s
+EXIT=0
+
+=== V-2
+$ python -m pytest tests/test_host_install.py tests/test_host_doctor.py -q --no-header -p no:cacheprovider
+................................s.................... [ 72%]
+....................                                                 [100%]
+72 passed, 1 skipped, 23 subtests passed in 108.86s (0:01:48)
+EXIT=0
+(re-run with -rs to read the skip reason)
+SKIPPED [1] tests\test_host_install.py:625: sh not available
+72 passed, 1 skipped, 23 subtests passed in 142.74s (0:02:22)
+
+=== V-3
+$ python -m pytest tests/test_dot_aidd_mirror.py tests/test_rule_gate.py -q --no-header -p no:cacheprovider
+273 passed, 39 subtests passed in 58.60s
+EXIT=0

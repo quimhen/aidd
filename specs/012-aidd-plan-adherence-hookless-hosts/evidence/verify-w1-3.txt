@@ -1,0 +1,4 @@
+$ python -m pytest tests/test_dot_aidd_mirror.py tests/test_rule_gate.py -q --no-header -p no:cacheprovider
+1 failed, 272 passed, 39 subtests passed in 260.37s
+FAILED tests/test_dot_aidd_mirror.py::TestScriptMirrorTextual::test_verbatim_scripts_match
+  mismatches: ['aidd_status.py'] (skill/scripts/aidd_status.py differs from adapters/dot-aidd/scripts/aidd_status.py; wave 3 re-copy)

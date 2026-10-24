@@ -1,0 +1,23 @@
+# python -m pytest tests/test_dot_aidd_mirror.py tests/test_rule_gate.py -q | exit 1 | 2026-10-21T09:30:12
+...............................................................F... [ 24%]
+........................................................................ [ 50%]
+........................................................................ [ 77%]
+......................................... [ 92%]
+.....................                                                 [100%]
+================================== FAILURES ===================================
+___ TestContentRules.test_mdos_blank_run_before_an_approved_line_is_linear ____
+
+self = <test_rule_gate.TestContentRules testMethod=test_mdos_blank_run_before_an_approved_line_is_linear>
+
+    def test_mdos_blank_run_before_an_approved_line_is_linear(self):
+        self.ready_for_tasks()
+        body = tasks_text().replace("Approved: PENDING", "\n" * 1_500_000 + "Approved: PENDING")
+        t = time.perf_counter()
+        self.gate(TASKS, content=body)
+>       self.assertLess(time.perf_counter() - t, 4.0)
+E       AssertionError: 4.833882400067523 not less than 4.0
+
+tests\test_rule_gate.py:526: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_rule_gate.py::TestContentRules::test_mdos_blank_run_before_an_approved_line_is_linear
+1 failed, 272 passed, 39 subtests passed in 244.23s (0:04:04)

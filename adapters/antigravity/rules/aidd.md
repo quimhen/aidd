@@ -10,6 +10,8 @@ description: This project uses AIDD for any change; read .aidd/CORE.md first.
 - Before creating anything run `python .aidd/scripts/find_spec.py <keywords>` and state: `AIDD intake: NEW SPEC | AMENDMENT | AMENDMENT — Fast Lane — <reason>`.
 - A write to code is blocked by the hook unless the spec has the owner's approval (`aidd rules check specs/<id>`).
 - A task is done only when executed and, for any screen, compared with its mockup.
+- Run `aidd next` before each step and follow its single next command.
+- After editing SQL run `aidd sqlcheck <paths>` (checker must match the project's database engine); run the database pass once per wave, not per file.
 - Check the install with `aidd doctor --host antigravity`.
 
 @[CORE](../../.aidd/CORE.md)

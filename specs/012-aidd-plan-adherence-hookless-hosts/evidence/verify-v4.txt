@@ -1,0 +1,12 @@
+Spec 012 T-18 verifier - raw output, V-4 (2026-10-21, D:\Fuentes\AIDD), run ONCE in the background, no other heavy job meanwhile
+$ python tests/run_parallel.py
+  (flaky under load, passed alone: tests.test_aidd_rules_r10.TestR10)
+  (flaky under load, passed alone: tests.test_aidd_rules_r10.TestR11)
+  (flaky under load, passed alone: tests.test_aidd_rules_r10.TestR10LegacyUnaffectedBySpec007)
+  (flaky under load, passed alone: tests.test_host_gates.TestS3UnknownTools)
+  slowest: tests.test_host_doctor.TestChecksFail   87.0s
+  slowest: tests.test_host_doctor.TestGitHookChecks   80.0s
+  slowest: tests.test_host_gates.TestAmendY2Y3Antigravity   65.8s
+
+50 module(s) in 346 unit(s), 0 failed, 218s wall with 8 workers
+EXIT=0

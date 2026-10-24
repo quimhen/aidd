@@ -479,7 +479,9 @@ def _global(root):
         'rules_mode': _rules_mode(),
         'r5_mode': _safe(rules.r5_audit_mode, 'advisory'),
         **_safe(lambda: _override_stats(root), {'overrides': 0, 'overrides_recent': 0,
-                                                'overrides_newest_ts': None}),
+                                                'overrides_newest_ts': None, 'guard_overrides': 0,
+                                                'guard_overrides_recent': 0,
+                                                'guard_overrides_newest_ts': None}),
     }
 
 
@@ -488,11 +490,14 @@ OVERRIDE_RECENT_DAYS = 7
 
 def _override_stats(root):
     """aidd:FR-914 `rules_override` events: total, those in the last 7 days, newest ts. `overrides` stays
-    the total (existing key)."""
+    the total (existing key). aidd:FR-1207 the same three facts for `guard_override` (keys `guard_overrides*`)."""
     tss = [e['ts'] for e in ev.events(root, kind='rules_override')]
     cut = time.time() - OVERRIDE_RECENT_DAYS * 86400
+    gts = [e['ts'] for e in ev.events(root, kind='guard_override')]
     return {'overrides': len(tss), 'overrides_recent': sum(1 for t in tss if t >= cut),
-            'overrides_newest_ts': (max(tss) if tss else None)}
+            'overrides_newest_ts': (max(tss) if tss else None),
+            'guard_overrides': len(gts), 'guard_overrides_recent': sum(1 for t in gts if t >= cut),
+            'guard_overrides_newest_ts': (max(gts) if gts else None)}
 
 
 def _date_text(ts):
@@ -507,6 +512,31 @@ def _overrides_text(g):
     """'rules_override: 0 in the last 7 days (199 total, newest 2026-10-05)'."""
     return (f"rules_override: {g.get('overrides_recent', 0)} in the last {OVERRIDE_RECENT_DAYS} days "
             f"({g.get('overrides', 0)} total, newest {_date_text(g.get('overrides_newest_ts'))})")
+
+
+def _guard_overrides_text(g):
+    """aidd:FR-1207 'guard_override: 1 in the last 7 days (3 total, newest 2026-10-21)'."""
+    return (f"guard_override: {g.get('guard_overrides_recent', 0)} in the last {OVERRIDE_RECENT_DAYS} days "
+            f"({g.get('guard_overrides', 0)} total, newest {_date_text(g.get('guard_overrides_newest_ts'))})")
+
+
+def _guard_overrides_line(g):
+    """aidd:FR-1207 The AIDD_GUARD=warn|off line, '' when no guard_override was ever recorded."""
+    if not g.get('guard_overrides'):
+        return ''
+    return (("guard overrides ACTIVE: " if g.get('guard_overrides_recent') else "guard overrides: ")
+            + _guard_overrides_text(g))
+
+
+def _commits_text(commits):
+    """aidd:FR-1207 One line naming the commits made with code and no valid approval, '' when none."""
+    if not commits:
+        return ''
+    shown = ', '.join(f"{c.get('sha', '?')} {_date_text(c.get('ts'))} ({c.get('spec') or '?'})"
+                      for c in commits[:8])
+    more = len(commits) - 8
+    return (f"Commits with code and no recorded approval (git commit --no-verify?): {len(commits)} · "
+            + shown + (f' (+{more} more)' if more > 0 else ''))
 
 
 _DEGRADED_GLOBAL = {'answers': 0, 'questions': 0, 'user_answered': False, 'stop_blocks': {},
@@ -660,6 +690,9 @@ def format_global(g):
         # a recent override stays prominent (the owner must know the gate was bypassed lately)
         lines.append(("warn overrides ACTIVE: " if g.get('overrides_recent') else "warn overrides: ")
                      + _overrides_text(g))
+    for extra in (_guard_overrides_line(g), _commits_text(g.get('commits_without_approval'))):
+        if extra:
+            lines.append(extra)
     return '\n'.join(lines)
 
 
@@ -695,6 +728,8 @@ def cmd_status(args):
         g = _global(root)
     except Exception:
         g = dict(_DEGRADED_GLOBAL, rules_mode=_rules_mode())
+    # aidd:FR-1207 commits made past the guard (--no-verify); status path only, never `aidd guard commit`
+    g['commits_without_approval'] = _safe(lambda: _commits_without_approval(root), [])
     derived = None
     fp = _fingerprint_once()            # F-2: one worktree fingerprint per status run, shared by every spec
     if refresh:
@@ -811,6 +846,86 @@ def _git_facts(root):
     return out
 
 
+# ------------------------------------------------- commits past the guard (FR-1207)
+
+COMMIT_SCAN_MAX = 200
+COMMITS_FLAGGED_KEEP = 20
+
+
+def _guard_code_check():
+    """aidd_guard.is_code_file, imported lazily (aidd_guard imports this module); None when absent."""
+    try:
+        import aidd_guard  # noqa: WPS433
+        return aidd_guard.is_code_file
+    except Exception:
+        return None
+
+
+def _parse_log(out):
+    """[(sha, commit_ts, [files])] from `git log --format=%x01%H %ct --name-only`, newest first."""
+    commits = []
+    for rec in (out or '').split('\x01'):
+        lines = [ln.strip() for ln in rec.split('\n') if ln.strip()]
+        head = lines[0].split() if lines else []
+        if len(head) != 2:
+            continue
+        try:
+            commits.append((head[0], float(head[1]), lines[1:]))
+        except ValueError:
+            continue
+    return commits
+
+
+def _gate_target_at(pointers, ts):
+    """The gate pointer in force at `ts` (from `gate_pointer` events, oldest first), '' when none yet."""
+    spec = ''
+    for e in pointers:
+        if e['ts'] > ts:
+            break
+        spec = str((e['detail'] or {}).get('spec') or '')
+    return spec
+
+
+def _commits_without_approval(root):
+    """aidd:FR-1207 Commits (at most the last COMMIT_SCAN_MAX after the last `guard_seen`) that touched a
+    code file while the gate pointer named a spec with no recorded `approved` event yet: the commits that
+    went past `aidd guard commit` (e.g. `git commit --no-verify`). The newest COMMITS_FLAGGED_KEEP are
+    carried in a `guard_seen{head, flagged}` event, appended only when HEAD moved. Status path only."""
+    is_code = _guard_code_check()
+    head = (_git(root, 'rev-parse', 'HEAD') or '').strip()
+    if is_code is None or not head:
+        return []
+    seen = ev.last_event(root, 'guard_seen')
+    det = (seen or {}).get('detail') or {}
+    carried = [c for c in (det.get('flagged') or []) if isinstance(c, dict)][:COMMITS_FLAGGED_KEEP]
+    last = str(det.get('head') or '')
+    if last == head:
+        return carried
+    base = ('-c', 'core.quotePath=false', 'log', f'-n{COMMIT_SCAN_MAX}', '--format=%x01%H %ct', '--name-only')
+    out = _git(root, *base, f'{last}..HEAD') if last else None
+    if out is None:
+        out = _git(root, *base)
+    if out is None:
+        return carried
+    pointers = sorted(ev.events(root, kind='gate_pointer'), key=lambda e: e['ts'])
+    first_approved = {}
+    for e in ev.events(root, kind='approved'):
+        sp = str((e['detail'] or {}).get('spec') or '')
+        first_approved[sp] = min(first_approved.get(sp, e['ts']), e['ts'])
+    known = {c.get('sha') for c in carried}
+    new = []
+    for sha, ct, files in _parse_log(out):
+        short = sha[:12]
+        if short in known or not any(is_code(f) for f in files):
+            continue
+        spec = _gate_target_at(pointers, ct)
+        if spec and not (spec in first_approved and first_approved[spec] <= ct):
+            new.append({'sha': short, 'ts': ct, 'spec': spec})
+    flagged = (new + carried)[:COMMITS_FLAGGED_KEEP]
+    ev.append(root, None, 'guard_seen', head=head, flagged=flagged)
+    return flagged
+
+
 def _approval_state(root, d, tasks_text):
     if not (d / 'tasks.md').exists():
         return 'no-tasks'
@@ -895,6 +1010,8 @@ def format_refresh(facts):
     rm = f.get('rules_mode') or {}
     lines.append(f"  AIDD_RULES={rm.get('mode', 'enforce')}" + (f" ({rm['note']})" if rm.get('note') else ''))
     lines.append(f"  warn overrides: {_overrides_text(f)} · R5 audits: {f.get('r5_mode', 'advisory')}")
+    if f.get('guard_overrides'):
+        lines.append(f"  guard overrides: {_guard_overrides_text(f)}")
     return '\n'.join(lines)
 
 

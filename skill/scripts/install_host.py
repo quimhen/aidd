@@ -3,9 +3,30 @@
 aidd:FR-901 aidd:FR-902 aidd:FR-903 aidd:AC-005 (spec 009, plan Interface 2, task T-04)
 aidd:FR-1103 aidd:FR-1104 aidd:AC-1103 (spec 011, plan Interface 2, task T-02)
 aidd:FR-1112 aidd:FR-1113 aidd:AC-1111 aidd:AC-1112 (spec 011 Amendment 1, task T-13)
+aidd:FR-1204 aidd:FR-1205 aidd:AC-1204 aidd:AC-1205 (spec 012, task T-06)
 
 Usage:
-    python install_host.py install <gemini|opencode|antigravity> <project-root> [--force] [--json]
+    python install_host.py install <gemini|opencode|antigravity> <project-root> [--githooks] [--force] [--json]
+    python install_host.py install <project-root> --githooks [--json]
+
+Git hooks (spec 012 FR-1204, `--githooks`, alone or with a host):
+- The hooks folder is `git -C <root> rev-parse --git-path hooks` (worktrees and
+  `core.hooksPath` resolve to the folder git really runs), relative -> <root>.
+- `pre-commit` / `pre-push` are POSIX sh with the `# aidd-githook` marker; they
+  run `aidd guard commit|push` when `aidd` is on PATH, else
+  `python .aidd/scripts/aidd_guard.py guard commit|push`, else exit 0 (fail
+  open). No drive letter or user path is written (git runs hooks from the top
+  of the work tree).
+- A foreign hook gets ONE marked block appended (its lines are never rewritten);
+  a hook that already holds the marker is `unchanged` (idempotent); a foreign
+  hook with a non-sh shebang is `skipped` with a reason.
+- A hooks folder or hook file that is a symlink/junction is refused (`skipped`),
+  even with --force: `.git/` is git's own state. Writes are atomic (os.replace)
+  and the file is made executable.
+
+OpenCode (spec 012 FR-1205): plugins under `.opencode/plugins/` are
+auto-discovered, so no relative `plugin` entry is added to `opencode.json`; an
+existing one is never removed.
 
 What it does (and what it never does):
 - Copies the shipped `adapters/dot-aidd/` bundle into `<project-root>/.aidd/`
@@ -59,6 +80,7 @@ import argparse
 import json
 import os
 import stat
+import subprocess
 import sys
 from pathlib import Path
 
@@ -85,6 +107,15 @@ ANTIGRAVITY_COMMANDS = (
     ("PostToolUse", "python ../.aidd/hooks/host_adapter.py antigravity post"),
 )
 
+# Git hooks (spec 012 FR-1204). The marker identifies an aidd hook or block.
+GITHOOK_MARKER = "# aidd-githook"
+GITHOOK_NAMES = ("pre-commit", "pre-push")
+GITHOOK_MODES = {"pre-commit": "commit", "pre-push": "push"}
+GITHOOK_SH_SHELLS = {"sh", "bash", "dash", "zsh", "ksh"}
+GIT_TIMEOUT = 10  # seconds for `git rev-parse`
+# Hosts with no write gate in 2.x: the install offers `--githooks` after them.
+GITHOOK_OFFER_HOSTS = ("opencode", "antigravity")
+
 # Windows reparse tags (stat exposes them since 3.8; literal fallback just in case).
 _TAG_SYMLINK = getattr(stat, "IO_REPARSE_TAG_SYMLINK", 0xA000000C)
 _TAG_MOUNT_POINT = getattr(stat, "IO_REPARSE_TAG_MOUNT_POINT", 0xA0000003)
@@ -99,6 +130,48 @@ def antigravity_entry() -> dict:
                          "hooks": [{"type": "command", "command": command,
                                     "timeout": ANTIGRAVITY_TIMEOUT}]}]
     return entry
+
+
+def githook_lines(name: str) -> list:
+    """The portable sh lines that call the guard for one hook (no shebang).
+
+    Repo-relative fallback path only: git runs hooks from the work-tree top, so
+    no drive letter or user folder is ever written. Neither aidd nor python
+    available -> nothing runs and the hook exits 0 (fail open).
+    """
+    mode = GITHOOK_MODES[name]
+    return [
+        f"{GITHOOK_MARKER}: {name} runs `aidd guard {mode}` (AIDD spec 012); fails open when AIDD is absent",
+        "if command -v aidd >/dev/null 2>&1; then",
+        f"  aidd guard {mode} || exit $?",
+        "elif [ -f .aidd/scripts/aidd_guard.py ] && command -v python >/dev/null 2>&1; then",
+        f"  python .aidd/scripts/aidd_guard.py guard {mode} || exit $?",
+        "fi",
+    ]
+
+
+def githook_script(name: str) -> bytes:
+    """A whole hook file written when no hook exists yet (LF line endings)."""
+    return ("\n".join(["#!/bin/sh"] + githook_lines(name)) + "\n").encode("utf-8")
+
+
+def githook_block(name: str) -> bytes:
+    """The block appended once to a foreign hook (starts with a blank line)."""
+    return ("\n" + "\n".join(githook_lines(name)) + "\n").encode("utf-8")
+
+
+def is_sh_hook(data: bytes) -> bool:
+    """True when a hook has no shebang or an sh-family shebang (sh, bash, ...)."""
+    first = data.split(b"\n", 1)[0].strip()
+    if not first.startswith(b"#!"):
+        return True
+    words = first[2:].decode("utf-8", "replace").split()
+    if not words:
+        return True
+    prog = words[0].replace("\\", "/").rsplit("/", 1)[-1]
+    if prog == "env" and len(words) > 1:
+        prog = words[1]
+    return prog in GITHOOK_SH_SHELLS
 
 
 def is_link(path: Path) -> bool:
@@ -224,6 +297,10 @@ class HostInstaller:
     def _write_bytes(self, target: Path, data: bytes) -> bool:
         if not self._guard_links(target):
             return False
+        return self._atomic_write(target, data)
+
+    def _atomic_write(self, target: Path, data: bytes) -> bool:
+        """Write data to target atomically; the caller has checked for links."""
         # Atomic write (spec 011 FR-1112): a temp file in the same folder, then
         # os.replace. A hard link at the destination is broken (the name gets a
         # new inode), never written through. No in-place fallback, ever.
@@ -411,15 +488,15 @@ class HostInstaller:
         if data is None:
             self._record(target, "skipped", err)
             return
-        plugins = data.setdefault("plugin", [])
-        if not isinstance(plugins, list):
-            self._record(target, "skipped", "`plugin` is not an array, left untouched")
-            return
-        if any(self._is_aidd_plugin(p) for p in plugins):
-            self._record(target, "unchanged")
-            return
-        plugins.append(OPENCODE_PLUGIN_ENTRY)
-        self._save_json(target, data, target.exists())
+        # spec 012 FR-1205: `.opencode/plugins/` is auto-discovered, so no relative
+        # entry is added any more; an existing one is never removed.
+        if not target.exists():
+            return  # nothing to register: the file is not created
+        plugins = data.get("plugin")
+        if isinstance(plugins, list) and any(self._is_aidd_plugin(p) for p in plugins):
+            self._record(target, "unchanged", "existing aidd plugin entry kept")
+        else:
+            self._record(target, "unchanged", "no plugin entry needed (plugins/ is auto-discovered)")
 
     # -- antigravity ---------------------------------------------------------
     def install_antigravity(self) -> None:
@@ -448,8 +525,102 @@ class HostInstaller:
         reason = f"updated the `{ANTIGRAVITY_HOOK_NAME}` entry (--force)" if current is not None else ""
         self._save_json(target, data, existed, reason)
 
+    # -- git hooks (spec 012 FR-1204) ---------------------------------------
+    def _git_hooks_dir(self):
+        """Return (hooks_dir, error) from `git rev-parse --git-path hooks`."""
+        try:
+            proc = subprocess.run(
+                ["git", "-C", str(self.project_root), "rev-parse", "--git-path", "hooks"],
+                capture_output=True, text=True, timeout=GIT_TIMEOUT)
+        except FileNotFoundError:
+            return None, "git is not on PATH"
+        except subprocess.TimeoutExpired:
+            return None, f"`git rev-parse` timed out after {GIT_TIMEOUT} s"
+        except OSError as exc:
+            return None, f"cannot run git: {exc}"
+        out = (proc.stdout or "").strip()
+        if proc.returncode != 0 or not out:
+            detail = (proc.stderr or "").strip().splitlines()
+            return None, "not a git repository" + (f": {detail[0]}" if detail else "")
+        hooks = Path(out)
+        if not hooks.is_absolute():
+            hooks = self.project_root / hooks
+        return hooks, ""
+
+    def _hook_links_refused(self, hooks_dir: Path, hook: Path) -> bool:
+        """Record and return True when the hooks folder or hook file is a link.
+
+        Inside the project root every component is checked; outside it (a
+        worktree's shared `.git/hooks`) the hooks folder and the file are. A link
+        is refused even with --force: `.git/` is git's state, not ours.
+        """
+        checks = [hooks_dir, hook]
+        try:
+            rel = hook.relative_to(self.project_root)
+            checks = [self.project_root.joinpath(*rel.parts[:d]) for d in range(1, len(rel.parts) + 1)]
+        except ValueError:
+            pass
+        for comp in checks:
+            if is_link(comp):
+                self._record(hook, "skipped", f"symlink {comp} -> {link_target(comp)}; hooks are never written through a link")
+                self.failed = True
+                return True
+        return False
+
+    def _make_executable(self, hook: Path, base_mode: int) -> None:
+        try:
+            os.chmod(hook, base_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+        except OSError:
+            pass  # Windows ignores the bits; git for Windows runs hooks by shebang
+
+    def _install_one_githook(self, hooks_dir: Path, name: str) -> None:
+        hook = hooks_dir / name
+        if self._hook_links_refused(hooks_dir, hook):
+            return
+        if hook.is_dir():
+            self._record(hook, "skipped", "a directory exists at this path")
+            self.failed = True
+            return
+        if not os.path.lexists(hook):
+            if self._atomic_write(hook, githook_script(name)):
+                self._make_executable(hook, 0o644)
+                self._record(hook, "written", "created")
+            return
+        current, err = self._read_bytes(hook)
+        if current is None:
+            self._record(hook, "skipped", err)
+            self.failed = True
+            return
+        if GITHOOK_MARKER.encode("utf-8") in current:
+            self._record(hook, "unchanged")
+            return
+        if not is_sh_hook(current):
+            self._record(hook, "skipped", "foreign hook is not a sh script; add `aidd guard` to it by hand")
+            self.failed = True
+            return
+        try:
+            mode = stat.S_IMODE(os.stat(hook).st_mode)
+        except OSError:
+            mode = 0o644
+        sep = b"" if not current or current.endswith(b"\n") else b"\n"
+        if self._atomic_write(hook, current + sep + githook_block(name)):
+            self._make_executable(hook, mode)
+            self._record(hook, "written", "aidd block appended to the existing hook")
+
+    def install_githooks(self) -> None:
+        """Write or extend `pre-commit` and `pre-push` so they run `aidd guard`."""
+        hooks_dir, err = self._git_hooks_dir()
+        if hooks_dir is None:
+            self._record(self.project_root / ".git" / "hooks", "skipped", err)
+            self.failed = True
+            return
+        for name in GITHOOK_NAMES:
+            self._install_one_githook(hooks_dir, name)
+
     # -- entry ---------------------------------------------------------------
     def run(self) -> None:
+        if self.host is None:
+            return  # `--githooks` alone: main() calls install_githooks
         self.install_dot_aidd()
         if self.host == "gemini":
             self.install_gemini()
@@ -469,14 +640,22 @@ def main(argv=None) -> int:
                                      description="Non-destructive AIDD install for Gemini CLI, OpenCode or Antigravity.")
     sub = parser.add_subparsers(dest="action", required=True)
     p_install = sub.add_parser("install", help="install AIDD for one host into a project")
-    p_install.add_argument("host", choices=HOSTS)
-    p_install.add_argument("project_root")
+    p_install.add_argument("targets", nargs="+", metavar="[host] project_root",
+                           help=f"host ({'|'.join(HOSTS)}) and project root; the host may be omitted with --githooks")
+    p_install.add_argument("--githooks", action="store_true",
+                           help="write git pre-commit/pre-push hooks that run `aidd guard` (alone or with a host)")
     p_install.add_argument("--force", action="store_true", help="overwrite locally modified shipped files")
     p_install.add_argument("--json", action="store_true", help="print a JSON list of {path,status,reason}")
     try:
         args = parser.parse_args(argv)
     except SystemExit as exc:
         return 0 if exc.code == 0 else 1
+    host, root_arg, err = _split_targets(args.targets, args.githooks)
+    if err:
+        parser.print_usage(sys.stderr)
+        print(f"install_host.py: error: {err}", file=sys.stderr)
+        return 1
+    args.host, args.project_root = host, root_arg
 
     repo_root = _repo_root()
     if not (repo_root / "adapters" / "dot-aidd").is_dir():
@@ -494,6 +673,11 @@ def main(argv=None) -> int:
 
     installer = HostInstaller(args.host, project_root, args.force, repo_root)
     installer.run()
+    if args.githooks:
+        installer.install_githooks()
+    label = args.host if args.host else "githooks"
+    if args.host and args.githooks:
+        label = f"{args.host} + githooks"
 
     if args.json:
         print(json.dumps(installer.results, indent=2, ensure_ascii=False))
@@ -505,10 +689,28 @@ def main(argv=None) -> int:
             print(line)
         counts = {s: sum(1 for r in installer.results if r["status"] == s)
                   for s in ("written", "unchanged", "skipped")}
-        print(f"AIDD install ({args.host}) into {project_root}: "
+        print(f"AIDD install ({label}) into {project_root}: "
               f"{counts['written']} written, {counts['unchanged']} unchanged, {counts['skipped']} skipped"
               + (" -- some targets were not writable or the gate registration was skipped" if installer.failed else ""))
+        if args.host in GITHOOK_OFFER_HOSTS and not args.githooks:
+            print(f"hint: {args.host} 2.x has no write gate; enforce AIDD at commit time with "
+                  f"`aidd install --githooks {project_root}`")
     return 1 if installer.failed else 0
+
+
+def _split_targets(targets: list, githooks: bool):
+    """Return (host, project_root, error) from `[host] project_root`."""
+    if len(targets) == 2:
+        if targets[0] not in HOSTS:
+            return None, None, f"invalid host {targets[0]!r} (choose from {', '.join(HOSTS)})"
+        return targets[0], targets[1], ""
+    if len(targets) == 1:
+        if targets[0] in HOSTS:
+            return None, None, "the project root is required"
+        if not githooks:
+            return None, None, f"a host ({', '.join(HOSTS)}) is required unless --githooks is given"
+        return None, targets[0], ""
+    return None, None, "expected `[host] project_root`"
 
 
 if __name__ == "__main__":

@@ -157,8 +157,10 @@ class TestOpencodeInstall(HostInstallBase):
         self.assertTrue((self.root / ".aidd" / "hooks" / "host_adapter.py").is_file())
         self.assertTrue((self.root / ".opencode" / "skills" / "aidd" / "SKILL.md").is_file())
         self.assertTrue((self.root / ".opencode" / "plugins" / "aidd.js").is_file())
-        cfg = json.loads((self.root / ".opencode" / "opencode.json").read_text(encoding="utf-8"))
-        self.assertEqual(cfg["plugin"].count(".opencode/plugins/aidd.js"), 1)
+        cfgp = self.root / ".opencode" / "opencode.json"
+        if cfgp.is_file():
+            cfg = json.loads(cfgp.read_text(encoding="utf-8"))
+            self.assertNotIn(".opencode/plugins/aidd.js", cfg.get("plugin", []))
 
     def test_second_run_unchanged(self):
         self.ok(install("opencode", self.root))
@@ -181,7 +183,7 @@ class TestOpencodeInstall(HostInstallBase):
         self.ok(install("opencode", self.root, force=True))
         self.assertEqual(plug.read_bytes(), original)
 
-    def test_ac005_existing_plugins_merged_once(self):
+    def test_existing_aidd_entry_kept_untouched_not_duplicated(self):
         odir = self.root / ".opencode"
         odir.mkdir()
         cfg = {
@@ -196,8 +198,9 @@ class TestOpencodeInstall(HostInstallBase):
             self.assertEqual(got["plugin"].count(".opencode/plugins/graphify.js"), 1)
             self.assertEqual(got["plugin"].count(".opencode/plugins/aidd.js"), 1)
             self.assertEqual(got["model"], "x/y")
+        self.assertTrue((self.root / ".opencode" / "plugins" / "aidd.js").is_file())
 
-    def test_graphify_only_gets_aidd_appended(self):
+    def test_graphify_only_does_not_get_aidd_entry(self):
         odir = self.root / ".opencode"
         odir.mkdir()
         (odir / "opencode.json").write_text(
@@ -205,7 +208,8 @@ class TestOpencodeInstall(HostInstallBase):
         self.ok(install("opencode", self.root))
         got = json.loads((odir / "opencode.json").read_text(encoding="utf-8"))
         self.assertEqual(got["plugin"].count(".opencode/plugins/graphify.js"), 1)
-        self.assertEqual(got["plugin"].count(".opencode/plugins/aidd.js"), 1)
+        self.assertNotIn(".opencode/plugins/aidd.js", got["plugin"])
+        self.assertTrue((odir / "plugins" / "aidd.js").is_file())
 
     def test_corrupt_opencode_json_not_overwritten(self):
         odir = self.root / ".opencode"
@@ -519,6 +523,117 @@ class TestAmendment1Hardening(HostInstallBase):
         self.assertTrue((link / "hooks.json").is_file())
         self.assertEqual(sentinel.read_text(encoding="utf-8"), "do not touch")
         self.assertEqual(sorted(p.name for p in target.iterdir()), before)
+
+
+# ---------------------------------------------------------------- spec 012 (T-07)
+import re
+
+sys.path.insert(0, str(REPO / "skill" / "scripts"))
+import install_host as _ih  # noqa: E402
+
+
+def git(*args, cwd):
+    return subprocess.run(["git", *args], cwd=str(cwd), capture_output=True,
+                          text=True, encoding="utf-8")
+
+
+def git_hooks_dir(cwd):
+    r = git("rev-parse", "--git-path", "hooks", cwd=cwd)
+    p = Path(r.stdout.strip())
+    return (p if p.is_absolute() else Path(cwd) / p).resolve()
+
+
+def run_githooks(root, force=False):
+    inst = _ih.HostInstaller("opencode", Path(root), force, REPO)
+    inst.install_githooks()
+    return inst
+
+
+@unittest.skipUnless(shutil.which("git"), "git not available")
+class TestGithooks(HostInstallBase):
+    def setUp(self):
+        super().setUp()
+        self.root = self.root.resolve()
+        r = git("init", "-q", cwd=self.root)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.hooks = git_hooks_dir(self.root)
+        self.hooks.mkdir(parents=True, exist_ok=True)
+
+    def test_hooks_written_where_git_points(self):
+        run_githooks(self.root)
+        for name in _ih.GITHOOK_NAMES:
+            text = (self.hooks / name).read_text(encoding="utf-8")
+            self.assertIn(_ih.GITHOOK_MARKER, text)
+            self.assertIn("aidd", text)
+
+    def test_worktree_hooks_dir(self):
+        git("-c", "user.email=t@t", "-c", "user.name=t", "commit", "--allow-empty",
+            "-q", "-m", "x", cwd=self.root)
+        wt = self.root.parent / (self.root.name + "-wt")
+        self.addCleanup(shutil.rmtree, str(wt), True)
+        r = git("worktree", "add", "-q", str(wt), "-b", "wt-branch", cwd=self.root)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        where = git_hooks_dir(wt)
+        where.mkdir(parents=True, exist_ok=True)
+        run_githooks(wt)
+        for name in _ih.GITHOOK_NAMES:
+            self.assertIn(_ih.GITHOOK_MARKER, (where / name).read_text(encoding="utf-8"))
+        self.assertFalse((wt / ".git" / "hooks" / "pre-commit").exists())
+
+    def test_foreign_hook_kept_and_block_appended_once(self):
+        foreign = "#!/bin/sh\nnpx lint-staged\necho foreign\n"
+        (self.hooks / "pre-commit").write_text(foreign, encoding="utf-8", newline="\n")
+        run_githooks(self.root)
+        run_githooks(self.root, force=True)
+        text = (self.hooks / "pre-commit").read_text(encoding="utf-8")
+        self.assertTrue(text.startswith(foreign.rstrip("\n")), text)
+        self.assertIn("npx lint-staged", text)
+        self.assertEqual(text.count(_ih.GITHOOK_MARKER), 1)
+
+    def test_second_run_unchanged(self):
+        run_githooks(self.root)
+        before = {n: (self.hooks / n).read_bytes() for n in _ih.GITHOOK_NAMES}
+        mt = {n: (self.hooks / n).stat().st_mtime_ns for n in _ih.GITHOOK_NAMES}
+        inst = run_githooks(self.root)
+        for n in _ih.GITHOOK_NAMES:
+            self.assertEqual((self.hooks / n).read_bytes(), before[n])
+            self.assertEqual((self.hooks / n).stat().st_mtime_ns, mt[n])
+        self.assertFalse([r for r in inst.results if r["status"] == "skipped"], inst.results)
+
+    def test_linked_hooks_dir_refused(self):
+        outside = self.root.parent / (self.root.name + "-outside")
+        outside.mkdir()
+        self.addCleanup(shutil.rmtree, str(outside), True)
+        shutil.rmtree(self.hooks)
+        if not make_dir_link(self.hooks, outside):
+            self.skipTest("cannot create a directory link here")
+        inst = run_githooks(self.root)
+        self.assertEqual(list(outside.iterdir()), [])
+        self.assertTrue([r for r in inst.results if r["status"] == "skipped"], inst.results)
+        self.assertTrue(inst.failed)
+
+    def test_content_has_no_drive_letter_or_user_path(self):
+        run_githooks(self.root)
+        for name in _ih.GITHOOK_NAMES:
+            text = (self.hooks / name).read_text(encoding="utf-8")
+            self.assertIsNone(re.search(r"(?<![A-Za-z])[A-Za-z]:[\\/]", text), text)
+            self.assertNotIn(str(self.root), text)
+            self.assertNotIn(str(Path.home()), text)
+            self.assertNotIn("/Users/", text)
+            self.assertNotIn("/home/", text)
+
+    def test_hook_fails_open_without_aidd(self):
+        sh = shutil.which("sh")
+        if not sh:
+            self.skipTest("sh not available")
+        run_githooks(self.root)
+        self.assertFalse((self.root / ".aidd" / "scripts").exists())
+        env = dict(os.environ)
+        env["PATH"] = str(Path(sh).parent)
+        for name in _ih.GITHOOK_NAMES:
+            r = subprocess.run([sh, str(self.hooks / name)], cwd=str(self.root), env=env,
+                               capture_output=True, text=True)
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
 
 
 if __name__ == "__main__":

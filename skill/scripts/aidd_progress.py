@@ -47,9 +47,30 @@ def _looks_like_path(p):
     return bool(re.search(r'[\\/]', p) or re.search(r'\.[A-Za-z0-9]{1,6}$', p))
 
 
+SHORTHAND_RE = re.compile(r'`([A-Za-z][\w\-]*)/`\s*=\s*`([^`]+/)`')
+
+
+def shorthand_map(text):
+    """{'ENG': 'Payroll/engine/payrol_engine/', ...} from the 'Path shorthand' declaration of a tasks.md
+    (a `X/` = `real/prefix/` pair). Only lines that say 'shorthand' count, so unrelated prose never expands."""
+    out = {}
+    for line in text.splitlines():
+        if 'shorthand' in line.lower():
+            for key, prefix in SHORTHAND_RE.findall(line):
+                out[key] = prefix.replace('\\', '/')
+    return out
+
+
+def _expand(p, short):
+    head, _, rest = p.partition('/')
+    return short[head] + rest if rest and head in short else p
+
+
 def parse_tasks(text):
-    """[{id, paths, codes, status}] for every row of a table with a 'Target file' column. Never raises."""
+    """[{id, paths, codes, status}] for every row of a table with a 'Target file' column. Never raises.
+    Paths written with the spec's declared shorthand (`ENG/x.py`) are expanded to the real project path."""
     out, cols = [], None
+    short = shorthand_map(text)
     try:
         for line in text.splitlines():
             s = line.strip()
@@ -73,7 +94,7 @@ def parse_tasks(text):
             raw = (cells[tgt] if tgt is not None and tgt < len(cells) else '').replace('`', ' ').replace('\\', '/')
             paths = []
             for p in PATH_TOKEN_RE.findall(raw):
-                p = p.strip('.,;:()')
+                p = _expand(p.lstrip('(,;:').rstrip('.,;:)'), short)   # keep a leading dot: `.github/...`
                 if _looks_like_path(p) and p not in paths:
                     paths.append(p)
             codes = []

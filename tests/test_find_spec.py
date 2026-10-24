@@ -83,6 +83,22 @@ class TestToonRoundTrip(unittest.TestCase):
         self.assertEqual(entry["words"], [])
         self.assertEqual(entry["tree"], [])
 
+    def test_cell_larger_than_csv_default_limit_round_trips(self):
+        # Real case: P04-Payrol-Rubros-Plugins' `tree` cell is ~366 KB, well past
+        # csv's 128 KB default field limit. loads_index() raised _csv.Error on it,
+        # which killed find_spec.py before it could report a single match — the
+        # mandatory first step of the pipeline. Regression guard for that.
+        big_tree = [[f"US-{i:04d}", f"SCREEN-{i % 50:02d}", f"CTL-{i:06d}"] for i in range(5000)]
+        index = {
+            "version": find_spec.INDEX_VERSION, "generated": "x",
+            "specs": {"big": {"path": "big", "title": "Big", "codes": [],
+                              "words": ["big"], "tree": big_tree, "files": {}}},
+        }
+        text = find_spec.dumps_index(index)
+        self.assertGreater(len(text), 131072, "fixture must exceed csv's default field limit")
+        restored = find_spec.loads_index(text)
+        self.assertEqual(restored["specs"]["big"]["tree"], big_tree)
+
 
 class TestRelationshipGraph(unittest.TestCase):
     MOCKUP_AUDIT = (

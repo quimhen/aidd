@@ -111,3 +111,6 @@ export const AiddPlugin = async ({ directory }) => {
     },
   };
 };
+
+// opencode 2.x loads a default {id, setup} and has no tool.execute hooks, so the gate is inactive there (setup is a no-op); opencode 1.x uses server.
+export default { id: "aidd", server: AiddPlugin, setup() {} };

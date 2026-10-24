@@ -107,12 +107,36 @@ def cmd_pending(args):
 def cmd_install(args):
     # Passthrough to install_host.py (`install <host> <root> [--force] [--json]`).
     # Deliberately not cmd_init: that one rmtree's .aidd/; install_host never deletes.
-    out = ["install", args.host, args.project_root]
+    # `--host` may be omitted only together with --githooks (git hooks alone).
+    if not args.host and not args.githooks:
+        print("aidd install: error: --host is required unless --githooks is given", file=sys.stderr)
+        return 2
+    out = ["install"]
+    if args.host:
+        out.append(args.host)
+    out.append(args.project_root)
+    if args.githooks:
+        out.append("--githooks")
     if args.force:
         out.append("--force")
     if args.json:
         out.append("--json")
     return _run("install_host.py", out)
+
+
+def cmd_next(args):
+    # Passthrough to aidd_next.py (`[spec_dir] [--write] [--json]`); exit code propagated.
+    out = [args.spec_dir] if args.spec_dir else []
+    out += [f for f, on in (("--write", args.write), ("--json", args.json)) if on]
+    return _run("aidd_next.py", out)
+
+
+def cmd_guard(args):
+    # Passthrough to aidd_guard.py (`commit|push [--root DIR]`); exit code propagated.
+    out = [args.action]
+    if args.root:
+        out += ["--root", args.root]
+    return _run("aidd_guard.py", out)
 
 
 def cmd_doctor(args):
@@ -333,11 +357,25 @@ def build_parser():
     p_install = sub.add_parser(
         "install", help="Install AIDD for one host (gemini|opencode|antigravity) into a project: methodology + enforced gate hooks; never deletes existing files",
     )
-    p_install.add_argument("--host", required=True, choices=["gemini", "opencode", "antigravity"], help="host to install for")
+    p_install.add_argument("--host", choices=["gemini", "opencode", "antigravity"], help="host to install for (optional with --githooks)")
     p_install.add_argument("project_root", nargs="?", default=".", help="project root (default: current directory)")
+    p_install.add_argument("--githooks", action="store_true", help="write git pre-commit/pre-push hooks that run `aidd guard` (alone or with --host)")
     p_install.add_argument("--force", action="store_true", help="overwrite locally modified shipped files")
     p_install.add_argument("--json", action="store_true", help="print a JSON list of {path,status,reason}")
     p_install.set_defaults(func=cmd_install)
+
+    p_next = sub.add_parser(
+        "next", help="Print the single next action for a spec (derived from tasks/evidence); --write saves .aidd/NEXT.md, --json for machines")
+    p_next.add_argument("spec_dir", nargs="?", default="", help="spec folder (default: the gate spec)")
+    p_next.add_argument("--write", action="store_true", help="write the result to .aidd/NEXT.md")
+    p_next.add_argument("--json", action="store_true", help="print the result as JSON")
+    p_next.set_defaults(func=cmd_next)
+
+    p_guard = sub.add_parser(
+        "guard", help="Git-hook gate: check the plan-adherence rules before a commit or push (exit code from aidd_guard.py)")
+    p_guard.add_argument("action", choices=["commit", "push"], help="which git event to guard")
+    p_guard.add_argument("--root", default="", help="project root (default: current directory)")
+    p_guard.set_defaults(func=cmd_guard)
 
     p_doctor = sub.add_parser(
         "doctor", help="Check that a host install is complete and its gates are wired (exit code from aidd_doctor.py)",
@@ -369,6 +407,11 @@ def build_parser():
         add_help=False)
     p_graphs.add_argument("graphs_args", nargs=argparse.REMAINDER, help="forwarded to aidd_graphs.py")
     p_graphs.set_defaults(func=lambda a: _run("aidd_graphs.py", a.graphs_args))
+    p_sqlcheck = sub.add_parser(
+        "sqlcheck", help="Static compile of SQL migrations before any DB pass (engine-specific: --engine postgres | --cmd \"<checker {file}>\"); several specs in one batch, unchanged files cached",
+        add_help=False)
+    p_sqlcheck.add_argument("sqlcheck_args", nargs=argparse.REMAINDER, help="forwarded to aidd_sqlcheck.py")
+    p_sqlcheck.set_defaults(func=lambda a: _run("aidd_sqlcheck.py", a.sqlcheck_args))
 
     p_review = sub.add_parser(
         "review", help="aidd review <spec> [--open] [--check] [--wait] [--comments] [--summary] [--full] [--timeout S] [--interval S]: generate specs/<id>/review.html (compact page) or read the approval state")
@@ -540,6 +583,8 @@ def main(argv=None):
         sys.exit(_run("aidd_status.py", argv))
     if argv and argv[0] == "graphs":
         sys.exit(_run("aidd_graphs.py", argv[1:]))
+    if argv and argv[0] == "sqlcheck":
+        sys.exit(_run("aidd_sqlcheck.py", argv[1:]))
     if argv and argv[0] == "review":
         # aidd:FR-313 — aidd_review.py owns the parsing, so the flags work in any order
         # (`aidd review --summary <spec>` as well as `aidd review <spec> --summary`); the

@@ -12,6 +12,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import shutil
 import stat
 import subprocess
@@ -23,7 +24,12 @@ CORE_MAX_BYTES = 12288
 IGNORED_PARTS = {'__pycache__', 'memory', 'evidence'}
 IGNORED_NAMES = {'gate_spec', 'active_spec'}
 HOSTS = ('gemini', 'opencode', 'antigravity')
-BLOCKING_IDS = ('D1', 'D2', 'D3', 'D4', 'D5')
+BLOCKING_IDS = ('D1', 'D2', 'D3', 'D4', 'D5', 'D8', 'D9')
+PLUGIN_SHAPE_KEYS = ('id', 'server', 'setup')
+GITHOOK_NAMES = ('pre-commit', 'pre-push')
+GUARD_CALLS = ('aidd guard', 'aidd_guard.py')
+NEXT_LINE_NEEDLE = 'aidd next'
+OPENCODE2_GATE_LINE = 'write gate: none on opencode 2.x, enforcement: git guard'
 PLUGIN_ENTRY = '.opencode/plugins/aidd.js'
 GEMINI_MATCHER = 'write_file|replace|run_shell_command'
 RULE_MAX_BYTES = 24000
@@ -302,28 +308,37 @@ class Doctor:
         return None
 
     def _d4_opencode(self, fix):
+        # The "plugin" entry in opencode.json is optional (opencode 2.x auto-loads .opencode/plugins/).
+        plugin = self.root / PLUGIN_ENTRY
+        if not plugin.is_file():
+            return result('D4', 'FAIL', f'{PLUGIN_ENTRY} missing', fix)
+        try:
+            data = plugin.read_bytes()
+        except OSError as exc:
+            return result('D4', 'FAIL', f'{PLUGIN_ENTRY} unreadable: {exc}', fix)
+        text = data.decode('utf-8', errors='replace')
+        if 'export default' not in text or not all(key in text for key in PLUGIN_SHAPE_KEYS):
+            return result('D4', 'FAIL', f'{PLUGIN_ENTRY} has no default export with {{id, server, setup}}',
+                          fix + ' --force')
+        shipped = repo_root() / 'adapters' / 'opencode' / 'plugins' / 'aidd.js'
+        if not shipped.is_file():
+            shipped = self.shipped.parent / 'opencode' / 'plugins' / 'aidd.js'
+        try:
+            differs = shipped.is_file() and shipped.read_bytes() != data
+        except OSError:
+            differs = False
+        if differs:
+            return result('D4', 'FAIL', f'{PLUGIN_ENTRY} differs from the shipped plugin (sha1 {short_sha1(data)})',
+                          fix + ' --force')
+        note = '' if shipped.is_file() else ' (shipped copy not found, content not compared)'
         cfg = load_json(self.root / '.opencode' / 'opencode.json')
-        if cfg is None:
-            return result('D4', 'FAIL', '.opencode/opencode.json missing or not valid JSON', fix)
         plugins = cfg.get('plugin') if isinstance(cfg, dict) else None
         norm = []
         for p in (plugins if isinstance(plugins, list) else []):
             p = str(p).replace('\\', '/')
             norm.append(p[2:] if p.startswith('./') else p)
-        if PLUGIN_ENTRY not in norm:
-            return result('D4', 'FAIL', f'opencode.json "plugin" array does not contain {PLUGIN_ENTRY}', fix)
-        plugin = self.root / PLUGIN_ENTRY
-        if not plugin.is_file():
-            return result('D4', 'FAIL', f'{PLUGIN_ENTRY} missing', fix)
-        shipped = repo_root() / 'adapters' / 'opencode' / 'plugins' / 'aidd.js'
-        if not shipped.is_file():
-            shipped = self.shipped.parent / 'opencode' / 'plugins' / 'aidd.js'
-        data = plugin.read_bytes()
-        if shipped.is_file() and shipped.read_bytes() != data:
-            return result('D4', 'FAIL', f'{PLUGIN_ENTRY} differs from the shipped plugin (sha1 {short_sha1(data)})',
-                          fix + ' --force')
-        note = '' if shipped.is_file() else ' (shipped copy not found, content not compared)'
-        return result('D4', 'PASS', f'plugin registered and file unaltered (sha1 {short_sha1(data)}){note}')
+        where = 'registered in opencode.json' if PLUGIN_ENTRY in norm else 'not listed in opencode.json (optional)'
+        return result('D4', 'PASS', f'plugin {where} and file unaltered (sha1 {short_sha1(data)}){note}')
 
     # ---- D5 ----
     def check_d5(self, host):
@@ -462,7 +477,7 @@ class Doctor:
         try:
             with open(log, 'r', encoding='utf-8', errors='replace') as fh:
                 for line in fh:
-                    if ',rules_override,' in line:
+                    if ',rules_override,' in line or ',guard_override,' in line:
                         count += 1
                         newest = line.strip().split(',', 1)[0]
         except OSError as exc:
@@ -503,7 +518,70 @@ class Doctor:
         out.append(self.check_d5(host))
         out.append(self.check_d6())
         out.append(self.check_d7(host))
+        if host in ('opencode', 'antigravity'):
+            out.append(self.check_d8(host))
+            out.append(self.check_d9(host))
         return out
+
+    # ---- D8 ----
+    def git_hooks_dir(self):
+        """Hooks dir from `git rev-parse --git-path hooks` (worktree-safe), or None when git cannot answer."""
+        try:
+            proc = subprocess.run(['git', 'rev-parse', '--git-path', 'hooks'], cwd=str(self.root),
+                                  capture_output=True, timeout=10)
+        except (OSError, subprocess.TimeoutExpired):
+            return None
+        out = proc.stdout.decode('utf-8', errors='replace').strip()
+        if proc.returncode != 0 or not out:
+            return None
+        path = Path(out)
+        return path if path.is_absolute() else self.root / path
+
+    def opencode_major(self):
+        """Major version of `opencode --version`, or None (binary missing, silent, unparsable, slow)."""
+        exe = shutil.which('opencode')
+        if not exe:
+            return None
+        try:
+            proc = subprocess.run([exe, '--version'], capture_output=True, timeout=5)
+        except (OSError, subprocess.TimeoutExpired):
+            return None
+        match = re.search(r'(\d+)\.\d+', (proc.stdout or proc.stderr).decode('utf-8', errors='replace'))
+        return int(match.group(1)) if match else None
+
+    def check_d8(self, host):
+        fix = 'aidd install --githooks'
+        prefix = ''
+        if host == 'opencode' and self.opencode_major() == 2:
+            prefix = OPENCODE2_GATE_LINE + '; '
+        hooks = self.git_hooks_dir()
+        if hooks is None:
+            return result('D8', 'FAIL', f'{prefix}git hooks dir not found (not a git repo, or git unavailable)', fix)
+        bad = []
+        for name in GITHOOK_NAMES:
+            text = read_text(hooks / name)
+            if not any(call in text for call in GUARD_CALLS):
+                bad.append(name)
+        if bad:
+            return result('D8', 'FAIL', f'{prefix}git hook(s) missing or not calling `aidd guard`: '
+                          + ', '.join(bad), fix)
+        return result('D8', 'PASS', f'{prefix}git hooks {", ".join(GITHOOK_NAMES)} call `aidd guard`')
+
+    # ---- D9 ----
+    def check_d9(self, host):
+        fix = f'aidd install --host {host} --force'
+        nxt = self.aidd / 'NEXT.md'
+        if not nxt.is_file() and not (self.aidd.is_dir() and os.access(str(self.aidd), os.W_OK)):
+            return result('D9', 'FAIL', '.aidd/NEXT.md missing and .aidd/ is not writable', 'aidd next --write')
+        files = ['.aidd/CORE.md']
+        if host == 'antigravity':
+            files.append('.agents/rules/aidd.md')
+        for rel in files:
+            if NEXT_LINE_NEEDLE not in read_text(self.root / rel).lower():
+                return result('D9', 'FAIL', f'{rel} lacks the line telling the agent to run `aidd next` '
+                              'before each step', fix)
+        state = 'present' if nxt.is_file() else 'creatable'
+        return result('D9', 'PASS', f'.aidd/NEXT.md {state}; "run aidd next" line found in {", ".join(files)}')
 
 
 def detect_hosts(root: Path):

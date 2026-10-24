@@ -1,0 +1,3 @@
+# python -m pytest tests/test_aidd_next.py tests/test_aidd_guard.py -q | exit 0 | 2026-10-21T09:17:35
+...................................................  [100%]
+51 passed, 20 subtests passed in 340.62s (0:05:40)

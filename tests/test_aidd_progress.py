@@ -84,6 +84,38 @@ class TestProgress(unittest.TestCase):
         self.assertIn('001-x/T-01', ids)
         self.assertIn({'source': '001-x/T-01', 'target': 'src/marked.py', 'relation': 'targets'}, g['edges'])
 
+    def test_declared_path_shorthand_is_expanded(self):
+        (self.root / 'Payroll' / 'engine' / 'pkg').mkdir(parents=True)
+        (self.root / 'Payroll' / 'engine' / 'pkg' / 'rt.py').write_text('# aidd:FR-001 runtime implementation text\n' * 3, encoding='utf-8')
+        (self.spec / 'tasks.md').write_text(
+            'Path shorthand: `ENG/` = `Payroll/engine/pkg/` · `SPEC/` = `specs/001-x/`.\n\n' + HDR +
+            '| T-01 | a | FR-001 | `ENG/rt.py` (same owner as T-09) |  |\n'
+            '| T-02 | b | FR-002 | `ENG/none.py` |  |\n'
+            '| T-03 | c | FR-003 | `SPEC/tasks.md` |  |\n', encoding='utf-8')
+        m = P.measure(self.root, self.spec)
+        self.assertEqual([r['state'] for r in m['rows']], ['marked', 'missing', 'present'])
+
+    def test_leading_dot_directory_is_kept(self):
+        t = P.parse_tasks(HDR + '| T-01 | a | FR-001 | `.github/workflows/ci.yml` (new). | |\n')[0]
+        self.assertEqual(t['paths'], ['.github/workflows/ci.yml'])
+
+    def test_shorthand_only_from_a_shorthand_line(self):
+        self.assertEqual(P.shorthand_map('See `ENG/` = `a/b/` somewhere'), {})
+        self.assertEqual(P.shorthand_map('Path shorthand: `ENG/` = `a/b/`'), {'ENG': 'a/b/'})
+
+    def test_pending_agrees_with_progress(self):
+        import aidd_pending as PN
+        (self.root / 'Payroll' / 'engine' / 'pkg').mkdir(parents=True)
+        (self.root / 'Payroll' / 'engine' / 'pkg' / 'rt.py').write_text('x = 1  # runtime implementation text here\n', encoding='utf-8')
+        (self.spec / 'tasks.md').write_text(
+            'Path shorthand: `ENG/` = `Payroll/engine/pkg/`.\n\n' + HDR +
+            '| T-01 | a | FR-001 | `ENG/rt.py` (same owner as T-09) |  |\n'
+            '| T-02 | b | FR-002 | `ENG/none.py` |  |\n'
+            '| T-03 | c | FR-003 | prose only |  |\n', encoding='utf-8')
+        done, pending, unknown = PN.classify(PN.parse((self.spec / 'tasks.md').read_text(encoding='utf-8')), self.root)
+        self.assertEqual((done, [t for t, _ in pending], unknown), (['T-01'], ['T-02'], ['T-03']))
+        self.assertEqual(pending[0][1], ['Payroll/engine/pkg/none.py'])
+
     def test_no_specs_is_a_usage_error(self):
         self.assertEqual(P.main(['--root', tempfile.mkdtemp()]), 2)
 

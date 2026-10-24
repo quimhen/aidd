@@ -1,0 +1,9 @@
+$ python -m pytest tests/test_host_install.py tests/test_host_doctor.py -q --no-header -p no:cacheprovider
+7 failed, 68 passed, 1 skipped, 20 subtests passed in 784.57s
+SUBFAILED(host='opencode') test_host_doctor.py::TestHealthy::test_healthy_install_passes   (D8 FAIL git hooks dir not found; D9 FAIL CORE.md lacks `aidd next` line)
+FAILED test_host_doctor.py::TestChecksFail::test_d4_opencode_entry_absent_or_present_passes   (FileNotFoundError .opencode/opencode.json: installer no longer creates it, FR-1205)
+SUBFAILED(host='opencode') test_host_doctor.py::TestGitHookChecks::test_d9_pass_after_install   (D8 hooks missing/not calling guard; D9 CORE.md lacks `aidd next`)
+SUBFAILED(host='antigravity') test_host_doctor.py::TestGitHookChecks::test_d9_pass_after_install   (same)
+FAILED test_host_doctor.py::TestGitHookChecks::test_opencode_2x_with_hooks_no_fail   (D9 FAIL only; D8 passes)
+FAILED test_host_doctor.py::TestAntigravityDoctor::test_cli_accepts_host_antigravity   (D8 not a git repo; D9)
+FAILED test_host_doctor.py::TestAntigravityDoctor::test_healthy_install_passes   (D8 not a git repo; D9)

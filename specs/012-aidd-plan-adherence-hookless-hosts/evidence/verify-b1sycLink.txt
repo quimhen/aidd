@@ -1,0 +1,93 @@
+Spec 012 T-18 verifier - raw output, Part 2 in D:\Fuentes\b1SyCLink (owner yes for this step only), 2026-10-21
+No commit, no push, AIDD_GUARD untouched, only .git/hooks/pre-commit and .git/hooks/pre-push written.
+
+=== global aidd
+$ (Get-Command aidd).Source
+C:\Users\jquimis\AppData\Local\Programs\Python\Python312\Scripts\aidd.exe
+$ python -c "import aidd;print(aidd.__file__)"
+D:\Fuentes\AIDD\aidd\__init__.py        (the global aidd runs this repo's code)
+$ aidd guard --help
+usage: aidd guard [-h] [--root ROOT] {commit,push}
+positional arguments:
+  {commit,push}  which git event to guard
+options:
+  -h, --help     show this help message and exit
+  --root ROOT    project root (default: current directory)
+EXIT=0
+$ Test-Path .aidd\scripts\aidd_guard.py
+False      (gap: the hook's python fallback finds nothing in b1SyCLink's .aidd; it only works through the global aidd)
+
+=== hooks before
+$ git rev-parse --git-path hooks
+.git/hooks
+pre-commit absent
+pre-push absent   (no foreign hooks to preserve here; AC-1204 append case not exercisable in this repo)
+
+=== install (twice, idempotence)
+$ aidd install --githooks D:\Fuentes\b1SyCLink
+written .git/hooks/pre-commit  (created)
+written .git/hooks/pre-push  (created)
+AIDD install (githooks) into D:\Fuentes\b1SycLink: 2 written, 0 unchanged, 0 skipped
+EXIT=0
+$ aidd install --githooks D:\Fuentes\b1SyCLink
+unchanged .git/hooks/pre-commit
+unchanged .git/hooks/pre-push
+AIDD install (githooks) into D:\Fuentes\b1SycLink: 0 written, 2 unchanged, 0 skipped
+EXIT=0
+
+--- .git/hooks/pre-commit (7 lines)
+#!/bin/sh
+# aidd-githook: pre-commit runs `aidd guard commit` (AIDD spec 012); fails open when AIDD is absent
+if command -v aidd >/dev/null 2>&1; then
+  aidd guard commit || exit $?
+elif [ -f .aidd/scripts/aidd_guard.py ] && command -v python >/dev/null 2>&1; then
+  python .aidd/scripts/aidd_guard.py guard commit || exit $?
+fi
+--- .git/hooks/pre-push (7 lines)
+#!/bin/sh
+# aidd-githook: pre-push runs `aidd guard push` (AIDD spec 012); fails open when AIDD is absent
+if command -v aidd >/dev/null 2>&1; then
+  aidd guard push || exit $?
+elif [ -f .aidd/scripts/aidd_guard.py ] && command -v python >/dev/null 2>&1; then
+  python .aidd/scripts/aidd_guard.py guard push || exit $?
+fi
+
+=== AC-1201 (code staged)
+$ git diff --cached --name-only
+(empty)
+$ git log -1 --format="%h %s"
+86514d6 S05: Selection Offer/Selection/Hire implementation (partial)
+$ git status --short Selection/supabase/migrations/3097_sl_hire_selection_fix.sql
+?? Selection/supabase/migrations/3097_sl_hire_selection_fix.sql   (untracked before the test)
+$ git add Selection/supabase/migrations/3097_sl_hire_selection_fix.sql
+warning: in the working copy of '...3097_sl_hire_selection_fix.sql', LF will be replaced by CRLF the next time Git touches it
+staged: Selection/supabase/migrations/3097_sl_hire_selection_fix.sql
+$ aidd guard commit
+(no output)
+EXIT=0 ms=10148                 <-- EXPECTED exit 1; NOT reproduced
+$ aidd guard push
+(no output)
+EXIT=0 ms=1657
+$ git restore --staged Selection/supabase/migrations/3097_sl_hire_selection_fix.sql
+$ git diff --cached --name-only
+(empty)      index restored; file back to untracked
+
+=== diagnosis (read-only python calling aidd_guard functions from D:\Fuentes\AIDD\skill\scripts)
+gate spec: F38-eDoc-Import-Costing           <-- gate pointer is F38, not S05
+F38 build_status secs: 6.89
+F38 tasks: approval valid, approval_recorded true; verification status never-run; why_blocked []; qa-audit.md absent
+F38 findings: []   -> guard allows (correct for F38, but the staged file belongs to S05)
+is_code_file('Selection/supabase/migrations/3097_sl_hire_selection_fix.sql'): True
+
+Same evaluate() with S05-Select-Offer-Selection-Hire as status (pointer NOT changed):
+S05 build_status secs: 9.81
+FINDING R6 | aidd R6: the gate-target spec S05-Select-Offer-Selection-Hire has no valid tasks approval (approval void: tasks.md changed after approval). | fix: aidd review S05-Select-Offer-Selection-Hire, then aidd rules approve S05-Select-Offer-Selection-Hire once the owner approves
+FINDING qa-audit | aidd qa-audit: specs/S05-Select-Offer-Selection-Hire/qa-audit.md has 13 row(s) with a FAIL verdict (V-1, V-2, security (+10 more)). | fix: fix the failing items and update specs/S05-Select-Offer-Selection-Hire/qa-audit.md after a new audit, then aidd verify S05-Select-Offer-Selection-Hire
+
+=== docs-only / empty index case
+$ git diff --cached --name-only
+(empty)
+$ aidd guard commit
+EXIT=0 ms=1219                  pass, as expected
+
+Side-effect check: .aidd/graphs/progress.json was already modified at 08:06:36, before this run (hooks written 08:10:30); no other b1SyCLink file touched.

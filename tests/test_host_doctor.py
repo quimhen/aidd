@@ -31,6 +31,17 @@ def install(host, root):
     assert r.returncode == 0, r.stdout + r.stderr
 
 
+sys.path.insert(0, str(REPO / "skill" / "scripts"))
+import install_host as _ih  # noqa: E402
+
+
+def install_with_githooks(host, root):
+    """git init + install + install_githooks (pattern of test_host_install.TestGithooks)."""
+    subprocess.run(["git", "init", "-q", str(root)], capture_output=True, check=True)
+    install(host, root)
+    _ih.HostInstaller(host, Path(root), False, REPO).install_githooks()
+
+
 def doctor(host, root, *extra):
     return run(DOCTOR, "--host", host, "--root", root, *extra)
 
@@ -65,7 +76,10 @@ class TestHealthy(DoctorBase):
             with self.subTest(host=host):
                 root = self.root / host
                 root.mkdir()
-                install(host, root)
+                if host == "gemini":
+                    install(host, root)
+                else:
+                    install_with_githooks(host, root)
                 r = doctor(host, root)
                 self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
                 for cid in ("D1", "D2", "D3", "D4", "D5"):
@@ -125,20 +139,29 @@ class TestChecksFail(DoctorBase):
         r = doctor("gemini", self.root)
         self.assertTrue(failed(r, "D4"), r.stdout + r.stderr)
 
-    def test_d4_opencode_registration_removed(self):
+    def test_d4_opencode_entry_absent_or_present_passes(self):
+        # 012 plan item 13: the plugin entry may be present or absent.
         install("opencode", self.root)
         cp = self.root / ".opencode" / "opencode.json"
-        c = json.loads(cp.read_text(encoding="utf-8"))
-        c["plugin"] = []
-        cp.write_text(json.dumps(c), encoding="utf-8")
+        cp.parent.mkdir(parents=True, exist_ok=True)
+        c = json.loads(cp.read_text(encoding="utf-8")) if cp.is_file() else {}
+        for entry in ([], ["./plugins/aidd.js"]):
+            c["plugin"] = entry
+            cp.write_text(json.dumps(c), encoding="utf-8")
+            r = doctor("opencode", self.root)
+            self.assertTrue(passed(r, "D4"), f"{entry}\n{r.stdout}{r.stderr}")
+
+    def test_d4_opencode_plugin_file_missing(self):
+        install("opencode", self.root)
+        (self.root / ".opencode" / "plugins" / "aidd.js").unlink()
         r = doctor("opencode", self.root)
         self.assertTrue(failed(r, "D4"), r.stdout + r.stderr)
         self.assertEqual(r.returncode, 1)
 
-    def test_d4_opencode_plugin_altered(self):
+    def test_d4_opencode_plugin_without_default_export(self):
         install("opencode", self.root)
         plug = self.root / ".opencode" / "plugins" / "aidd.js"
-        plug.write_text(plug.read_text(encoding="utf-8") + "\n// disabled\n", encoding="utf-8")
+        plug.write_text("// no export here\nconst x = 1;\n", encoding="utf-8")
         r = doctor("opencode", self.root)
         self.assertTrue(failed(r, "D4"), r.stdout + r.stderr)
         self.assertEqual(r.returncode, 1)
@@ -190,6 +213,115 @@ class TestFixBatchChecks(DoctorBase):
         line = next(ln for ln in (r.stdout + r.stderr).splitlines() if re.search(r"FAIL\s+D3\b", ln))
         self.assertIn("@.aidd/CORE.md", line)
         self.assertNotIn("aidd install", line)
+
+
+def _git_init(root):
+    subprocess.run(["git", "init", "-q", str(root)], capture_output=True, check=True)
+
+
+def _fake_binary_env(bindir, name, version_line):
+    """PATH with a fake `name` that prints version_line for --version."""
+    import os
+    bindir = Path(bindir)
+    if os.name == "nt":
+        (bindir / f"{name}.cmd").write_text(f"@echo {version_line}\r\n", encoding="utf-8")
+    else:
+        p = bindir / name
+        p.write_text(f"#!/bin/sh\necho '{version_line}'\n", encoding="utf-8")
+        p.chmod(0o755)
+    return dict(os.environ, PATH=str(bindir) + os.pathsep + os.environ.get("PATH", ""))
+
+
+class TestGitHookChecks(DoctorBase):
+    """T-09: D8 (git hooks call aidd guard), D9 (NEXT.md + run-aidd-next line); AC-1206."""
+
+    def _install(self, host, githooks):
+        if githooks:
+            install_with_githooks(host, self.root)
+        else:
+            _git_init(self.root)
+            install(host, self.root)
+
+    def test_d8_pass_with_hooks(self):
+        for host in ("opencode", "antigravity"):
+            with self.subTest(host=host):
+                self.root = self.root / host
+                self.root.mkdir()
+                self._install(host, True)
+                r = doctor(host, self.root)
+                self.assertTrue(passed(r, "D8"), r.stdout + r.stderr)
+                self.root = self.root.parent
+
+    def test_d8_fail_without_hooks(self):
+        for host in ("opencode", "antigravity"):
+            with self.subTest(host=host):
+                root = self.root / host
+                root.mkdir()
+                _git_init(root)
+                install(host, root)
+                r = doctor(host, root)
+                self.assertTrue(failed(r, "D8"), r.stdout + r.stderr)
+
+    def test_d8_fail_hook_not_calling_guard(self):
+        self._install("opencode", True)
+        hook = self.root / ".git" / "hooks" / "pre-commit"
+        hook.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+        r = doctor("opencode", self.root)
+        self.assertTrue(failed(r, "D8"), r.stdout + r.stderr)
+
+    def test_d9_pass_after_install(self):
+        for host in ("opencode", "antigravity"):
+            with self.subTest(host=host):
+                root = self.root / host
+                root.mkdir()
+                install_with_githooks(host, root)
+                r = doctor(host, root)
+                self.assertTrue(passed(r, "D9"), r.stdout + r.stderr)
+
+    def test_d9_fail_core_lacks_next_line(self):
+        install("opencode", self.root)
+        core = self.root / ".aidd" / "CORE.md"
+        core.write_text(re.sub(r"(?im)^.*aidd next.*$", "", core.read_text(encoding="utf-8")),
+                        encoding="utf-8")
+        r = doctor("opencode", self.root)
+        self.assertTrue(failed(r, "D9"), r.stdout + r.stderr)
+
+    def test_d9_fail_antigravity_rule_lacks_next_line(self):
+        install("antigravity", self.root)
+        rules = list((self.root / ".agents" / "rules").glob("*.md")) + \
+            list((self.root / ".agent" / "rules").glob("*.md"))
+        self.assertTrue(rules)
+        for rule in rules:
+            rule.write_text(re.sub(r"(?im)^.*aidd next.*$", "", rule.read_text(encoding="utf-8")),
+                            encoding="utf-8")
+        r = doctor("antigravity", self.root)
+        self.assertTrue(failed(r, "D9"), r.stdout + r.stderr)
+
+    def test_opencode_2x_message_and_fail_without_hooks(self):
+        _git_init(self.root)
+        install("opencode", self.root)
+        with tempfile.TemporaryDirectory() as bindir:
+            env = _fake_binary_env(bindir, "opencode", "2.0.32")
+            r = subprocess.run([sys.executable, str(DOCTOR), "--host", "opencode",
+                                "--root", str(self.root)],
+                               capture_output=True, text=True, encoding="utf-8", env=env)
+        out = r.stdout + r.stderr
+        self.assertIn("write gate: none on opencode 2.x", out)
+        self.assertIn("enforcement: git guard", out)
+        self.assertEqual(r.returncode, 1, out)
+        self.assertTrue(failed(r, "D8"), out)
+
+    def test_opencode_2x_with_hooks_no_fail(self):
+        self._install("opencode", True)
+        with tempfile.TemporaryDirectory() as bindir:
+            env = _fake_binary_env(bindir, "opencode", "2.0.32")
+            r = subprocess.run([sys.executable, str(DOCTOR), "--host", "opencode",
+                                "--root", str(self.root)],
+                               capture_output=True, text=True, encoding="utf-8", env=env)
+        out = r.stdout + r.stderr
+        self.assertIn("write gate: none on opencode 2.x", out)
+        self.assertTrue(passed(r, "D8"), out)
+        self.assertEqual(r.returncode, 0, out)
 
 
 class TestFr913WordCounts(unittest.TestCase):
@@ -245,7 +377,7 @@ class TestAntigravityDoctor(DoctorBase):
         return self.root / ".agents" / "hooks.json"
 
     def test_healthy_install_passes(self):
-        install("antigravity", self.root)
+        install_with_githooks("antigravity", self.root)
         r = doctor("antigravity", self.root)
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         for cid in ("D1", "D2", "D3", "D4", "D5"):
@@ -310,7 +442,7 @@ class TestAntigravityDoctor(DoctorBase):
         self.assertTrue({"D1", "D2", "D3", "D4", "D5"} <= ids, ids)
 
     def test_cli_accepts_host_antigravity(self):
-        install("antigravity", self.root)
+        install_with_githooks("antigravity", self.root)
         env = dict(os.environ, PYTHONPATH=str(REPO), PYTHONIOENCODING="utf-8")
         r = subprocess.run([sys.executable, "-m", "aidd.cli", "doctor", "--host", "antigravity",
                             "--root", str(self.root)], cwd=str(REPO), env=env,

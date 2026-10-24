@@ -27,8 +27,13 @@ rule you broke.
 | Session start | `aidd doctor` (gate installed?), `python .aidd/scripts/find_spec.py <keywords>`, then `aidd status` |
 | Before the first code edit of a spec | `aidd rules check specs/<id>` — needs an approved `tasks.md` (R6) |
 | After editing `spec.md`, `plan.md` or `tasks.md` | `python .aidd/scripts/check_spec.py specs/<id>` |
+| After editing any SQL | `aidd sqlcheck <paths>` (static compile with the project's engine: `--engine postgres`, or `--cmd "<checker {file}>"` for another database); proceed on green. The ONE exhaustive database pass runs per wave (rule E8), never per file |
 | Before saying a task is done | the task's verification (section 4), then mark its Status |
 | Before ending the session | `aidd status`; close with `aidd rules close <id>` only after the owner says "Yes, close" |
+
+Run `aidd next` before each step and follow its single next command.
+OpenCode 2.x has no write hook: there enforcement is `aidd guard` via git hooks (`aidd install --githooks`);
+`git commit --no-verify` is a known bypass, listed by `aidd status`.
 
 Approval is the owner's, never yours: present the tasks, ask, wait. Where you cannot click, use the
 review page: `aidd review specs/<id>`, then `aidd review specs/<id> --wait`; the owner approves in

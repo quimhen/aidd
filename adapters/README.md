@@ -187,6 +187,39 @@ mechanism than an explicit per-command slash file has to offer, and Codex has no
 command-file surface — see their own tiers above. Adding a sixth or seventh target later (Trae,
 Kilocode, Qwen, ...) is one new entry in `adapter_targets.py`, not a new integration module.
 
+## Plan adherence on hosts with no write hook (spec 012)
+
+opencode 2.x (2.0.32, measured 2026-10-20/21) has no `tool.execute.before/after` hook: its plugin
+context exposes agent, aisdk, catalog, command, integration, plugin, reference and skill hooks, and
+the string `tool.execute` is absent from the binary. The plugin therefore loads (default export
+`{ id, server, setup }`) but cannot block a write there, and `rule_gate` never runs. On 2.x the
+enforcement is the git guard below. opencode 1.x keeps the plugin gate (Tier 3).
+
+- `aidd next [spec_dir] [--write]` prints, with no LLM and in at most 30 lines, the gate-target spec,
+  its current step, the open rule violations with their fix, whether `Approved:` is valid, the last
+  `aidd verify` result and one next command. With no open spec it says so and names `aidd search`.
+  `--write` stores the same text in `.aidd/NEXT.md`; `CORE.md` and the Antigravity rule tell the agent
+  to run `aidd next` before each step.
+- `aidd guard commit` reads the staged files, ignores documentation and `specs/`, and when a code
+  file is staged it blocks (exit 1, message with the rule and the fix) on: R6 (the gate-target spec
+  has no valid approval); R5 (`tasks.md`/`plan.md` out of chain order); a failed or stale
+  `aidd verify` for the staged code; a FAIL row in `qa-audit.md`. A commit of only docs/`specs/` files
+  always passes. It never blocks on R4, R7, R10, R11 or R12. With no open spec it passes with one
+  warning.
+- `aidd guard push` never blocks: it prints the same findings as warnings and exits 0.
+- `aidd install --githooks [project]` (also `aidd install --host opencode|antigravity --githooks`)
+  writes `pre-commit` and `pre-push` hooks that call `aidd guard`. It is idempotent, appends to a
+  foreign hook instead of replacing it, refuses a hooks directory that is a link, and fails open
+  (the commit proceeds) when `aidd` is not on PATH.
+- `AIDD_GUARD=warn|off` turns blocks into warnings or disables the guard. Owner-only: set it in the
+  environment that launches the commit, not from the agent. Each use is recorded as `guard_override`
+  and shown by `aidd status`.
+
+Known limits:
+- `git commit --no-verify` bypasses the guard. `aidd status` lists commits whose staged code had no
+  valid approval.
+- A foreign hook that exits early never reaches the aidd block appended after it.
+
 ## Install into a new project
 
 ```bash

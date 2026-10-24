@@ -12,50 +12,35 @@ Usage:
 Exit 0 always (informational); 2 on usage error.
 """
 import json
-import re
 import sys
 from pathlib import Path
 
+HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE))
 if hasattr(sys.stdout, 'reconfigure'):
     sys.stdout.reconfigure(encoding='utf-8')
 
-ROW_RE = re.compile(r'^\|(.+)\|\s*$')
-TASK_ID_RE = re.compile(r'^[A-Za-z]+-\d+$')
-
-
-def _cells(line):
-    return [c.strip() for c in line.strip().strip('|').split('|')]
+import aidd_progress as _progress  # noqa: E402  (same path rules as `aidd progress`, so both agree)
 
 
 def parse(text):
-    """Yield (task_id, [target paths]) for every table with a 'Target file' column."""
-    out, col = [], None
-    for line in text.splitlines():
-        if not ROW_RE.match(line):
-            col = None if not line.strip().startswith('|') else col
-            continue
-        cells = _cells(line)
-        lowered = [c.lower() for c in cells]
-        if any(c.startswith('target file') for c in lowered):
-            col = next(i for i, c in enumerate(lowered) if c.startswith('target file'))
-            continue
-        if col is None or set(''.join(cells)) <= set('-: '):
-            continue
-        if TASK_ID_RE.match(cells[0]) and col < len(cells):
-            paths = [p.strip('` ') for p in re.split(r'[;,]|\s+\+\s+', cells[col]) if p.strip('` ')]
-            out.append((cells[0], paths))
-    return out
+    """[(task_id, [target paths])] for every table with a 'Target file' column. Uses aidd_progress.parse_tasks:
+    the spec's declared path shorthand (`ENG/` = `real/prefix/`) is expanded, a trailing `(same owner as T-nn)` /
+    `(new)` is ignored and a cell with several paths lists them all."""
+    return [(t['id'], t['paths'], t) for t in _progress.parse_tasks(text)]
 
 
 def classify(tasks, root):
+    """done = every target exists; pending = a target is missing; unknown = no path in the Target cell."""
     done, pending, unknown = [], [], []
-    for tid, paths in tasks:
-        if not paths or any(' ' in p for p in paths):  # empty or prose, not a path
+    for tid, paths, task in tasks:
+        state = _progress.task_state(task, root)
+        if state == 'n/a':
             unknown.append(tid)
-        elif all((root / p).exists() for p in paths):
-            done.append(tid)
-        else:
+        elif state == 'missing':
             pending.append((tid, paths))
+        else:
+            done.append(tid)
     return done, pending, unknown
 
 
