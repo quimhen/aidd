@@ -631,8 +631,22 @@ class HostInstaller:
 
 
 def _repo_root() -> Path:
-    # skill/scripts/install_host.py -> repo root (same lookup as aidd/cli.py).
-    return Path(__file__).resolve().parent.parent.parent
+    # skill/scripts/install_host.py -> repo root when run from a clone. When the scripts come from the INSTALLED skill
+    # (~/.claude/skills/aidd/scripts, see aidd/cli.py) there is no sibling adapters/: use the copy bundled in the aidd
+    # package (aidd/_data), which `pip install` of this repo refreshes.
+    here = Path(__file__).resolve()
+    candidates = [here.parent.parent.parent]
+    try:
+        import importlib.util
+        spec = importlib.util.find_spec("aidd")
+        if spec and spec.origin:
+            candidates.append(Path(spec.origin).parent / "_data")
+    except Exception:
+        pass
+    for c in candidates:
+        if (c / "adapters" / "dot-aidd").is_dir():
+            return c
+    return candidates[0]
 
 
 def main(argv=None) -> int:
