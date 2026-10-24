@@ -333,6 +333,22 @@ class TestSanitizeAndForgery(EvidenceCase):
         self.assertEqual(sum(1 for e in evs if e["kind"] != "prompt"), 0)
         self.assertEqual(ev.open_specs(self.root), [])
 
+    def test_rotation_keeps_graph_snapshot_rows(self):
+        """aidd:FR-019 graph_snapshot rows are exempt from rotation; the rest is trimmed to KEEP_ROWS."""
+        ev.append(self.root, "s", "graph_snapshot", name="code", label="l", sha256="0" * 64, nodes=1, edges=1)
+        old_max, old_keep = ev.MAX_BYTES, ev.KEEP_ROWS
+        ev.MAX_BYTES, ev.KEEP_ROWS = 20000, 50
+        try:
+            for i in range(300):
+                ev.append(self.root, "s", "code_edit", path=f"{i:04d}" + "x" * 100)
+        finally:
+            ev.MAX_BYTES, ev.KEEP_ROWS = old_max, old_keep
+        self.assertEqual(len(ev.events(self.root, kind="graph_snapshot")), 1)
+        edits = ev.events(self.root, kind="code_edit")      # trimmed to 50 at the last rotation, + rows since
+        self.assertLess(len(edits), 150)
+        self.assertNotEqual(edits[0]["detail"]["path"][:4], "0000")
+        self.assertEqual(ev.events(self.root, kind="code_edit")[-1]["detail"]["path"][:4], "0299")
+
     def test_rotation_does_not_split_rows(self):
         ev.append(self.root, "s", "prompt", text="x\u2028" + FORGED)
         old = ev.MAX_BYTES
@@ -374,7 +390,9 @@ class TestRouting(EvidenceCase):
         for k in ("spec_edit", "code_edit", "approved", "spec_closed", "stop_block", "stop_block_exhausted",
                   "verify_run", "rules_override", "gate_pointer", "stop_reminder"):     # 007 kinds
             ev.append(self.root, "s", k, spec="x")
-        sess = (self.evdir / "sessions" / "s.toon").read_text(encoding="utf-8")
+        ev.append(self.root, "s", "graph_miss", tool="Grep", target="x", silenced=False)      # 004 kinds
+        ev.append(self.root, "s", "graph_snapshot", name="code", label="l", sha256="0" * 64, nodes=1, edges=1)
+        sess =(self.evdir / "sessions" / "s.toon").read_text(encoding="utf-8")
         proj = (self.evdir / "events.toon").read_text(encoding="utf-8")
         for k in ev.SESSION_KINDS:
             self.assertIn(f",{k},", sess)
@@ -382,8 +400,8 @@ class TestRouting(EvidenceCase):
         for k in ev.PROJECT_KINDS:
             self.assertIn(f",{k},", proj)
             self.assertNotIn(f",{k},", sess)
-        self.assertEqual(len(ev.events(self.root)), 17)                    # kind=None merges both
-        self.assertEqual(len(ev.events(self.root, session="s")), 17)
+        self.assertEqual(len(ev.events(self.root)), 19)                    # kind=None merges both
+        self.assertEqual(len(ev.events(self.root, session="s")), 19)
         self.assertEqual(len(ev.events(self.root, kind="prompt")), 1)
         self.assertEqual(ev.events(self.root, session="other"), [])
         self.assertEqual(ev.count(self.root, "prompt", session="s"), 1)

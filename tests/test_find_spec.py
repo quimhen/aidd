@@ -18,6 +18,17 @@ sys.path.insert(0, str(SCRIPTS_DIR))
 import find_spec  # noqa: E402
 
 
+_PREV_GRAPHS = os.environ.get("AIDD_GRAPHS")
+os.environ["AIDD_GRAPHS"] = "off"      # find_spec must not start background graph builds in temp projects (WinError 32)
+
+
+def tearDownModule():
+    if _PREV_GRAPHS is None:
+        os.environ.pop("AIDD_GRAPHS", None)
+    else:
+        os.environ["AIDD_GRAPHS"] = _PREV_GRAPHS
+
+
 class TestTokenizeQuery(unittest.TestCase):
     def test_extracts_codes_and_words(self):
         codes, words = find_spec.tokenize_query(["fix the SCREEN-01 login button"])

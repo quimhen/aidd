@@ -1,0 +1,27 @@
+# T-25 STEP 2.4 (AC-027). Temp project in scratch: jobproj/{check.py, watched.txt}; check.py appends to counter.txt and prints a RESULT line.
+# cwd = <scratch>/jobproj, PYTHONPATH=D:\Fuentes\AIDD, command form: python -m aidd.cli job --root . <sub> ...
+### job run --name t04 --key watched.txt,check.py -- python check.py     exit=0 wall=0.90 s
+t04-428c326e: ok  exit 0  wall 0.078s  inputs 428c326e (2 files)  started 2026-10-24T09:02:30-05:00
+summary: RESULT: ok - 1 items - evidence -
+### same, second time                                                  exit=0 wall=0.48 s
+CACHED t04-428c326e: ok  exit 0  wall 0.078s  inputs 428c326e (2 files)
+counter lines: 1          -> no second execution
+### job last t04                                                       exit=0 wall=0.64 s
+t04-428c326e: ok  exit 0 ...
+### (watched.txt changed) job last t04                                 exit=3 wall=0.58 s
+STALE t04-428c326e: inputs changed since 2026-10-24T09:02:30-05:00 (stored 428c326e, now e1a1f2e3); re-run it
+### job run (after the edit)                                           exit=0 wall=0.66 s
+t04-e1a1f2e3: ok  exit 0  wall 0.078s  inputs e1a1f2e3 (2 files)
+counter lines: 2          -> executes again after the edit
+### (watched.txt changed again) job run --bg ...  -> "t04-125d3284 / STARTED: aidd job wait t04-125d3284"
+### job wait t04-125d3284                                              exit=0 wall=0.45 s
+t04-125d3284: ok  exit 0  wall 0.109s  inputs 125d3284 (2 files)
+counter lines: 3
+### job list                                                           exit=0 wall=0.56 s
+t04  ok  0.109s  125d3284  cached
+t04  ok  0.078s  e1a1f2e3  stale
+t04  ok  0.078s  428c326e  stale
+AC-027 PASS (CACHED, no re-execution by the counter file; re-runs after the edit; wait returns the tool's exit; last exits 3 when STALE;
+verdict carries the inputs hash and wall seconds). The "no process spawned" count via `aidd graphs trace` was not run (counter file used instead).
+Related defect (V-8): tests.test_aidd_job.test_list_shows_job passes `--root` AFTER `list` -> "aidd job: error: unrecognized arguments: --root"
+(the CLI accepts --root only before the subcommand).

@@ -1,0 +1,19 @@
+# AC-019 / AC-020: NOT VERIFIED end to end in a real session (unit-level evidence only).
+Reason at verification time: the Grep/Bash nudge matcher was not registered in ~/.claude/settings.json (the verifier must not run
+install_hooks.py nor touch the owner's settings). `aidd status --refresh` printed "graph-first: 0 misses / 0 searches this session".
+Update 2026-10-24 (after the owner approved updating every host): `python ~/.claude/skills/aidd/scripts/install_hooks.py` was run and the
+registered matcher of read_hint.py is now `Read|Grep|Glob|Bash|PowerShell` (also aligned in ~/.codex/hooks.json). Claude Code sessions must be
+RESTARTED for the new matcher to apply, so the owner's run below is still pending.
+Unit-level evidence: tests.test_read_hint (inside V-4) and tests.test_prompt_trigger / tests.test_perf_budget (V-7) passed.
+
+## Human test script (owner), corrected for the 300 s throttle
+The hook records EVERY counted search as a `graph_miss` event, but it prints at most ONE nudge line per session every 300 s. A search that
+follows an agent-run graph query (find_spec.py or `aidd graphs show|repeats|changed|status`, `aidd search|tree`) within 300 s is `silenced`.
+1. Restart Claude Code in D:\Fuentes\AIDD; send a planning prompt so the prompt hook runs find_spec (that run has source='hook' and never silences).
+2. Ask the agent to use the Grep tool for `code_state` under skill/scripts          -> expect ONE nudge line naming `aidd graphs show code`.
+3. Right after (within 300 s) ask the agent to run `grep -rn code_state skill/scripts` with Bash
+                                                                                      -> expect NO new message (throttled), but one more graph_miss is recorded.
+4. Run `aidd graphs show code code_state`, then within 300 s ask for a third search -> expect NO nudge (silenced by the agent's graph query).
+5. Run `aidd status`                                                                  -> expect `graph-first: 2 misses / 3 searches this session`
+   (misses = the two searches that were not silenced; searches = all three).
+6. Wait more than 300 s and search again                                              -> the nudge comes back (also `aidd status` shows 3 misses / 4 searches).

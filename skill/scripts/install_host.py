@@ -641,6 +641,7 @@ def _repo_root() -> Path:
         spec = importlib.util.find_spec("aidd")
         if spec and spec.origin:
             candidates.append(Path(spec.origin).parent / "_data")
+            candidates.append(Path(spec.origin).parent.parent)  # aidd imported from a checkout (PYTHONPATH)
     except Exception:
         pass
     for c in candidates:

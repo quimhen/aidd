@@ -49,7 +49,9 @@ class TestAuto(unittest.TestCase):
     def test_missing_graph_starts_background_refresh_and_says_so(self):
         with mock.patch.object(aidd_graphs, "refresh", return_value={"started": True, "reason": "", "pid": 1, "log": ""}) as r:
             out = aidd_graphs.auto(self.root, ["orders"])
-        r.assert_called_once_with(self.root, "db", background=True)
+        # spec 004 (FR-021/FR-029/FR-030): db-schema, db-dml and spec (builtin:spec) are refreshed too
+        self.assertIn(mock.call(self.root, "db", background=True), r.call_args_list)
+        self.assertEqual(sorted(c.args[1] for c in r.call_args_list), ["db", "db-dml", "db-schema", "spec"])
         self.assertIn("refresh started in background", "\n".join(out))
 
     def test_built_graph_returns_matching_nodes_with_purpose(self):
@@ -70,9 +72,9 @@ class TestAuto(unittest.TestCase):
             self.assertEqual(aidd_graphs.auto(Path(td), ["orders"]), [])
 
     def test_find_spec_prints_the_graph_block_before_the_spec_verdict(self):
-        e = [g for g in aidd_graphs.load_registry(self.root) if g["name"] == "db"][0]
-        subprocess.run([sys.executable, str(SCRIPTS / "sql_graph.py"), "--root", str(self.root), "--out", e["output"],
-                        str(self.root / "supabase" / "migrations")], check=True, capture_output=True)
+        # spec 004 FR-021: freshness is the content stamp written by an aidd refresh, so build through it
+        r0 = aidd_graphs.refresh(self.root, "db", background=False, force=True)
+        self.assertEqual(r0.get("exit"), 0, r0)
         env = dict(os.environ, AIDD_GRAPHS="")
         r = subprocess.run([sys.executable, str(SCRIPTS / "find_spec.py"), "orders", "partner_code"], cwd=str(self.root),
                            capture_output=True, text=True, encoding="utf-8", env=env)

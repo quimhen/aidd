@@ -41,8 +41,23 @@ AGY_FILES = (('.agents/skills/aidd/SKILL.md', 'skills/aidd/SKILL.md'),
 
 
 def repo_root() -> Path:
-    """skill/scripts/aidd_doctor.py -> repo root (same layout aidd/cli.py assumes)."""
-    return Path(__file__).resolve().parent.parent.parent
+    """skill/scripts/aidd_doctor.py -> repo root (same layout aidd/cli.py assumes). When the scripts come from the
+    INSTALLED skill (~/.claude/skills/aidd/scripts) there is no sibling adapters/: use the copy bundled in the aidd
+    package (aidd/_data), as install_host.py does, so `aidd doctor` can compare against the shipped files."""
+    here = Path(__file__).resolve()
+    candidates = [here.parent.parent.parent]
+    try:
+        import importlib.util
+        spec = importlib.util.find_spec("aidd")
+        if spec and spec.origin:
+            candidates.append(Path(spec.origin).parent / "_data")
+            candidates.append(Path(spec.origin).parent.parent)  # aidd imported from a checkout (PYTHONPATH)
+    except Exception:
+        pass
+    for c in candidates:
+        if (c / "adapters").is_dir():
+            return c
+    return candidates[0]
 
 
 def result(check_id, status, message, fix=''):

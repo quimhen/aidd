@@ -1,0 +1,6 @@
+# python -m unittest tests.test_sql_graph_incremental | exit 0 | 2026-10-24T10:09:23
+.................
+----------------------------------------------------------------------
+Ran 17 tests in 8.618s
+
+OK

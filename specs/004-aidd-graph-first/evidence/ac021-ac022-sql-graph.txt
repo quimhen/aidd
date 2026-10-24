@@ -1,0 +1,28 @@
+# T-25 STEP 2.3 (AC-021, AC-022) on D:\Fuentes\b1SycLink (read-only inputs; outputs in scratch). eDoc migrations 461 files, Payroll 417.
+### attempt with RELATIVE inputs (as written in the brief)
+$ python skill/scripts/sql_graph.py --root D:\Fuentes\b1SycLink --out <scratch>/sql/schema.json --kind schema --checkpoint <scratch>/sql/schema.ckpt.json eDoc/supabase/migrations Payroll/supabase/migrations
+sql_graph: path not found: D:\Fuentes\AIDD\eDoc\supabase\migrations
+exit=2 (same for the dml form)
+  FINDING: positional input paths are resolved against the cwd, not against --root.
+### same commands with ABSOLUTE input paths (D:\Fuentes\b1SycLink\eDoc\supabase\migrations D:\Fuentes\b1SycLink\Payroll\supabase\migrations)
+schema run 1: exit=0 wall=4.23 s
+  db-schema: full replay (no checkpoint)
+  sql_graph: 293 tables, 63 views, 4452 columns, 0 functions, 526 indexes, 8024 edges, 27 skipped
+  coverage: cols_with_purpose 73.6% of 4452; funcs_analyzed 0.0% of 0
+schema run 2: exit=0 wall=1.25 s
+  db-schema: replayed 0 of 878 migrations
+  sql_graph: 293 tables, 63 views, 4452 columns, 0 functions, 526 indexes, 8024 edges, 27 skipped
+dml run 1 (--kind dml --cache <scratch>/sql/dml.json): exit=0 wall=7.75 s
+  db-schema: full replay (no checkpoint)
+  db-dml: analysed 1540 bodies, reused 0
+  sql_graph: 289 tables, 31 views, 3884 columns, 1411 functions, 0 indexes, 25063 edges, 28 skipped
+  coverage: funcs_analyzed 95.5% of 1411
+dml run 2: exit=0 wall=1.86 s
+  db-schema: replayed 0 of 878 migrations
+  db-dml: analysed 0 bodies, reused 1540
+### graph contents
+schema.json meta.skipped_statements = 27; edges: fk_col 572, pertenece_a 4978, idx_col 1166, fk 404, usa_col 904
+dml-graph.json meta.skipped_statements = 28; edges: lee_col 11775, lee 2612, llama 2339, escribe_col 6977, escribe 1093, dispara_trigger 267
+-> no KeyError 'oitw': exit 0 with meta.skipped_statements > 0; tables, 1411 functions and 1093 `escribe` edges present (dml kind).
+AC-021 PASS. AC-022: replay-0 and reuse-all on unchanged input PASS; the "append one migration / edit an old one / change a
+table's columns" branches were not exercised here (b1SycLink is read-only for the verifier): covered by tests.test_sql_graph_incremental (V-6 PASS).

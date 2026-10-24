@@ -12,10 +12,20 @@ Output (deterministic, atomic): {"meta": {...counts, "coverage": {...}}, "nodes"
 Node ids: db:<kind>:<name> (kind = table|view|column|function|index); column id db:column:<TABLE>.<COL>.
 Edge relations: pertenece_a, fk, fk_col, idx_col, lee, escribe, lee_col, escribe_col, llama,
 usa_col, dispara_trigger. Check constraints are not nodes. Any schema prefix is stripped.
-Malformed statements are skipped (never raise) and counted in meta.skipped_statements.
-Public API: build_graph(root, paths) -> dict.  Exit codes: 0 ok, 2 bad arguments.
+Malformed statements are skipped (never raise) and counted in meta.skipped_statements; so is a
+reference in a function/view body to a name that is not a known table (aidd:FR-028).
+
+--kind all (default): the combined graph above, unchanged. --kind schema (aidd:FR-029): only
+tables/views/columns/indexes and pertenece_a/fk/fk_col/idx_col/usa_col (meta.kind db-schema), built
+by append-only replay from a JSON checkpoint (--checkpoint, default <out>.ckpt.json). --kind dml
+(aidd:FR-030): function nodes plus the lee/escribe/lee_col/escribe_col/llama/dispara_trigger edges and
+their endpoint nodes (meta.kind db-dml), with a per-body JSON cache (--cache, default <out>.dml.json).
+In --kind all the checkpoint/cache are used only when the flag is given explicitly.
+Public API: build_graph(root, paths, kind="all", checkpoint=None, cache=None, log=None) -> dict.
+Exit codes: 0 ok, 2 bad arguments.
 """
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -539,6 +549,8 @@ def analyze_sql(model, text):
                                      clean, re.I))}
     alias_re = rf"(?:\s+(?:AS\s+)?({ID}))?"
 
+    res["skipped"] = 0  # aidd:FR-028 references skipped in this body (summed into meta.skipped_statements)
+
     def known(qid):
         k = norm(qid).lower()
         return k if (k in model.tables or k in model.views) else None
@@ -547,87 +559,100 @@ def analyze_sql(model, text):
         return g.lower() if g and unq(g).upper() not in ALIAS_STOP else None
 
     for stmt in clean.split(";"):
-        refs, spans, writes = [], [], {}  # refs: (key, alias, op)
-        del_starts = set()
-        for rx, op in ((rf"\bINSERT\s+INTO\s+({QID})", "INSERT"),
-                       (rf"\bUPDATE\s+(?:ONLY\s+)?({QID}){alias_re}(?=\s+SET\b)", "UPDATE"),
-                       (rf"\bDELETE\s+FROM\s+(?:ONLY\s+)?({QID}){alias_re}", "DELETE"),
-                       (rf"\bMERGE\s+INTO\s+({QID}){alias_re}", "UPDATE")):
-            for m in re.finditer(rx, stmt, re.I):
-                k = known(m.group(1))
-                if op == "DELETE":
-                    del_starts.add(m.start(1))
-                if k:
-                    refs.append((k, alias_of(m.group(2)) if m.lastindex and m.lastindex >= 2 else None, op))
-                    writes[k] = op
-                    spans.append(m.span(1))
-        for m in re.finditer(rf"\b(?:FROM|JOIN|USING)\s+(?:ONLY\s+)?({QID}){alias_re}", stmt, re.I):
-            if m.start(1) in del_starts:
-                continue
-            k = known(m.group(1))
-            if k:
-                refs.append((k, alias_of(m.group(2)), "SELECT"))
-                spans.append(m.span(1))
-            pos = m.end()
-            while True:  # FROM a x, b y
-                cm = re.compile(rf"\s*,\s*({QID}){alias_re}", re.I).match(stmt, pos)
-                if not cm:
-                    break
-                k2 = known(cm.group(1))
-                if k2:
-                    refs.append((k2, alias_of(cm.group(2)), "SELECT"))
-                    spans.append(cm.span(1))
-                pos = cm.end()
-        for k, _, op in refs:
-            if k in model.tables or k in model.views:
-                if k in model.views:
-                    res["views"].add(k)
-                else:
-                    res["tables"].setdefault(k, set()).add(op)
-        tabs = {}
-        for k, al, _ in refs:
-            if k in model.tables:
-                tabs[k] = k
-                if al:
-                    tabs[al] = k
-        if not tabs:
-            continue
-        work = _blank_spans(stmt, spans)
-        # write columns
-        wspans = []
-        for m in re.finditer(rf"\bINSERT\s+INTO\s+({QID})\s*\(([^()]*)\)", stmt, re.I):
-            k = known(m.group(1))
-            if k in model.tables:
-                wspans.append(m.span(2))
-                for c in id_list(m.group(2)):
-                    if c in model.tables[k]["cols"]:
-                        res["col_writes"].add((k, c))
-        sm = re.search(r"\bSET\b(.*?)(?=\bWHERE\b|\bFROM\b|\bRETURNING\b|$)", stmt, FLAGS)
-        if sm and re.search(r"\bUPDATE\b", stmt, re.I):
-            targets = [k for k, _, op in refs if op == "UPDATE"]
-            for m in re.finditer(rf"(?:^|,)\s*(?:{ID}\s*\.\s*)?({ID})\s*=(?!=)", sm.group(1)):
-                c = unq(m.group(1)).lower()
-                for k in targets:
-                    if c in model.tables[k]["cols"]:
-                        res["col_writes"].add((k, c))
-                        wspans.append((sm.start(1) + m.start(1), sm.start(1) + m.end(1)))
-        work = _blank_spans(work, wspans)
-        # qualified alias.col
-        qspans = []
-        for m in re.finditer(rf"(?<![\w.])({ID})\s*\.\s*({ID})", work):
-            q, c = unq(m.group(1)).lower(), unq(m.group(2)).lower()
-            k = tabs.get(q)
-            if k and c in model.tables[k]["cols"]:
-                res["col_reads"].add((k, c))
-            qspans.append(m.span())
-        work = _blank_spans(work, qspans)
-        # unqualified: only when exactly one referenced table owns the column
-        for m in re.finditer(rf"(?<![\w.$:@])({ID})(?![\w.(])", work):
-            c = unq(m.group(1)).lower()
-            owners = {k for k in set(tabs.values()) if c in model.tables[k]["cols"]}
-            if len(owners) == 1:
-                res["col_reads"].add((next(iter(owners)), c))
+        try:  # aidd:FR-028 one bad statement in a body never aborts the build
+            _analyze_stmt(model, stmt, res, known, alias_of, alias_re)
+        except Exception:
+            res["skipped"] += 1
     return res
+
+
+def _analyze_stmt(model, stmt, res, known, alias_of, alias_re):
+    refs, spans, writes = [], [], {}  # refs: (key, alias, op)
+    del_starts = set()
+    for rx, op in ((rf"\bINSERT\s+INTO\s+({QID})", "INSERT"),
+                   (rf"\bUPDATE\s+(?:ONLY\s+)?({QID}){alias_re}(?=\s+SET\b)", "UPDATE"),
+                   (rf"\bDELETE\s+FROM\s+(?:ONLY\s+)?({QID}){alias_re}", "DELETE"),
+                   (rf"\bMERGE\s+INTO\s+({QID}){alias_re}", "UPDATE")):
+        for m in re.finditer(rx, stmt, re.I):
+            k = known(m.group(1))
+            if op == "DELETE":
+                del_starts.add(m.start(1))
+            if k:
+                refs.append((k, alias_of(m.group(2)) if m.lastindex and m.lastindex >= 2 else None, op))
+                writes[k] = op
+                spans.append(m.span(1))
+    for m in re.finditer(rf"\b(?:FROM|JOIN|USING)\s+(?:ONLY\s+)?({QID}){alias_re}", stmt, re.I):
+        if m.start(1) in del_starts:
+            continue
+        k = known(m.group(1))
+        if k:
+            refs.append((k, alias_of(m.group(2)), "SELECT"))
+            spans.append(m.span(1))
+        pos = m.end()
+        while True:  # FROM a x, b y
+            cm = re.compile(rf"\s*,\s*({QID}){alias_re}", re.I).match(stmt, pos)
+            if not cm:
+                break
+            k2 = known(cm.group(1))
+            if k2:
+                refs.append((k2, alias_of(cm.group(2)), "SELECT"))
+                spans.append(cm.span(1))
+            pos = cm.end()
+    for k, _, op in refs:
+        if k in model.tables or k in model.views:
+            if k in model.views:
+                res["views"].add(k)
+            else:
+                res["tables"].setdefault(k, set()).add(op)
+    tabs = {}
+    for k, al, _ in refs:
+        if k in model.tables:
+            tabs[k] = k
+            if al:
+                tabs[al] = k
+    if not tabs:
+        return
+    work = _blank_spans(stmt, spans)
+    # write columns
+    wspans = []
+    for m in re.finditer(rf"\bINSERT\s+INTO\s+({QID})\s*\(([^()]*)\)", stmt, re.I):
+        k = known(m.group(1))
+        if k in model.tables:
+            wspans.append(m.span(2))
+            for c in id_list(m.group(2)):
+                if c in model.tables[k]["cols"]:
+                    res["col_writes"].add((k, c))
+    sm = re.search(r"\bSET\b(.*?)(?=\bWHERE\b|\bFROM\b|\bRETURNING\b|$)", stmt, FLAGS)
+    if sm and re.search(r"\bUPDATE\b", stmt, re.I):
+        targets = [k for k, _, op in refs if op == "UPDATE"]
+        # aidd:FR-028 an UPDATE/MERGE target that is not a known table (a view, an alias such as
+        # `oitw`) has no column map: skip it and count it instead of raising KeyError.
+        bad = {k for k in targets if k not in model.tables}
+        if bad:
+            res["skipped"] += len(bad)
+            targets = [k for k in targets if k in model.tables]
+        for m in re.finditer(rf"(?:^|,)\s*(?:{ID}\s*\.\s*)?({ID})\s*=(?!=)", sm.group(1)):
+            c = unq(m.group(1)).lower()
+            for k in targets:
+                if k in model.tables and c in model.tables[k]["cols"]:
+                    res["col_writes"].add((k, c))
+                    wspans.append((sm.start(1) + m.start(1), sm.start(1) + m.end(1)))
+    work = _blank_spans(work, wspans)
+    # qualified alias.col
+    qspans = []
+    for m in re.finditer(rf"(?<![\w.])({ID})\s*\.\s*({ID})", work):
+        q, c = unq(m.group(1)).lower(), unq(m.group(2)).lower()
+        k = tabs.get(q)
+        if k and c in model.tables[k]["cols"]:
+            res["col_reads"].add((k, c))
+        qspans.append(m.span())
+    work = _blank_spans(work, qspans)
+    # unqualified: only when exactly one referenced table owns the column
+    for m in re.finditer(rf"(?<![\w.$:@])({ID})(?![\w.(])", work):
+        c = unq(m.group(1)).lower()
+        owners = {k for k in set(tabs.values()) if c in model.tables[k]["cols"]}
+        if len(owners) == 1:
+            res["col_reads"].add((next(iter(owners)), c))
 
 
 # ---------------------------------------------------------------- purpose rules
@@ -670,8 +695,9 @@ def _collect(root, paths):
     out, seen = [], set()
     for p in paths:
         p = Path(p)
-        if not p.is_absolute():
-            p = Path.cwd() / p
+        if not p.is_absolute():  # relative inputs: under --root first, the cwd as fallback
+            under_root = Path(root) / p
+            p = under_root if under_root.exists() else Path.cwd() / p
         if p.is_dir():
             found = sorted((f for f in p.rglob("*.sql") if f.is_file()),
                            key=lambda f: natural_key(f.relative_to(p).as_posix()))
@@ -697,11 +723,225 @@ def _pct(a, b):
     return round(100.0 * a / b, 1) if b else 0.0
 
 
-def build_graph(root, paths):
+# ---------------------------------------------------------------- incremental state (aidd:FR-029 aidd:FR-030)
+CKPT_VERSION = 1
+CACHE_VERSION = 1
+SCHEMA_RELS = {"pertenece_a", "fk", "fk_col", "idx_col", "usa_col"}
+DML_RELS = {"lee", "escribe", "lee_col", "escribe_col", "llama", "dispara_trigger"}
+
+
+def _sha(data):
+    return hashlib.sha256(data if isinstance(data, bytes) else data.encode("utf-8", errors="replace")).hexdigest()
+
+
+def _tool_sha():
+    """Hash of this script: a checkpoint/cache written by another parser version is never reused."""
+    try:
+        return _sha(Path(__file__).read_bytes())[:16]
+    except Exception:
+        return "unknown"
+
+
+def _write_json(out, obj):
+    """Atomic JSON write that KEEPS dict insertion order (no sort_keys: model order is state)."""
+    out = Path(out)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    tmp = out.with_name(out.name + ".tmp")
+    tmp.write_text(json.dumps(obj, ensure_ascii=False, separators=(",", ":")) + "\n", encoding="utf-8", newline="\n")
+    os.replace(tmp, out)
+
+
+def model_state(model):
+    """aidd:FR-029 JSON-safe model state. The only non-JSON part is the triggers dict keyed by
+    (table, trigger) tuples; it is stored as a list of [[table, trigger], value] pairs (lossless)."""
+    return {"tables": model.tables, "views": model.views, "funcs": model.funcs, "indexes": model.indexes,
+            "triggers": [[list(k), v] for k, v in model.triggers.items()],
+            "skipped": model.skipped, "files": model.files}
+
+
+def model_from_state(root, st):
+    m = Model(root)
+    for key in ("tables", "views", "funcs", "indexes"):
+        if not isinstance(st[key], dict):
+            raise ValueError(f"bad state: {key}")
+    m.tables, m.views, m.funcs, m.indexes = st["tables"], st["views"], st["funcs"], st["indexes"]
+    m.triggers = {(k[0], k[1]): v for k, v in st["triggers"]}
+    m.skipped, m.files = int(st["skipped"]), list(st["files"])
+    return m
+
+
+def _prefix_key(entries):
+    return _sha(json.dumps([[r, s] for r, s in entries], separators=(",", ":")))
+
+
+def _prefix_diff(prefix, cur):
+    """None when `prefix` (checkpointed [rel, sha] list) is an unchanged prefix of `cur`, else the reason."""
+    rels = {r for r, _ in cur}
+    for i, (rel, sha) in enumerate(prefix):
+        if rel not in rels:
+            return f"removed {rel}"
+        if i >= len(cur) or cur[i][0] != rel:
+            return f"order changed at {rel}"
+        if cur[i][1] != sha:
+            return f"changed {rel}"
+    return None
+
+
+def load_model(root, paths, checkpoint=None, log=None):
+    """Apply the migrations of `paths` in order. With `checkpoint` (aidd:FR-029): resume from the saved
+    state when the checkpointed file list is an unchanged prefix (replay only the tail), otherwise
+    replay everything and say why; then save the new state. Never raises on a bad checkpoint."""
     root = Path(root)
-    model = Model(root)
-    for f in _collect(root, paths):
-        model.apply_file(_rel(root, f), f.read_bytes().decode("utf-8", errors="replace"))
+    log = log if log is not None else []
+    files = [(_rel(root, f), f) for f in _collect(root, paths)]
+    if checkpoint is None:
+        model = Model(root)
+        for rel, f in files:
+            model.apply_file(rel, f.read_bytes().decode("utf-8", errors="replace"))
+        return model
+    datas = [f.read_bytes() for _, f in files]
+    entries = [(rel, _sha(b)) for (rel, _), b in zip(files, datas)]
+    ck, model, start, reason = Path(checkpoint), None, 0, None
+    if not ck.is_file():
+        reason = "no checkpoint"
+    else:
+        try:
+            doc = json.loads(ck.read_text(encoding="utf-8"))
+            prefix = [(str(r), str(s)) for r, s in doc["prefix"]]
+            if doc.get("version") != CKPT_VERSION:
+                reason = "checkpoint version changed"
+            elif doc.get("tool") != _tool_sha():
+                reason = "sql_graph.py changed"
+            elif doc.get("key") != _prefix_key(prefix):
+                reason = "checkpoint key mismatch"
+            else:
+                reason = _prefix_diff(prefix, entries)
+                if reason is None:
+                    model, start = model_from_state(root, doc["state"]), len(prefix)
+        except Exception as e:  # unreadable/corrupt checkpoint -> full replay, never raise
+            reason, model, start = f"checkpoint unreadable: {type(e).__name__}", None, 0
+    if model is None:
+        model, start = Model(root), 0
+    for i in range(start, len(entries)):
+        model.apply_file(entries[i][0], datas[i].decode("utf-8", errors="replace"))
+    if reason is not None:
+        log.append(f"db-schema: full replay ({reason})")
+    else:
+        log.append(f"db-schema: replayed {len(entries) - start} of {len(entries)} migrations")
+    if reason is not None or start < len(entries):
+        try:
+            _write_json(ck, {"version": CKPT_VERSION, "tool": _tool_sha(), "key": _prefix_key(entries),
+                             "prefix": [list(e) for e in entries], "state": model_state(model)})
+        except Exception as e:  # aidd:FR-029 never pickle; report and keep the graph
+            log.append(f"db-schema: checkpoint not written ({type(e).__name__}: {e})")
+    return model
+
+
+def _res_to_json(r):
+    return {"tables": {k: sorted(v) for k, v in sorted(r["tables"].items())}, "views": sorted(r["views"]),
+            "col_reads": sorted(list(x) for x in r["col_reads"]),
+            "col_writes": sorted(list(x) for x in r["col_writes"]),
+            "dynamic": bool(r["dynamic"]), "skipped": int(r.get("skipped", 0)), "called": sorted(r["called"])}
+
+
+def _res_from_json(j):
+    return {"tables": {k: set(v) for k, v in j["tables"].items()}, "views": set(j["views"]),
+            "col_reads": {(a, b) for a, b in j["col_reads"]}, "col_writes": {(a, b) for a, b in j["col_writes"]},
+            "dynamic": bool(j["dynamic"]), "skipped": int(j["skipped"]), "called": set(j["called"])}
+
+
+class BodyAnalyses:
+    """aidd:FR-030 Per-body analysis, memoised in-run and (with `cache_path`) across runs. An entry is
+    keyed by sha(body) and reused only while the hash of the schema of the objects the body names
+    (tables with their column keys, views, functions) is unchanged; so a schema change re-analyses only
+    the bodies that mention the changed tables. Never raises."""
+
+    def __init__(self, model, cache_path=None):
+        self.model, self.path = model, cache_path
+        self.mem, self.old, self.new = {}, {}, {}
+        self.analysed = self.reused = 0
+        if cache_path and Path(cache_path).is_file():
+            try:
+                doc = json.loads(Path(cache_path).read_text(encoding="utf-8"))
+                if doc.get("version") == CACHE_VERSION and doc.get("tool") == _tool_sha():
+                    self.old = dict(doc.get("entries") or {})
+            except Exception:
+                self.old = {}
+
+    def _schema_hash(self, ids):
+        m, sig = self.model, []
+        for i in ids:
+            if i in m.tables:
+                sig.append(["t", i, sorted(m.tables[i]["cols"])])
+            if i in m.views:
+                sig.append(["v", i])
+            if i in m.funcs:
+                sig.append(["f", i])
+        return _sha(json.dumps(sig, separators=(",", ":")))
+
+    def _analyse(self, body):
+        try:
+            r = analyze_sql(self.model, body)
+        except Exception:  # aidd:FR-028 a body that cannot be analysed is skipped and counted
+            r = {"tables": {}, "views": set(), "col_reads": set(), "col_writes": set(), "dynamic": False,
+                 "skipped": 1}
+        called = set()
+        try:
+            for m in re.finditer(rf"\b({ID})\s*\(", blank(body)):
+                n = unq(m.group(1)).lower()
+                if n in self.model.funcs:
+                    called.add(n)
+        except Exception:
+            r["skipped"] = r.get("skipped", 0) + 1
+        r["called"] = called
+        return r
+
+    def get(self, body):
+        h = _sha(body)
+        if h in self.mem:
+            return self.mem[h]
+        e, res = self.old.get(h), None
+        try:
+            ids = list(e["ids"]) if e else sorted(set(id_list(blank(body))))
+            sh = self._schema_hash(ids)
+            if e and e.get("schema") == sh:
+                res = _res_from_json(e["result"])
+                self.reused += 1
+        except Exception:
+            ids, sh, res = [], "", None
+        if res is None:
+            res = self._analyse(body)
+            self.analysed += 1
+        if self.path:
+            try:
+                self.new[h] = {"ids": ids, "schema": sh, "result": _res_to_json(res)}
+            except Exception:
+                pass
+        self.mem[h] = res
+        return res
+
+    def save(self, log):
+        if not self.path:
+            return
+        log.append(f"db-dml: analysed {self.analysed} bodies, reused {self.reused}")
+        try:  # pruned to the bodies seen in this run
+            _write_json(self.path, {"version": CACHE_VERSION, "tool": _tool_sha(), "entries": self.new})
+        except Exception as e:
+            log.append(f"db-dml: cache not written ({type(e).__name__}: {e})")
+
+
+def build_graph(root, paths, kind="all", checkpoint=None, cache=None, log=None):
+    """kind: all (combined graph, unchanged), schema (db-schema), dml (db-dml). `log` collects the
+    db-schema/db-dml progress lines."""
+    log = log if log is not None else []
+    model = load_model(root, paths, checkpoint, log)
+    return assemble(model, kind, cache, log)
+
+
+def assemble(model, kind="all", cache=None, log=None):
+    log = log if log is not None else []
+    bodies = BodyAnalyses(model, cache) if kind != "schema" else None
+    body_skipped = 0
     nodes, edges = {}, set()
 
     def node(nid, **kw):
@@ -762,18 +1002,21 @@ def build_graph(root, paths):
         for c in ix["cols"]:
             if c in t["cols"]:
                 edge(iid, f"db:column:{t['name']}.{t['cols'][c]['name']}", "idx_col", "EXTRACTED")
-    # functions
+    # functions (body analysis: kind all/dml only; each distinct body analysed once per run)
     nfunc = nan = 0
-    for fk_, f in sorted(model.funcs.items()):
+    for fk_, f in (sorted(model.funcs.items()) if bodies else []):
         res = {"tables": {}, "views": set(), "col_reads": set(), "col_writes": set(), "dynamic": False}
+        called = set()
         for o in f["overloads"]:
-            r = analyze_sql(model, o["body"])
+            r = bodies.get(o["body"])
+            body_skipped += r.get("skipped", 0)
             for k, ops in r["tables"].items():
                 res["tables"].setdefault(k, set()).update(ops)
             res["views"] |= r["views"]
             res["col_reads"] |= r["col_reads"]
             res["col_writes"] |= r["col_writes"]
             res["dynamic"] |= r["dynamic"]
+            called |= {n for n in r["called"] if n != fk_}
         langs = sorted({o["language"] for o in f["overloads"] if o["language"]})
         nid = f"db:function:{f['name']}"
         node(nid, label=f["name"], type="function", name=f["name"], language=langs[0] if langs else None,
@@ -783,48 +1026,55 @@ def build_graph(root, paths):
              source_file=f.get("file"), source_location=str(f.get("line", "")) or None)
         nfunc += 1
         nan += not res["dynamic"]
-    for fk_, f in sorted(model.funcs.items()):
-        nid = f"db:function:{f['name']}"
-        res = {"tables": {}, "views": set(), "col_reads": set(), "col_writes": set()}
-        called = set()
-        for o in f["overloads"]:
-            r = analyze_sql(model, o["body"])
-            for k, ops in r["tables"].items():
-                res["tables"].setdefault(k, set()).update(ops)
-            res["views"] |= r["views"]
-            res["col_reads"] |= r["col_reads"]
-            res["col_writes"] |= r["col_writes"]
-            for m in re.finditer(rf"\b({ID})\s*\(", blank(o["body"])):
-                n = unq(m.group(1)).lower()
-                if n in model.funcs and n != fk_:
-                    called.add(n)
         for k, ops in res["tables"].items():
+            if k not in model.tables:  # aidd:FR-028 never index the model with an unknown name
+                continue
             for op in ops:
                 edge(nid, tid(k), "escribe" if op != "SELECT" else "lee", "EXTRACTED", op)
         for k in res["views"]:
-            edge(nid, f"db:view:{model.views[k]['name']}", "lee", "EXTRACTED", "SELECT")
+            if k in model.views:
+                edge(nid, f"db:view:{model.views[k]['name']}", "lee", "EXTRACTED", "SELECT")
         for rel, cols in (("lee_col", res["col_reads"]), ("escribe_col", res["col_writes"])):
             for k, c in cols:
-                t = model.tables[k]
-                edge(nid, f"db:column:{t['name']}.{t['cols'][c]['name']}", rel, "INFERRED")
+                t = model.tables.get(k)
+                if t is not None and c in t["cols"]:
+                    edge(nid, f"db:column:{t['name']}.{t['cols'][c]['name']}", rel, "INFERRED")
         for n in called:
-            edge(nid, f"db:function:{model.funcs[n]['name']}", "llama", "INFERRED")
-    for vk, v in model.views.items():
-        r = analyze_sql(model, v["sql"])
-        for k, c in r["col_reads"]:
-            t = model.tables[k]
-            edge(f"db:view:{v['name']}", f"db:column:{t['name']}.{t['cols'][c]['name']}", "usa_col", "INFERRED")
+            if n in model.funcs:
+                edge(nid, f"db:function:{model.funcs[n]['name']}", "llama", "INFERRED")
+    if kind != "dml":
+        for vk, v in model.views.items():
+            try:
+                r = analyze_sql(model, v["sql"])
+            except Exception:  # aidd:FR-028
+                body_skipped += 1
+                continue
+            body_skipped += r.get("skipped", 0)
+            for k, c in r["col_reads"]:
+                t = model.tables.get(k)
+                if t is not None and c in t["cols"]:
+                    edge(f"db:view:{v['name']}", f"db:column:{t['name']}.{t['cols'][c]['name']}", "usa_col", "INFERRED")
     for (tk, _), tr in sorted(model.triggers.items()):
         if tk in model.tables and tr["func"] in model.funcs:
             edge(tid(tk), f"db:function:{model.funcs[tr['func']]['name']}", "dispara_trigger", "EXTRACTED")
     edges = {e for e in edges if e[0] in nodes and e[1] in nodes}
+    meta_kind = "db-schema"
+    if kind == "schema":
+        edges = {e for e in edges if e[2] in SCHEMA_RELS}
+    elif kind == "dml":
+        edges = {e for e in edges if e[2] in DML_RELS}
+        keep = {k for k, n in nodes.items() if n["type"] == "function"} | {e[0] for e in edges} | {e[1] for e in edges}
+        nodes = {k: v for k, v in nodes.items() if k in keep}
+        meta_kind = "db-dml"
+    if bodies is not None:
+        bodies.save(log)
     edge_list = [{"source": s, "target": t, "relation": r, "confidence": c, **({"op": op} if op else {})}
                  for s, t, r, c, op in sorted(edges)]
     counts = {k: sum(1 for n in nodes.values() if n["type"] == k)
               for k in ("table", "view", "column", "function", "index")}
-    meta = {"kind": "db-schema", "files": sorted(model.files), "tables": counts["table"], "views": counts["view"],
+    meta = {"kind": meta_kind, "files": sorted(model.files), "tables": counts["table"], "views": counts["view"],
             "columns": counts["column"], "functions": counts["function"], "indexes": counts["index"],
-            "edges": len(edge_list), "skipped_statements": model.skipped,
+            "edges": len(edge_list), "skipped_statements": model.skipped + body_skipped,
             "coverage": {"cols_total": ncols, "cols_with_purpose_pct": _pct(npurp, ncols),
                          "funcs_total": nfunc, "funcs_analyzed_pct": _pct(nan, nfunc)}}
     return {"meta": meta, "nodes": [nodes[k] for k in sorted(nodes)], "edges": edge_list}
@@ -842,13 +1092,26 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description="Build a DB-schema graph from SQL migrations (no database).")
     ap.add_argument("--root", required=True)
     ap.add_argument("--out", required=True)
+    ap.add_argument("--kind", choices=("all", "schema", "dml"), default="all",
+                    help="all = combined graph (default, unchanged); schema = db-schema; dml = db-dml")
+    ap.add_argument("--checkpoint", default=None,
+                    help="schema replay checkpoint (default <out>.ckpt.json for --kind schema|dml)")
+    ap.add_argument("--cache", default=None, help="per-body DML cache (default <out>.dml.json for --kind dml)")
     ap.add_argument("paths", nargs="+")
     args = ap.parse_args(argv)  # bad args -> SystemExit(2)
+    checkpoint, cache = args.checkpoint, args.cache
+    if args.kind != "all" and checkpoint is None:  # aidd:FR-029
+        checkpoint = args.out + ".ckpt.json"
+    if args.kind == "dml" and cache is None:  # aidd:FR-030
+        cache = args.out + ".dml.json"
+    log = []
     try:
-        graph = build_graph(args.root, args.paths)
+        graph = build_graph(args.root, args.paths, kind=args.kind, checkpoint=checkpoint, cache=cache, log=log)
     except FileNotFoundError as e:
         print(f"sql_graph: path not found: {e}", file=sys.stderr)
         return 2
+    for line in log:
+        print(line)
     write_atomic(args.out, graph)
     m, c = graph["meta"], graph["meta"]["coverage"]
     print(f"sql_graph: {m['tables']} tables, {m['views']} views, {m['columns']} columns, {m['functions']} functions, "

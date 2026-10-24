@@ -2306,5 +2306,164 @@ class TestClosingAuditGaps(_ClosingBase):
         self.assertIsInstance(R.closing_audit_gaps(self.fake(), self.root, None), list)
 
 
+# ---------------------------------------------------------------- amendment 2 (FR-045/FR-046, AC-037, AC-038)
+import aidd_evidence as E  # noqa: E402
+
+
+class _CountReads:
+    """Counts the disk reads of ONE file made through Path.read_text (the reader behind R._read)."""
+
+    def __init__(self, target):
+        self.target = str(target)
+        self.n = 0
+        self._orig = Path.read_text
+
+    def __enter__(self):
+        outer = self
+
+        def counting(path_self, *a, **kw):
+            if str(path_self) == outer.target:
+                outer.n += 1
+            return outer._orig(path_self, *a, **kw)
+
+        self._patch = patch.object(Path, 'read_text', counting)
+        self._patch.start()
+        return self
+
+    def __exit__(self, *exc):
+        self._patch.stop()
+
+
+class TestReadCache(unittest.TestCase):   # AC-037 / FR-045
+    def setUp(self):
+        self.root = scratch_project()
+        self.f = self.root / 'specs' / '001-x' / 'tasks.md'
+        put(self.f, 'aaaa\n')
+
+    def bump_mtime(self):
+        st = self.f.stat()
+        os.utime(self.f, ns=(st.st_atime_ns, st.st_mtime_ns + 5_000_000_000))
+
+    def test_second_read_in_scope_hits_disk_once(self):
+        calls = []
+
+        def reader(p):
+            calls.append(str(p))
+            return Path(p).read_text(encoding='utf-8')
+
+        with E.read_cache():
+            a = E.cached_read(self.f, reader)
+            b = E.cached_read(self.f, reader)
+        self.assertEqual(a, b)
+        self.assertEqual(len(calls), 1, calls)
+
+    def test_rules_read_goes_through_the_cache(self):
+        with _CountReads(self.f) as c:
+            with E.read_cache():
+                self.assertEqual(R._read(self.f), 'aaaa\n')
+                self.assertEqual(R._read(self.f), 'aaaa\n')
+                self.assertEqual(R._read(self.f), 'aaaa\n')
+        self.assertEqual(c.n, 1)
+
+    def test_rewrite_in_scope_is_read_again_even_with_same_size(self):
+        with E.read_cache():
+            self.assertEqual(R._read(self.f), 'aaaa\n')
+            self.f.write_text('bbbb\n', encoding='utf-8')     # same size
+            self.bump_mtime()
+            self.assertEqual(R._read(self.f), 'bbbb\n')
+        with _CountReads(self.f) as c:
+            with E.read_cache():
+                R._read(self.f)
+                self.f.write_text('cccccccc\n', encoding='utf-8')     # other size
+                self.assertEqual(R._read(self.f), 'cccccccc\n')
+        self.assertEqual(c.n, 2)
+
+    def test_forget_read_drops_one_entry_or_all(self):
+        with _CountReads(self.f) as c:
+            with E.read_cache():
+                R._read(self.f)
+                E.forget_read(self.f)
+                R._read(self.f)
+                E.forget_read()
+                R._read(self.f)
+        self.assertEqual(c.n, 3)
+
+    def test_outside_the_scope_nothing_is_cached(self):
+        with _CountReads(self.f) as c:
+            R._read(self.f)
+            R._read(self.f)
+        self.assertEqual(c.n, 2)
+        with _CountReads(self.f) as c:
+            with E.read_cache():
+                R._read(self.f)
+            R._read(self.f)           # the scope ended: its cache is gone
+        self.assertEqual(c.n, 2)
+
+    def test_no_hook_opens_the_read_cache(self):          # risk 12: gate decisions always read the disk
+        hooks = sorted((REPO / 'skill' / 'hooks').glob('*.py'))
+        self.assertTrue(hooks)
+        offenders = [h.name for h in hooks if 'read_cache' in h.read_text(encoding='utf-8', errors='replace')]
+        self.assertEqual(offenders, [])
+
+
+class TestClosingAuditDiagnosis(_ClosingBase):   # AC-038 / FR-046
+    DOMAINS = {'security', 'functional', 'performance', 'ui'}
+
+    def setUp(self):
+        self.d = self.mkspec('F23-eDoc-POS')
+        old = R._evidence
+        self.addCleanup(setattr, R, '_evidence', old)
+
+    def diag(self, fake):
+        R._evidence = lambda: fake
+        out = R.closing_audit_diagnosis(self.d, self.root)
+        self.assertIsInstance(out, list)
+        for line in out:
+            self.assertIsInstance(line, str)
+        return out
+
+    def named(self, lines, dom):
+        return [ln for ln in lines if dom in ln.lower()]
+
+    def test_covered_returns_nothing(self):
+        self.assertEqual(R.required_domains(self.d), self.DOMAINS)
+        self.assertEqual(self.diag(self.fake([self.auditor()])), [])
+
+    def test_no_auditor_names_every_missing_domain(self):
+        lines = self.diag(self.fake([]))
+        self.assertTrue(lines)
+        for dom in self.DOMAINS:
+            self.assertTrue(self.named(lines, dom), (dom, lines))
+
+    def test_tasks_tag_mismatch(self):
+        lines = self.diag(self.fake([self.auditor(head=self.header(tasks8='deadbeef'))]))
+        self.assertTrue(lines)
+        self.assertIn('tasks', ' | '.join(lines).lower())
+        # an auditor whose description names a domain still counts for THAT domain; the others stay missing
+        self.assertTrue(any(self.named(lines, dom) for dom in self.DOMAINS), lines)
+
+    def test_haiku_auditor(self):
+        lines = self.diag(self.fake([self.auditor(model='claude-haiku-4-5')]))
+        self.assertTrue(lines)
+        self.assertIn('haiku', ' | '.join(lines).lower())
+        for dom in self.DOMAINS:
+            self.assertTrue(self.named(lines, dom), (dom, lines))
+
+    def test_code_edit_after_the_auditors(self):
+        run = dict(self.run, code_since=700.0)          # the code state was first verified AFTER the auditor (ts 600)
+        lines = self.diag(self.fake([self.auditor(ts=600.0)], run=run))
+        self.assertTrue(lines)
+        text = ' | '.join(lines).lower()
+        self.assertTrue(any(w in text for w in ('edit', 'after', 'older', 'predate', 'before', 'stale', 'code')), text)
+        for dom in self.DOMAINS:
+            self.assertTrue(self.named(lines, dom), (dom, lines))
+        # the same auditor, dispatched after the code state, is covered again
+        self.assertEqual(self.diag(self.fake([self.auditor(ts=800.0)], run=run)), [])
+
+    def test_never_raises_on_missing_dir(self):
+        R._evidence = lambda: self.fake([])
+        self.assertIsInstance(R.closing_audit_diagnosis(self.root / 'specs' / 'nope', self.root), list)
+
+
 if __name__ == '__main__':
     unittest.main()

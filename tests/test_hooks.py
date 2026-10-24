@@ -39,6 +39,17 @@ _SCRATCH_EVDIR = _tempfile.mkdtemp(prefix="aidd-test-evidence-")
 atexit.register(shutil.rmtree, _SCRATCH_EVDIR, True)
 
 
+_PREV_GRAPHS = os.environ.get("AIDD_GRAPHS")
+os.environ["AIDD_GRAPHS"] = "off"      # find_spec must not start background graph builds in temp projects (WinError 32)
+
+
+def tearDownModule():
+    if _PREV_GRAPHS is None:
+        os.environ.pop("AIDD_GRAPHS", None)
+    else:
+        os.environ["AIDD_GRAPHS"] = _PREV_GRAPHS
+
+
 def run_hook(name: str, event: dict, timeout: int = 10) -> subprocess.CompletedProcess:
     env = dict(os.environ)
     env.setdefault("AIDD_EVIDENCE_DIR", _SCRATCH_EVDIR)

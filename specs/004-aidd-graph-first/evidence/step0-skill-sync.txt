@@ -1,0 +1,7 @@
+# STEP 0 sync installed skill (cp of 12 scripts, 2 hooks, templates/tasks.md, SKILL.md, AIDD.md)
+# copied: aidd_evidence aidd_graphs aidd_job aidd_status aidd_tools aidd_triage code_graph graph_snapshot graph_trace install_hooks method_graph sql_graph (.py); hooks/prompt_trigger.py hooks/read_hint.py; templates/tasks.md; SKILL.md; AIDD.md
+## diff -rq after sync (skill/scripts, skill/hooks, skill/templates, SKILL.md, AIDD.md vs ~/.claude/skills/aidd)
+Only in /c/Users/jquimis/.claude/skills/aidd/scripts: aidd_evidence.py.bak
+## (only a pre-existing backup file in the installed folder remains; every shipped file matches)
+## seconds: <1 (cp only)
+install_hooks.py NOT run; ~/.claude/settings.json NOT touched.

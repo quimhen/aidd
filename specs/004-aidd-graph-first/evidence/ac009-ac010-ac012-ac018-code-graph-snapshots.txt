@@ -1,0 +1,82 @@
+# T-25 STEP 2.1 (AC-009, AC-010, AC-012, AC-018). Outputs written to scratch, never to b1SycLink.
+# NOTE: both code_graph runs and both snapshots ran WHILE aidd verify (Jobs: 4) and run_parallel (8 workers) were running: timings are under heavy CPU load.
+
+### python skill/scripts/code_graph.py --root D:\Fuentes\AIDD --out <scratch>/g/code.json   (run 1, fresh out path)
+code graph: 169 files, re-parsed 128, reused 41, warnings 0
+exit=0 wall=10.44 s   (target < 6 s: NOT met under load)
+### same command, run 2 (no-op)
+code graph: 169 files, re-parsed 0, reused 169, warnings 0
+exit=0 wall=2.69 s    (target < 1.5 s: NOT met under load)
+### graph stats
+graph MB 4.07 (target about 4 MB: met), sidecar code.json.cache.json MB 4.62
+nodes 5183 (FUNC 4490, CLASS 445, FILE 169, SINK 79), edges 16178
+edge relations: defines 4935, calls 10036, reads 364, spawns 134, implements 522, imports 187
+mirror FILE nodes (mirror_of set): 41 (44 FILE nodes under adapters/)
+calls edges flagged ambiguous: 539
+observation: run 1 on a brand-new --out reported "reused 41": some parse cache is shared beyond the given --out sidecar.
+
+### AC-009: skill/scripts/aidd_evidence.py::code_state
+  callers: cmd_verify, code_fingerprint (+ a test)            -> caller code_fingerprint present
+  out: calls _code_state_scan, _scope_re, in_scope
+  _code_state_scan -> calls _code_state_git, _code_state_mtimes
+  _code_state_git  -> calls _fp_git, _blob_shas, ...  (both reach sink:spawn:git in the runtime trace)
+  syntax-error warning path: covered by tests.test_code_graph (V-1 PASS); repo graph has warnings 0.
+
+### AC-010: python -m aidd.cli graphs show code latest_verify_run   exit=0 wall=2.14 s, 9 lines
+skill/scripts/aidd_evidence.py::latest_verify_run  [FUNC]  skill/scripts/aidd_evidence.py:1070
+  also matches: tests/test_aidd_rules.py::FakeEv7.latest_verify_run
+  callers: skill/hooks/stop_gate.py::_closing_header, skill/scripts/aidd_guard.py::_light_verification, skill/scripts/aidd_progress.py::_stages, skill/scripts/aidd_status.py::_close_gaps, ...
+  callees: skill/scripts/aidd_evidence.py::events
+  ext: 4 external calls (float, get, isinstance, str)
+  sinks direct: -
+  sinks reached: * (file)
+  implements: FR-205
+  -> <= 25 lines, callers/callees/sinks/implements present; the spec TITLE of FR-205 is NOT joined (no title printed).
+
+### AC-018 / AC-012 snapshots
+$ graph_snapshot.py --root D:\Fuentes\AIDD snapshot code --label verify-before-04 --rev 69218be
+snapshot code/verify-before-04: sha256 1bf6404ffba99c077730eb0b9e30e845371677a1bdc76f97f30f6d31b8eead5e, 4603 nodes, 14582 edges, rev 69218bedda13443e7e0b2172cfa700e8531abc85
+exit=0 wall=9.93 s
+$ graph_snapshot.py --root D:\Fuentes\AIDD snapshot code --label verify-after-04
+snapshot code/verify-after-04: sha256 1dab67d95ba511a91650ac93dee2303d17fe83a9821affb8f2255e7ce24abc3b, 5183 nodes, 16178 edges, rev worktree
+exit=0 wall=8.81 s
+  -> AC-018: the --rev snapshot ignores the uncommitted worktree (4603 vs 5183 nodes, rev recorded).
+$ graph_snapshot.py --root D:\Fuentes\AIDD repeats --cmd nope --label verify-before-04
+unknown command 'nope' (known: adapters-generate, adapters-list, calibrate, check, ...)
+exit=2 wall=1.30 s   -> AC-018 PASS
+
+$ graph_snapshot.py --root D:\Fuentes\AIDD diff verify-before-04 verify-after-04   exit=0 wall=4.24 s
+verify-before-04: sha256 1bf6404f..., 1 event(s), rev 69218bed...; verify-after-04: sha256 1dab67d9..., 1 event(s), rev worktree
+nodes 4603 -> 5183 (+586 -6), edges 14582 -> 16178 (+1668 -72)
+sink calls sink:file:*: 308 -> 364
+sink calls sink:spawn:git: 16 -> 26
+sink calls sink:spawn:python: 61 -> 75
+sink calls sink:unresolved:events: 0 -> 14
+ext entries: 12591 -> 14718 (in loop 3714 -> 4300)
+repeats (all entry points): 4281 -> 4595
+... 2332 more (--full)
+
+$ graph_snapshot.py repeats --cmd status --label verify-before-04   exit=0 wall=1.68 s
+SINK sink:file:* paths=111 in_loop@_locked
+SINK sink:spawn:git paths=2
+unresolved sink:unresolved:is_code paths=1 in_loop@_commits_without_approval
+FUNC skill/scripts/aidd_rules.py::_is_sep paths=53 ...  (25-line cap, "... 322 more (--full)")
+$ graph_snapshot.py repeats --cmd status --label verify-after-04   exit=0 wall=1.54 s
+SINK sink:file:* paths=118 in_loop@_locked
+SINK sink:spawn:git paths=2
+FUNC skill/scripts/aidd_evidence.py::events paths=23 ext_in_loop=append  (new entry)
+... 330 more (--full)
+
+$ graph_snapshot.py ... repeats --cmd status --label verify-before-04 --full   -> exit 2 "unrecognized arguments: --full"
+$ python -m aidd.cli graphs repeats --cmd status --label verify-before-04 --full -> exit 2 "unrecognized arguments: --full"
+  DEFECT: repeats truncates with "... N more (--full)" (graph_snapshot.py:141 _cap) but the `repeats` subparser has no --full flag (only diff and changed do, lines 1015/1020).
+
+### direct read of the two snapshot JSON files (.aidd/graphs/snapshots/code/*.json)
+before: skill/scripts/aidd_evidence.py::last_code_edit_ts ext_in_loop = [as_posix, get, max, pathlib.Path, relative_to, resolve, str]; calls events (in_loop), in_scope (in_loop)
+after : skill/scripts/aidd_evidence.py::last_code_edit_ts ext_in_loop = [get, max, str]; calls _rel_to_root (in_loop), events (in_loop), in_scope (in_loop)
+  -> the 2026-10-24 fix removed Path.resolve/relative_to from the loop body (moved to _rel_to_root): visible in the graph data.
+  -> but file sinks are collapsed into one node `sink:file:*` (no `events.toon` sink of its own) and `last_code_edit_ts` is not in the visible
+     25 lines of `repeats`; the static count of paths to sink:file:* from status went UP (111 -> 118), sink:spawn:git paths stayed 2.
+VERDICT AC-012: FAIL as written (events.toon sink not named; last_code_edit_ts/resolve in_loop not listed by `repeats`; --full broken).
+The claim "status reaches fewer repeated sinks / in-loop calls after the fixes" is NOT shown by the static repeats; only the
+last_code_edit_ts in-loop resolve removal is shown (snapshot JSON). The runtime trace (ac013) shows events.toon still read 5x per status.

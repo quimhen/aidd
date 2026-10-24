@@ -28,7 +28,7 @@ session on this machine, not just projects that already use aidd). 12 hooks:
                        that the human was asked (evidence for R6 approvals)
   - Stop           -> hooks/stop_gate.py  R8: no stopping with an approved, implemented
                        spec that has no closing audit
-  - PreToolUse     -> hooks/read_hint.py (matcher: Read) W1 hint (spec 004, FR-008):
+  - PreToolUse     -> hooks/read_hint.py (matcher: Read|Grep|Glob|Bash|PowerShell) W1 hint (spec 004, FR-008):
                        non-blocking nudge toward the graph before reading raw files
   - PreToolUse     -> hooks/record_dispatch_pre.py (matcher: Task|Agent) spec 006 FR-004:
                        records the subagent dispatch (attribution) before it runs
@@ -79,7 +79,7 @@ HOOK_DEFS = [
     ('SessionStart', 'startup|resume|clear|compact', SKILL_DIR / 'hooks' / 'memory_context.py'),
     ('PostToolUse', 'AskUserQuestion', SKILL_DIR / 'hooks' / 'mark_user_question.py'),
     ('Stop', None, SKILL_DIR / 'hooks' / 'stop_gate.py'),
-    ('PreToolUse', 'Read', SKILL_DIR / 'hooks' / 'read_hint.py'),
+    ('PreToolUse', 'Read|Grep|Glob|Bash|PowerShell', SKILL_DIR / 'hooks' / 'read_hint.py'),
     ('PreToolUse', 'Task|Agent', SKILL_DIR / 'hooks' / 'record_dispatch_pre.py'),
     ('PostToolUse', 'Write|Edit|MultiEdit|NotebookEdit', SKILL_DIR / 'hooks' / 'graph_refresh.py'),
 ]

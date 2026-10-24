@@ -1,0 +1,6 @@
+# python -m unittest tests.test_aidd_job tests.test_aidd_triage | exit 0 | 2026-10-24T10:09:41
+...........................
+----------------------------------------------------------------------
+Ran 27 tests in 18.581s
+
+OK

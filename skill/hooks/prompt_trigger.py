@@ -134,7 +134,9 @@ _HINT_FULL = (
     "existing tool can do the heavy part and estimate THAT path, not manual work; run independent work in several "
     "agents at once (one message) and long jobs in the background. Rule G1: for DB/code/screen structure ask "
     "`aidd graphs show <name> <query>` before reading SQL or source, and start `aidd graphs refresh <name> "
-    "--background` when the spec touches the database."
+    "--background` when the spec touches the database. "
+    "Tool-first: use the tool before doing the step by hand (`aidd tools`, `aidd graphs`, `aidd job`, "
+    "`aidd triage`); size the analysis with `aidd size`."  # aidd:FR-040
 )
 _HINT_SHORT = ('[aidd] Requirement/change detected: follow the aidd skill pipeline (already explained this session). '
                'Rule S1: tools/scripts first, parallel agents for independent work.')
@@ -169,6 +171,9 @@ def _compact_find_spec(out, cap=240):
     return '\n'.join(keep)
 
 
+FIND_SPEC_TIMEOUT = 8  # aidd:FR-047 seconds the find_spec subprocess may run
+
+
 def run_find_spec(cwd: Path, terms):
     """Best-effort: run find_spec.py so Claude gets the Step -1 verdict inline.
     Never raises — a failure here just means the reminder ships without it,
@@ -181,12 +186,66 @@ def run_find_spec(cwd: Path, terms):
     try:
         result = subprocess.run(
             [sys.executable, str(script), *terms],
-            cwd=str(cwd), capture_output=True, text=True, timeout=10,
+            cwd=str(cwd), capture_output=True, text=True, timeout=FIND_SPEC_TIMEOUT,
             encoding='utf-8', errors='replace',
         )
         return result.stdout.strip()
     except Exception:
         return None
+
+
+_SYSTEM_STARTS = ('Another Claude session sent a message',)
+_SYSTEM_CONTAINS = ('<task-notification', '[SYSTEM NOTIFICATION', '[Subagent hand-back]')
+_DEDUP_TTL = 15 * 60
+
+
+def is_system_message(text):  # aidd:FR-032
+    """Task notifications, subagent hand-backs and cross-session messages are not user requirements."""
+    try:
+        t = (text or '').strip()
+        return bool(t) and (t[0] in '<[' or t.startswith(_SYSTEM_STARTS)
+                            or any(m in t for m in _SYSTEM_CONTAINS))
+    except Exception:
+        return False
+
+
+def _state_path(sid):
+    import tempfile
+    d = Path(tempfile.gettempdir()) / 'aidd-hooks'
+    d.mkdir(parents=True, exist_ok=True)
+    return d / ('prompt_trigger_' + re.sub(r'[^A-Za-z0-9_-]', '_', sid or 'nosid')[:64] + '.json')
+
+
+def _hashes(specs_root, terms):
+    import hashlib
+    th = hashlib.sha256('\x00'.join(t.lower() for t in sorted(terms)).encode('utf-8')).hexdigest()
+    try:
+        data = (specs_root / 'index.toon').read_bytes()
+    except Exception:
+        data = b'<no-index>'
+    return th, hashlib.sha256(data).hexdigest()
+
+
+def already_answered(sid, th, ih):  # aidd:FR-032
+    """True when this session got the same terms against the same index within the TTL."""
+    try:
+        import json
+        import time
+        st = json.loads(_state_path(sid).read_text(encoding='utf-8'))
+        return (st.get('terms_hash') == th and st.get('index_hash') == ih
+                and 0 <= time.time() - float(st.get('ts', 0)) < _DEDUP_TTL)
+    except Exception:
+        return False
+
+
+def remember_answered(sid, th, ih):
+    try:
+        import json
+        import time
+        _state_path(sid).write_text(json.dumps({'terms_hash': th, 'index_hash': ih, 'ts': time.time()}),
+                                    encoding='utf-8')
+    except Exception:
+        pass
 
 
 event = read_event()
@@ -224,18 +283,29 @@ if _secret_labels:  # credential hygiene warning — independent of the planning
     except Exception:
         pass
 
-if PATTERN.search(prompt):
+if PATTERN.search(prompt) and not is_system_message(prompt):  # aidd:FR-032
     try:
         cwd = Path(_cwd or Path.cwd())
         specs_root = find_specs_root(cwd)
     except Exception:
         specs_root = None
     find_spec_output = None
+    _dup = False
     if specs_root is not None:
         terms = query_terms_from_prompt(prompt)
-        find_spec_output = run_find_spec(specs_root.parent, terms)
-        try:  # this hook itself ran find_spec: record it as evidence (source=hook)
+        _th = _ih = None
+        try:
+            if terms:
+                _th, _ih = _hashes(specs_root, terms)
+                _dup = already_answered(_sid, _th, _ih)
+        except Exception:
+            _dup = False
+        if not _dup:
+            find_spec_output = run_find_spec(specs_root.parent, terms)
+        try:  # only when find_spec really ran: record it as evidence (source=hook)
             if find_spec_output is not None:
+                if _th:
+                    remember_answered(_sid, _th, _ih)
                 import aidd_evidence as _ev
                 _ev.append_find_spec(_ev.find_root(specs_root.parent), _sid,
                                      rebuilt=_ev.find_spec_rebuilt(find_spec_output),
@@ -246,11 +316,15 @@ if PATTERN.search(prompt):
             except Exception:
                 pass
 
-    message = [_hint(_sid)]
-    if find_spec_output:
-        compact = _compact_find_spec(find_spec_output)
-        if compact:
-            message.append("[aidd] Step -1 (find_spec) already ran; start from this, do not re-run it:\n" + compact)
-    print('\n'.join(message))
+    try:
+        message = [] if _dup else [_hint(_sid)]
+        if find_spec_output:
+            compact = _compact_find_spec(find_spec_output)
+            if compact:
+                message.append("[aidd] Step -1 (find_spec) already ran; start from this, do not re-run it:\n" + compact)
+        if message:
+            print('\n'.join(message))
+    except Exception:
+        pass
 
 sys.exit(0)

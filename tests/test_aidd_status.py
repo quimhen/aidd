@@ -2480,5 +2480,53 @@ class TestStatusFingerprintOnce(Spec007Base):
                 os.chdir(old)
 
 
+class TestStatusClosingDiagnosis(Spec007Base):
+    """FR-046 / AC-038: `aidd status` prints why the closing audit does not count and the one-message dispatch
+    hint while domains are missing, and none of it once a closing auditor covers them."""
+
+    SID = "F23-eDoc-POS"
+    NEXT = "next: dispatch one auditor per missing domain"
+    gate2 = TestGate2Close.gate2
+    verify = TestGate2Close.verify
+    closing_auditor = TestGate2Close.closing_auditor
+
+    def status_text(self, root):
+        r = run_script("status", cwd=root)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        return r.stdout
+
+    def test_missing_domains_print_the_diagnosis_and_the_next_line(self):
+        tmp, root, d = self.gate2(self.SID)
+        with tmp:
+            self.verify(root, self.SID)                      # a verify_run exists, but no auditor yet
+            lines = aidd_rules.closing_audit_diagnosis(d, root)
+            self.assertTrue(lines, "the library must diagnose a spec with no closing auditor")
+            out = self.status_text(root)
+            for ln in lines:
+                self.assertIn(ln, out)
+            nxt = [ln for ln in out.splitlines() if ln.startswith(self.NEXT)]
+            self.assertEqual(len(nxt), 1, out)
+            self.assertIn("in ONE message", nxt[0])
+            for dom in ("functional", "security"):
+                self.assertIn(dom, nxt[0])
+
+    def test_covered_prints_neither_diagnosis_nor_next_line(self):
+        tmp, root, d = self.gate2(self.SID)
+        with tmp:
+            run = self.verify(root, self.SID)
+            self.closing_auditor(root, d, run)
+            self.assertEqual(aidd_rules.closing_audit_diagnosis(d, root), [])
+            out = self.status_text(root)
+            self.assertNotIn(self.NEXT, out)
+            self.assertNotIn("dispatch one auditor", out)
+
+    def test_status_json_stays_parseable(self):
+        tmp, root, d = self.gate2(self.SID)
+        with tmp:
+            r = run_script("status", "--json", cwd=root)
+            self.assertEqual(r.returncode, 0, r.stdout)
+            json.loads(r.stdout)                              # the diagnosis never leaks into --json
+
+
 if __name__ == "__main__":
     unittest.main()

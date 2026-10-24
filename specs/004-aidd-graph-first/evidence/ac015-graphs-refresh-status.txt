@@ -1,0 +1,21 @@
+# T-25 STEP 2.4 (AC-015, AC-011) on D:\Fuentes\AIDD
+### python -m aidd.cli graphs refresh code --wait --force       exit=0 wall=3.58 s
+  code graph: 169 files, re-parsed 0, reused 169, warnings 0
+### python -m aidd.cli graphs refresh method --wait --force     exit=0 wall=2.12 s
+  method graph: 14 rules (0 unlinked), 11 steps, 8 commands, 21 templates, 11 scripts, warnings 0
+### python -m aidd.cli graphs refresh spec --wait --force       exit=0 wall=1.28 s
+  Graph index: rebuilt (all specs)
+### python -m aidd.cli graphs refresh progress --wait --force   exit=0 wall=2.87 s
+### python -m aidd.cli graphs status                            exit=0 wall=3.01 s
+code       fresh      age=5m newest_watched=9m inputs=169  D:/Fuentes/AIDD/.aidd/graphs/code.json
+method     fresh      age=5s newest_watched=5m inputs=102  D:/Fuentes/AIDD/.aidd/graphs/method.json
+spec       fresh      age=4s newest_watched=4m inputs=167  D:/Fuentes/AIDD/specs/index.toon
+progress   fresh      age=1s newest_watched=4s inputs=167  D:/Fuentes/AIDD/.aidd/graphs/progress.json
+-> four graphs, none no-refresh: AC-015 PASS
+### python -m aidd.cli graphs show method R10                   exit=0 wall=1.33 s
+R10  [RULE]  skill/SKILL.md:111
+  R10 executed evidence
+  enforced by: skill/hooks/rule_gate.py::_decide_path (:745), skill/scripts/aidd_rules.py::check_qa (:1262), skill/scripts/aidd_rules.py::check_verification ...
+  unlinked: no
+  cited by: STEP:5, STEP:6
+-> AC-011 PASS

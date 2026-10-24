@@ -406,6 +406,14 @@ def build_parser():
         add_help=False)
     p_graphs.add_argument("graphs_args", nargs=argparse.REMAINDER, help="forwarded to aidd_graphs.py")
     p_graphs.set_defaults(func=lambda a: _run("aidd_graphs.py", a.graphs_args))
+    for _name, _script, _pre, _help in (
+            ("job", "aidd_job.py", [], "Run a tool once per set of inputs: run [--bg] | wait | last | list; same command on same file contents = CACHED (aidd_job.py)"),
+            ("triage", "aidd_triage.py", [], "Group the failures of `aidd verify` evidence across specs: shared vs specific (aidd_triage.py)"),
+            ("tools", "aidd_tools.py", [], "Catalog of AIDD and project tools by task: tools [keywords] (aidd_tools.py)"),
+            ("size", "aidd_tools.py", ["size"], "Size the work XS/S/M/L and print the analysis parameters: size --spec <id> | --files <f...> (aidd_tools.py size)")):
+        _p = sub.add_parser(_name, help=_help, add_help=False)
+        _p.add_argument("fwd_args", nargs=argparse.REMAINDER, help=f"forwarded to {_script}")
+        _p.set_defaults(func=lambda a, _s=_script, _x=_pre: _run(_s, _x + a.fwd_args))
     p_sqlcheck = sub.add_parser(
         "sqlcheck", help="Static compile of SQL migrations before any DB pass (engine-specific: --engine postgres | --cmd \"<checker {file}>\"); several specs in one batch, unchanged files cached",
         add_help=False)
@@ -582,6 +590,11 @@ def main(argv=None):
         sys.exit(_run("aidd_status.py", argv))
     if argv and argv[0] == "graphs":
         sys.exit(_run("aidd_graphs.py", argv[1:]))
+    if argv and argv[0] in ("job", "triage", "tools", "size"):
+        # aidd:FR-038 / FR-041 — same passthrough as `graphs`; each script owns its parsing.
+        _script = {"job": "aidd_job.py", "triage": "aidd_triage.py",
+                   "tools": "aidd_tools.py", "size": "aidd_tools.py"}[argv[0]]
+        sys.exit(_run(_script, (["size"] if argv[0] == "size" else []) + argv[1:]))
     if argv and argv[0] == "sqlcheck":
         sys.exit(_run("aidd_sqlcheck.py", argv[1:]))
     if argv and argv[0] == "review":

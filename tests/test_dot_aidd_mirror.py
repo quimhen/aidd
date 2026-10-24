@@ -82,7 +82,33 @@ VERBATIM_SCRIPTS = [
     "tasks_to_issues.py",
     "link_pr_to_task.py",
     "sync_issues.py",
+    "code_graph.py",
+    "method_graph.py",
+    "graph_trace.py",
+    "graph_snapshot.py",
+    "aidd_job.py",
+    "aidd_triage.py",
+    "aidd_tools.py",
 ]
+
+# Graph-first scripts (spec 004) that must import with stdlib only.
+GRAPH_FIRST_SCRIPTS = [
+    "code_graph.py",
+    "method_graph.py",
+    "graph_trace.py",
+    "graph_snapshot.py",
+    "aidd_job.py",
+    "aidd_triage.py",
+    "aidd_tools.py",
+]
+
+# Docs that must name the graph-first vocabulary (spec 004, FR-022 / AC-015).
+GRAPH_FIRST_DOCS = [
+    REPO_ROOT / "skill" / "SKILL.md",
+    REPO_ROOT / "skill" / "AIDD.md",
+    REPO_ROOT / "commands" / "aidd-converge.md",
+]
+GRAPH_FIRST_WORDS = ["builtin:code", "repeats", "trace", "snapshot", "diff"]
 
 SKILL_HOOKS = REPO_ROOT / "skill" / "hooks"
 DOTAIDD_HOOKS = REPO_ROOT / "adapters" / "dot-aidd" / "hooks"
@@ -353,6 +379,56 @@ class TestExtensionRegistryFunctionalEquivalence(unittest.TestCase):
                 dot_after = self.dot_mod.discover(include_disabled=True)
                 self.assertFalse(skill_after[0].enabled)
                 self.assertFalse(dot_after[0].enabled)
+
+
+class TestGraphFirstScripts(unittest.TestCase):
+    def test_new_scripts_answer_help_with_stdlib_only(self):
+        for name in GRAPH_FIRST_SCRIPTS:
+            with self.subTest(script=name):
+                r = subprocess.run(
+                    [sys.executable, str(SKILL_SCRIPTS / name), "--help"],
+                    capture_output=True,
+                    text=True,
+                    timeout=30,
+                )
+                self.assertEqual(
+                    r.returncode, 0,
+                    f"{name} --help rc={r.returncode} stdout={r.stdout!r} stderr={r.stderr!r}",
+                )
+
+    def test_docs_name_graph_first_vocabulary(self):
+        for path in GRAPH_FIRST_DOCS:
+            text = path.read_text(encoding="utf-8")
+            for word in GRAPH_FIRST_WORDS:
+                self.assertIn(
+                    word, text,
+                    f"{path.relative_to(REPO_ROOT).as_posix()} does not mention '{word}'",
+                )
+
+
+    def _assert_words(self, rel, words):
+        path = REPO_ROOT / rel
+        text = path.read_text(encoding="utf-8")
+        for word in words:
+            self.assertIn(word, text, f"{rel} does not mention '{word}'")
+
+    def test_docs_name_new_rules_and_commands(self):
+        for rel in ("skill/SKILL.md", "skill/AIDD.md"):
+            self._assert_words(
+                rel,
+                ["E9", "T1", "P1", "run_parallel", "aidd size", "aidd job", "aidd triage"],
+            )
+        self._assert_words("commands/aidd-converge.md", ["E9", "aidd size"])
+        self._assert_words("skill/templates/tasks.md", ["aidd tools", "Analysis parameters"])
+
+    def test_docs_drop_mandatory_first_run_phrases(self):
+        checks = [
+            ("skill/SKILL.md", "Run this first, every time"),
+            ("commands/aidd-converge.md", "before any manual audit pass"),
+        ]
+        for rel, phrase in checks:
+            text = (REPO_ROOT / rel).read_text(encoding="utf-8").lower()
+            self.assertNotIn(phrase.lower(), text, f"{rel} still contains '{phrase}' (FR-033)")
 
 
 # ---------------------------------------------------------------------------

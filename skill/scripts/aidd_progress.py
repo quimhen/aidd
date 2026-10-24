@@ -107,11 +107,24 @@ def parse_tasks(text):
     return out
 
 
+_TEXTS = {}           # (path, size, mtime_ns) -> text: many tasks cite the same file, read it once per run
+
+
+def _file_text(path):
+    st = path.stat()
+    if st.st_size > MAX_READ:
+        return None
+    key = (str(path), st.st_size, st.st_mtime_ns)
+    if key not in _TEXTS:
+        _TEXTS[key] = path.read_text(encoding='utf-8', errors='replace')
+    return _TEXTS[key]
+
+
 def _has_marker(path, codes, tid):
     try:
-        if path.stat().st_size > MAX_READ:
+        text = _file_text(path)
+        if text is None:
             return False
-        text = path.read_text(encoding='utf-8', errors='replace')
         keys = [re.escape(c) for c in codes] + [re.escape(tid)]
         return bool(re.search(r'aidd:(?:' + '|'.join(keys) + r')\b', text, re.I))
     except Exception:
@@ -320,5 +333,15 @@ def main(argv):
     return 0
 
 
+def _scoped_main(argv):  # aidd:FR-045 per-process read cache for this printing command only (never in hooks or gates)
+    try:
+        import aidd_evidence as _ev
+        scope = _ev.read_cache()
+    except Exception:
+        return main(argv)
+    with scope:
+        return main(argv)
+
+
 if __name__ == '__main__':
-    sys.exit(main(sys.argv[1:]))
+    sys.exit(_scoped_main(sys.argv[1:]))

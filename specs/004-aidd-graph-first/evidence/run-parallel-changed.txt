@@ -1,0 +1,39 @@
+# T-25 STEP 1a: python tests/run_parallel.py --changed   (run ONCE, background, concurrent with aidd verify and STEP 2)
+# exit=1  wall=274.3 s (tool reports 271 s with 8 workers)
+# raw log (full): C:\Users\jquimis\AppData\Local\Temp\claude\D--Fuentes-AIDD\ded6a05e-2bb3-42a0-81ae-e74e47098208\scratchpad\run-parallel-changed.txt
+changed sources ['aidd_evidence', 'aidd_graphs', 'aidd_job', 'aidd_progress', 'aidd_rules', 'aidd_status', 'aidd_tools', 'aidd_triage', 'cli', 'code_graph', 'graph_snapshot', 'graph_trace', 'install_hooks', 'method_graph', 'prompt_trigger', 'read_hint', 'sql_graph'] -> 17 affected file(s) -> 38 of 60 module(s)
+  (flaky under load, passed alone: tests.test_aidd_rules_r10.TestR10)
+  (flaky under load, passed alone: tests.test_host_gates.TestOpenCodePluginNode)
+  slowest: tests.test_aidd_guard.TestSizeAndSpeed   74.0s
+  slowest: tests.test_host_doctor.TestChecksFail   66.8s
+  slowest: tests.test_host_doctor.TestGitHookChecks   59.8s
+38 module(s) in 296 unit(s), 9 failed, 271s wall with 8 workers
+
+## failing units (test name -> first error line)
+FAILED tests.test_aidd_job
+  FAIL test_list_shows_job (tests.test_aidd_job.TestAiddJob)
+    AssertionError: 2 != 0 : usage: aidd job [-h] [--root ROOT] {run,wait,last,list} ...
+    aidd job: error: unrecognized arguments: --root C:\Users\jquimis\AppData\Local\Temp\job_hvtyd8ov
+FAILED tests.test_evidence.TestRouting
+  FAIL test_kinds_are_routed_and_merged
+    AssertionError: ',graph_miss,' not found in 'version: 1\nevents[*]{ts,session,kind,detail}:\n ... prompt, subagent, question, answer, find_spec, session_start, hook_error'
+FAILED tests.test_graphs_auto.TestAuto  (failures=3, errors=2 of 5; run_parallel prints only the tail, one name visible)
+  FAIL test_off_switch_and_no_graphs
+    AssertionError: Lists differ: ["Graph 'code' (code): missing, refresh started in background; no data yet, read the sources this time", '  Details: aidd graphs show <name> <node>. Ask the graphs BEFORE reading SQL or source.'] != []
+  (tail also shows an assert on mock calls: call(<tmp>, 'db-dml', background=True), call(<tmp>, 'spec', background=True))
+FAILED tests.test_hooks.TestRecorders  (errors=2)
+    PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\Users\\jquimis\\AppData\\Local\\Temp\\tmp3co1_02_'  (TemporaryDirectory cleanup)
+FAILED tests.test_hooks.TestCredentialHygiene  (errors=2)
+    PermissionError: [WinError 32] ... 'C:\\Users\\jquimis\\AppData\\Local\\Temp\\tmp9pe6q_qz'  (TemporaryDirectory cleanup)
+FAILED tests.test_host_doctor.TestAntigravityDoctor
+  FAIL test_cli_accepts_host_antigravity
+    AssertionError: False is not true : WARN D1 shipped adapters/dot-aidd not found at C:\Users\jquimis\.claude\skills\adapters\dot-aidd; cannot compare
+FAILED tests.test_host_install.TestAntigravityInstall
+  FAIL test_cli_accepts_host_antigravity
+    AssertionError: 1 != 0 : error: shipped bundle not found at C:\Users\jquimis\.claude\skills\adapters\dot-aidd
+FAILED tests.test_perf_budget.TestCodeGraphNoopRebuild
+  FAIL test_noop_rebuild_reparses_nothing_and_is_at_least_twice_as_fast
+    AssertionError: 0.6092204362584248 not less than or equal to 0.5 : no-op rebuild took 0.61 of a full build (best of 3)
+FAILED tests.test_perf_budget.TestPromptFindSpecDedupe
+  FAIL test_second_identical_prompt_spawns_no_find_spec
+    AssertionError: '[aidd]' not found in ''

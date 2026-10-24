@@ -88,7 +88,7 @@ class TestInstallHooks(unittest.TestCase):
             rh = [e for e in hooks["PreToolUse"]
                   if any("read_hint.py" in h["command"] for h in e["hooks"])]
             self.assertEqual(len(rh), 1)
-            self.assertEqual(rh[0]["matcher"], "Read")
+            self.assertEqual(rh[0]["matcher"], "Read|Grep|Glob|Bash|PowerShell")
             commands = [h["command"] for v in hooks.values() for e in v for h in e["hooks"]]
             self.assertFalse(any("memory_file_context.py" in c for c in commands))
             ss = [e for e in hooks["SessionStart"]
@@ -126,7 +126,7 @@ class TestInstallHooks(unittest.TestCase):
             self.assertEqual(pt[0]["matcher"], "Read|Edit|Write")
             rh = [e for e in hooks["PreToolUse"]
                   if any("read_hint.py" in h["command"] for h in e["hooks"])]
-            self.assertEqual([e["matcher"] for e in rh], ["Read"])   # still there
+            self.assertEqual([e["matcher"] for e in rh], ["Read|Grep|Glob|Bash|PowerShell"])   # still there
 
     def test_default_run_does_not_remove_an_already_installed_file_hook(self):
         with TemporaryDirectory() as d:
@@ -149,7 +149,7 @@ class TestInstallHooks(unittest.TestCase):
         self.assertEqual(by["mark_code_edit.py"], ("PostToolUse", "Write|Edit|MultiEdit|NotebookEdit|PowerShell"))
         self.assertEqual(by["mark_user_question.py"], ("PostToolUse", "AskUserQuestion"))
         self.assertEqual(by["stop_gate.py"][0], "Stop")
-        self.assertEqual(by["read_hint.py"], ("PreToolUse", "Read"))
+        self.assertEqual(by["read_hint.py"], ("PreToolUse", "Read|Grep|Glob|Bash|PowerShell"))
         self.assertEqual(by["record_dispatch_pre.py"], ("PreToolUse", "Task|Agent"))
         self.assertEqual(by["mark_graph_rebuild.py"], ("PostToolUse", "Bash|PowerShell"))
         self.assertEqual(by["graph_refresh.py"], ("PostToolUse", "Write|Edit|MultiEdit|NotebookEdit"))

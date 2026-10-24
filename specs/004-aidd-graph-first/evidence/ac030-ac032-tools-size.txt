@@ -1,0 +1,32 @@
+# T-25 STEP 2.4 (AC-030, AC-032)
+### python -m aidd.cli tools verify   run 1 exit=0 18 lines wall=1.02 s ; run 2 exit=0 18 lines wall=1.15 s
+[verify]
+  --bail - flag of aidd verify: stop a spec at its first failing row, rest recorded as not run
+  aidd check <spec> - gap-checks a spec (check_spec.py) before a manual audit
+  aidd job - runs a long command detached with a log; use it for anything slow or repetitive
+  aidd review - review status of a spec; read only its status line
+  aidd triage - groups failing test output by cause; use it before reading failures by hand
+  aidd verify [spec ...] [--bail] - runs the verify rows of one or more specs; use it to prove ACs; --bail stops at the first failing row
+  tests/run_parallel.py --changed - runs only the test modules touched by the changes; the default test run for XS/S work
+  (+ 10 script lines: adapters/dot-aidd/scripts/{aidd_rules,aidd_triage,check_charter,check_spec}.py, skill/scripts/{aidd_doctor,aidd_rules,aidd_triage,check_charter,check_spec,validate_catalog_entry}.py)
+  -> lists aidd verify, tests/run_parallel.py --changed, aidd triage, aidd job; <= 40 lines. Second run not faster (1.02 -> 1.15 s).
+### python skill/scripts/aidd_tools.py db --root D:\Fuentes\b1SycLink   run 1 exit=0 29 lines wall=1.55 s ; run 2 exit=0 29 lines wall=0.77 s
+[db]
+  aidd sqlcheck - engine-agnostic static SQL compile; use it on migrations before applying them
+  Payroll/tools/apply_local_db.py - Apply the Payroll migrations and the local-only seeds to the LOCAL Supabase stack, with a ledger. (--dry-run --json)
+  eDoc/tools/db_verify.py - eDoc DB verifier: build a clean database, apply every migration and seed, report failures. (--check --json)
+  ... (26 more tool lines, see raw log) ...
+  -> lists eDoc/tools/db_verify.py and Payroll/tools/apply_local_db.py with first doc line and flags; 29 lines; second run reuses the cache (1.55 -> 0.77 s).
+  SIDE EFFECT: the cache is written INSIDE the target project: D:\Fuentes\b1SycLink\.aidd\graphs\tools.cache.json (new untracked file, 13256 bytes, 09:03:18).
+  Left in place for the owner to keep or delete (the verifier does not write/delete in b1SycLink).
+AC-030 PASS.
+### python -m aidd.cli size --files skill/scripts/aidd_tools.py   exit=0 wall=0.43 s
+size: XS
+  graph: `aidd graphs show` on the existing graph only, no refresh; baseline: none; tests: the modules chosen by `tests/run_parallel.py --changed`;
+  verification: none beyond those tests; audit: the builder's static check, no auditor; agents: one
+### python -m aidd.cli size --spec 004-aidd-graph-first   exit=0 wall=0.63 s
+size: L
+inputs: target files=46; changed since open=n/a; affected=n/a; sensitive areas=CLI, hooks, cross-spec (n/a: no baseline: activate the spec or take a manifest)
+  graph: refresh plus before/after snapshots; baseline: manifest plus graph snapshots; tests: `--changed` plus `--deep`, plus the full suite once at close;
+  verification: one verify per spec at close; audit: a closing auditor over every required domain; agents: waves
+AC-032 PASS for XS and L (the M case with a temp spec of 4 Target files is covered by tests.test_aidd_tools, V-9 PASS).

@@ -9,3 +9,4 @@ dist/
 # AIDD generated caches / evidence (rebuilt automatically)
 specs/index.toon
 .aidd/evidence/
+.aidd/jobs/

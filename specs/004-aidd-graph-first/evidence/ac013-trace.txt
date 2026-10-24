@@ -1,0 +1,29 @@
+# T-25 STEP 2.2 (AC-013), run on D:\Fuentes\AIDD (not b1SycLink, per the verifier brief), read-only status.
+### python skill/scripts/graph_trace.py --root D:\Fuentes\AIDD -- status   (run 1)  exit=0 wall=15.55 s (under load)
+runtime trace: top 25 FUNC -> sink pairs by count
+  count  reread  func -> sink  [top detail]
+    240     203  skill/scripts/aidd_rules.py::_read -> sink:file:*  [specs/011-aidd-antigravity-adapter/tasks.md x15]
+     87       4  skill/scripts/aidd_evidence.py::_read_rows -> sink:file:*  [.aidd/evidence/events.toon x5]
+      9       8  skill/scripts/aidd_review.py::_read_text -> sink:file:*  [specs/004-aidd-graph-first/plan.md x1]
+      9       6  skill/scripts/aidd_rules.py::_repo_problem -> sink:file:*  [specs/003-aidd-interaction-evidence/spec.md x3]
+      8       0  skill/scripts/aidd_rules.py::_sha1_file -> sink:file:*
+      8       5  skill/scripts/aidd_status.py::_read -> sink:file:*
+      4       3  skill/scripts/aidd_evidence.py::get_active_spec -> sink:file:*  [.aidd/active_spec x4]
+      4       3  skill/scripts/aidd_evidence.py::get_gate_spec -> sink:file:*  [.aidd/gate_spec x4]
+      1       0  skill/scripts/aidd_evidence.py::_blob_shas -> sink:spawn:git
+      1       0  skill/scripts/aidd_evidence.py::_fp_git -> sink:spawn:git
+      1       0  skill/scripts/aidd_status.py::_git -> sink:spawn:git
+      1       0  skill/scripts/aidd_status.py::_read_caller_marker -> sink:file:*
+totals: reads 370, spawns 3, rereads 232, pairs 12
+### same command (run 2, unchanged tree)  exit=0 wall=9.64 s
+(identical table)
+totals: reads 370, spawns 3, rereads 232, pairs 12
+  -> the two runs agree on every count: AC-013 PASS (on AIDD).
+### python skill/scripts/graph_trace.py --root D:\Fuentes\AIDD -- progress   exit=0 wall=3.57 s
+    101       0  skill/scripts/aidd_progress.py::_file_text -> sink:file:*  [README.md x1]
+     83       0  skill/scripts/aidd_evidence.py::_read_rows -> sink:file:*  [.aidd/evidence/events.toon x1]
+     70      60  skill/scripts/aidd_rules.py::_read -> sink:file:*  [specs/003-aidd-interaction-evidence/tasks.md x5]
+     10       0  skill/scripts/aidd_progress.py::measure -> sink:file:*
+totals: reads 264, spawns 0, rereads 60, pairs 4
+## observation for the owner: in `status`, aidd_rules._read still re-reads the same files 203 of 240 times
+## (tasks.md x15) and events.toon is read 5x: remaining hot spots after the 2026-10-24 fixes.

@@ -674,6 +674,24 @@ def _spec007_line(st):
         return ''
 
 
+def _graph_first_line(root=None):
+    """aidd:FR-027 `graph-first: N misses / M searches this session` from the session's graph_miss events
+    (N = not silenced, M = all). Always returns a line; never raises."""
+    n = m = 0
+    try:
+        root = root or ev.find_root()
+        sess = _current_session(root)
+        if sess:
+            for e in ev.events(root, kind='graph_miss', session=sess):
+                m += 1
+                d = e.get('detail')
+                if not (isinstance(d, dict) and d.get('silenced')):
+                    n += 1
+    except Exception:
+        n = m = 0
+    return f'graph-first: {n} misses / {m} searches this session'
+
+
 def format_global(g):
     stops = ', '.join(f'{k} x{v}' for k, v in sorted(g['stop_blocks'].items())) or 'none'
     lines = [
@@ -686,6 +704,7 @@ def format_global(g):
            f" ({g['last_hook_error'].get('hook')}: {g['last_hook_error'].get('error')})"
            if g['last_hook_error'] else ' total'),
         format_pointer(g),
+        _graph_first_line(),  # aidd:FR-027
     ]
     # aidd:FR-208 aidd:AC-214 shown only when they carry information (default output stays as before)
     rm = g.get('rules_mode') or _rules_mode()
@@ -787,10 +806,47 @@ def cmd_status(args):
                   + ' (code edits stay blocked; run `aidd rules abandon <id>` if the user drops them)')
     for s in sts:
         print(format_status(s))
+        if s.get('open'):
+            _print_closing_diagnosis(s, root)
     print(format_global(g))
     if derived is not None:
         print(format_refresh(derived))
     return 0
+
+
+class _NoScope:
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+
+def _read_scope():  # aidd:FR-045
+    """aidd_evidence.read_cache() when available, else a no-op scope."""
+    try:
+        return ev.read_cache()
+    except Exception:
+        return _NoScope()
+
+
+def _print_closing_diagnosis(s, root):  # aidd:FR-045 aidd:FR-046 printing only, never decides a gate
+    try:
+        d = {p.name: p for p in _spec_dirs(root)}.get(s.get('spec'))
+        if d is None:
+            return
+        lines = list(rules.closing_audit_diagnosis(d, root) or [])
+        for ln in lines:
+            print(ln)
+        missing = []
+        for ln in lines:
+            m = re.match(r'(\w+): missing\b', ln)  # closing_audit_diagnosis line: "<domain>: missing, ..."
+            if m:
+                missing.append(m.group(1))
+        if missing:
+            print('next: dispatch one auditor per missing domain (%s) in ONE message' % ', '.join(dict.fromkeys(missing)))
+    except Exception:
+        pass
 
 
 # ------------------------------------------------------------- refresh (FR-208)
@@ -1315,6 +1371,18 @@ def cmd_approve(spec_arg):
     return 0
 
 
+def _start_graph_baselines(root, spec_id):
+    """aidd:FR-023 write the `<spec-id>@open` baseline manifest IN PROCESS (no graph build, no subprocess,
+    nothing in the background). Never raises: on any failure print one warning; activation still succeeds."""
+    try:
+        import graph_snapshot  # lazy: same scripts dir (already on sys.path)
+        r = graph_snapshot.open_manifest(root, spec_id)
+        if r.get('rc') == 0:
+            print(f"baseline manifest written: {r.get('path')} ({r.get('files')} files)")
+    except Exception as exc:
+        print(f'warn: could not write the baseline manifest ({exc}); activation continues.')
+
+
 def cmd_activate(spec_arg):
     """aidd:FR-201 `aidd rules activate <spec>`: point the per-spec code gate (.aidd/gate_spec) at an open
     (or approved, not closed) spec; ev.activate_spec is the only writer and logs `gate_pointer`."""
@@ -1334,6 +1402,7 @@ def cmd_activate(spec_arg):
         print(f'gate pointer already on {now}.')
     else:
         print(f'gate pointer: {prev or "none"} -> {now}')
+    _start_graph_baselines(root, d.name)  # aidd:FR-023
     return 0
 
 
@@ -1559,7 +1628,7 @@ def cmd_verify(spec_arg, full=False, bail=False):
     round_entries = _round_load(root) if round_on else []
     # whole tree: the round cache key ignores Scope; the default 8 s budget is too short for a large dirty tree
     # (the state came back None and the cache silently never worked), so it gets a generous one.
-    st_all_start = ev.code_state(root, budget_s=120) if round_on else None
+    st_all_start = ev.code_state(root, budget_s=120, reuse=True) if round_on else None   # st_start's scan, same instant
     if round_on and not st_all_start:
         print('note: whole-tree fingerprint unavailable (budget); the round cache is off for this run', flush=True)
     results = []
@@ -1694,7 +1763,7 @@ def cmd_verify(spec_arg, full=False, bail=False):
     stable = (not unexplained) if (st_start and st_end) else (fp_start == fp_end)       # docs may change meanwhile
     all_ok = all(x['ok'] for x in results) and stable
     if round_on and stable and st_all_start:
-        _round_store(root, round_entries, results, d, st_all_start, ev.code_state(root, budget_s=120), gen)
+        _round_store(root, round_entries, results, d, st_all_start, ev.code_state(root, budget_s=120, reuse=True), gen)   # st_end's scan
     # code_since: when this exact code state was first verified; lineage: the table hashes verified on it.
     same_code = bool(prior and prior_fp is not None and prior.get('code_fp_end') == prior_fp)
     code_since = (prior.get('code_since') or prior.get('started')) if same_code else started
@@ -1913,7 +1982,8 @@ def main(argv=None):
         _sanitize_env()
         if argv and argv[0] == 'status':
             try:
-                return cmd_status(argv[1:])
+                with _read_scope():  # aidd:FR-045 cached reads for the printing paths only
+                    return cmd_status(argv[1:])
             except Exception as e:   # status never fails and never reports an "internal error" (D14)
                 print(f'aidd status: could not read some state ({type(e).__name__}); nothing was changed.')
                 return 0

@@ -1,0 +1,19 @@
+# T-25: python -m aidd.cli triage   (once, over the repo's specs/*/evidence)   exit=1 wall=1.0 s; nothing written (git status of specs/ unchanged by it)
+004-aidd-graph-first: 5/9 rows pass  <- FAIL rows: V-4, V-5, V-7, V-8
+    FAIL V-4 exit 1 -> pytest:(errors=10)
+    FAIL V-5 exit 1 -> pytest:(failures=1)
+    FAIL V-7 exit 1 -> pytest:(failures=2)
+    FAIL V-8 exit 1 -> pytest:(failures=1)
+008/009/010/011: all rows pass
+012-aidd-plan-adherence-hookless-hosts: 9/10 rows pass  <- FAIL rows: V-3
+    pytest:tests/test_rule_gate.py::TestContentRules::test_mdos_blank_run_before_an_approved_line_is_linear
+== 0 failing item(s) shared by 2+ specs (fix once), 4 specific to one spec
+  specific  pytest:(errors=10)  (004-aidd-graph-first)
+  specific  pytest:(failures=1)  (004-aidd-graph-first)
+  specific  pytest:(failures=2)  (004-aidd-graph-first)
+  specific  pytest:tests/test_rule_gate.py::TestContentRules::test_mdos_blank_run_before_an_approved_line_is_linear  (012-aidd-plan-adherence-hookless-hosts)
+RESULT: fail - 4 items - evidence 9 specs under specs/*/evidence
+
+## verifier note (finding): for unittest output triage keys on the summary "(failures=N)/(errors=N)" instead of the
+## test names, so V-5 and V-8 (different tests) collapse into one key "pytest:(failures=1)" and the WinError 32
+## cleanup errors (shared cause in V-4 and in run_parallel's test_hooks) are not grouped as one shared cause.

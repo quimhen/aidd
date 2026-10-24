@@ -1,0 +1,10 @@
+# T-25 STEP 2.6: performance claims of the 2026-10-24 work
+### python -m aidd.cli status --refresh   (single run, D:\Fuentes\AIDD, after the background test runs had finished)   exit=0 wall=10.84 s
+graph-first: 0 misses / 0 searches this session
+004-aidd-graph-first: approval approved · review no page · verification failed (9 command(s)) · 28 code edit(s) attributed since approval
+### graph_snapshot diff verify-before-04 (69218be) -> verify-after-04 (worktree): see ac009-ac010-ac012-ac018-code-graph-snapshots.txt
+- last_code_edit_ts: Path.resolve / relative_to removed from the loop body (ext_in_loop before: as_posix, get, max, pathlib.Path, relative_to, resolve, str; after: get, max, str).
+- repeats --cmd status: sink:file:* paths 111 -> 118, sink:spawn:git paths 2 -> 2 (static path counts do not drop).
+### runtime (graph_trace, ac013-trace.txt): status = 370 file reads (232 re-reads), 3 git spawns; events.toon read 5x via _read_rows.
+Verdict: the "one whole-tree scan per status" is consistent with 3 git spawns per status; the "events.toon cached parse" is NOT evident
+(5 reads of events.toon per status in the runtime trace). No before-fix runtime trace exists to compare against, so the speed-up is not proven by this run.

@@ -143,11 +143,15 @@ def known_root(start=None):
     return None
 
 
-SESSION_KINDS = frozenset({'prompt', 'subagent', 'question', 'answer', 'find_spec', 'session_start', 'hook_error'})
+# aidd:FR-027 graph_miss: a search the graph-first hook nudged (per-session evidence)
+SESSION_KINDS = frozenset({'prompt', 'subagent', 'question', 'answer', 'find_spec', 'session_start', 'hook_error',
+                           'graph_miss'})
 # aidd:FR-201 aidd:FR-205 aidd:FR-206 aidd:FR-208 gate_pointer / verify_run / stop_reminder / rules_override
+# aidd:FR-019 graph_snapshot: a canonical graph snapshot's hash (exempt from rotation, see _rotate_if_needed)
 PROJECT_KINDS = frozenset({'spec_edit', 'code_edit', 'approved', 'spec_closed', 'stop_block',
                            'stop_block_exhausted', 'verify_run', 'rules_override', 'gate_pointer',
-                           'stop_reminder'})
+                           'stop_reminder', 'graph_snapshot'})
+ROTATION_EXEMPT_KINDS = frozenset({'graph_snapshot'})
 HOOKS_TMP = Path(tempfile.gettempdir()) / 'aidd-hooks'
 
 
@@ -403,22 +407,94 @@ def _row(ts, session, kind, detail):
     return out.encode('utf-8', 'backslashreplace').decode('utf-8')
 
 
+# aidd:FR-045 Opt-in read cache: inside `with read_cache():` the TEXT of a file read through
+# `cached_read` is kept, keyed by path and validated by (st_size, st_mtime_ns). OFF by default (None);
+# hooks never enable it. Every write this module makes to a log calls `forget_read(path)`.
+_READ_CACHE = None
+
+
+@contextlib.contextmanager
+def read_cache():
+    """Enable the read cache for the `with` block (nested use keeps the outer dict)."""
+    global _READ_CACHE
+    prev = _READ_CACHE
+    if prev is None:
+        _READ_CACHE = {}
+    try:
+        yield
+    finally:
+        _READ_CACHE = prev
+
+
+def cached_read(path, reader):
+    """`reader(path)` -> text, cached while a read_cache() scope is active. Never caches on error."""
+    cache = _READ_CACHE
+    if cache is None:
+        return reader(path)
+    try:
+        st = os.stat(path)
+        sig = (st.st_size, st.st_mtime_ns)
+        key = str(path)
+        hit = cache.get(key)
+        if hit is not None and hit[0] == sig:
+            return hit[1]
+        text = reader(path)
+        cache[key] = (sig, text)
+        return text
+    except Exception:
+        return reader(path)
+
+
+def forget_read(path=None):
+    """Drop one cached entry (by str(path)) or all of them. No-op when the scope is off. Never raises."""
+    try:
+        cache = _READ_CACHE
+        if cache is None:
+            return
+        if path is None:
+            cache.clear()
+        else:
+            cache.pop(str(path), None)
+    except Exception:
+        pass
+
+
+def _read_text_rows(path):
+    return Path(path).read_bytes().decode('utf-8', errors='replace')
+
+
 def _read_rows(path):
     """Row lines of the log. Splits on '\\n' ONLY (B2)."""
-    data = Path(path).read_bytes().decode('utf-8', errors='replace')
+    data = cached_read(path, _read_text_rows)
     return [ln for ln in data.split('\n') if ln.startswith('  ')]
 
 
+def _row_kind(line):
+    """The kind field of one row line ('' when unparsable). Never raises."""
+    try:
+        f = next(csv.reader([line[2:]]))
+        return f[2] if len(f) == 4 else ''
+    except Exception:
+        return ''
+
+
 def _rotate_if_needed(path):
+    """Trim the log to its last KEEP_ROWS rows once it passes MAX_BYTES. aidd:FR-019 rows of a
+    ROTATION_EXEMPT_KINDS kind (`graph_snapshot`) older than that tail are kept too, in file order, so a
+    snapshot's hash event is never rotated away."""
     try:
         if path.stat().st_size <= MAX_BYTES:
             return
-        rows = _read_rows(path)[-KEEP_ROWS:]
+        allrows = _read_rows(path)
+        cut = max(0, len(allrows) - KEEP_ROWS)
+        rows = [r for r in allrows[:cut] if _row_kind(r) in ROTATION_EXEMPT_KINDS] + allrows[cut:]
         tmp = path.with_suffix('.tmp')
         tmp.write_text(HEADER + ''.join(r + '\n' for r in rows), encoding='utf-8', newline='\n')
         os.replace(str(tmp), str(path))
     except OSError:
         pass
+    finally:
+        forget_read(path)
 
 
 def _write_row(directory, path, row, timeout=None, written=None):
@@ -431,10 +507,13 @@ def _write_row(directory, path, row, timeout=None, written=None):
         _drain_locked(path)
         _rotate_if_needed(path)
         new = not path.exists() or path.stat().st_size == 0
-        with open(path, 'a', encoding='utf-8', newline='\n') as fh:
-            if new:
-                fh.write(HEADER)
-            fh.write(row)
+        try:
+            with open(path, 'a', encoding='utf-8', newline='\n') as fh:
+                if new:
+                    fh.write(HEADER)
+                fh.write(row)
+        finally:
+            forget_read(path)
         if written is not None:
             written.append(True)
 
@@ -507,6 +586,12 @@ def _drain_locked(path):
         dr.unlink()
     except Exception:
         pass
+    finally:
+        forget_read(path)
+        try:
+            forget_read(_spill_paths(path)[1])
+        except Exception:
+            pass
 
 
 def _drain_path(path, timeout=None):
@@ -679,11 +764,43 @@ def events(root, session=None, kind=None, since=0.0):
             paths.append(pp)
     for p in paths:
         try:
-            _parse_rows(_read_log(p), session, kind, since, out)
+            for e in _parsed_log(p):
+                if session is not None and e['session'] != session:
+                    continue
+                if kind is not None and e['kind'] != kind:
+                    continue
+                if since and e['ts'] <= since:
+                    continue
+                out.append(e)
         except OSError:
             continue
     if len(paths) > 1:
         out.sort(key=lambda e: e['ts'])
+    return out
+
+
+_PARSED = {}          # str(log path) -> (size, mtime_ns, [event, ...]) for ONE process
+
+
+def _parsed_log(path):
+    """Every event of one log, parsed once per (size, mtime_ns). Measured: `aidd status --refresh` parsed the same
+    events.toon 80 times. Any append changes the size, so a new row is never missed; a log with a pending spill is
+    never cached (its rows are merged by _read_log on every read)."""
+    path = Path(path)
+    try:
+        st = path.stat()
+        key = (st.st_size, st.st_mtime_ns)
+        sp, dr = _spill_paths(path)
+        cacheable = not (sp.exists() or dr.exists())
+    except OSError:
+        key, cacheable = None, False
+    hit = _PARSED.get(str(path)) if cacheable else None
+    if hit is not None and hit[0] == key:
+        return hit[1]
+    out = []
+    _parse_rows(_read_log(path), None, None, 0.0, out)
+    if cacheable:
+        _PARSED[str(path)] = (key, out)
     return out
 
 
@@ -1041,6 +1158,28 @@ def latest_verify_run(root, spec):
         return None
 
 
+_REL_MEMO = {}        # (base, raw path) -> root-relative posix path or None
+
+
+def _rel_to_root(base, raw):
+    """`raw` resolved against the filesystem and made relative to `base` (posix), None when outside it. The code_edit
+    log repeats the same few files thousands of times and Path.resolve() is a syscall chain: memoized per process
+    (measured: 1.4 s per last_code_edit_ts call on a large log, 43 calls per `aidd status`)."""
+    key = (str(base), raw)
+    try:
+        return _REL_MEMO[key]
+    except KeyError:
+        pass
+    try:
+        out = Path(raw).resolve().relative_to(base).as_posix()
+    except Exception:
+        out = None
+    if len(_REL_MEMO) > 50000:
+        _REL_MEMO.clear()
+    _REL_MEMO[key] = out
+    return out
+
+
 def last_code_edit_ts(root, scope=None, exclude=None):
     """aidd:FR-205 Newest `code_edit` ts of ANY spec (freshness rule), 0.0 when none or on error.
     With `scope` (a spec's `Scope:` globs) only edits of files inside it count, so work on other specs
@@ -1052,11 +1191,10 @@ def last_code_edit_ts(root, scope=None, exclude=None):
         base = Path(root).resolve()
         best = 0.0
         for e in events(root, kind='code_edit'):
-            try:
-                rel = Path(str(e['detail'].get('path') or '')).resolve().relative_to(base)
-            except Exception:
+            rel = _rel_to_root(base, str(e['detail'].get('path') or ''))
+            if rel is None:
                 continue                 # outside the project root: not an edit of this scope
-            if in_scope(rel.as_posix(), srx) and not (xrx is not None and in_scope(rel.as_posix(), xrx)):
+            if in_scope(rel, srx) and not (xrx is not None and in_scope(rel, xrx)):
                 best = max(best, e['ts'])
         return best
     except Exception:
@@ -1095,6 +1233,30 @@ def append_spec_closed(root, session, spec, reason='completed', hash=''):
     append(root, session, 'spec_closed', **d)
 
 
+def append_graph_snapshot(root, session, name, label, sha256, nodes, edges, rev='', spec=''):
+    """aidd:FR-019 Record a graph snapshot's canonical sha256 in the PROJECT log (`graph_snapshot` rows never
+    rotate). `spec` is optional (the plan's event schema lists it; empty = omitted). Returns append()'s bool.
+    Never raises."""
+    try:
+        d = {'name': str(name), 'label': str(label), 'sha256': str(sha256),
+             'nodes': int(nodes or 0), 'edges': int(edges or 0), 'rev': str(rev or '')}
+        if spec:
+            d['spec'] = str(spec)
+        return append(root, session, 'graph_snapshot', **d)
+    except Exception:
+        return False
+
+
+def graph_snapshot_events(root, name, label):
+    """aidd:FR-019 aidd:FR-020 The `graph_snapshot` events of graph `name` and label `label`, oldest first
+    (the last one is the one diff trusts; more than one = the label was replaced). Never raises."""
+    try:
+        return [e for e in events(root, kind='graph_snapshot')
+                if e['detail'].get('name') == str(name) and e['detail'].get('label') == str(label)]
+    except Exception:
+        return []
+
+
 def append_stop_block(root, session, spec, key):
     append(root, session, 'stop_block', spec=str(spec), key=str(key))
 
@@ -1128,6 +1290,7 @@ _FIND_SPEC_OK = ('aidd spec search', 'no specs/ folder', 'no spec folders')   # 
 _PY_RE = re.compile(r'^python(?:3(?:\.\d+)?)?(?:\.exe)?$|^py(?:\.exe)?$', re.I)
 _WRAPPERS = {'&', 'call', 'time', 'nohup', 'command', 'exec', 'sudo', 'env', 'builtin'}
 _AIDD_SUBS = {'search', 'tree', 'list', 'reindex', 'spec'}
+_AIDD_GRAPHS_SUBS = {'show', 'repeats', 'changed', 'status'}   # aidd:FR-026 agent graph queries
 _SHELL_EXES = {'powershell', 'pwsh', 'bash', 'sh', 'zsh', 'cmd'}
 _SHELL_CMD_FLAGS = {'-c', '-command', '/c', '/k', '-encodedcommand'}
 
@@ -1165,7 +1328,7 @@ def _segment_runs_find_spec(seg, depth):
     exe = re.split(r'[\\/]', toks[i])[-1]
     low = re.sub(r'\.exe$', '', exe.lower())
     if low == 'aidd':                       # the CLI: `aidd search|tree|list|reindex` (`aidd spec ...` harmless)
-        return i + 1 < n and toks[i + 1].lower() in _AIDD_SUBS
+        return _aidd_query(toks, i + 1)
     if low in _SHELL_EXES and depth < 3:
         for j in range(i + 1, n):
             if toks[j].lower() in _SHELL_CMD_FLAGS:
@@ -1175,24 +1338,41 @@ def _segment_runs_find_spec(seg, depth):
         return False
     i += 1
     while i < n and toks[i].startswith('-') and toks[i] != '-':
-        if toks[i] == '-m':                 # python -m aidd.cli search|tree|list|reindex ...
+        if toks[i] == '-m':                 # python -m aidd.cli search|tree|list|reindex|graphs show ...
             return (i + 2 < n and toks[i + 1].lower() in ('aidd.cli', 'aidd', 'aidd.__main__')
-                    and toks[i + 2].lower() in _AIDD_SUBS)
+                    and _aidd_query(toks, i + 2))
         if toks[i] == '-c':
             return False
         i += 2 if toks[i] in ('-X', '-W', '-Q') else 1
-    return i < n and re.split(r'[\\/]', toks[i])[-1].lower() == 'find_spec.py'
+    if i >= n:
+        return False
+    script = re.split(r'[\\/]', toks[i])[-1].lower()
+    if script == 'aidd_graphs.py':          # aidd:FR-026 python .../aidd_graphs.py show|repeats|changed|status
+        return i + 1 < n and toks[i + 1].lower() in _AIDD_GRAPHS_SUBS
+    return script == 'find_spec.py'
+
+
+def _aidd_query(toks, k):
+    """aidd:FR-026 True when toks[k:] is an `aidd` CLI query: `search|tree|list|reindex|spec ...` or
+    `graphs show|repeats|changed|status ...`."""
+    if k >= len(toks):
+        return False
+    sub = toks[k].lower()
+    if sub == 'graphs':
+        return k + 1 < len(toks) and toks[k + 1].lower() in _AIDD_GRAPHS_SUBS
+    return sub in _AIDD_SUBS
 
 
 def runs_find_spec(command, depth=0):
     """True iff the shell command actually RUNS find_spec (or its `aidd spec ...` wrapper): some
     `&&`/`;`/`|`-separated segment is `[& | VAR=x | time | timeout N | uv run] python|python3|py
     [-u -X utf8 ...] <path>find_spec.py ...`, or `powershell|pwsh|bash -c "<such a command>"`.
-    `echo`/`grep`/`cat find_spec.py` mentions do not count."""
+    `echo`/`grep`/`cat find_spec.py` mentions do not count. aidd:FR-026 Agent graph queries count too:
+    `aidd graphs show|repeats|changed|status` (CLI, `python -m aidd.cli` or `python .../aidd_graphs.py`)."""
     if not isinstance(command, str):
         return False
-    if 'find_spec.py' not in command and not re.search(
-            r'\baidd(?:\.exe|\.cli|\.__main__)?\s+(?:spec|search|tree|list|reindex)\b', command):
+    if 'find_spec.py' not in command and 'aidd_graphs.py' not in command and not re.search(
+            r'\baidd(?:\.exe|\.cli|\.__main__)?\s+(?:spec|search|tree|list|reindex|graphs)\b', command):
         return False
     return any(_segment_runs_find_spec(seg, depth) for seg in re.split(r'&&|\|\||[;|\n]', command))
 
@@ -1881,25 +2061,53 @@ def _code_state_git(root, deadline, srx):
         raise _FpOverBudget()
     state = {}
     if keep:
-        timeout = _fp_left(deadline)
-        env = dict(os.environ, GIT_OPTIONAL_LOCKS='0', LC_ALL='C')
-        try:
-            r = subprocess.run(['git', 'hash-object', '--stdin-paths'], cwd=str(root), env=env,
-                               input=('\n'.join(keep) + '\n').encode('utf-8', errors='surrogateescape'),
-                               stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=timeout,
-                               creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
-        except subprocess.TimeoutExpired:
-            raise _FpOverBudget()
-        except (OSError, ValueError):
-            raise _FpUnavailable()
-        shas = r.stdout.decode('ascii', errors='replace').split()
-        if r.returncode != 0 or len(shas) != len(keep):
-            raise _FpUnavailable()
-        for rel, sha in zip(keep, shas):
-            state[rel] = rel.encode('utf-8', errors='surrogateescape') + b'\0' + sha.encode('ascii') + b'\0'
+        shas = _blob_shas(root, keep, deadline)       # aidd:FR-023 the single hash-object implementation
+        for rel in keep:
+            state[rel] = rel.encode('utf-8', errors='surrogateescape') + b'\0' + shas[rel].encode('ascii') + b'\0'
             if rel.lower().endswith('.sql'):
                 state[rel] = _fp_sql_chunk(root, rel) or state[rel]
     return 'git', state
+
+
+def _blob_shas(root, rels, deadline):
+    """aidd:FR-023 {rel: git blob sha of the WORKING-TREE content} for `rels` (root-relative, as given), in ONE
+    `git hash-object --stdin-paths` call. Raises _FpOverBudget (timeout / budget spent) or _FpUnavailable
+    (git missing or failing, or a sha count mismatch): the single implementation behind _code_state_git
+    and blob_shas."""
+    rels = list(rels)
+    if not rels:
+        return {}
+    timeout = _fp_left(deadline)
+    env = dict(os.environ, GIT_OPTIONAL_LOCKS='0', LC_ALL='C')
+    try:
+        r = subprocess.run(['git', 'hash-object', '--stdin-paths'], cwd=str(root), env=env,
+                           input=('\n'.join(rels) + '\n').encode('utf-8', errors='surrogateescape'),
+                           stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=timeout,
+                           creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
+    except subprocess.TimeoutExpired:
+        raise _FpOverBudget()
+    except (OSError, ValueError):
+        raise _FpUnavailable()
+    shas = r.stdout.decode('ascii', errors='replace').split()
+    if r.returncode != 0 or len(shas) != len(rels):
+        raise _FpUnavailable()
+    return dict(zip(rels, shas))
+
+
+def blob_shas(root, rels, budget_s=8.0):
+    """aidd:FR-023 Public, never raises: {rel: git blob sha of the working-tree content} for the given
+    root-relative paths (one `git hash-object --stdin-paths`, capped by `budget_s`; never mtime or size).
+    Paths that are not files or contain a newline are left out; {} when git is unavailable, fails or runs
+    over budget."""
+    try:
+        keep = set()
+        for rel in rels or ():
+            rel = str(rel).replace('\\', '/')
+            if rel and '\n' not in rel and os.path.isfile(os.path.join(str(root), rel)):
+                keep.add(rel)
+        return _blob_shas(root, sorted(keep), time.monotonic() + float(budget_s))
+    except Exception:
+        return {}
 
 
 def _code_state_mtimes(root, deadline, srx):
@@ -1928,18 +2136,47 @@ def _code_state_mtimes(root, deadline, srx):
     return 'mtime', state
 
 
-def code_state(root, budget_s=8.0, scope=None):
+_CODE_STATE_TTL = 600.0      # `reuse=True` callers are read-only reports that already hold one snapshot; a status run can last minutes
+_CODE_STATE_FULL = {}          # str(root) -> (taken_monotonic, (kind, {rel: chunk}))
+
+
+def _code_state_scan(root, budget_s, srx):
+    deadline = time.monotonic() + float(budget_s)
+    try:
+        return _code_state_git(Path(root), deadline, srx)
+    except _FpUnavailable:
+        return _code_state_mtimes(Path(root), deadline, srx)
+
+
+def code_state(root, budget_s=8.0, scope=None, reuse=False):
     """(kind, {rel: chunk}) of the project's CODE files (see _code_state_git), limited to `scope` globs, or None
-    over budget / on error. The per-file view lets `aidd verify` say WHICH files a command rewrote."""
+    over budget / on error. The per-file view lets `aidd verify` say WHICH files a command rewrote.
+
+    Always reads the disk NOW unless the caller passes `reuse=True`, which accepts the whole-tree scan this
+    process took in the last _CODE_STATE_TTL seconds and applies the scope by filtering it in memory. Only a
+    caller that knows nothing changed since (a read-only report over several specs, or the second call right
+    after a scan) may reuse: measured, `aidd status` ran `git ls-files` + `git hash-object` over the full tree
+    once per spec (207 s on a 7k-file repo)."""
     try:
         if root is None or not Path(root).is_dir():
             return None
         srx = _scope_re([str(g).strip() for g in (scope or []) if str(g).strip()])
-        deadline = time.monotonic() + float(budget_s)
-        try:
-            return _code_state_git(Path(root), deadline, srx)
-        except _FpUnavailable:
-            return _code_state_mtimes(Path(root), deadline, srx)
+        key = str(root)
+        hit = _CODE_STATE_FULL.get(key)
+        full = None
+        if hit is not None and reuse and time.monotonic() - hit[0] <= _CODE_STATE_TTL:
+            full = hit[1]
+        else:
+            full = _code_state_scan(root, budget_s, None)
+            if full is not None:
+                _CODE_STATE_FULL[key] = (time.monotonic(), full)
+        if full is None:
+            # the whole tree is over budget or unreadable: a scoped scan may still fit (the old behaviour)
+            return _code_state_scan(root, budget_s, srx) if srx is not None else None
+        if srx is None:
+            return full
+        kind, items = full
+        return kind, {r: c for r, c in items.items() if in_scope(r, srx)}
     except Exception:
         return None
 
@@ -1975,25 +2212,37 @@ def state_diff(a, b):
         return []
 
 
-def code_fingerprint(root, budget_s=8.0, scope=None, exclude=None):
+def code_fingerprint(root, budget_s=8.0, scope=None, exclude=None, reuse=False):
     """Fingerprint of the project's CODE state outside specs/ and the AIDD bundle dir, ignoring
     documentation (.md/.markdown/.rst/.adoc) and the git history: a doc edit, a commit or a push never
     makes a passed verification stale; changing a code or data file does. `scope` (root-relative globs, the
     spec's `Scope:` line) limits it to the files that spec owns, so work on OTHER specs never invalidates it;
     `exclude` (the spec's `Generated:` globs and the files a run rewrote) removes generated outputs. 'c2:'-
     prefixed so it is never confused with the legacy worktree_fingerprint. None over budget or on error."""
-    return fingerprint_of(code_state(root, budget_s, scope), scope, exclude)
+    return fingerprint_of(code_state(root, budget_s, scope, reuse=reuse), scope, exclude)
 
 
 # ---------------------------------------------------------------------------
 # Quote verification
 # ---------------------------------------------------------------------------
 
+_NORM_MEMO = {}
+
+
 def normalise(text):
-    """Lowercase, accent-fold (NFKD), punctuation -> space, whitespace collapsed."""
-    s = unicodedata.normalize('NFKD', str(text or ''))
+    """Lowercase, accent-fold (NFKD), punctuation -> space, whitespace collapsed. Pure, so memoized per process:
+    every quote check normalises every recorded prompt (measured: 47k calls, 28 s, in one `aidd status`)."""
+    raw = str(text or '')
+    hit = _NORM_MEMO.get(raw)
+    if hit is not None:
+        return hit
+    s = unicodedata.normalize('NFKD', raw)
     s = ''.join(c for c in s if not unicodedata.combining(c)).lower()
-    return re.sub(r'[\W_]+', ' ', s).strip()
+    out = re.sub(r'[\W_]+', ' ', s).strip()
+    if len(_NORM_MEMO) >= 20000:
+        _NORM_MEMO.clear()
+    _NORM_MEMO[raw] = out
+    return out
 
 
 def quote_in_prompts(root, quote, min_words=3, session=None):

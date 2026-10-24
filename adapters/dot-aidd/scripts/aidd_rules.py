@@ -1053,25 +1053,30 @@ def _check_debt_impl(root, spec_id, extra_texts):
     raw = _norm_nl(spec_t)
     t = _clean(spec_t)
 
-    universe = _codes(raw)
-    for n in ('plan.md', 'contracts.md'):
-        universe |= _codes(_norm_nl(texts[n] if n in texts else _read(d / n)))
-    ids = _spec_ids(specs)
-    for sid in ids:
-        if sid == d.name:
-            continue
-        try:
-            files = [f for f in (specs / sid).glob('*.md') if f.name != 'mockup-audit.md']
-        except Exception:
-            files = []
-        for f in files:
-            universe |= _codes(_strip_code_spans(_norm_nl(_read(f))))
-    audited = _audited_codes(specs, d.name, texts.get('mockup-audit.md'))
-
     out = []
     waived = _waived_visual(t)
     shape, rows = _debt_table(t)
     out += list(shape or [])
+    ids = _spec_ids(specs)
+    # Sibling specs are scanned ONLY when a result needs them: `universe` when Steps 0/1/1.5 are waived,
+    # `audited` when a waiver or a `resolved` row compares against it. A spec with neither reads nothing
+    # outside its own folder (measured: `aidd check` opened every file of every spec for no reason).
+    need_audited = bool(waived) or any(r['status'] == 'resolved' for r in rows)
+    audited = _audited_codes(specs, d.name, texts.get('mockup-audit.md')) if need_audited else set()
+    universe = set()
+    if waived:
+        universe = _codes(raw)
+        for n in ('plan.md', 'contracts.md'):
+            universe |= _codes(_norm_nl(texts[n] if n in texts else _read(d / n)))
+        for sid in ids:
+            if sid == d.name:
+                continue
+            try:
+                files = [f for f in (specs / sid).glob('*.md') if f.name != 'mockup-audit.md']
+            except Exception:
+                files = []
+            for f in files:
+                universe |= _codes(_strip_code_spans(_norm_nl(_read(f))))
     if waived:
         covered = set().union(*[r['codes'] for r in rows]) if rows else set()
         missing = sorted((universe - audited) - covered)
@@ -1631,12 +1636,40 @@ def is_protected_path(path):
 
 # ------------------------------------------------------------- check_spec_dir
 
-def _read(p):
+def _read_direct(p):
+    """stat + read_text (the pre-FR-045 `_read`): '' for huge files; raises on I/O errors (the caller,
+    `_read`, turns them into '' and `cached_read` never caches a failed read)."""
+    pp = Path(p)
+    if pp.stat().st_size > MAX_CHARS * 2:   # never even load huge files (callers use _big)
+        return ''
+    return pp.read_text(encoding='utf-8', errors='replace')
+
+
+def _cached_read_fn():
+    """aidd:FR-045 aidd_evidence.cached_read, or None when the module (or the helper) is unavailable.
+    Looked up on every call (never memoised): the scope lives in the module object that read_cache()
+    activated, and a memoised function of an older module object would bypass it."""
     try:
-        pp = Path(p)
-        if pp.stat().st_size > MAX_CHARS * 2:   # never even load huge files (callers use _big)
-            return ''
-        return pp.read_text(encoding='utf-8', errors='replace')
+        mod = sys.modules.get('aidd_evidence') or _evidence()
+        cand = getattr(mod, 'cached_read', None) if mod is not None else None
+        return cand if callable(cand) else None
+    except Exception:
+        return None
+
+
+def _read(p):
+    """aidd:FR-045 Text of `p` ('' when missing, unreadable or huge), read through
+    aidd_evidence.cached_read: inside a read_cache() scope an unchanged file is read once per process;
+    outside it (or without aidd_evidence) this is exactly the direct stat + read_text."""
+    try:
+        fn = _cached_read_fn()
+        if fn is not None:
+            try:
+                txt = fn(p, _read_direct)
+                return txt if isinstance(txt, str) else ''
+            except Exception:
+                pass   # fall back to the direct read below
+        return _read_direct(p)
     except Exception:
         return ''
 
@@ -2719,7 +2752,10 @@ def _run_problems(ev, root, spec_dir, spec_text, run, fingerprint=None):
         # Documentation edits, commits, amends and pushes leave it equal, so they never force a re-run.
         g = getattr(ev, 'code_fingerprint', None)
         try:
-            cnow = (g(root, scope=scope, exclude=excl) if (scope or excl) else g(root)) if callable(g) else None
+            # inside one `aidd status` run (a shared FingerprintOnce) the specs are compared against the SAME
+            # tree: one whole-tree scan serves them all, each spec's Scope applied in memory
+            kw = {'reuse': True} if callable(fingerprint) else {}
+            cnow = (g(root, scope=scope, exclude=excl, **kw) if (scope or excl) else g(root, **kw)) if callable(g) else None
         except Exception:
             cnow = None
         if verification_scope(spec_text, _read(d / 'tasks.md')) != sorted(scope):
@@ -2897,44 +2933,144 @@ def _result_chars(event):
         return None
 
 
-def closing_audit_covers(event, spec_dir, domains, gate2, ev, root):
-    """aidd:FR-206 aidd:AC-210 True only for a COUNTING subagent (R14) whose header names every domain
-    of `domains`, whose `tasks` tag is approval_hash(tasks.md)[:8], whose recorded final report is at
-    least CLOSING_AUDIT_MIN_RESULT chars (absent = does not count) and, for a `gate: 2` spec, whose
-    `verify` tag is the newest verify_run's verify_hash[:8] and which postdates that run."""
+def _closing_audit_reason(event, spec_dir, domains, gate2, ev, root):
+    """aidd:FR-046 None when `event` counts as the closing auditor of `spec_dir` for `domains` (the
+    closing_audit_covers conditions), else a short human reason it does not. Never raises (an internal
+    failure is itself a reason: fail closed)."""
     try:
         if not _subagent_counts(event):
-            return False
+            if _is_pre_dispatch(event):
+                return 'a PreToolUse attribution row, not a finished audit'
+            model = str((event.get('detail') or {}).get('model') or '?')
+            return f'model tier too low ({model}; R14: a haiku auditor does not count)'
         h = closing_audit_header(event)
         if h is None:
-            return False
-        if not {str(x).lower() for x in domains} <= h['domains']:
-            return False
+            return 'the first line of its prompt is not a `CLOSING AUDIT [domains: ...] [tasks:<h8>]` header'
+        want = {str(x).lower() for x in domains}
+        if not want <= h['domains']:
+            return 'its header lacks the required domain(s): ' + ', '.join(sorted(want - h['domains']))
         d = Path(spec_dir)
         tasks = _read(d / 'tasks.md')
-        if not tasks.strip() or h['tasks'] != approval_hash(tasks)[:8]:
-            return False
+        if not tasks.strip():
+            return 'tasks.md is missing or empty (no [tasks:<h8>] to match)'
+        h8 = approval_hash(tasks)[:8]
+        if h['tasks'] != h8:
+            return f"[tasks:{h['tasks']}] does not match the current tasks.md ([tasks:{h8}])"
         if gate2:
             f = getattr(ev, 'latest_verify_run', None)
             run = f(root, d.name) if callable(f) else None
             if not run:
-                return False
+                return 'no verify_run recorded for this gate-2 spec (run `aidd verify` first)'
             vh = str(run.get('verify_hash') or '').lower()
             # amendment to spec 007: a re-verify of the SAME code (docs/commit/table-wording only) keeps the
             # auditors valid: the tag may name any hash of the run's lineage and the auditor only has to
             # postdate the first verification of this code state (`code_since`), not the latest re-run.
             tags = {vh[:8]} | {str(x).lower()[:8] for x in (run.get('verify_lineage') or []) if x}
-            if not vh or h['verify'] not in tags:
-                return False
+            if not vh:
+                return 'the newest verify_run has no verify_hash'
+            if h['verify'] not in tags:
+                got = h['verify'] or '(none)'
+                return f'[verify:{got}] is not in the newest verify_run lineage ([verify:{vh[:8]}])'
             since = run.get('code_since')
             if since is None:
                 since = run.get('ts')
             if float(event.get('ts', 0) or 0) <= float(since or 0):
-                return False
+                return 'it is older than the verification of the current code (code_since)'
         rc = _result_chars(event)
-        return rc is not None and rc >= CLOSING_AUDIT_MIN_RESULT
+        if rc is None:
+            return 'no final report length recorded (result_chars absent)'
+        if rc < CLOSING_AUDIT_MIN_RESULT:
+            return f'final report too short ({rc} < {CLOSING_AUDIT_MIN_RESULT} chars)'
+        return None
+    except Exception as e:
+        return f'closing-audit check failed internally ({type(e).__name__})'
+
+
+def closing_audit_covers(event, spec_dir, domains, gate2, ev, root):
+    """aidd:FR-206 aidd:AC-210 True only for a COUNTING subagent (R14) whose header names every domain
+    of `domains`, whose `tasks` tag is approval_hash(tasks.md)[:8], whose recorded final report is at
+    least CLOSING_AUDIT_MIN_RESULT chars (absent = does not count) and, for a `gate: 2` spec, whose
+    `verify` tag is the newest verify_run's verify_hash[:8] and which postdates that run.
+    aidd:FR-046 The conditions live in _closing_audit_reason (None = counts)."""
+    try:
+        return _closing_audit_reason(event, spec_dir, domains, gate2, ev, root) is None
     except Exception:
         return False
+
+
+def closing_audit_diagnosis(spec_dir, root):
+    """aidd:FR-046 aidd:AC-038 One human line per reason the closing audit of `spec_dir` does not count:
+    each required domain with no counting auditor after the last code edit and the last verify_run
+    (the same window as `aidd status`: max(last code_edit in the run's scope, code_since or ts)), and
+    the _closing_audit_reason of each rejected CLOSING AUDIT candidate. [] when every required domain
+    is covered, and on any failure. Never raises."""
+    try:
+        ev = _evidence()
+        if ev is None:
+            return []
+        d = Path(spec_dir)
+        root = Path(root) if root else _proj_root(d)
+        doms = set(required_domains(d))
+        if not doms:
+            return []
+        run = None
+        try:
+            f = getattr(ev, 'latest_verify_run', None)
+            run = f(root, d.name) if callable(f) else None
+        except Exception:
+            run = None
+        run = run if isinstance(run, dict) else {}
+        try:
+            scope = [str(x) for x in (run.get('code_scope') or [])]
+            last_edit = float((ev.last_code_edit_ts(root, scope) if scope else ev.last_code_edit_ts(root)) or 0.0)
+        except Exception:
+            last_edit = 0.0
+        since = max(last_edit, float(run.get('code_since') or run.get('ts') or 0.0))
+        missing = _uncovered(ev, root, None, doms, since, spec_dir=d)
+        if not missing:
+            return []
+        try:
+            reasons = _uncovered_reasons(ev, root, None, doms, since, spec_dir=d)
+        except Exception:
+            reasons = {}
+        try:
+            subs = [e for e in ev.events(root, None, 'subagent') if isinstance(e, dict)]
+        except Exception:
+            subs = []
+        out = []
+        for dom in sorted(missing):
+            why = ''
+            if reasons.get(dom) == 'tier':
+                why = ' (only a low-tier auditor matched it; R14: a haiku auditor does not count)'
+            elif dom in DOMAIN_RE:
+                older = [e for e in subs if float(e.get('ts', 0) or 0) <= since and _subagent_counts(e)
+                         and DOMAIN_RE[dom].search(f"{(e.get('detail') or {}).get('head', '')} "
+                                                   f"{(e.get('detail') or {}).get('desc', '')}")]
+                if older:
+                    why = ' (its last auditor is older than the last code edit or verify_run)'
+            out.append(f'{dom}: missing, no counting auditor after the last code edit and the last verify_run{why}')
+        try:
+            gate2 = _is_gate2(ev, root, d)
+        except Exception:
+            gate2 = False
+        seen = set()
+        for e in sorted(subs, key=lambda x: float(x.get('ts', 0) or 0), reverse=True):
+            if closing_audit_header(e) is None or _is_pre_dispatch(e):
+                continue
+            if float(e.get('ts', 0) or 0) <= since:
+                why = 'it is older than the last code edit or verify_run'
+            else:
+                why = _closing_audit_reason(e, d, doms, gate2, ev, root)
+            if why is None or why in seen:
+                continue
+            seen.add(why)
+            tid = str((e.get('detail') or {}).get('tool_use_id') or '').strip()
+            out.append(f"closing auditor{(' ' + tid[:40]) if tid else ''} not counted: {why}")
+            if len(seen) >= 5:
+                break
+        return out
+    except Exception:
+        return []
 
 
 def closing_audit_gaps(ev, root, spec_dir):

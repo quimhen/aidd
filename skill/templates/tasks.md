@@ -13,6 +13,8 @@ Tasks reference the single pre-build coherence audit (spec, plan, graph, estimat
 - **One class/component per file** — never bundle several classes into one file. A task whose target file would need a second class is two tasks.
 - **Naming & File Contract from `plan.md`** — PascalCase for classes/types, camelCase for functions/variables, the project's own file-naming case. Restate the specific convention here, don't just point at plan.md and assume the agent will look it up.
 - **Antifragile / Design for Failure** — assume every operation crossing a boundary (network, DB, disk, external API, hardware) can fail: explicit timeout, retry with backoff, graceful degradation, and a traceable/recoverable record for anything that exhausts retries (dead-letter entry, status field, log with enough context to replay manually). Never fail silently to the user.
+- **Tool-first** — before doing by hand a step that is repetitive, long or checkable, run `aidd tools <keywords>` and use the tool it finds; a manual path needs a written reason.
+- **Analysis parameters: `<output of aidd size for this task>`** — size the analysis to the task: an XS change, one script, never creates a new graph, snapshot or job.
 
 | Task | Codes satisfied (SCREEN/COMP/CTL/API) | Target file | View / logic | Tracker ref | Status | Explicitly out of scope |
 |---|---|---|---|---|---|---|
@@ -34,6 +36,7 @@ Order `COMP-nnn` tasks before any `SCREEN-XX` task that uses them — building a
 - Nature: `REQUIREMENT` (new work/improvement) \| `INCIDENT` (fixes something broken)
 - Priority: 1 CRITICAL / 2 HIGH / 3 MEDIUM / 4 LOW — default 3 unless there's a clear blocking/risk signal
 - Kind: VIEW-new | LOGIC | VIEW-legacy: [justification, 5+ characters — only for VIEW-legacy]
+- Size: XS|S|M|L   # optional, informative (from aidd size), not a gate
 
 **Estimate**
 - Effort: High / Medium / Low

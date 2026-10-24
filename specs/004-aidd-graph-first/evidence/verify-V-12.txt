@@ -1,0 +1,7 @@
+# python -m unittest tests.test_aidd_progress | exit 0 | 2026-10-24T10:09:14
+......No spec with a tasks.md found under C:\Users\jquimis\AppData\Local\Temp\tmpe48f3bfk\specs
+........
+----------------------------------------------------------------------
+Ran 14 tests in 0.800s
+
+OK

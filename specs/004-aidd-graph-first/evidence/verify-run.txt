@@ -1,0 +1,34 @@
+# T-25 STEP 1b: python -m aidd.cli verify specs/004-aidd-graph-first   (run ONCE, background, Jobs: 4)
+# exit=1  wall=228.5 s (tool: verify wall time 225.0 s)
+# per-row evidence written by the CLI: evidence/verify-V-1.txt .. verify-V-9.txt
+running 9 row(s) with 4 in parallel (Jobs: 4)
+PASS row V-1: python -m unittest tests.test_code_graph (exit 0, 18.0 s) -> evidence/verify-V-1.txt
+PASS row V-3: python -m unittest tests.test_graph_trace_method (exit 0, 20.4 s) -> evidence/verify-V-3.txt
+FAIL row V-4: python -m unittest tests.test_find_spec tests.test_dot_aidd_mirror tests.test_read_hint (exit 1, 38.3 s) -> evidence/verify-V-4.txt
+PASS row V-6: python -m unittest tests.test_sql_graph_incremental (exit 0, 25.8 s) -> evidence/verify-V-6.txt
+PASS row V-2: python -m unittest tests.test_graph_snapshot (exit 0, 60.0 s) -> evidence/verify-V-2.txt
+PASS row V-9: python -m unittest tests.test_aidd_tools (exit 0, 9.3 s) -> evidence/verify-V-9.txt
+FAIL row V-7: python -m unittest tests.test_perf_budget tests.test_prompt_trigger (exit 1, 31.1 s) -> evidence/verify-V-7.txt
+FAIL row V-8: python -m unittest tests.test_aidd_job tests.test_aidd_triage (exit 1, 35.0 s) -> evidence/verify-V-8.txt
+FAIL row V-5: python -m unittest tests.test_aidd_rules tests.test_evidence tests.test_aidd_status tests.test_aidd_progress (exit 1, 206.9 s) -> evidence/verify-V-5.txt
+verify wall time 225.0 s; slowest row: V-5 (206.9 s)
+round cache: stored 9 row(s) of 004-aidd-graph-first
+verify_run recorded for 004-aidd-graph-first: FAILED (5/9 rows, verify hash e4f8f026df27)
+
+## failures by row
+V-4 (78 tests, errors=10, all in tests.test_find_spec; test_dot_aidd_mirror and test_read_hint passed):
+  TestAuditRev1: test_fallback_does_not_invent_matches, test_fulltext_fallback_when_index_misses_a_real_word,
+    test_memory_lines_are_printed_by_the_cli, test_search_without_memory_is_unchanged, test_short_query_words_match_through_the_fallback
+  TestEndToEnd: test_exact_code_match_exits_0_and_ranks_it_top, test_index_is_reused_when_nothing_changed,
+    test_index_rebuilds_after_a_real_edit, test_no_match_exits_1
+  TestIndexOptimization: test_old_version_index_is_rebuilt
+  every one: PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\Users\\jquimis\\AppData\\Local\\Temp\\tmp...' (tempfile cleanup, rmdir)
+V-5 (540 tests, failures=1): tests.test_evidence.TestRouting.test_kinds_are_routed_and_merged
+  AssertionError: ',graph_miss,' not found in <session events.toon> (kinds present: prompt, subagent, question, answer, find_spec, session_start, hook_error)
+V-7 (17 tests, failures=2):
+  tests.test_perf_budget.TestCodeGraphNoopRebuild.test_noop_rebuild_reparses_nothing_and_is_at_least_twice_as_fast
+    AssertionError: 0.5580902573280238 not less than or equal to 0.5 : no-op rebuild took 0.56 of a full build (best of 3)
+  tests.test_perf_budget.TestPromptFindSpecDedupe.test_second_identical_prompt_spawns_no_find_spec
+    AssertionError: '[aidd]' not found in ''
+V-8 (20 tests, failures=1): tests.test_aidd_job.TestAiddJob.test_list_shows_job
+  AssertionError: 2 != 0 : aidd job: error: unrecognized arguments: --root C:\Users\jquimis\AppData\Local\Temp\job_hvtyd8ov

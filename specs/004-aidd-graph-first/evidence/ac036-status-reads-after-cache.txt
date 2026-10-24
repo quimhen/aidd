@@ -1,0 +1,10 @@
+# AC-036 / FR-045: `status` file reads after the scoped read cache (second amendment, T-59), measured 2026-10-24
+# command (twice, same tree): python skill/scripts/graph_trace.py --root D:/Fuentes/AIDD -- status
+run 1: totals: reads 180, spawns 3, rereads 30, pairs 12
+run 2: totals: reads 180, spawns 3, rereads 30, pairs 12
+(an earlier single run during the build printed reads 177, rereads 30; the two final runs agree on every count)
+
+# before (final-ac-evidence.md AC-034, same command on the tree before this amendment): reads 374, spawns 3, rereads 226, pairs 12
+# AC-036 limits: reads <= 200 (180), rereads <= 60 (30), spawns not above 3 (3): PASS
+# `aidd verify` after the amendment: PASSED 12/12 rows, verify hash 8b32a0b5b209, wall 75.5 s (before: 164.6 s, single V-5 row 159.8 s);
+# slowest row now V-11 (tests.test_aidd_status) 66.1 s. Per-row output: verify-V-1.txt .. verify-V-12.txt in this folder.
