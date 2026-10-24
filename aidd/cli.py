@@ -14,19 +14,18 @@ from pathlib import Path
 
 
 def _find_scripts_dir() -> Path:
-    """Locate skill/scripts/ relative to this file. Works for an editable
-    install (`pip install -e .`, source layout preserved) and for running
-    straight from a repo checkout. A non-editable wheel install would need
-    skill/ bundled as package data at the same relative position — until
-    this is published that way, this lookup is the one source of truth."""
+    """Locate the aidd scripts. Order (the INSTALLED skill is the single source of truth, never a source repo):
+    1. $AIDD_HOME/scripts, 2. ~/.claude/skills/aidd/scripts (the skill installed for the current user),
+    3. the copy bundled in the wheel, 4. the repo checkout (only when running straight from a clone, e.g. while
+    developing aidd itself). A global install therefore never points at a source checkout, and updating the skill
+    folder is enough to update the command."""
     here = Path(__file__).resolve()
-    candidates = [here.parent.parent / "skill" / "scripts",     # repo checkout / editable install
-                  here.parent / "_data" / "skill" / "scripts"]  # bundled in the wheel
-    # Wheel install (e.g. Cowork, CI): use the skill installed for the current user, so the
-    # command needs neither the source repo nor any particular drive or user name.
+    candidates = []
     if os.environ.get("AIDD_HOME"):
         candidates.append(Path(os.environ["AIDD_HOME"]).expanduser() / "scripts")
-    candidates.append(Path.home() / ".claude" / "skills" / "aidd" / "scripts")
+    candidates += [Path.home() / ".claude" / "skills" / "aidd" / "scripts",
+                   here.parent / "_data" / "skill" / "scripts",       # bundled in the wheel
+                   here.parent.parent / "skill" / "scripts"]          # repo checkout (development only)
     for candidate in candidates:
         if (candidate / "find_spec.py").is_file():
             return candidate
