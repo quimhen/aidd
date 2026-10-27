@@ -173,7 +173,8 @@ def _autodetect(root):  # aidd:FR-014 aidd:FR-021 aidd:FR-029 aidd:FR-030
         # amendment to spec 004: AIDD's own implementation-progress graph (no third-party tool)
         out.append({"name": "progress", "kind": "progress", "output": ".aidd/graphs/progress.json",
                     "refresh": "builtin:progress", "watch": ["specs/**"]})
-    if (HERE / "component_graph.py").is_file():
+    has_ui = any((root / d).is_dir() for d in ("src", "components", "lib", "design-system", "web")) or any(specs.glob("*/mockup-audit.md"))
+    if (HERE / "component_graph.py").is_file() and has_ui:
         out.append({"name": "ui", "kind": "ui", "output": ".aidd/graphs/ui.toon",
                     "refresh": "builtin:ui",
                     "watch": ["src/**", "components/**", "lib/**", "specs/**", "design-system/**"]})
@@ -906,7 +907,14 @@ def show(root, name, query, limit=25):
             return "component_graph module not found or missing show_ui"
         nodes, edges = _load_graph(e["output"])
         if rl == "builtin:code":
-            return _show_code(root, e, nodes, edges, query, limit, stale)
+            res = _show_code(root, e, nodes, edges, query, limit, stale)
+            if "No FUNC/FILE matching" in res:
+                alt = _get(root, "code-graphify")
+                if alt is not None and alt.get("output") and Path(alt["output"]).is_file():
+                    alt_res = show(root, "code-graphify", query, limit=limit)
+                    if not alt_res.startswith("No node matching"):
+                        return res + "\n(Found in 'code-graphify'):\n" + alt_res
+            return res
         if rl == "builtin:method":
             return _show_method(e, nodes, edges, query, limit, stale)
         q = str(query).lower()

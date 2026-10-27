@@ -891,12 +891,28 @@ def report_index_status(rebuilt, changed):
           f"SKILL.md 'Graph coherence — multiagent verification').")
 
 
-def score_from_index(entry, codes, words):
+def score_from_index(entry, codes, words, name=''):
     entry_codes = set(entry.get('codes', []))
     entry_words = set(entry.get('words', []))
     matched_codes = codes & entry_codes
     matched_words = [w for w in (fold(w) for w in words) if w in entry_words]
-    return 10 * len(matched_codes) + len(matched_words)
+    score = 10 * len(matched_codes) + len(matched_words)
+
+    spec_name = name or entry.get('path', '')
+    if spec_name:
+        spec_tokens = [fold(t) for t in re.split(r'[-_\s]+', spec_name) if t]
+        spec_id = spec_tokens[0] if spec_tokens else ''
+        folded_words = [fold(w) for w in words]
+        if spec_id and spec_id in folded_words:
+            score += 25
+        name_hits = sum(1 for w in folded_words if w in spec_tokens)
+        score += 5 * name_hits
+        title = fold(entry.get('title', ''))
+        if title:
+            title_hits = sum(1 for w in folded_words if w in title.split())
+            score += 2 * title_hits
+
+    return score
 
 
 def evidence_lines(spec_dir: Path, codes, words, limit=8):
@@ -1207,7 +1223,7 @@ def main():
 
     results = []
     for name, entry in index['specs'].items():
-        score = score_from_index(entry, codes, words)
+        score = score_from_index(entry, codes, words, name=name)
         if score > 0:
             results.append((score, name))
     results.sort(key=lambda r: r[0], reverse=True)

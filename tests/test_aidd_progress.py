@@ -116,6 +116,14 @@ class TestProgress(unittest.TestCase):
         self.assertEqual((done, [t for t, _ in pending], unknown), (['T-01'], ['T-02'], ['T-03']))
         self.assertEqual(pending[0][1], ['Payroll/engine/pkg/none.py'])
 
+    def test_task_id_with_annotations(self):
+        m = self.tasks([
+            '| T-01 (T-MOCK) (was T-F45-01) | a | FR-001 | src/marked.py | done |\n',
+            '| T-02 (was T-F45-02) | b | FR-002 | src/plain.py |  |\n',
+        ])
+        states = {r['id']: r['state'] for r in m['rows']}
+        self.assertEqual(states, {'T-01': 'marked', 'T-02': 'present'})
+
     def test_no_specs_is_a_usage_error(self):
         self.assertEqual(P.main(['--root', tempfile.mkdtemp()]), 2)
 

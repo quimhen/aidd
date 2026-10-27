@@ -199,6 +199,19 @@ class TestEndToEnd(unittest.TestCase):
             self.assertEqual(result.returncode, 1)
             self.assertIn("No match found", result.stdout)
 
+    def test_spec_id_prefix_match_exits_0_and_ranks_it_top(self):
+        with TemporaryDirectory() as d:
+            root = Path(d)
+            (root / "specs").mkdir()
+            self._write_spec(
+                root / "specs", "F45-Aggregates-KPI-Engine",
+                "## Control inventory\n| CTL-nnn |\n|---\n| CTL-042 |\n",
+            )
+            result = self._run(root, "F45")
+            self.assertEqual(result.returncode, 0)
+            self.assertIn("F45-Aggregates-KPI-Engine", result.stdout)
+            self.assertIn("AMEND", result.stdout)
+
     def test_exact_code_match_exits_0_and_ranks_it_top(self):
         with TemporaryDirectory() as d:
             root = Path(d)

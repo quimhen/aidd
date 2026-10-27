@@ -31,7 +31,7 @@ if hasattr(sys.stdout, 'reconfigure'):
 STUB_BYTES = 40
 MAX_READ = 2 * 1024 * 1024
 CODE_RE = re.compile(r'\b(?:AC|FR|T|API|US|SCREEN|COMP|CTL)-\d+(?:-F\d+)?', re.I)
-TASK_ID_RE = re.compile(r'^[`*\s]*([A-Za-z]+-\d+)[`*\s]*$')
+TASK_ID_RE = re.compile(r'^[`*\s]*([A-Za-z]+-\d+)\b')
 WAVE_RE = re.compile(r'^W\d+(\.\w+)?$', re.I)
 PATH_TOKEN_RE = re.compile(r'[\w.\-]+(?:/[\w.\-]+)+/?|[\w\-]+\.[A-Za-z0-9]{1,6}\b')
 DONE_RE =re.compile(r'\b(done|closed|hecho|complet\w*)\b|[✅✔]', re.I)
