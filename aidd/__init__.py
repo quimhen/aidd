@@ -7,4 +7,4 @@ Code skill itself (SKILL.md + hooks) is a separate distribution channel
 (see ../skill/) for when an AI agent, not a human at a terminal, is driving.
 """
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
