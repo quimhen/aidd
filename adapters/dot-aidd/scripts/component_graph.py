@@ -68,15 +68,29 @@ def normalize_rel_path(path_str, root):
         return str(clean).replace("\\", "/")
 
 
+_GRAPH_BUFFER_CACHE = {}
+
+
 def load_graph_index(root, out_rel=DEFAULT_OUT):
-    """Load pre-built component graph index (.aidd/graphs/ui.toon) without scanning disk."""
+    """Load pre-built component graph index (.aidd/graphs/ui.toon) with buffer pool caching."""
     graph_path = Path(root) / out_rel
-    if graph_path.is_file():
-        try:
-            return deserialize_toon(graph_path.read_text(encoding="utf-8", errors="replace"))
-        except Exception:
-            pass
-    return None
+    if not graph_path.is_file():
+        return None
+    try:
+        st = graph_path.stat()
+        key = str(graph_path.resolve())
+        cached = _GRAPH_BUFFER_CACHE.get(key)
+        if cached and cached.get("mtime") == st.st_mtime_ns and cached.get("size") == st.st_size:
+            return cached["comps"]
+        comps = deserialize_toon(graph_path.read_text(encoding="utf-8", errors="replace"))
+        _GRAPH_BUFFER_CACHE[key] = {
+            "mtime": st.st_mtime_ns,
+            "size": st.st_size,
+            "comps": comps,
+        }
+        return comps
+    except Exception:
+        return None
 
 
 def is_shared_path(rel_path):
@@ -426,6 +440,8 @@ def show_ui(root, query, limit=25, graph_path=None, stale=""):
             comps = deserialize_toon(Path(graph_path).read_text(encoding="utf-8", errors="replace"))
         except Exception:
             comps = None
+    if not comps:
+        comps = load_graph_index(root)
     if not comps:
         comps = build_component_graph(root)
 

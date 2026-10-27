@@ -38,10 +38,11 @@ def all_codes(text):
     return set(CODE_RE.findall(text))
 
 
-def table_rows(text, header_hint):
-    """Return list of cell-lists for table rows in the first table following a line
-    containing header_hint — whether that hint sits in a '## Section' heading (no pipe)
-    or directly in the table's own header row (has pipes)."""
+import functools
+
+
+@functools.lru_cache(maxsize=256)
+def _table_rows_cached(text, header_hint):
     lines = text.splitlines()
     rows = []
     found_hint = False
@@ -75,8 +76,15 @@ def table_rows(text, header_hint):
             continue
         if set(''.join(cells)) <= set('-: '):
             continue  # separator row
-        rows.append(cells)
-    return rows
+        rows.append(tuple(cells))
+    return tuple(rows)
+
+
+def table_rows(text, header_hint):
+    """Return list of cell-lists for table rows in the first table following a line
+    containing header_hint — whether that hint sits in a '## Section' heading (no pipe)
+    or directly in the table's own header row (has pipes)."""
+    return [list(r) for r in _table_rows_cached(text, header_hint)]
 
 
 _CELL_SPLIT_RE = re.compile(r'(?<!\\)\|')

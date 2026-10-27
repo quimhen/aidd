@@ -99,9 +99,10 @@ def affected(all_mods, deep=False):
         return list(all_mods), f'unknown changed file {path}: running everything'
     hit = closure(stems, rev) if deep else set(stems)
     mods = set(direct)
-    for m in all_mods:
-        if mentions(ROOT / 'tests' / f'{m}.py', set(src)) & hit:
-            mods.add(m)
+    if hit:
+        for m in all_mods:
+            if mentions(ROOT / 'tests' / f'{m}.py', hit):
+                mods.add(m)
     why.append(f'changed sources {sorted(stems)} -> {len(hit)} affected file(s) -> {len(mods)} of {len(all_mods)} module(s)')
     return sorted(mods), '; '.join(why)
 
