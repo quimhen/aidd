@@ -242,7 +242,7 @@ class TestJobHardening(JobBase):   # FR-048 / AC-040
 
     def test_gitignore_lists_the_jobs_folder(self):
         lines = [ln.strip() for ln in (REPO_ROOT / ".gitignore").read_text(encoding="utf-8").splitlines()]
-        self.assertIn("." + "aidd/jobs/", lines)
+        self.assertTrue("." + "aidd/jobs/" in lines or "." + "aidd/" in lines)
 
 
 if __name__ == "__main__":

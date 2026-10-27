@@ -9,3 +9,5 @@ dist/
 # AIDD generated caches / evidence / runtime graphs (rebuilt automatically)
 specs/index.toon
 .aidd/
+.aidd/evidence/
+.aidd/jobs/
