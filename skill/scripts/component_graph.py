@@ -28,15 +28,55 @@ DEFAULT_WATCH_GLOBS = [
 SHARED_DIR_KEYWORDS = ("shared", "components", "ui", "core", "widgets", "design-system", "common")
 
 
+def find_root(start=None):
+    """Find project root by walking up ancestors to charter.md, .aidd, .git or specs/."""
+    cur = Path(start or Path.cwd()).resolve()
+    for d in [cur] + list(cur.parents):
+        if (d / "charter.md").is_file() or (d / ".aidd").is_dir() or (d / ".git").is_dir() or (d / "specs").is_dir():
+            return d
+    return cur
+
+
+def clean_file_path(path_str):
+    """Extract clean relative file path from text that may contain markdown or arrow signatures."""
+    if not path_str:
+        return ""
+    s = str(path_str).strip()
+    m_ticks = re.findall(r'`([^`]+)`', s)
+    for cand in m_ticks:
+        cand_clean = cand.strip()
+        if '.' in cand_clean and ('/' in cand_clean or '\\' in cand_clean):
+            return cand_clean
+    m_ext = re.search(r'([a-zA-Z0-9_\-./\\]+\.(?:tsx|jsx|ts|js|dart|vue))', s)
+    if m_ext:
+        return m_ext.group(1).strip()
+    first = re.split(r'[→;|\s]+', s)[0].strip('`"\' ')
+    return first
+
+
 def normalize_rel_path(path_str, root):
-    """Normalize a path to be relative to root with forward slashes."""
+    """Normalize a path to be strictly relative to root with forward slashes."""
+    if not path_str:
+        return ""
+    clean = clean_file_path(path_str)
     try:
-        p = Path(path_str)
+        p = Path(clean)
         if p.is_absolute():
             p = p.relative_to(root)
         return str(p).replace("\\", "/")
     except Exception:
-        return str(path_str).replace("\\", "/")
+        return str(clean).replace("\\", "/")
+
+
+def load_graph_index(root, out_rel=DEFAULT_OUT):
+    """Load pre-built component graph index (.aidd/graphs/ui.toon) without scanning disk."""
+    graph_path = Path(root) / out_rel
+    if graph_path.is_file():
+        try:
+            return deserialize_toon(graph_path.read_text(encoding="utf-8", errors="replace"))
+        except Exception:
+            pass
+    return None
 
 
 def is_shared_path(rel_path):
@@ -293,7 +333,7 @@ def serialize_toon(components, root=None):
     for comp_id in sorted(components.keys()):
         c = components[comp_id]
         cid = c.get("id", "")
-        name = c.get("name", "")
+        name = str(c.get("name", "")).replace(",", ";").strip()
         path = c.get("path", "")
         pat = c.get("pattern", "Atomic")
         props_str = "|".join(c.get("props", []))
@@ -315,18 +355,25 @@ def parse_toon(text):
     for line in lines:
         if not line.startswith("  "):
             continue
-        parts = line.strip().split(",")
-        if len(parts) >= 8:
-            cid, name, path, pat, props_str, slots_str, consumes_str, consumers_str = parts[:8]
+        s = line.strip()
+        first_comma = s.find(",")
+        if first_comma == -1:
+            continue
+        cid = s[:first_comma].strip()
+        rest = s[first_comma + 1:]
+        tokens = rest.rsplit(",", 6)
+        if len(tokens) >= 7:
+            name = tokens[0].strip()
+            path, pat, props_str, slots_str, consumes_str, consumers_str = tokens[1:7]
             components[cid] = {
                 "id": cid,
                 "name": name,
-                "path": path,
-                "pattern": pat,
-                "props": props_str.split("|") if props_str else [],
-                "slots": slots_str.split("|") if slots_str else [],
-                "consumes": consumes_str.split("|") if consumes_str else [],
-                "consumers": consumers_str.split("|") if consumers_str else [],
+                "path": path.strip(),
+                "pattern": pat.strip(),
+                "props": [p for p in props_str.split("|") if p],
+                "slots": [slot for slot in slots_str.split("|") if slot],
+                "consumes": [c for c in consumes_str.split("|") if c],
+                "consumers": [c for c in consumers_str.split("|") if c],
             }
     return components
 
@@ -446,10 +493,10 @@ def main(argv=None):
             argv = ["--query", rest[0]] + rest[1:]
 
     args = parser.parse_args(argv)
-    root = Path(args.root).resolve()
+    root = find_root(args.root)
 
     if args.inject:
-        comps = build_component_graph(root)
+        comps = load_graph_index(root, args.out) or build_component_graph(root)
         print(format_subgraph_prompt(comps, args.inject))
         return 0
 
