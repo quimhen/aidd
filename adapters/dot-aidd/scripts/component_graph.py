@@ -13,6 +13,9 @@ import re
 import sys
 from pathlib import Path
 
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
 DEFAULT_OUT = ".aidd/graphs/ui.toon"
 DEFAULT_WATCH_GLOBS = [
     "design-system/components-index.md",
