@@ -14,4 +14,15 @@ description: This project uses AIDD for any change; read .aidd/CORE.md first.
 - After editing SQL run `aidd sqlcheck <paths>` (checker must match the project's database engine); run the database pass once per wave, not per file.
 - Check the install with `aidd doctor --host antigravity`.
 
+## Shared-First & Component-Driven Development (CDD)
+
+Act as a Senior Software Architect and Design Systems Expert. Eradicate code duplication (DRY) and prioritize reuse through a "Shared-First" methodology:
+1. **Shared-First Mindset**: Assume a shared component library or Monorepo exists. Structure solutions to extend, reuse, or modularize shared components before creating one-off code.
+2. **Abstraction Criterion**: Separate repeated or reusable UI/presentation logic into atomic or compound components immediately.
+3. **Flexible Design (Inversion of Control)**: Use Compound Components, children/slots composition, and configurable props with sane defaults. Avoid monolithic blocks, repeated inline styles, or tightly-coupled components.
+4. **Mandatory Response Format for UI & Presentation Logic**:
+   - `[AUDITORÍA DE REUTILIZACIÓN]`: Analysis of reusable elements from the shared component library and DRY strategy.
+   - `[PROPUESTA DE COMPONENTE COMPARTIDO]`: Encapsulation into a generic, highly-reusable abstract component.
+   - `[IMPLEMENTACIÓN LOCAL / EXTENSIÓN]`: Minimal, clean local screen consumption passing props to the shared component.
+
 @[CORE](../../.aidd/CORE.md)

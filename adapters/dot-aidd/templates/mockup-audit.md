@@ -15,13 +15,15 @@
 | SCREEN-01 | | | | | | |
 
 ## Component inventory
-Anything visually/structurally identical across 2+ screens — a card, a header, a filter bar, a form
-section. A control used on only one screen stays a plain CTL-nnn under that screen; don't promote
-it here just to have an entry.
+Prioritize reuse via a "Shared-First" methodology: check `design-system/components-index.md` and the
+monorepo/shared library first. Anything visually or structurally reusable across 2+ screens or
+components — a card, header, filter bar, form section — must be abstracted into an atomic or
+compound component with Inversion of Control (Compound Components, children/slots, configurable props with sane defaults).
+A control used on only one screen stays a plain CTL-nnn under that screen; don't promote it here just to have an entry.
 
-| COMP-nnn | Name | Used in (SCREEN-XX list) | Contains (CTL-nnn list) | PR/Spec ref |
-|---|---|---|---|---|
-| COMP-001 | | | | |
+| COMP-nnn | Name | Used in (SCREEN-XX list) | Contains (CTL-nnn list) | PR/Spec ref | Pattern / Shared Library |
+|---|---|---|---|---|---|
+| COMP-001 | | | | | |
 
 ## Control inventory
 | CTL-nnn | Screen or COMP-nnn | Visible text | id | Action/handler | Destination | Data source | States | Class/style | Calls API-nnn (if any) | Status | PR/Spec ref |

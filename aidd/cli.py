@@ -406,6 +406,12 @@ def build_parser():
         add_help=False)
     p_graphs.add_argument("graphs_args", nargs=argparse.REMAINDER, help="forwarded to aidd_graphs.py")
     p_graphs.set_defaults(func=lambda a: _run("aidd_graphs.py", a.graphs_args))
+
+    p_component = sub.add_parser(
+        "component", help="Shared component operations: search | show <COMP-nnn> | inject <COMP-nnn|SCREEN-XX>",
+        add_help=False)
+    p_component.add_argument("component_args", nargs=argparse.REMAINDER, help="forwarded to component_graph.py")
+    p_component.set_defaults(func=lambda a: _run("component_graph.py", a.component_args))
     for _name, _script, _pre, _help in (
             ("job", "aidd_job.py", [], "Run a tool once per set of inputs: run [--bg] | wait | last | list; same command on same file contents = CACHED (aidd_job.py)"),
             ("triage", "aidd_triage.py", [], "Group the failures of `aidd verify` evidence across specs: shared vs specific (aidd_triage.py)"),
@@ -590,6 +596,8 @@ def main(argv=None):
         sys.exit(_run("aidd_status.py", argv))
     if argv and argv[0] == "graphs":
         sys.exit(_run("aidd_graphs.py", argv[1:]))
+    if argv and argv[0] == "component":
+        sys.exit(_run("component_graph.py", argv[1:]))
     if argv and argv[0] in ("job", "triage", "tools", "size"):
         # aidd:FR-038 / FR-041 — same passthrough as `graphs`; each script owns its parsing.
         _script = {"job": "aidd_job.py", "triage": "aidd_triage.py",

@@ -25,11 +25,12 @@ dumping ground for rules someone didn't bother to make checkable.
 ## Non-negotiable architecture rules (prose — judgment calls, not mechanically checked)
 
 State the *project-specific* rules here — AIDD's own defaults (SOLID, Antifragile/Design-for-
-Failure, stored-procedures-by-default, one-class-per-file) already apply everywhere via
-`AIDD.md` and don't need restating. This section is for decisions unique to *this* project that
+Failure, Shared-First & Component-Driven Development, stored-procedures-by-default, one-class-per-file)
+already apply everywhere via `AIDD.md` and don't need restating. This section is for decisions unique to *this* project that
 a generic rule wouldn't cover, and that a script genuinely can't verify (an architectural
 trade-off, a reason a normal rule doesn't apply here, a deliberate exception).
 
+- [ ] **Shared-First & CDD**: Prioritize component reuse; assume a shared component library/monorepo exists. Design with Inversion of Control (Compound Components, slots/children) and avoid duplicate one-off UI implementations.
 - [ ] [Rule] — [why it exists, so a future agent doesn't "fix" it back]
 
 ## Checkable rules (enforced — `scripts/check_charter.py` runs these)

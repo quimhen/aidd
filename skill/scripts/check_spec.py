@@ -334,6 +334,105 @@ def check_g6_single_owner(tasks_text):
     return gaps
 
 
+SHARED_COMPONENT_DIRS = {'shared', 'components', 'ui', 'core', 'widgets', 'design-system', 'common'}
+
+
+def _is_shared_dir(part):
+    low = part.lower().strip()
+    if low in SHARED_COMPONENT_DIRS:
+        return True
+    tokens = set(low.replace('-', ' ').replace('_', ' ').split())
+    if tokens & {'shared', 'components', 'ui', 'core', 'widgets', 'common'}:
+        return True
+    if 'design' in tokens and 'system' in tokens:
+        return True
+    return False
+
+
+def check_g7_monolithic_screen(mockup_audit):
+    """G7: a screen with > 5 controls must map to at least 1 COMP-nnn."""
+    if not mockup_audit:
+        return []
+    screen_comps = {}
+
+    hdr_screen, rows_screen = _find_table(
+        mockup_audit, lambda c: _col(c, 'SCREEN-') == 0 and _col(c, 'Uses') > 0)
+    if hdr_screen:
+        iuses = _col(hdr_screen, 'Uses')
+        for r in rows_screen:
+            s_code = _cell(r, 0).strip()
+            if s_code:
+                comps = set(re.findall(r'COMP-\d+', _cell(r, iuses)))
+                screen_comps.setdefault(s_code, set()).update(comps)
+
+    hdr_comp, rows_comp = _find_table(
+        mockup_audit, lambda c: _col(c, 'COMP-') == 0 and _col(c, 'Used in') > 0)
+    if hdr_comp:
+        iused_in = _col(hdr_comp, 'Used in')
+        for r in rows_comp:
+            c_code = _cell(r, 0).strip()
+            if c_code:
+                screens = re.findall(r'SCREEN-\d+', _cell(r, iused_in))
+                for s in screens:
+                    screen_comps.setdefault(s, set()).add(c_code)
+
+    hdr_ctl, rows_ctl = _find_table(
+        mockup_audit, lambda c: _col(c, 'CTL-') == 0 and _col(c, 'Screen') > 0)
+    if not hdr_ctl:
+        return []
+    iscreen = _col(hdr_ctl, 'Screen')
+    screen_controls = {}
+    for r in rows_ctl:
+        ctl_code = _cell(r, 0).strip()
+        s_cell = _cell(r, iscreen).strip()
+        if not ctl_code or not s_cell:
+            continue
+        for s in re.findall(r'SCREEN-\d+', s_cell):
+            screen_controls[s] = screen_controls.get(s, 0) + 1
+
+    gaps = []
+    for s, count in sorted(screen_controls.items()):
+        if count > 5:
+            comps = screen_comps.get(s, set())
+            if not comps:
+                gaps.append(
+                    f"G7 mockup-audit.md {s}: {count} controls but 0 COMP-nnn — "
+                    f"modularize repeated UI into reusable components."
+                )
+    return gaps
+
+
+def check_g8_shared_first_path(plan_text):
+    """G8: reusable components in Component -> Code map must reside in a shared component dir."""
+    if not plan_text:
+        return []
+    hdr, rows = _find_table(
+        plan_text, lambda c: _col(c, 'COMP-') == 0 and (_col(c, 'File') > 0 or _col(c, 'Target') > 0))
+    if hdr is None:
+        return []
+    ifile = _col(hdr, 'File')
+    if ifile < 0:
+        ifile = _col(hdr, 'Target')
+    gaps = []
+    for r in rows:
+        code = _cell(r, 0).strip()
+        if not re.match(r'^COMP-\d+', code):
+            continue
+        raw_path = _cell(r, ifile).strip()
+        if not raw_path or raw_path.lower() in ('n/a', '-'):
+            continue
+        p = raw_path.strip('`"\' ')
+        norm_p = p.replace('\\', '/')
+        parts = [part.lower() for part in norm_p.split('/')[:-1]]
+        is_shared = any(_is_shared_dir(part) for part in parts)
+        if not is_shared:
+            gaps.append(
+                f"G8 plan.md {code}: path '{raw_path}' is not in a shared component directory — "
+                f"Shared-First requires placing reusable components under a shared path."
+            )
+    return gaps
+
+
 def _component_index_paths(spec_dir):
     seen, out = set(), []
     for base in (spec_dir, spec_dir / 'design-system', spec_dir.parent / 'design-system',
@@ -510,22 +609,25 @@ def main():
                              f"open or fully locked depending on the platform default; never "
                              f"leave that implicit.")
 
-    # 10b. G1-G5 (interaction-evidence gaps; each only applies to artifacts that exist)
+    # 10b. G1-G8 (interaction-evidence & CDD gaps; each only applies to artifacts that exist)
     try:
         if mockup_audit:
             gaps += check_g1_controls(mockup_audit)
+            gaps += check_g7_monolithic_screen(mockup_audit)
         if (spec_dir / 'spec.md').exists():
             gaps += check_g2_acceptance(spec_text)
         if (spec_dir / 'traceability.md').exists():
             gaps += check_g3_traceability(read(spec_dir / 'traceability.md'))
         if contracts:
             gaps += check_g4_contract_hash(contracts, tasks)
+        if plan:
+            gaps += check_g8_shared_first_path(plan)
         if tasks:
             gaps += check_g6_single_owner(tasks)
         for ip in _component_index_paths(spec_dir):
             gaps += [g.replace('components-index.md', str(ip.name), 1) for g in check_g5_consumers(read(ip))]
     except Exception as e:
-        gaps.append(f"(warning) G1-G5 checks skipped: {e}")
+        gaps.append(f"(warning) G1-G8 checks skipped: {e}")
 
     # 11. AIDD hard rules (R1 agent-time estimates, R2 route, R3 provenance, R4 visual debt,
     #     R6 approval) — static checks only; the evidence-based rules are enforced by the hooks.

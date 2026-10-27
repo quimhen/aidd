@@ -115,7 +115,7 @@ Generated: <files or globs the commands rewrite on purpose, e.g. `docs/db-graph/
 
 Optional for legacy specs. Before Step 3 the AI thinks about what could be better than the literal request and returns 2-3 options, each with its cost (tokens/minutes) and risk, plus a recommendation. The owner picks: ask the owner, using whatever ask-the-user mechanism the host offers.
 
-Optimization targets, in order: (1) correct result on real data, (2) fewer moving parts, (3) reuse of existing code, (4) smaller PRs, (5) lower token cost. When a proposal trades one target for another, say so.
+Optimization targets, in order: (1) correct result on real data, (2) fewer moving parts, (3) reuse of existing code (Shared-First & CDD: extend/modularize shared components), (4) smaller PRs, (5) lower token cost. When a proposal trades one target for another, say so.
 
 Automation first (rule S1): before costing any option, name the tool, script, catalog query or parser that does the heavy lifting and the tasks that fan out to parallel agents. Cost the scripted, parallel path; hand or row-by-row work needs a stated reason.
 
@@ -142,3 +142,4 @@ this section stay valid). Ask the ones that apply in Step 2 and record the answe
 | Entry route: how does the user reach this from the app's start? | | |
 | Target devices (phone, tablet, desktop, orientation)? | | |
 | Contract owner and status (who defines the backend contract, is it final or still moving)? | | |
+| Shared-First UI library / Monorepo to reuse components from? | | |

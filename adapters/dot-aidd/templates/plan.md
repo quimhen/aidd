@@ -32,11 +32,13 @@ One row per SCREEN-XX — its page file. Pages import components; they don't rei
 
 ## Component → Code map
 One row per COMP-nnn — its shared component file, built once and imported by every screen that uses it.
+Follow the "Shared-First" methodology: assume a monorepo / shared component library exists. Design components
+with Inversion of Control (Compound Components, composition via children/slots, configurable props with sane defaults).
 Never let a component get re-implemented inline inside a page file just because that's where it was first needed.
 
-| COMP-nnn | File/component | Used by (SCREEN-XX list) | PR (once opened) |
-|---|---|---|---|
-| COMP-001 | | | |
+| COMP-nnn | File/component | Pattern (Compound / Slot / Atomic) | Used by (SCREEN-XX list) | PR (once opened) |
+|---|---|---|---|---|
+| COMP-001 | | | | |
 
 ## Entry route
 How the user reaches each screen from the app's start (a screen nothing leads to is not delivered). Fill one row per SCREEN-XX; a shared standard (header, back, logo) lists its consumers in `design-system/components-index.md`.

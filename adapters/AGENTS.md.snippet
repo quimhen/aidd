@@ -23,5 +23,6 @@ State classification out loud before proceeding (`AIDD intake: NEW SPEC | AMENDM
 Rules:
 - Never skip straight to writing code for a requirement/change — go through `.aidd/AIDD.md`'s pipeline (search → align → plan → tasks → build → converge), using its Fast Lane for a genuinely small, contained change.
 - A change with no visual surface (backend, API, DB, infra) skips the visual-only steps (0/1/1.5) but still goes through the rest — AIDD is not UI-only.
+- Shared-First & Component-Driven Development (CDD): eradicate code duplication (DRY), assume a shared component library/monorepo, favor Inversion of Control (Compound Components, slots), and structure UI requests in 3 sections: [AUDITORÍA DE REUTILIZACIÓN], [PROPUESTA DE COMPONENTE COMPARTIDO], [IMPLEMENTACIÓN LOCAL / EXTENSIÓN].
 - Templates for every artifact live in `.aidd/templates/`; copy the matching one for whatever step you're on instead of hand-writing table headers from scratch.
 - `specs/index.toon` is an auto-built, auto-invalidated search index — never hand-edit it; `find_spec.py` rebuilds it itself when a spec's files change.

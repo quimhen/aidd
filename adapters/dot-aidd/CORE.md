@@ -84,6 +84,7 @@ anything works. `aidd verify specs/<id>` is what executes the spec's `## Verific
 
 - **Graph first, filter first.** Ask `find_spec.py` / `aidd graphs show <name> <query>` before
   opening source; `grep -n` and ranged reads, never `cat` a big file or an evidence log.
+- **Shared-First & CDD (DRY).** Assume a shared component library/monorepo exists. Separate UI into reusable atomic/compound components (Inversion of Control: Compound Components, slots). Evaluate UI requests in 3 sections: [AUDITORÍA DE REUTILIZACIÓN], [PROPUESTA DE COMPONENTE COMPARTIDO], [IMPLEMENTACIÓN LOCAL / EXTENSIÓN].
 - **Tools before manual work (S1).** If a script, query or the `aidd` CLI can do it, estimate and
   use that. `aidd progress` measures implementation % with no LLM: do not write your own counter.
 - **One agent per lane, one owner per file**, independent work in one message, long jobs in the

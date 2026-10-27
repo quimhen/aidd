@@ -24,7 +24,7 @@ CODE_EXTS = {'.py', '.ts', '.tsx', '.js', '.jsx', '.dart', '.sql', '.cs', '.md',
 SEARCH_WORDS = {'grep', 'rg', 'cat', 'sed', 'awk', 'head', 'tail', 'type', 'get-content', 'select-string',
                 'findstr', 'ack', 'ag', 'gc', 'sls'}
 SKIP_WORDS = {'git', 'pip', 'pip3', 'npm', 'npx', 'pnpm', 'yarn', 'aidd'}
-GRAPH_QUERY_RE = re.compile(r'find_spec\.py|aidd_graphs\.py|\baidd(?:\.exe)?\s+(?:graphs|search|tree)\b', re.I)
+GRAPH_QUERY_RE = re.compile(r'find_spec\.py|aidd_graphs\.py|component_graph\.py|\baidd(?:\.exe)?\s+(?:graphs|search|tree|component)\b', re.I)
 IGNORED_PARTS = {'.git', 'node_modules', '__pycache__', 'scratchpad'}
 SECRET_RE = re.compile(r'(?i)(pass(?:word)?|secret|token|api[_-]?key|key)\s*[=:]\s*\S+')
 

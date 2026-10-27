@@ -173,6 +173,10 @@ def _autodetect(root):  # aidd:FR-014 aidd:FR-021 aidd:FR-029 aidd:FR-030
         # amendment to spec 004: AIDD's own implementation-progress graph (no third-party tool)
         out.append({"name": "progress", "kind": "progress", "output": ".aidd/graphs/progress.json",
                     "refresh": "builtin:progress", "watch": ["specs/**"]})
+    if (HERE / "component_graph.py").is_file():
+        out.append({"name": "ui", "kind": "ui", "output": ".aidd/graphs/ui.toon",
+                    "refresh": "builtin:ui",
+                    "watch": ["src/**", "components/**", "lib/**", "specs/**", "design-system/**"]})
     return out
 
 
@@ -514,6 +518,8 @@ def _command(root, e):  # aidd:FR-014 aidd:FR-016 aidd:FR-021 aidd:FR-029 aidd:F
         return [py, str(HERE / "method_graph.py"), "--root", R, "--out", out], False
     if rl == "builtin:spec":     # `aidd reindex` work (find_spec build_index/save_index) by --root, not by cwd
         return [py, str(Path(__file__).resolve()), "--root", R, "_reindex"], False
+    if rl == "builtin:ui":
+        return [py, str(HERE / "component_graph.py"), "--root", R, "--out", out, "--build"], False
     return r, True
 
 
@@ -892,8 +898,13 @@ def show(root, name, query, limit=25):
         for s in status(root, names=[e["name"]]):
             if s["name"] == e["name"] and s["state"] == "stale":
                 stale = "(graph is stale; refresh: aidd graphs refresh %s --background)" % name
-        nodes, edges = _load_graph(e["output"])
         rl = e["refresh"].strip().lower()
+        if e["kind"] == "ui" or rl == "builtin:ui":
+            cg = _module("component_graph")
+            if cg is not None and hasattr(cg, "show_ui"):
+                return cg.show_ui(root, query, limit=limit, graph_path=Path(e["output"]), stale=stale)
+            return "component_graph module not found or missing show_ui"
+        nodes, edges = _load_graph(e["output"])
         if rl == "builtin:code":
             return _show_code(root, e, nodes, edges, query, limit, stale)
         if rl == "builtin:method":

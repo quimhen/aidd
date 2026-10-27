@@ -345,6 +345,12 @@ This is a description of the discipline, not a requirement to use any specific t
 ### SOLID (applies to any code touched, not only new files)
 Single responsibility, open/closed, Liskov substitution, interface segregation, dependency inversion. If a change makes a class do two jobs, split it.
 
+### Shared-First & Component-Driven Development (CDD) — eradicate code duplication (DRY)
+- **Shared-First Mindset (Obligatory)**: Assume a shared component library or Monorepo exists. Prioritize extending, modularizing, or reusing shared components over isolated/duplicate implementations.
+- **Abstraction Criterion**: Separate repeated or reusable UI/presentation logic into atomic or compound components immediately.
+- **Flexible Design (Inversion of Control)**: Use Compound Components, composition via children/slots, and configurable props with sane defaults. Avoid monolithic blocks, repeated inline styles, and tightly-coupled components.
+- **Response Format for UI / Presentation**: Structure any UI solution in 3 steps: [AUDITORÍA DE REUTILIZACIÓN], [PROPUESTA DE COMPONENTE COMPARTIDO], and [IMPLEMENTACIÓN LOCAL / EXTENSIÓN].
+
 ### Naming contract — declared once in `plan.md`, never assumed
 Every new class/function/component gets its name from the Mapper's `plan.md` mapping. Never invent a name locally and hope it matches.
 

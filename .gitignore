@@ -6,7 +6,6 @@ build/
 dist/
 .pytest_cache/
 
-# AIDD generated caches / evidence (rebuilt automatically)
+# AIDD generated caches / evidence / runtime graphs (rebuilt automatically)
 specs/index.toon
-.aidd/evidence/
-.aidd/jobs/
+.aidd/
