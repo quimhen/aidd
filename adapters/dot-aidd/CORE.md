@@ -89,6 +89,9 @@ anything works. `aidd verify specs/<id>` is what executes the spec's `## Verific
   use that. `aidd progress` measures implementation % with no LLM: do not write your own counter.
 - **One agent per lane, one owner per file**, independent work in one message, long jobs in the
   background. Run `aidd pending specs/<id>` first and launch agents only for pending tasks.
+  **When dispatching subagents**, mandate Graph-First in the prompt: instruct the subagent to use
+  precompiled graphs (`aidd graphs show <ui|code|sql> <query>`, `aidd component inject <id>`)
+  to resolve physical paths and relationships, never scanning the disk.
 - **Never run two builds at once** in the same working tree (file contention, worst on Windows
   with OneDrive); serialize them or use a separate worktree.
 - **Do not touch `.aidd/`** (evidence, gate state, protected paths) and do not hand-edit

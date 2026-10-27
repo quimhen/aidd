@@ -13,6 +13,7 @@ description: This project uses AIDD for any change; read .aidd/CORE.md first.
 - Run `aidd next` before each step and follow its single next command.
 - After editing SQL run `aidd sqlcheck <paths>` (checker must match the project's database engine); run the database pass once per wave, not per file.
 - Check the install with `aidd doctor --host antigravity`.
+- **Subagents: Graph-First Mandate**: When dispatching tasks to subagents, ALWAYS instruct them to consult knowledge graphs (`aidd graphs show <ui|code|sql> <query>`, `aidd component inject <id>`) to retrieve physical paths, props and relationships, avoiding recursive disk scans.
 
 ## Shared-First & Component-Driven Development (CDD)
 
