@@ -818,7 +818,7 @@ def _project_events(root):
 
 def last_event(root, kind, session=None, since=0.0):
     evs = events(root, session=session, kind=kind, since=since)
-    return max(evs, key=lambda e: e['ts']) if evs else None
+    return max(enumerate(evs), key=lambda it: (it[1]['ts'], it[0]))[1] if evs else None
 
 
 def count(root, kind, **match):
@@ -1717,13 +1717,14 @@ def activate_spec(root, spec_id, by='cli'):
     set_active_spec is untouched (informational). Never raises (False on any failure)."""
     try:
         sid = _clean_spec_id(spec_id)
-        if not sid or root is None or not (Path(root) / 'specs' / sid).is_dir():
+        if not sid or root is None:
             return False
         match = [s for s in open_specs(root, include_approved=True) if s.lower() == sid.lower()]
         if not match:
             return False
-        if sid not in match:
-            sid = match[-1]
+        sid = match[-1]
+        if not (Path(root) / 'specs' / sid).is_dir():
+            return False
         prev = get_gate_spec(root)
         if prev == sid:
             return True
@@ -1741,9 +1742,9 @@ def activate_spec(root, spec_id, by='cli'):
 def recent_gate_pointer_changes(root, n=5):
     """aidd:FR-201 Newest `gate_pointer` details (plus `ts`), newest first, at most `n`. [] on error."""
     try:
-        evs = sorted(events(root, kind='gate_pointer'), key=lambda e: e['ts'], reverse=True)
+        evs = sorted(enumerate(events(root, kind='gate_pointer')), key=lambda t: (t[1]['ts'], t[0]), reverse=True)
         out = []
-        for e in evs[:max(0, int(n))]:
+        for _i, e in evs[:max(0, int(n))]:
             d = dict(e['detail'])
             d['ts'] = e['ts']
             out.append(d)
