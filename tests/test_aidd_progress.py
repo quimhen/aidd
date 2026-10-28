@@ -75,6 +75,14 @@ class TestProgress(unittest.TestCase):
         m = self.tasks(['| T-01 | a | FR-001 | prose, not a path |  |\n'])
         self.assertIsNone(m['impl_pct'])
 
+    def test_render_keeps_full_spec_name_and_aligns_columns(self):
+        m = self.tasks(['| T-01 | a | FR-001 | `src/marked.py` | done |\n'])
+        m['spec'] = 'F45-Aggregates-KPI-Engine-with-a-longer-name'
+        lines = P.render([m]).splitlines()
+        self.assertTrue(lines[2].startswith(m['spec'] + ' '))
+        self.assertEqual(lines[0].index('Tasks') + len('Tasks') - 1, lines[2].index('1', len(m['spec'])))
+        self.assertIn('TOTAL', P.render([m]))
+
     def test_graph_and_cli_write_progress_json(self):
         self.tasks(['| T-01 | a | FR-001 | `src/marked.py` |  |\n'])
         self.assertEqual(P.main(['--root', str(self.root), '--quiet']), 0)

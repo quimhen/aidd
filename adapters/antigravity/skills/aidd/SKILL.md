@@ -13,7 +13,7 @@ Thin pointer, not the methodology. Read `.aidd/CORE.md` in full (it is short). N
 python .aidd/scripts/find_spec.py <keywords, or a SCREEN-XX/CTL-nnn/COMP-nnn/API-nnn code>
 ```
 
-- Exit 0: amendment to the top-ranked spec under `specs/`. Exit 1: safe to create a new `specs/[###-feature]/`.
+- Exit 0: inspect the top candidate and its sources before classifying an amendment. Exit 1: no candidate found, not proof of absence; check relevant specs and naming variants before creating a spec.
 - State: `AIDD intake: NEW SPEC | AMENDMENT | AMENDMENT — Fast Lane — <reason>`.
 
 ## Pipeline

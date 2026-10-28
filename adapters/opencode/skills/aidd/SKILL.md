@@ -15,8 +15,8 @@ whole — `CORE.md` section 6 shows how to read one section at a time.
 python .aidd/scripts/find_spec.py <keywords describing the request, or a SCREEN-XX/CTL-nnn/COMP-nnn/API-nnn code>
 ```
 
-- Exit code 0 → **amendment** to the top-ranked existing spec under `specs/` — reopen it, never a new folder.
-- Exit code 1 → safe to create a new `specs/[###-feature]/`.
+- Exit code 0 → inspect the top candidate and its sources before classifying an amendment; ranking is not proof.
+- Exit code 1 → no candidate found, not proof of absence; check relevant specs and naming variants before creating a spec.
 
 State the classification: `AIDD intake: NEW SPEC | AMENDMENT | AMENDMENT — Fast Lane — <reason>`.
 

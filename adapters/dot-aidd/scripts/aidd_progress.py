@@ -263,14 +263,15 @@ def _pct(v):
 
 
 def render(results, detail=False):
-    head = '%-34s %5s %6s %6s %6s %5s %5s %4s %-8s %-7s %-6s %-6s' % (
-        'Spec', 'Tasks', 'Impl%', 'Mark%', 'Decl%', 'Miss', 'Stub', 'N/A', 'Approved', 'Verify', 'Audit', 'Closed')
+    spec_width = max([34] + [len(r['spec']) for r in results])
+    head = '%-*s %5s %6s %6s %6s %5s %5s %4s %-8s %-7s %-6s %-6s' % (
+        spec_width, 'Spec', 'Tasks', 'Impl%', 'Mark%', 'Decl%', 'Miss', 'Stub', 'N/A', 'Approved', 'Verify', 'Audit', 'Closed')
     lines = [head, '-' * len(head)]
     tot = {'tasks': 0, 'measurable': 0, 'impl': 0, 'marked': 0}
     for r in results:
         s = r['stages']
-        lines.append('%-34s %5d %6s %6s %6s %5d %5d %4d %-8s %-7s %-6s %-6s' % (
-            r['spec'][:34], r['tasks'], _pct(r['impl_pct']), _pct(r['marked_pct']), _pct(r['declared_pct']), r['missing'], r['stub'],
+        lines.append('%-*s %5d %6s %6s %6s %5d %5d %4d %-8s %-7s %-6s %-6s' % (
+            spec_width, r['spec'], r['tasks'], _pct(r['impl_pct']), _pct(r['marked_pct']), _pct(r['declared_pct']), r['missing'], r['stub'],
             r['na'], s['approved'], s['verify'], s['audit'], s['closed']))
         tot['tasks'] += r['tasks']
         tot['measurable'] += r['measurable']
@@ -278,8 +279,8 @@ def render(results, detail=False):
         tot['marked'] += r['marked']
     if tot['measurable']:
         lines.append('-' * len(head))
-        lines.append('%-34s %5d %6s %6s          (measurable %d of %d tasks)' % (
-            'TOTAL', tot['tasks'], _pct(100.0 * tot['impl'] / tot['measurable']),
+        lines.append('%-*s %5d %6s %6s          (measurable %d of %d tasks)' % (
+            spec_width, 'TOTAL', tot['tasks'], _pct(100.0 * tot['impl'] / tot['measurable']),
             _pct(100.0 * tot['marked'] / tot['measurable']), tot['measurable'], tot['tasks']))
     if detail:
         for r in results:

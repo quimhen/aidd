@@ -3,11 +3,9 @@
 aidd spec finder — mechanical search over specs/*/ so Step -1 ("search before
 creating: amend, don't duplicate") is a script call, not a remembered habit.
 
-Run this BEFORE creating any specs/[###-feature]/ folder. It searches every
-existing spec for the screen/control/component codes and keywords in your
-query and ranks matches, so a follow-up fix or small correction lands as an
-amendment to the existing spec (full context, existing codes, existing
-history) instead of fragmenting into a fresh, disconnected spec folder.
+Run this BEFORE creating any specs/[###-feature]/ folder. It ranks candidate
+specs for the query. A match is evidence to inspect, not proof of an amendment;
+an empty result does not prove that no relevant spec exists.
 
 Backed by a compact TOON index (specs/index.toon) so a normal search does NOT
 re-read every file in every spec folder: it loads the index (one small text
@@ -81,6 +79,28 @@ SEARCHED_FILES = [
     'comprehensive-documentation.md', 'visual-flow.md', 'visual-flow.toon',
 ]
 
+
+def searched_files(spec_dir: Path):
+    """Canonical files plus supported root-level amendments, catalogs and drafts.
+
+    Keep one discovery policy for indexing, invalidation, fallback and evidence;
+    never traverse generated or evidence directories.
+    """
+    import fnmatch
+    names = list(SEARCHED_FILES)
+    try:
+        candidates = sorted(spec_dir.iterdir(), key=lambda p: p.name.casefold())
+    except OSError:
+        return names
+    patterns = ('amendment-*.md', '*-catalog.md', 'closing-audit.md',
+                '*.draft.md', 'erp-map.md', 'requests-*.md')
+    for path in candidates:
+        name = path.name
+        if name not in names and not path.is_symlink() and path.is_file() and any(
+                fnmatch.fnmatchcase(name.casefold(), pat) for pat in patterns):
+            names.append(name)
+    return names
+
 STOPWORDS = {
     'the', 'a', 'an', 'and', 'or', 'of', 'to', 'in', 'on', 'for', 'with',
     'this', 'that', 'is', 'it', 'de', 'la', 'el', 'los', 'las', 'un', 'una',
@@ -140,7 +160,7 @@ def _parse_csv_row(line):
 
 
 def _encode_files(files_mtime: dict) -> str:
-    return ';'.join(f"{name}={round(mtime, 3)}" for name, mtime in sorted(files_mtime.items()))
+    return ';'.join(f"{name}={mtime:.9f}" for name, mtime in sorted(files_mtime.items()))
 
 
 def _decode_files(raw: str) -> dict:
@@ -724,7 +744,7 @@ def build_spec_entry(spec_dir: Path):
     tf = Counter()
     files_mtime = {}
     mockup_audit_text = ''
-    for fname in SEARCHED_FILES:
+    for fname in searched_files(spec_dir):
         fpath = spec_dir / fname
         if not fpath.exists():
             continue
@@ -815,7 +835,7 @@ def stale_spec_names(index: dict, spec_dirs):
         recorded = entry.get('files', {})
         current_files = {}
         broke = False
-        for fname in SEARCHED_FILES:
+        for fname in searched_files(d):
             fpath = d / fname
             if fpath.exists():
                 try:
@@ -830,7 +850,7 @@ def stale_spec_names(index: dict, spec_dirs):
             changed.add(d.name)
             continue
         for fname, mtime in current_files.items():
-            if abs(mtime - recorded.get(fname, -1)) > 0.5:
+            if mtime != recorded.get(fname, -1):
                 changed.add(d.name)
                 break
     return changed
@@ -919,7 +939,7 @@ def evidence_lines(spec_dir: Path, codes, words, limit=8):
     """Read just this one spec folder's files to show which lines matched —
     only ever called for the single top-ranked result, never for every spec."""
     hits = []
-    for fname in SEARCHED_FILES:
+    for fname in searched_files(spec_dir):
         fpath = spec_dir / fname
         if not fpath.exists():
             continue
@@ -948,7 +968,7 @@ def fulltext_fallback(specs_root: Path, spec_dirs, codes, words):
     results = []
     for d in spec_dirs:
         parts = []
-        for fname in SEARCHED_FILES:
+        for fname in searched_files(d):
             fpath = d / fname
             if fpath.exists():
                 try:
@@ -1153,7 +1173,7 @@ def main():
     specs_root = find_specs_root(Path.cwd())
     if specs_root is None:
         print("No specs/ folder found walking up from the current directory — "
-              "nothing to search. Safe to proceed and create the first spec.")
+              "nothing to search. Check alternate terms and the project scope before deciding.")
         sys.exit(1)
 
     spec_dirs = sorted(p for p in specs_root.iterdir() if p.is_dir())
@@ -1212,7 +1232,7 @@ def main():
     print_structure_graphs(specs_root.parent, words)    # DB/code graphs: refreshed in the background, queried first
 
     if not spec_dirs:
-        print(f"{specs_root}: no spec folders yet. Safe to create the first one.")
+        print(f"{specs_root}: no spec folders found. Confirm the project scope before creating a spec.")
         sys.exit(1)
 
     index, rebuilt, changed = get_index(specs_root, spec_dirs)
@@ -1229,21 +1249,33 @@ def main():
     results.sort(key=lambda r: r[0], reverse=True)
 
     used_fallback = False
-    if not results:
-        # The index only keeps each spec's top-25 terms, so a real word that is in
-        # the spec text can miss it. Before declaring "no match" (which invites a
-        # duplicate spec), scan the spec files themselves.
-        results = fulltext_fallback(specs_root, spec_dirs, codes, words)
-        used_fallback = bool(results)
+    # A weak indexed hit must not suppress the fallback: a different spec can
+    # contain the missing query terms outside its top 25 terms. This is still a
+    # heuristic, not proof that every partial alternative has been discovered.
+    covered = False
+    if results:
+        best = index['specs'][results[0][1]]
+        indexed_words = set(best.get('words', [])) | set(re.findall(r'\w+', fold(results[0][1]))) | set(re.findall(r'\w+', fold(best.get('title', ''))))
+        covered = set(codes) <= set(best.get('codes', [])) and all(fold(w) in indexed_words for w in words)
+    if not results or not covered:
+        fallback = fulltext_fallback(specs_root, spec_dirs, codes, words)
+        if fallback:
+            indexed_only = [(s, n) for s, n in results if n not in {name for _, name in fallback}]
+            results = fallback + indexed_only
+            # Preserve an explicitly requested spec identifier over generic
+            # vocabulary from unrelated full-text matches.
+            query_words = {fold(w) for w in words}
+            results.sort(key=lambda item: int(fold(re.split(r'[-_\s]+', item[1])[0]) in query_words), reverse=True)
+            used_fallback = True
 
     print(f"aidd spec search — query: {' '.join(args)}")
     print("=" * 60)
     if used_fallback:
-        print("(index had no match — results below come from a full-text scan of the spec files)")
+        print("(index match was absent or incomplete — results include a full-text scan of the spec files)")
 
     if not results:
         print("No match found in any existing spec.")
-        print("-> Safe to proceed to Step 0 and create a new specs/[###-feature]/ folder.")
+        print("-> No candidate found by this search. Check alternate terms and related sources before deciding.")
         sys.exit(1)
 
     top_score, top_name = results[0]
@@ -1274,9 +1306,8 @@ def main():
         for score, name in results[1:5]:
             print(f"  {name}  (score {score})")
 
-    print(f"\n-> AMEND {top_name}: reopen its spec.md/mockup-audit.md/tasks.md and add to "
-          f"them (per Step -1). Do NOT create a new specs/[###-feature]/ folder unless this is "
-          f"genuinely a distinct feature area, not a follow-up/fix/phase-2 of this match.")
+    print(f"\n-> Candidate {top_name}: inspect the cited evidence and other candidates before deciding "
+          f"whether to amend it or create a genuinely distinct spec.")
     sys.exit(0)
 
 

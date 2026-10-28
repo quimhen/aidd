@@ -188,7 +188,7 @@ class TestEndToEnd(unittest.TestCase):
         with TemporaryDirectory() as d:
             result = self._run(d, "anything")
             self.assertEqual(result.returncode, 1)
-            self.assertIn("Safe to proceed", result.stdout)
+            self.assertIn("Check alternate terms", result.stdout)
 
     def test_no_match_exits_1(self):
         with TemporaryDirectory() as d:
@@ -210,7 +210,7 @@ class TestEndToEnd(unittest.TestCase):
             result = self._run(root, "F45")
             self.assertEqual(result.returncode, 0)
             self.assertIn("F45-Aggregates-KPI-Engine", result.stdout)
-            self.assertIn("AMEND", result.stdout)
+            self.assertIn("Candidate", result.stdout)
 
     def test_exact_code_match_exits_0_and_ranks_it_top(self):
         with TemporaryDirectory() as d:
@@ -223,7 +223,7 @@ class TestEndToEnd(unittest.TestCase):
             result = self._run(root, "CTL-042")
             self.assertEqual(result.returncode, 0)
             self.assertIn("002-auth", result.stdout)
-            self.assertIn("AMEND", result.stdout)
+            self.assertIn("Candidate", result.stdout)
 
     def test_index_is_reused_when_nothing_changed(self):
         """Second call must not rebuild — same generated timestamp both times."""
@@ -428,6 +428,69 @@ class TestAuditRev1(unittest.TestCase):
             r = self._search(root, "pdf")
             self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
             self.assertIn("001-login", r.stdout)
+
+    def test_amendments_catalogs_and_drafts_are_discovered_but_nested_files_are_not(self):
+        with TemporaryDirectory() as d:
+            root = self._project(d, "# Login\n")
+            spec = root / "specs" / "001-login"
+            names = ("amendment-01-spec.md", "kpi-catalog.md", "closing-audit.md",
+                     "tasks.draft.md", "erp-map.md", "requests-C.md")
+            for i, name in enumerate(names):
+                (spec / name).write_text(f"requirement needle{i} exclusively\n", encoding="utf-8")
+            (spec / "evidence").mkdir()
+            (spec / "evidence" / "hidden-catalog.md").write_text("nestedonly\n", encoding="utf-8")
+            found = find_spec.searched_files(spec)
+            self.assertTrue(set(names).issubset(found))
+            self.assertNotIn("hidden-catalog.md", found)
+            for i, name in enumerate(names):
+                results = find_spec.fulltext_fallback(root / "specs", [spec], set(), [f"needle{i}"])
+                self.assertEqual(results[0][1], spec.name)
+                self.assertTrue(any(hit[0] == name for hit in find_spec.evidence_lines(spec, set(), [f"needle{i}"])))
+            self.assertFalse(find_spec.fulltext_fallback(root / "specs", [spec], set(), ["nestedonly"]))
+
+    def test_fast_edit_and_removed_or_renamed_amendment_invalidate_index(self):
+        with TemporaryDirectory() as d:
+            root = self._project(d, "# Login\n")
+            spec = root / "specs" / "001-login"
+            amendment = spec / "amendment-01-spec.md"
+            amendment.write_text("first", encoding="utf-8")
+            idx = find_spec.loads_index(find_spec.dumps_index(find_spec.build_index(root / "specs", [spec])))
+            old = amendment.stat().st_mtime_ns
+            amendment.write_text("second", encoding="utf-8")
+            os.utime(amendment, ns=(old + 100_000_000, old + 100_000_000))
+            self.assertEqual(find_spec.stale_spec_names(idx, [spec]), {spec.name})
+            idx = find_spec.build_index(root / "specs", [spec])
+            amendment.rename(spec / "amendment-02-spec.md")
+            self.assertEqual(find_spec.stale_spec_names(idx, [spec]), {spec.name})
+            idx = find_spec.build_index(root / "specs", [spec])
+            (spec / "amendment-02-spec.md").unlink()
+            self.assertEqual(find_spec.stale_spec_names(idx, [spec]), {spec.name})
+
+    def test_incomplete_index_match_does_not_hide_stronger_amendment(self):
+        with TemporaryDirectory() as d:
+            root = self._project(d, "# Login\nquasar\n")
+            specs = root / "specs"
+            other = specs / "002-other"
+            other.mkdir()
+            filler = " ".join("alfa" + chr(97 + i) for i in range(26))
+            (other / "spec.md").write_text("# Other\n" + filler, encoding="utf-8")
+            (other / "amendment-01-spec.md").write_text("quasar zanahoria\n", encoding="utf-8")
+            r = self._search(root, "quasar", "zanahoria")
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+            self.assertIn("Top match: 002-other", r.stdout)
+            self.assertIn("full-text", r.stdout)
+
+    def test_explicit_spec_identifier_stays_first_after_fallback(self):
+        with TemporaryDirectory() as d:
+            root = self._project(d, "# Login\n")
+            specs = root / "specs"
+            f45 = specs / "F45-Aggregates-KPI-Engine"
+            f45.mkdir()
+            (f45 / "spec.md").write_text("# Aggregates\n", encoding="utf-8")
+            (specs / "001-login" / "spec.md").write_text("# Login\nquasar zanahoria\n", encoding="utf-8")
+            r = self._search(root, "F45", "quasar", "zanahoria")
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+            self.assertIn("Top match: F45-Aggregates-KPI-Engine", r.stdout)
 
 
 SPEC_MD = """# Spec

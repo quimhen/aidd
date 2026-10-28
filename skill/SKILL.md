@@ -391,7 +391,7 @@ Copy `templates/charter.md` to the project root (see "Project charter" above). R
 ```bash
 python <AIDD_HOME>/scripts/find_spec.py <keywords or a SCREEN-XX/CTL-nnn/COMP-nnn/API-nnn code>
 ```
-Exit 0 → **amendment** to the top-ranked existing spec under `specs/` — reopen it, never a new folder. Exit 1 → safe to create `specs/[###-feature]/`. `find_spec.py --tree <spec-id>` prints that spec's use-case → screen → component → control → API graph. State the classification before proceeding: `AIDD intake: NEW SPEC | AMENDMENT | AMENDMENT — Fast Lane — <reason>`.
+Exit 0 → inspect the top candidate and its sources before classifying an amendment; a ranked match is not proof. Exit 1 → no candidate found, not proof of absence; check relevant specs and naming variants before creating a spec. `find_spec.py --tree <spec-id>` prints that spec's use-case → screen → component → control → API graph. State the classification before proceeding: `AIDD intake: NEW SPEC | AMENDMENT | AMENDMENT — Fast Lane — <reason>`.
 
 ### Step 0 — Visual source of truth (once per feature; skip if no visual surface)
 Pin the mockup/design system before any task exists. If the feature has no visual surface, skip entirely.

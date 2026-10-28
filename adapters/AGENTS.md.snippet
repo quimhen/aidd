@@ -13,8 +13,8 @@ screen), and how to read one section of `AIDD.md` on demand. Check the install w
 ```
 python .aidd/scripts/find_spec.py <a few keywords describing the request, or a SCREEN-XX/CTL-nnn/COMP-nnn/API-nnn code>
 ```
-- Exit code 0 (match found) → this is an **amendment** to the top-ranked spec under `specs/`, not a new feature. Reopen it; never open a new `specs/[###-feature]/` folder for a follow-up, a fix, or a "phase 2" of something already specified.
-- Exit code 1 (no match) → safe to create a new spec, following `.aidd/AIDD.md`'s Step 0 onward.
+- Exit code 0 → inspect the top candidate and relevant sources before classifying it as an amendment; ranking is not proof of a match.
+- Exit code 1 → no candidate was found; this does not prove absence. Check relevant specs and naming variants before creating a new spec.
 - `python .aidd/scripts/find_spec.py --tree <spec-id>` prints that spec's real use-case → screen → component → control → API graph.
 - `python .aidd/scripts/check_spec.py specs/[###-feature]/` is a mechanical gap-checker — run it before a manual audit pass (Step 6).
 
