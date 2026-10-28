@@ -65,6 +65,13 @@ def cmd_check(args):
     return _run("check_spec.py", [args.spec_dir])
 
 
+def cmd_readiness(args):
+    extra = [args.spec_dir]
+    if args.output:
+        extra.extend(["--output", args.output])
+    return _run("aidd_readiness.py", extra)
+
+
 def cmd_flow(args):
     extra = [args.flow_file]
     for flag, on in (("--check", args.check), ("--pseudo", args.pseudo), ("--mermaid", args.mermaid), ("--open", args.open)):
@@ -324,6 +331,11 @@ def build_parser():
     p_check = sub.add_parser("check", help="Run the mechanical gap-checker on one spec folder")
     p_check.add_argument("spec_dir")
     p_check.set_defaults(func=cmd_check)
+
+    p_readiness = sub.add_parser("readiness", help="Produce a structural preparation report for an independent auditor")
+    p_readiness.add_argument("spec_dir")
+    p_readiness.add_argument("--output", help="write JSON to a new file")
+    p_readiness.set_defaults(func=cmd_readiness)
 
     p_flow = sub.add_parser("flow", help="Flowmap: render a visual-flow.toon to an interactive actors x processes flow + pseudocode")
     p_flow.add_argument("flow_file")

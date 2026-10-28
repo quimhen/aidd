@@ -570,7 +570,63 @@ def render_markdown(md, source, keys, base_dir):
 # Digest, template, page (aidd:FR-202, FR-203)
 # ---------------------------------------------------------------------------
 
-def _digest_of(sources):
+def _visual_binding_unchecked(spec_dir, audit_text):
+    """Verify an explicitly declared local visual snapshot against the audited SHA-256.
+
+    Older audits without these fields retain their historical behavior; an incomplete,
+    inaccessible or changed declaration is never treated as a verified snapshot.
+    """
+    if not audit_text:
+        return None
+    section = re.search(r'(?ims)^##\s+Provenance\s*$([\s\S]*?)(?=^##\s|\Z)', audit_text)
+    if not section:
+        return None
+    fields = {}
+    for line in section.group(1).splitlines():
+        cells = [x.strip() for x in line.strip().strip('|').split('|')]
+        if len(cells) >= 2:
+            fields[cells[0].lower()] = cells[1].strip('` ')
+    name = fields.get('visual snapshot', '')
+    expected = fields.get('visual snapshot sha-256', '')
+    if 'visual snapshot' not in fields and 'visual snapshot sha-256' not in fields:
+        return None  # historical audit predating the binding fields
+    if not name or not re.fullmatch(r'[0-9a-fA-F]{64}', expected):
+        raise ValueError('visual snapshot requires a local path and a full audited SHA-256')
+    d = Path(spec_dir).resolve()
+    root = next((p for p in (d, *d.parents) if (p / '.git').exists() or (p / '.aidd').is_dir()), d.parent)
+    path = Path(name)
+    if path.is_absolute() or re.match(r'^[a-zA-Z]:', name) or '://' in name:
+        raise ValueError('visual snapshot must be a project-relative or spec-relative local path')
+    candidates = [(root / path).resolve(), (d / path).resolve()]
+    candidates = [p for p in candidates if p.is_relative_to(root)]
+    target = next((p for p in candidates if p.is_file()), None)
+    if target is None:
+        raise ValueError('visual snapshot is missing or outside the project')
+    try:
+        h = hashlib.sha256()
+        with target.open('rb') as f:
+            for chunk in iter(lambda: f.read(1024 * 1024), b''):
+                h.update(chunk)
+        actual = h.hexdigest()
+    except OSError as exc:
+        raise ValueError('visual snapshot cannot be read') from exc
+    if actual != expected.lower():
+        raise ValueError('visual snapshot changed since its audit; update the audit before reviewing')
+    return actual
+
+
+def _visual_binding(spec_dir, audit_text):
+    try:
+        if audit_text is None and (Path(spec_dir) / 'mockup-audit.md').exists():
+            raise ValueError('visual audit exists but cannot be read')
+        return _visual_binding_unchecked(spec_dir, audit_text)
+    except ValueError:
+        raise
+    except Exception as exc:
+        raise ValueError(f'visual snapshot cannot be verified ({type(exc).__name__})') from exc
+
+
+def _digest_of(sources, visual_binding=None):
     rules = _rules()
     h = hashlib.sha1()
     for name, text in sources:
@@ -581,6 +637,8 @@ def _digest_of(sources):
         else:
             content = text.replace('\r\n', '\n').replace('\r', '\n').encode('utf-8', 'replace')
         h.update(name.encode('utf-8') + b'\0' + content + b'\0')
+    if visual_binding is not None:
+        h.update(b'visual-snapshot\0' + visual_binding.encode('ascii') + b'\0')
     return h.hexdigest()[:12]
 
 
@@ -588,7 +646,8 @@ def sources_digest(spec_dir):
     """sha1[:12] over `name\\0content` of the present sources; tasks.md contributes its
     `approval_hash` (Approved line and Status/Tracker/PR-ref cells are neutral), the others
     their CRLF-normalised UTF-8 bytes. Raises ImportError if aidd_rules is missing."""
-    return _digest_of(_load_sources(spec_dir))
+    sources = _load_sources(spec_dir)
+    return _digest_of(sources, _visual_binding(spec_dir, dict(sources).get('mockup-audit.md')))
 
 
 def _script_sha256(template):
@@ -831,12 +890,17 @@ def _compact_page(d, texts, prior, problems):
         raise ValueError(_too_many(len(order), cap))
     items = ex.get('items') if isinstance(ex.get('items'), dict) else {}
     digests = {}
+    visual_binding = _visual_binding(d, texts.get('mockup-audit.md'))
     for code in order:
         item = items.get(code)
         if not isinstance(item, dict):
             continue
         try:
             d8 = it.item_digest(item)
+            # Without a proven screen-to-source dependency, any visual source change
+            # invalidates every carried decision. This is intentionally conservative.
+            if visual_binding is not None:
+                d8 = hashlib.sha256((visual_binding + ':' + d8).encode('ascii')).hexdigest()[:8]
         except Exception:  # noqa: BLE001 — an item without digest is simply never carried
             continue
         if isinstance(d8, str) and _HEX8_RE.fullmatch(d8):
@@ -877,7 +941,7 @@ def build_html(spec_dir, prior=None, template_text=None, full=False):
     texts = _checked_texts(d, sources)
     rules = _rules()
     tasks_hash = rules.approval_hash(texts['tasks.md'])
-    digest = _digest_of(sources)
+    digest = _digest_of(sources, _visual_binding(d, texts.get('mockup-audit.md')))
     spec_id = d.name
     problems = _verification_problems(d, texts.get('spec.md'))
     if full:
@@ -1026,7 +1090,7 @@ def generate(spec_dir, template_text=None, full=False):
     sources = _load_sources(d)
     texts = _checked_texts(d, sources)
     tasks_hash = _rules().approval_hash(texts['tasks.md'])
-    digest = _digest_of(sources)
+    digest = _digest_of(sources, _visual_binding(d, texts.get('mockup-audit.md')))
     page = d / REVIEW_HTML
     fmt = _FMT_FULL if full else _FMT_COMPACT
     if page.is_file() and _page_meta(page) == (tasks_hash, digest, fmt):
@@ -1082,11 +1146,16 @@ def review_state(spec_dir):
         texts = dict(sources)
         big = _oversize(sources)
         try:
-            digest = _digest_of(sources)
+            visual_binding = _visual_binding(d, texts.get('mockup-audit.md'))
+            digest = _digest_of(sources, visual_binding)
             tasks_hash = (_rules().approval_hash(texts['tasks.md'])
                           if texts.get('tasks.md') is not None else None)
         except ImportError:
             return _blank_state('aidd_rules is not importable next to aidd_review.py')
+        except ValueError as exc:
+            state = _blank_state(str(exc))
+            state['visual_source_error'] = str(exc)
+            return state
         try:
             it = _items()
             sm = _state()
@@ -1126,7 +1195,11 @@ def review_state(spec_dir):
             'code_re': it.CODE_RE,
         }
         res = sm.evaluate_review(inp)
-        return res if isinstance(res, dict) else _blank_state('review state unavailable (no result)')
+        if not isinstance(res, dict):
+            return _blank_state('review state unavailable (no result)')
+        if visual_binding is not None:
+            res['visual_snapshot'] = visual_binding
+        return res
     except Exception as e:  # noqa: BLE001 — pure read, never raises
         return _blank_state(f'review state unavailable ({type(e).__name__})')
 

@@ -35,10 +35,11 @@ class WaveVerificationTests(unittest.TestCase):
             (root / 'ok.txt').write_bytes(data)
             sha = hashlib.sha1(data).hexdigest()
             row = {'ok': True, 'exit': 0, 'cmd': 'test', 'expected': 'exit 0', 'input_globs': ['a.py'],
-                   'input_fp': 'fingerprint', 'evidence': 'ok.txt', 'sha1': sha}
+                   'input_fp': 'fingerprint', 'evidence': 'ok.txt', 'sha1': sha, 'reuse_policy': 'hermetic'}
             prior = {'stable': False, 'results': [row]}
             key = ('test', 'exit 0', ('a.py',), 'fingerprint')
             self.assertIn(key, status._reusable_input_rows(root, prior, False))
+            self.assertEqual(status._reusable_input_rows(root, {'results': [dict(row, reuse_policy='')]}, False), {})
             self.assertEqual(status._reusable_input_rows(root, prior, True), {})
             # Removing Inputs is a different contract: the prior per-row
             # evidence must not be treated as a legacy full-scope result.
@@ -160,11 +161,169 @@ class WaveVerificationTests(unittest.TestCase):
 
 
 class WaveEndToEnd(fixtures.Spec007Base):
+    def test_multi_spec_wave_json_validates_every_spec_without_reexecution(self):
+        text = ('# Spec\n## Verification\n| # | Command | Expected | Covers | Inputs | Reuse |\n'
+                '|---|---|---|---|---|---|\n'
+                '| V-1 | `python src/check.py` | exit 0 | T-01 | src/check.py | hermetic |\n')
+        tasks = '# Tasks\n## Waves\n| Wave | Tasks |\n|---|---|\n| 1 | T-01 |\n'
+        tmp, root, first = self.project('001-wave', spec=text, tasks=tasks)
+        with tmp:
+            second = root / 'specs' / '002-wave'
+            second.mkdir()
+            (second / 'spec.md').write_text(text.replace('T-01', 'T-02'), encoding='utf-8')
+            (second / 'tasks.md').write_text(tasks.replace('T-01', 'T-02'), encoding='utf-8')
+            (root / 'src' / 'check.py').write_text(
+                'from pathlib import Path\np=Path("specs/001-wave/count.txt")\n'
+                'p.write_text(str(int(p.read_text())+1) if p.exists() else "1")\n'
+                'print("three assertions passed successfully")\n', encoding='utf-8')
+            result = fixtures.run_script('verify', '001-wave', '002-wave', '--wave', '1', '--json', cwd=root)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            report = json.loads(result.stdout)
+            self.assertEqual(report['status'], 'pass')
+            self.assertEqual([s['spec'] for s in report['specs']], ['001-wave', '002-wave'])
+            self.assertEqual([s['coverage'] for s in report['specs']], [{'V-1': 'T-01'}, {'V-1': 'T-02'}])
+            self.assertEqual(report['specs'][1]['reused'], ['V-1'])
+            self.assertEqual((first / 'count.txt').read_text(), '1')
+
+    def test_multi_spec_wave_json_preflight_error_has_no_execution(self):
+        text = ('# Spec\n## Verification\n| # | Command | Expected | Covers | Inputs |\n'
+                '|---|---|---|---|---|\n| V-1 | `python src/check.py` | exit 0 | T-01 | src/check.py |\n')
+        tasks = '# Tasks\n## Waves\n| Wave | Tasks |\n|---|---|\n| 1 | T-01 |\n'
+        tmp, root, first = self.project('001-wave', spec=text, tasks=tasks)
+        with tmp:
+            second = root / 'specs' / '002-wave'
+            second.mkdir()
+            (second / 'spec.md').write_text(text, encoding='utf-8')
+            (second / 'tasks.md').write_text(tasks.replace('T-01', 'T-02'), encoding='utf-8')
+            (root / 'src' / 'check.py').write_text(
+                'from pathlib import Path\nPath("specs/001-wave/ran").write_text("yes")\n', encoding='utf-8')
+            result = fixtures.run_script('verify', '001-wave', '002-wave', '--wave', '1', '--json', cwd=root)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertEqual(json.loads(result.stdout)['status'], 'error')
+            self.assertFalse((first / 'ran').exists())
+
+    def test_multi_spec_wave_json_reports_failure_per_spec(self):
+        text = ('# Spec\n## Verification\n| # | Command | Expected | Covers | Inputs |\n'
+                '|---|---|---|---|---|\n| V-1 | `python src/check.py` | exit 0 | T-01 | src/check.py |\n')
+        tasks = '# Tasks\n## Waves\n| Wave | Tasks |\n|---|---|\n| 1 | T-01 |\n'
+        tmp, root, _ = self.project('001-wave', spec=text, tasks=tasks)
+        with tmp:
+            second = root / 'specs' / '002-wave'
+            second.mkdir()
+            (second / 'spec.md').write_text(text, encoding='utf-8')
+            (second / 'tasks.md').write_text(tasks, encoding='utf-8')
+            (root / 'src' / 'check.py').write_text('print("real test failure occurred")\nraise SystemExit(1)\n', encoding='utf-8')
+            result = fixtures.run_script('verify', '001-wave', '002-wave', '--wave', '1', '--json', cwd=root)
+            self.assertNotEqual(result.returncode, 0)
+            report = json.loads(result.stdout)
+            self.assertEqual(report['status'], 'fail')
+            self.assertEqual([s['failed'] for s in report['specs']], [['V-1'], ['V-1']])
+    def test_multi_spec_wave_runs_shared_check_once_and_preserves_coverage(self):
+        spec_text = ('# Spec\n## Verification\n'
+                     '| # | Command | Expected | Covers | Inputs | Reuse |\n|---|---|---|---|---|---|\n'
+                     '| V-1 | `python src/check.py` | exit 0 | T-01 | src/check.py | hermetic |\n')
+        tasks = '# Tasks\n## Waves\n| Wave | Tasks |\n|---|---|\n| 1 | T-01 |\n'
+        tmp, root, first = self.project('001-wave', spec=spec_text, tasks=tasks)
+        with tmp:
+            second = root / 'specs' / '002-wave'
+            second.mkdir()
+            (second / 'spec.md').write_text(spec_text.replace('T-01', 'T-02'), encoding='utf-8')
+            (second / 'tasks.md').write_text(tasks.replace('T-01', 'T-02'), encoding='utf-8')
+            (root / 'src' / 'check.py').write_text(
+                'from pathlib import Path\np=Path("specs/001-wave/count.txt")\n'
+                'p.write_text(str(int(p.read_text())+1) if p.exists() else "1")\n'
+                'print("three assertions passed successfully")\n', encoding='utf-8')
+            result = fixtures.run_script('verify', '001-wave', '002-wave', '--wave', '1', cwd=root)
+            self.assertEqual(result.returncode, 0, result.stdout)
+            self.assertEqual((first / 'count.txt').read_text(), '1')
+            self.assertIn('ROUND-REUSED row V-1', result.stdout)
+            for name, cover in [('001-wave', 'T-01'), ('002-wave', 'T-02')]:
+                run = status._latest_wave_run(root, name, '1')
+                self.assertTrue(run['ok'])
+                self.assertEqual(run['results'][0]['covers'], cover)
+                self.assertTrue((root / 'specs' / name / run['results'][0]['evidence']).is_file())
+                self.assertIsNone(fixtures.ev.latest_verify_run(root, name))
+
+    def test_multi_spec_wave_preflights_all_before_any_check(self):
+        text = ('# Spec\n## Verification\n| # | Command | Expected | Covers | Inputs |\n'
+                '|---|---|---|---|---|\n| V-1 | `python src/check.py` | exit 0 | T-01 | src/check.py |\n')
+        tasks = '# Tasks\n## Waves\n| Wave | Tasks |\n|---|---|\n| 1 | T-01 |\n'
+        tmp, root, first = self.project('001-wave', spec=text, tasks=tasks)
+        with tmp:
+            second = root / 'specs' / '002-wave'
+            second.mkdir()
+            (second / 'spec.md').write_text(text, encoding='utf-8')
+            (second / 'tasks.md').write_text(tasks.replace('T-01', 'T-02'), encoding='utf-8')
+            (root / 'src' / 'check.py').write_text(
+                'from pathlib import Path\nPath("specs/001-wave/ran").write_text("yes")\n', encoding='utf-8')
+            result = fixtures.run_script('verify', '001-wave', '002-wave', '--wave', '1', cwd=root)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn('nothing was executed', result.stdout)
+            self.assertFalse((first / 'ran').exists())
+
+    def test_multi_spec_wave_does_not_reuse_undeclared_external_checks(self):
+        text = ('# Spec\n## Verification\n| # | Command | Expected | Covers | Inputs |\n'
+                '|---|---|---|---|---|\n| V-1 | `python src/check.py` | exit 0 | T-01 | src/check.py |\n')
+        tasks = '# Tasks\n## Waves\n| Wave | Tasks |\n|---|---|\n| 1 | T-01 |\n'
+        tmp, root, first = self.project('001-wave', spec=text, tasks=tasks)
+        with tmp:
+            second = root / 'specs' / '002-wave'
+            second.mkdir()
+            (second / 'spec.md').write_text(text, encoding='utf-8')
+            (second / 'tasks.md').write_text(tasks, encoding='utf-8')
+            (root / 'src' / 'check.py').write_text(
+                'from pathlib import Path\np=Path("specs/001-wave/count.txt")\n'
+                'p.write_text(str(int(p.read_text())+1) if p.exists() else "1")\n'
+                'print("three assertions passed successfully")\n', encoding='utf-8')
+            result = fixtures.run_script('verify', '001-wave', '002-wave', '--wave', '1', cwd=root)
+            self.assertEqual(result.returncode, 0, result.stdout)
+            self.assertEqual((first / 'count.txt').read_text(), '2')
+            self.assertNotIn('ROUND-REUSED', result.stdout)
+
+    def test_full_verification_only_reuses_declared_hermetic_evidence(self):
+        text = ('# Spec\n## Verification\n| # | Command | Expected | Covers | Inputs | Reuse |\n'
+                '|---|---|---|---|---|---|\n| V-1 | `python src/check.py` | exit 0 | FR-001 | src/check.py | hermetic |\n')
+        tmp, root, spec = self.project('001-wave', spec=text)
+        with tmp:
+            (root / 'src' / 'check.py').write_text('print("three assertions passed successfully")\n', encoding='utf-8')
+            first = fixtures.run_script('verify', '001-wave', cwd=root)
+            self.assertEqual(first.returncode, 0, first.stdout)
+            second = fixtures.run_script('verify', '001-wave', cwd=root)
+            self.assertEqual(second.returncode, 0, second.stdout)
+            self.assertIn('REUSED row V-1', second.stdout)
+            (spec / 'spec.md').write_text(text.replace('hermetic', ''), encoding='utf-8')
+            third = fixtures.run_script('verify', '001-wave', cwd=root)
+            self.assertEqual(third.returncode, 0, third.stdout)
+            self.assertNotIn('REUSED row V-1', third.stdout)
+
+    def test_multi_spec_wave_never_reuses_failure(self):
+        text = ('# Spec\n## Verification\n| # | Command | Expected | Covers | Inputs | Reuse |\n'
+                '|---|---|---|---|---|---|\n| V-1 | `python src/check.py` | exit 0 | T-01 | src/check.py | hermetic |\n')
+        tasks = '# Tasks\n## Waves\n| Wave | Tasks |\n|---|---|\n| 1 | T-01 |\n'
+        tmp, root, first = self.project('001-wave', spec=text, tasks=tasks)
+        with tmp:
+            second = root / 'specs' / '002-wave'
+            second.mkdir()
+            (second / 'spec.md').write_text(text, encoding='utf-8')
+            (second / 'tasks.md').write_text(tasks, encoding='utf-8')
+            (root / 'src' / 'check.py').write_text(
+                'from pathlib import Path\np=Path("specs/001-wave/count.txt")\n'
+                'p.write_text(str(int(p.read_text())+1) if p.exists() else "1")\n'
+                'print("real test failure occurred")\nraise SystemExit(1)\n', encoding='utf-8')
+            result = fixtures.run_script('verify', '001-wave', '002-wave', '--wave', '1', cwd=root)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertEqual((first / 'count.txt').read_text(), '2')
+            self.assertNotIn('ROUND-REUSED row V-1 (FAIL)', result.stdout)
+            for name in ('001-wave', '002-wave'):
+                run = status._latest_wave_run(root, name, '1')
+                self.assertFalse(run['ok'])
+                self.assertFalse(run['results'][0]['ok'])
+
     def test_json_wave_reports_manifest_and_refusal_without_stale_event(self):
         spec_text = ('# Spec\n## Verification\n'
-                     '| # | Command | Expected | Covers | Inputs |\n|---|---|---|---|---|\n'
-                     '| V-1 | `python src/check.py` | exit 0 | T-01 | src/check.py |\n'
-                     '| V-2 | `python src/check.py` | exit 0 | T-02 | src/check.py |\n')
+                     '| # | Command | Expected | Covers | Inputs | Reuse |\n|---|---|---|---|---|---|\n'
+                     '| V-1 | `python src/check.py` | exit 0 | T-01 | src/check.py | hermetic |\n'
+                     '| V-2 | `python src/check.py` | exit 0 | T-02 | src/check.py | hermetic |\n')
         tasks = '# Tasks\n## Waves\n| Wave | Tasks |\n|---|---|\n| 1 | T-01, T-02 |\n'
         tmp, root, spec = self.project('001-wave', spec=spec_text, tasks=tasks)
         with tmp:
@@ -202,9 +361,9 @@ class WaveEndToEnd(fixtures.Spec007Base):
 
     def test_identical_wave_checks_run_once_and_cover_both_tasks(self):
         spec_text = ('# Spec\n## Verification\n'
-                     '| # | Command | Expected | Covers | Inputs |\n|---|---|---|---|---|\n'
-                     '| V-1 | `python src/check.py` | exit 0 | T-01 | src/check.py |\n'
-                     '| V-2 | `python src/check.py` | exit 0 | T-02 | src/check.py |\n')
+                     '| # | Command | Expected | Covers | Inputs | Reuse |\n|---|---|---|---|---|---|\n'
+                     '| V-1 | `python src/check.py` | exit 0 | T-01 | src/check.py | hermetic |\n'
+                     '| V-2 | `python src/check.py` | exit 0 | T-02 | src/check.py | hermetic |\n')
         tasks = '# Tasks\n## Waves\n| Wave | Tasks |\n|---|---|\n| 1 | T-01, T-02 |\n'
         tmp, root, spec = self.project('001-wave', spec=spec_text, tasks=tasks)
         with tmp:
@@ -239,7 +398,7 @@ class WaveEndToEnd(fixtures.Spec007Base):
             unrelated.write_text('x = 2\n', encoding='utf-8')
             second = fixtures.run_script('verify', '001-wave', '--wave', '1', cwd=root)
             self.assertEqual(second.returncode, 0, second.stdout)
-            self.assertIn('REUSED row V-1', second.stdout)
+            self.assertNotIn('REUSED row V-1', second.stdout)
             check = root / 'src' / 'check.py'
             check.write_text(check.read_text(encoding='utf-8') + '\n# input changed\n', encoding='utf-8')
             third = fixtures.run_script('verify', '001-wave', '--wave', '1', cwd=root)

@@ -1883,21 +1883,25 @@ def _contains_words(hay, needle):
     return (' ' + needle + ' ') in (' ' + hay + ' ')
 
 
-def quote_verified(ev, root, quote, since_ts=0.0):
+def quote_verified(ev, root, quote, since_ts=0.0, session=None):
     """M3: `quote` (word-normalised, accent/punctuation-folded) must be found as whole words in a
     `prompt` event (needs >= 5 words) or in a user `answer` (needs >= 2 words), both newer than
-    `since_ts`."""
+    `since_ts`. An earlier event also counts when it belongs to the active session: the user's
+    initial request may contain requirements before the first spec draft exists. Earlier events
+    from other sessions are not associated with this intake and must not be reused implicitly."""
     nq = _norm(ev, quote)
     n = len(nq.split())
     if n < 2:
         return False
+    def relevant(e):
+        return e.get('ts', 0) > since_ts or bool(session and e.get('session') == session)
     try:
         if n >= 5:
             for e in ev.events(root, None, 'prompt'):
-                if e.get('ts', 0) > since_ts and _contains_words(_norm(ev, (e.get('detail') or {}).get('text', '')), nq):
+                if relevant(e) and _contains_words(_norm(ev, (e.get('detail') or {}).get('text', '')), nq):
                     return True
         for e in ev.events(root, None, 'answer'):
-            if e.get('ts', 0) > since_ts and any(_contains_words(_norm(ev, a), nq)
+            if relevant(e) and any(_contains_words(_norm(ev, a), nq)
                                                  for a in _answer_texts(e.get('detail') or {})):
                 return True
     except Exception:
@@ -1923,13 +1927,13 @@ def _evidence_rules(ev, d, root, session, spec_t, has_tasks, plan_p, tasks_p, qa
     since_q = spec_first_edit_ts(ev, root, d.name)
     for q in quotes:
         try:
-            ok = quote_verified(ev, root, q, since_q)
+            ok = quote_verified(ev, root, q, since_q, session=session)
         except Exception:
             ok = False
         if not ok:
             out.append(_v('R5', f'Quote not found in any recorded user prompt/answer: "{q[:60]}".',
-                          'Quote the user\'s exact words from a prompt written AFTER spec.md was first drafted '
-                          '(5+ words), or ask the user (AskUserQuestion) and quote their answer verbatim '
+                          'Quote the user\'s exact words from a recorded prompt in the active session or after '
+                          'the first draft (5+ words), or a recorded user answer '
                           '(2+ words).'))
 
     # R5 (FR-002/FR-003 phases): find_spec + Mapper once after the FIRST spec.md draft + ONE pre-build
@@ -2038,7 +2042,7 @@ def parse_verification(spec_text):
         def col(*names):
             return next((i for i, h in enumerate(hn) if h in names), None)
         ni, ci, ei, vi = col('#', 'n', 'no', 'no.'), col('command', 'cmd'), col('expected'), col('covers')
-        ii = col('inputs')
+        ii, ri = col('inputs'), col('reuse')
         if ci is None:
             return []
         out = []
@@ -2053,6 +2057,8 @@ def parse_verification(spec_text):
                         'covers': r[vi].strip() if vi is not None else ''}
             if ii is not None:
                 item['inputs'] = sorted(set(_strip_ticks(x.strip()) for x in r[ii].split(',') if x.strip()))
+            if ri is not None:
+                item['reuse'] = r[ri].strip().lower()
             out.append(item)
         return out
     except Exception:
@@ -2235,7 +2241,8 @@ def verification_hash(spec_text):
         if not rows:
             return ''
         body = '\n'.join(f"{_norm_cell(r['n'])}|{r['cmd'].strip()}|{r['expected'].strip()}"
-                         + ('|inputs:' + ','.join(r['inputs']) if r.get('inputs') else '') for r in rows)
+                         + ('|inputs:' + ','.join(r['inputs']) if r.get('inputs') else '')
+                         + ('|reuse:' + r['reuse'] if r.get('reuse') else '') for r in rows)
         return hashlib.sha1(body.encode('utf-8')).hexdigest()[:12]
     except Exception:
         return ''
@@ -2738,9 +2745,9 @@ def _rows_already_executed(spec_text, run):
         rows = parse_verification(spec_text)
         if not rows:
             return False
-        done = {(str(r.get('cmd') or '').strip(), str(r.get('expected') or '').strip(), tuple(r.get('input_globs') or [])) for r in (run.get('results') or [])
+        done = {(str(r.get('cmd') or '').strip(), str(r.get('expected') or '').strip(), tuple(r.get('input_globs') or []), str(r.get('reuse_policy') or '')) for r in (run.get('results') or [])
                 if isinstance(r, dict) and r.get('ok') is True and 'expected' in r}
-        return all((r['cmd'].strip(), r['expected'].strip(), tuple(r.get('inputs') or [])) in done for r in rows)
+        return all((r['cmd'].strip(), r['expected'].strip(), tuple(r.get('inputs') or []), r.get('reuse') or '') in done for r in rows)
     except Exception:
         return False
 

@@ -338,14 +338,14 @@ class TestR5Plan(PlanBase):
         self.prompt("modulo de checkout")
         self.assertBlocked(self.gate(PLAN, content="# plan"), "Quote not found")
 
-    def test_m3_prompt_recorded_before_the_first_spec_edit_does_not_count(self):
+    def test_m3_prompt_recorded_in_current_session_before_first_draft_counts(self):
         self.put(SPEC, spec_text())
         self.prompt(CHECKLIST_QUOTE)
         self.prompt(QUOTE)
         self.spec_edit("spec.md")            # the spec was first drafted AFTER the "quotes" were recorded
         self.ev("find_spec", rebuilt=False, ok=True, source="bash")
         self.subagent()
-        self.assertBlocked(self.gate(PLAN, content="# plan"), "Quote not found")
+        self.assertAllowed(self.gate(PLAN, content="# plan"))
 
     def test_m3_short_quote_is_ok_when_it_comes_from_a_user_answer(self):
         sp = CHECKLIST_OK.replace("es el modulo de checkout", "Checkout flow completo")   # R3 wants 3+ words
@@ -356,14 +356,14 @@ class TestR5Plan(PlanBase):
         self.subagent()
         self.assertAllowed(self.gate(PLAN, content="# plan"))
 
-    def test_m3_answer_older_than_spec_does_not_count(self):
+    def test_m3_answer_in_current_session_before_first_draft_counts(self):
         sp = CHECKLIST_OK.replace("es el modulo de checkout", "Checkout flow completo")
         self.put(SPEC, spec_text(sp))
         self.answer("Which module?", "Checkout flow completo")
         self.spec_edit("spec.md")
         self.ev("find_spec", rebuilt=False, ok=True, source="bash")
         self.subagent()
-        self.assertBlocked(self.gate(PLAN, content="# plan"), "Quote not found")
+        self.assertAllowed(self.gate(PLAN, content="# plan"))
 
     def test_m4_blank_line_cannot_hide_a_proposed_row(self):
         sp = CHECKLIST_OK + '\n| Hidden | Maybe | [Proposed — unconfirmed] | ask |\n'
@@ -2267,6 +2267,16 @@ class ReviewModeGateMixin:
                                  (self.SPEC, R.approval_hash(t), 2, "summary"))
                 self.assertIn("consent_ts", d)
                 self.assertNotIn("review_sha1", d)
+
+    def test_summary_refuses_missing_declared_visual_snapshot(self):
+        t = tasks_text()
+        self.prep(t)
+        self.put(f'specs/{self.SPEC}/mockup-audit.md',
+                 '## Provenance\n| Field | Value |\n|---|---|\n'
+                 '| Visual snapshot | missing.png |\n| Visual snapshot SHA-256 | ' + 'a' * 64 + ' |\n')
+        self.ask('Aprobar con resumen')
+        self.assertBlocked(self.approve_edit(t), 'R6')
+        self.assertEqual(self.events('approved'), [])
 
     def test_near_misses_are_blocked_and_never_mint_source_answer(self):
         for label in ("aprobar con resumen", "APROBAR CON RESUMEN", "Aprobar con resumem", "Aprobar con resumen ya",

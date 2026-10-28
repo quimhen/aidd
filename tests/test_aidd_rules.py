@@ -881,6 +881,16 @@ class TestM3Quotes(unittest.TestCase):
         self.assertTrue(self.q('hazlo todo como dije antes', since=0.0))
         self.assertFalse(self.q('hazlo todo como dije antes', since=60.0))
 
+    def test_pre_draft_requires_active_session_and_real_user_event(self):
+        self.fake = FakeEv(rows=[ev('prompt', 50, text='hazlo todo como dije antes'),
+                                 ev('answer', 51, pairs=[['Pregunta', 'Solo pagos']])])
+        self.assertTrue(R.quote_verified(self.fake, 'r', 'hazlo todo como dije antes', 60, session='s'))
+        self.assertTrue(R.quote_verified(self.fake, 'r', 'Solo pagos', 60, session='s'))
+        self.assertFalse(R.quote_verified(self.fake, 'r', 'hazlo todo como dije antes', 60, session='other'))
+        self.assertFalse(R.quote_verified(self.fake, 'r', 'hazlo todo como dije antes', 60))
+        self.assertFalse(R.quote_verified(self.fake, 'r', 'dije antes', 60, session='s'))
+        self.assertFalse(R.quote_verified(self.fake, 'r', 'requisito inventado por el agente', 60, session='s'))
+
     def test_spec_first_edit_ts(self):
         f = FakeEv(rows=[ev('spec_edit', 70, spec='001-x'), ev('spec_edit', 40, spec='001-x'),
                          ev('spec_edit', 5, spec='002-y')])

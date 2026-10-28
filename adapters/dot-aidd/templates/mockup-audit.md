@@ -5,9 +5,19 @@
 |---|---|
 | Source | [file path / Figma node id / Stitch screen id / image name] |
 | Hash (sha256, if a file) | |
+| Visual snapshot | |
+| Visual snapshot SHA-256 | |
 | Size | |
 | Audit date | |
 | Auditor (agent/person) | |
+
+For a verifiable review, set `Visual snapshot` to a project-relative (or spec-relative) local
+file and `Visual snapshot SHA-256` to its full SHA-256 after auditing it. For an online design,
+export an immutable local snapshot and record the remote node/version in `Source`. A changed or
+missing snapshot blocks the review until the audit is updated; without a screen-level dependency
+map, a new snapshot resets all carried review decisions. Historical audits that predate these
+fields remain usable but do not provide automatic source freshness verification. A new audit
+containing these fields must fill both; blank fields do not establish visual provenance.
 
 ## Screen inventory
 | SCREEN-XX | DOM/node id | Name | Type (view/modal/sheet) | Uses (COMP-nnn list) | Use case (US-nnn) | Purpose |

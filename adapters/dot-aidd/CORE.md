@@ -57,6 +57,8 @@ State first: `AIDD intake: NEW SPEC | AMENDMENT | AMENDMENT — Fast Lane — <r
 | 4 Tasks | One file per task, agent minutes + tokens, waves, then owner approval | `### Step 4` |
 | 5 Build | One lane/agent per file group; builders only self-check statically | `### Step 5` |
 | 6 Converge | `aidd verify`, then ONE independent auditor | `### Step 6` |
+
+**Wave contract for every dispatched agent:** include the wave ID, all covered task/spec IDs, the owner and this rule in each prompt. Builders (`builder`, `sql`, `docs`) perform static checks only and report completion; they do not run executed wave tests or audits. The orchestrator waits until all wave builders finish, runs the union of required checks once as a coordinated round (shared checks only reused when their inputs and evidence match), and sends per-spec results and changed scope to the independent auditor. Verifiers do not infer PASS from logs, and auditors do not rerun shared tests. Missing coverage or unstable inputs blocks a passing verdict. Preserve final full-spec verification and the required independent closing audit.
 | 7 Doc | Mechanical handoff doc | `### Step 7` |
 
 Backend/API/DB-only changes skip 0, 1, 1.5. A small contained change uses the Fast Lane.

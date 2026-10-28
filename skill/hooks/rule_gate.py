@@ -385,12 +385,15 @@ def _approval_gate(ev, rules, d, root, session, new_text, cur_text):
                    'Reinstall the aidd skill (hooks and scripts together), then retry.')]
     if not isinstance(rs, dict):
         rs = {}
+    if rs.get('visual_source_error'):
+        return [_v('R6', str(rs['visual_source_error']),
+                   'Update the visual audit and its verified snapshot before approval.')]
     if not str(rs.get('reason') or '').startswith('too many items'):
         # aidd:FR-313 the owner's exact-label waiver of the review page: checked FIRST (before the complete branch
         # and so before _review_page_blocks_answer), only through the hook-recorded answer; the gate mints the event
         summary = _summary_answer(ev, root, session, since, tag)
         if summary:
-            ev.append_approved(root, session, d.name, h_new,
+            ev.append_approved(root, session, d.name, h_new, visual_snapshot=rs.get('visual_snapshot'),
                                **rules.approval_evidence(spec_t, 'summary', consent_ts=summary.get('ts')))
             return []
     if rs.get('complete'):
@@ -406,7 +409,7 @@ def _approval_gate(ev, rules, d, root, session, new_text, cur_text):
                 kind, cts = 'prompt', pc.get('ts')
         if kind:
             # N1: PreToolUse is the trusted point - the gate itself mints the `approved` event (mark_code_edit does not)
-            ev.append_approved(root, session, d.name, h_new,
+            ev.append_approved(root, session, d.name, h_new, visual_snapshot=rs.get('visual_snapshot'),
                                **rules.approval_evidence(spec_t, f'review+{kind}', review_sha1=rs.get('sha1') or None,
                                                          consent_ts=cts))
             return []
@@ -428,7 +431,7 @@ def _approval_gate(ev, rules, d, root, session, new_text, cur_text):
     ans = _affirm(ev, root, session, since, tag)
     if ans:
         # aidd:FR-204 no review page (never generated, or sources over the cap): the answer-only route
-        ev.append_approved(root, session, d.name, h_new,
+        ev.append_approved(root, session, d.name, h_new, visual_snapshot=rs.get('visual_snapshot'),
                            **rules.approval_evidence(spec_t, 'answer', consent_ts=ans.get('ts')))
         return []
     return [_v('R6', 'Approval of tasks.md is the user\'s: there is no AFFIRMATIVE user answer to an '
@@ -607,6 +610,13 @@ def _target_violation(ev, rules, root, sid, how):
         return _v('R6', f'{head}: the approval line in specs/{sid}/tasks.md was not recorded by a hook (no approved '
                         'event for the current hash) - it was probably written outside Write/Edit.',
                   f'Get the owner\'s consent again, then write the Approved: line with the Edit tool. {unblock}')
+    try:
+        visual = _review_lib()._visual_binding(d, _read(d / 'mockup-audit.md', rules.MAX_CHARS * 2))
+        approved = ev.latest_approved(root, sid, rules.approval_hash(tasks)) or {}
+        if approved.get('visual_snapshot') != visual:
+            return _v('R6', f'{head}: the visual snapshot changed after approval.', unblock)
+    except Exception as exc:
+        return _v('R6', f'{head}: visual provenance cannot be verified ({exc}).', unblock)
     return None
 
 

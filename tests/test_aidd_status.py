@@ -1763,6 +1763,19 @@ class TestSummaryRoute(Spec007Base):
 
     LABEL = "Aprobar con resumen"
 
+    def test_summary_refuses_changed_declared_visual_snapshot(self):
+        tmp, root, d = self.project(IDS[0])
+        with tmp:
+            (d / 'mockup-audit.md').write_text(
+                '## Provenance\n| Field | Value |\n|---|---|\n'
+                '| Visual snapshot | missing.png |\n| Visual snapshot SHA-256 | ' + 'a' * 64 + ' |\n',
+                encoding='utf-8')
+            self.ask(root, d)
+            r = self.approve_rc(root, d)
+            self.assertNotEqual(r.returncode, 0, r.stdout)
+            self.assertIn('visual snapshot', r.stdout)
+            self.assertEqual(ev.events(root, kind='approved'), [])
+
     def ask(self, root, d, label=None, question=None, options=None, session="s1"):
         q = question or f"¿Aprobar las tareas? {self.tag(d)}"
         self.answer(root, q, label or self.LABEL, session=session, options=options)
@@ -1988,8 +2001,7 @@ class TestVerify(Spec007Base):
                     self.assertEqual(aidd_rules.verification_state(d, root)["status"], "passed")
 
     def test_reverify_is_incremental_and_full_reruns_everything(self):
-        """Amendment to spec 007: after a table edit only the new/changed rows run; the rest are REUSED while
-        the code is unchanged; --full and a code change re-run everything."""
+        """Checks without an explicit hermetic contract are rerun, including after table edits."""
         rows = [("python src/check.py", "exit 0")]
         tmp, root, d = self.vproject(rows)
         with tmp:
@@ -2002,10 +2014,10 @@ class TestVerify(Spec007Base):
             self.assertEqual(aidd_rules.verification_state(d, root)["status"], "stale")   # a row was added
             r = run_script("verify", "F23-eDoc-POS", cwd=root)
             self.assertEqual(r.returncode, 0, r.stdout)
-            self.assertIn("REUSED row 1", r.stdout)
+            self.assertNotIn("REUSED row 1", r.stdout)
             self.assertIn("PASS row 2", r.stdout)
             second = ev.latest_verify_run(root, "F23-eDoc-POS")
-            self.assertEqual([x.get("reused") for x in second["results"]], [True, None])
+            self.assertEqual([x.get("reused") for x in second["results"]], [None, None])
             self.assertEqual(second["code_since"], first["started"])
             self.assertEqual(aidd_rules.verification_state(d, root)["status"], "passed")
             r = run_script("verify", "F23-eDoc-POS", "--full", cwd=root)
@@ -2229,8 +2241,8 @@ class TestGate2Close(Spec007Base):
             self.assertIn("R7", r.stdout)
 
     def test_docs_edit_and_reverify_of_same_code_keep_verification_and_auditor(self):
-        """Amendment to spec 007: a management error (docs edited, re-verify of identical code) never forces
-        a re-execution nor a new auditor."""
+        """A doc edit preserves verification; an explicit re-verify without hermetic inputs reruns checks,
+        but the existing auditor remains valid when the code has not changed."""
         tmp, root, d = self.gate2()
         with tmp:
             run = self.verify(root, "F23-eDoc-POS")
@@ -2240,8 +2252,8 @@ class TestGate2Close(Spec007Base):
             (root / "NOTES.md").write_text("management notes edited after verify\n", encoding="utf-8")
             st = aidd_rules.verification_state(d, root)
             self.assertEqual(st["status"], "passed", st)                # a doc edit is not a code change
-            run2 = self.verify(root, "F23-eDoc-POS")                    # re-verify: rows are REUSED, same code
-            self.assertTrue(all(r.get("reused") for r in run2["results"]), run2["results"])
+            run2 = self.verify(root, "F23-eDoc-POS")
+            self.assertTrue(all(not r.get("reused") for r in run2["results"]), run2["results"])
             self.assertEqual(run2["code_since"], run["started"])
             self.assertIn(run["verify_hash"], run2["verify_lineage"])
             r = self.close(root, "F23-eDoc-POS")
