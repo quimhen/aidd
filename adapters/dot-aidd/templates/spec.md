@@ -99,6 +99,8 @@ zero, a user with no rows). `Real data (id)` is a real record id/key from the sy
 
 How the close gate EXECUTES this spec (`aidd verify <spec>`). One row per check; `Expected` is `exit 0` (default) or `contains: <text>`. Lint: each command must be a real runner (`dotnet test`, `npm test`, `pytest`, `python -m unittest ...`, `cargo test`, `go test`, ...) or invoke an existing repo path, no inline-code interpreters (`python -c`, `node -e`, `cmd /c`, `powershell -Command`), and a `contains:` text must not appear literally in its own command. This section is mandatory for new approvals; the owner reviews it on its own in `review.html`. Legacy specs without it stay valid.
 
+For wave verification, list the relevant task IDs (for example `T-01, T-02`) in each row's `Covers` cell. `aidd verify <spec> --wave <id>` refuses incomplete task coverage and never substitutes for full-spec verification. An optional `Inputs` column contains comma-separated relative globs covering every file the row reads, including fixtures, scripts, migrations, seeds and configuration. Only declare a complete input set: stable passing results with intact evidence may be reused by input fingerprint. Do not cache results dependent on external state that cannot be fingerprinted reproducibly. An unavailable or empty input selection fails closed.
+
 Scope: auto<!-- optional; `auto` = the Target files of tasks.md, add inputs it reads: `auto, db/migrations/**`; or explicit globs -->
 
 Generated: <files or globs the commands rewrite on purpose, e.g. `docs/db-graph/graph.json, docs/db-graph/metrics.json`; optional>

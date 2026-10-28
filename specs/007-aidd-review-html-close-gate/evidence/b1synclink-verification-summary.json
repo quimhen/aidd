@@ -1,0 +1,971 @@
+{
+  "captured_utc": "2026-10-28T03:00:25.9574062+00:00",
+  "source": "D:/Fuentes/b1SycLink/.aidd/evidence/events.toon",
+  "scope": "Recorded verify_run history for P01-P03; read-only inspection, no tests executed",
+  "summary": [
+    {
+      "spec": "P01-Payrol-Foundation",
+      "runs": 7,
+      "unstable": 4,
+      "recorded_wall_minutes": 145.3
+    },
+    {
+      "spec": "P02-Payrol-Approval-Flows",
+      "runs": 6,
+      "unstable": 4,
+      "recorded_wall_minutes": 73.0
+    },
+    {
+      "spec": "P03-Payrol-Employees-Contracts",
+      "runs": 3,
+      "unstable": 3,
+      "recorded_wall_minutes": 87.1
+    }
+  ],
+  "runs": [
+    {
+      "spec": "P01-Payrol-Foundation",
+      "recorded_utc": "2026-10-08T15:39:36.7290000+00:00",
+      "ok": false,
+      "stable": true,
+      "wall_seconds": 407.8,
+      "has_code_fingerprint": true,
+      "scope_declared": true,
+      "rows": [
+        {
+          "n": "V-1",
+          "ok": false,
+          "exit": 1,
+          "secs": 376.5,
+          "reused": null,
+          "problem": null
+        },
+        {
+          "n": "V-2",
+          "ok": false,
+          "exit": 1,
+          "secs": 4.4,
+          "reused": null,
+          "problem": null
+        },
+        {
+          "n": "V-3",
+          "ok": true,
+          "exit": 0,
+          "secs": 3.9,
+          "reused": null,
+          "problem": null
+        },
+        {
+          "n": "V-4",
+          "ok": false,
+          "exit": 1,
+          "secs": 1.7,
+          "reused": null,
+          "problem": null
+        },
+        {
+          "n": "V-5",
+          "ok": false,
+          "exit": 1,
+          "secs": 2.3,
+          "reused": null,
+          "problem": null
+        },
+        {
+          "n": "V-6",
+          "ok": false,
+          "exit": 1,
+          "secs": 1.3,
+          "reused": null,
+          "problem": null
+        }
+      ]
+    },
+    {
+      "spec": "P01-Payrol-Foundation",
+      "recorded_utc": "2026-10-27T19:59:49.2760000+00:00",
+      "ok": false,
+      "stable": false,
+      "wall_seconds": 1676.0,
+      "has_code_fingerprint": false,
+      "scope_declared": true,
+      "rows": [
+        {
+          "n": "V-1",
+          "ok": false,
+          "exit": 1,
+          "secs": 965.1,
+          "reused": null,
+          "problem": null
+        },
+        {
+          "n": "V-2",
+          "ok": true,
+          "exit": 0,
+          "secs": 56.8,
+          "reused": null,
+          "problem": null
+        },
+        {
+          "n": "V-3",
+          "ok": true,
+          "exit": 0,
+          "secs": 144.0,
+          "reused": null,
+          "problem": null
+        },
+        {
+          "n": "V-4",
+          "ok": false,
+          "exit": 1,
+          "secs": 450.2,
+          "reused": null,
+          "problem": null
+        },
+        {
+          "n": "V-5",
+          "ok": true,
+          "exit": 0,
+          "secs": 3.1,
+          "reused": null,
+          "problem": null
+        },
+        {
+          "n": "V-6",
+          "ok": true,
+          "exit": 0,
+          "secs": 2.7,
+          "reused": null,
+          "problem": null
+        }
+      ]
+    },
+    {
+      "spec": "P02-Payrol-Approval-Flows",
+      "recorded_utc": "2026-10-27T21:01:48.7330000+00:00",
+      "ok": false,
+      "stable": true,
+      "wall_seconds": 1507.8,
+      "has_code_fingerprint": false,
+      "scope_declared": true,
+      "rows": [
+        {
+          "n": "V-1",
+          "ok": true,
+          "exit": 0,
+          "secs": 486.8,
+          "reused": null,
+          "problem": null
+        },
+        {
+          "n": "V-2",
+          "ok": true,
+          "exit": 0,
+          "secs": 2.5,
+          "reused": null,
+          "problem": null
+        },
+        {
+          "n": "V-3",
+          "ok": false,
+          "exit": 1,
+          "secs": 842.7,
+          "reused": null,
+          "problem": null
+        },
+        {
+          "n": "V-4",
+          "ok": false,
+          "exit": 1,
+          "secs": 5.9,
+          "reused": null,
+          "problem": null
+        },
+        {
+          "n": "V-5",
+          "ok": true,
+          "exit": 0,
+          "secs": 7.5,
+          "reused": null,
+          "problem": null
+        }
+      ]
+    },
+    {
+      "spec": "P01-Payrol-Foundation",
+      "recorded_utc": "2026-10-27T21:06:38.2140000+00:00",
+      "ok": false,
+      "stable": false,
+      "wall_seconds": 1934.9,
+      "has_code_fingerprint": false,
+      "scope_declared": true,
+      "rows": [
+        {
+          "n": "V-1",
+          "ok": true,
+          "exit": 0,
+          "secs": 605.4,
+          "reused": null,
+          "problem": null
+        },
+        {
+          "n": "V-2",
+          "ok": true,
+          "exit": 0,
+          "secs": 54.5,
+          "reused": null,
+          "problem": null
+        },
+        {
+          "n": "V-3",
+          "ok": true,
+          "exit": 0,
+          "secs": 572.4,
+          "reused": null,
+          "problem": null
+        },
+        {
+          "n": "V-4",
+          "ok": true,
+          "exit": 0,
+          "secs": 641.7,
+          "reused": null,
+          "problem": null
+        },
+        {
+          "n": "V-5",
+          "ok": true,
+          "exit": 0,
+          "secs": 2.8,
+          "reused": null,
+          "problem": null
+        },
+        {
+          "n": "V-6",
+          "ok": true,
+          "exit": 0,
+          "secs": 1.5,
+          "reused": null,
+          "problem": null
+        }
+      ]
+    },
+    {
+      "spec": "P01-Payrol-Foundation",
+      "recorded_utc": "2026-10-27T21:21:03.5240000+00:00",
+      "ok": false,
+      "stable": true,
+      "wall_seconds": 782.5,
+      "has_code_fingerprint": false,
+      "scope_declared": true,
+      "rows": [
+        {
+          "n": "V-1",
+          "ok": false,
+          "exit": 1,
+          "secs": 534.1,
+          "reused": null,
+          "problem": null
+        },
+        {
+          "n": "V-2",
+          "ok": true,
+          "exit": 0,
+          "secs": 32.0,
+          "reused": null,
+          "problem": null
+        },
+        {
+          "n": "V-3",
+          "ok": true,
+          "exit": 0,
+          "secs": 163.4,
+          "reused": null,
+          "problem": null
+        },
+        {
+          "n": "V-4",
+          "ok": false,
+          "exit": 1,
+          "secs": null,
+          "reused": true,
+          "problem": "failed in this round (P02-Payrol-Approval-Flows); see evidence"
+        },
+        {
+          "n": "V-5",
+          "ok": true,
+          "exit": 0,
+          "secs": 2.5,
+          "reused": null,
+          "problem": null
+        },
+        {
+          "n": "V-6",
+          "ok": true,
+          "exit": 0,
+          "secs": null,
+          "reused": true,
+          "problem": null
+        }
+      ]
+    },
+    {
+      "spec": "P01-Payrol-Foundation",
+      "recorded_utc": "2026-10-27T21:22:29.9810000+00:00",
+      "ok": false,
+      "stable": false,
+      "wall_seconds": 60.8,
+      "has_code_fingerprint": false,
+      "scope_declared": true,
+      "rows": [
+        {
+          "n": "V-1",
+          "ok": false,
+          "exit": 1,
+          "secs": null,
+          "reused": true,
+          "problem": "failed in this round (P01-Payrol-Foundation); see evidence"
+        },
+        {
+          "n": "V-2",
+          "ok": true,
+          "exit": 0,
+          "secs": null,
+          "reused": true,
+          "problem": null
+        },
+        {
+          "n": "V-3",
+          "ok": true,
+          "exit": 0,
+          "secs": null,
+          "reused": true,
+          "problem": null
+        },
+        {
+          "n": "V-4",
+          "ok": false,
+          "exit": 1,
+          "secs": null,
+          "reused": true,
+          "problem": "failed in this round (P02-Payrol-Approval-Flows); see evidence"
+        },
+        {
+          "n": "V-5",
+          "ok": true,
+          "exit": 0,
+          "secs": null,
+          "reused": true,
+          "problem": null
+        },
+        {
+          "n": "V-6",
+          "ok": true,
+          "exit": 0,
+          "secs": null,
+          "reused": true,
+          "problem": null
+        }
+      ]
+    },
+    {
+      "spec": "P01-Payrol-Foundation",
+      "recorded_utc": "2026-10-27T21:58:10.0830000+00:00",
+      "ok": false,
+      "stable": false,
+      "wall_seconds": 2133.4,
+      "has_code_fingerprint": false,
+      "scope_declared": true,
+      "rows": [
+        {
+          "n": "V-1",
+          "ok": true,
+          "exit": 0,
+          "secs": 512.1,
+          "reused": null,
+          "problem": null
+        },
+        {
+          "n": "V-2",
+          "ok": true,
+          "exit": 0,
+          "secs": 35.1,
+          "reused": null,
+          "problem": null
+        },
+        {
+          "n": "V-3",
+          "ok": true,
+          "exit": 0,
+          "secs": 274.1,
+          "reused": null,
+          "problem": null
+        },
+        {
+          "n": "V-4",
+          "ok": false,
+          "exit": 1,
+          "secs": 1086.6,
+          "reused": null,
+          "problem": null
+        },
+        {
+          "n": "V-5",
+          "ok": true,
+          "exit": 0,
+          "secs": 69.8,
+          "reused": null,
+          "problem": null
+        },
+        {
+          "n": "V-6",
+          "ok": true,
+          "exit": 0,
+          "secs": 69.1,
+          "reused": null,
+          "problem": null
+        }
+      ]
+    },
+    {
+      "spec": "P01-Payrol-Foundation",
+      "recorded_utc": "2026-10-27T22:27:16.7300000+00:00",
+      "ok": true,
+      "stable": true,
+      "wall_seconds": 1720.8,
+      "has_code_fingerprint": false,
+      "scope_declared": true,
+      "rows": [
+        {
+          "n": "V-1",
+          "ok": true,
+          "exit": 0,
+          "secs": 573.0,
+          "reused": null,
+          "problem": null
+        },
+        {
+          "n": "V-2",
+          "ok": true,
+          "exit": 0,
+          "secs": 32.0,
+          "reused": null,
+          "problem": null
+        },
+        {
+          "n": "V-3",
+          "ok": true,
+          "exit": 0,
+          "secs": 131.3,
+          "reused": null,
+          "problem": null
+        },
+        {
+          "n": "V-4",
+          "ok": true,
+          "exit": 0,
+          "secs": 881.2,
+          "reused": null,
+          "problem": null
+        },
+        {
+          "n": "V-5",
+          "ok": true,
+          "exit": 0,
+          "secs": 20.2,
+          "reused": null,
+          "problem": null
+        },
+        {
+          "n": "V-6",
+          "ok": true,
+          "exit": 0,
+          "secs": 13.9,
+          "reused": null,
+          "problem": null
+        }
+      ]
+    },
+    {
+      "spec": "P02-Payrol-Approval-Flows",
+      "recorded_utc": "2026-10-27T22:41:02.9840000+00:00",
+      "ok": false,
+      "stable": false,
+      "wall_seconds": 738.9,
+      "has_code_fingerprint": false,
+      "scope_declared": true,
+      "rows": [
+        {
+          "n": "V-1",
+          "ok": true,
+          "exit": 0,
+          "secs": 35.8,
+          "reused": null,
+          "problem": null
+        },
+        {
+          "n": "V-2",
+          "ok": true,
+          "exit": 0,
+          "secs": 5.5,
+          "reused": null,
+          "problem": null
+        },
+        {
+          "n": "V-3",
+          "ok": true,
+          "exit": 0,
+          "secs": 631.6,
+          "reused": null,
+          "problem": null
+        },
+        {
+          "n": "V-4",
+          "ok": false,
+          "exit": 1,
+          "secs": 2.6,
+          "reused": null,
+          "problem": null
+        },
+        {
+          "n": "V-5",
+          "ok": true,
+          "exit": 0,
+          "secs": 3.4,
+          "reused": null,
+          "problem": null
+        }
+      ]
+    },
+    {
+      "spec": "P02-Payrol-Approval-Flows",
+      "recorded_utc": "2026-10-28T00:31:58.1770000+00:00",
+      "ok": true,
+      "stable": true,
+      "wall_seconds": 653.4,
+      "has_code_fingerprint": false,
+      "scope_declared": true,
+      "rows": [
+        {
+          "n": "V-1",
+          "ok": true,
+          "exit": 0,
+          "secs": 74.6,
+          "reused": null,
+          "problem": null
+        },
+        {
+          "n": "V-2",
+          "ok": true,
+          "exit": 0,
+          "secs": 11.1,
+          "reused": null,
+          "problem": null
+        },
+        {
+          "n": "V-3",
+          "ok": true,
+          "exit": 0,
+          "secs": 470.0,
+          "reused": null,
+          "problem": null
+        },
+        {
+          "n": "V-4",
+          "ok": true,
+          "exit": 0,
+          "secs": 1.3,
+          "reused": null,
+          "problem": null
+        },
+        {
+          "n": "V-5",
+          "ok": true,
+          "exit": 0,
+          "secs": 4.1,
+          "reused": null,
+          "problem": null
+        }
+      ]
+    },
+    {
+      "spec": "P03-Payrol-Employees-Contracts",
+      "recorded_utc": "2026-10-28T00:55:12.2980000+00:00",
+      "ok": false,
+      "stable": false,
+      "wall_seconds": 1307.2,
+      "has_code_fingerprint": false,
+      "scope_declared": true,
+      "rows": [
+        {
+          "n": "V-1",
+          "ok": false,
+          "exit": 4294967295,
+          "secs": 94.5,
+          "reused": null,
+          "problem": null
+        },
+        {
+          "n": "V-2",
+          "ok": true,
+          "exit": 0,
+          "secs": 407.7,
+          "reused": null,
+          "problem": null
+        },
+        {
+          "n": "V-3",
+          "ok": false,
+          "exit": 1,
+          "secs": 43.6,
+          "reused": null,
+          "problem": null
+        },
+        {
+          "n": "V-4",
+          "ok": false,
+          "exit": 1,
+          "secs": 676.1,
+          "reused": null,
+          "problem": null
+        },
+        {
+          "n": "V-5",
+          "ok": true,
+          "exit": 0,
+          "secs": 18.6,
+          "reused": null,
+          "problem": null
+        },
+        {
+          "n": "V-6",
+          "ok": true,
+          "exit": 0,
+          "secs": 10.1,
+          "reused": null,
+          "problem": null
+        },
+        {
+          "n": "V-7",
+          "ok": true,
+          "exit": 0,
+          "secs": 3.1,
+          "reused": null,
+          "problem": null
+        },
+        {
+          "n": "V-8",
+          "ok": true,
+          "exit": 0,
+          "secs": 3.4,
+          "reused": null,
+          "problem": null
+        }
+      ]
+    },
+    {
+      "spec": "P02-Payrol-Approval-Flows",
+      "recorded_utc": "2026-10-28T01:07:17.4660000+00:00",
+      "ok": false,
+      "stable": false,
+      "wall_seconds": 510.8,
+      "has_code_fingerprint": false,
+      "scope_declared": true,
+      "rows": [
+        {
+          "n": "V-1",
+          "ok": true,
+          "exit": 0,
+          "secs": 58.1,
+          "reused": null,
+          "problem": null
+        },
+        {
+          "n": "V-2",
+          "ok": true,
+          "exit": 0,
+          "secs": 5.0,
+          "reused": null,
+          "problem": null
+        },
+        {
+          "n": "V-3",
+          "ok": true,
+          "exit": 0,
+          "secs": 399.4,
+          "reused": null,
+          "problem": null
+        },
+        {
+          "n": "V-4",
+          "ok": true,
+          "exit": 0,
+          "secs": 0.8,
+          "reused": null,
+          "problem": null
+        },
+        {
+          "n": "V-5",
+          "ok": true,
+          "exit": 0,
+          "secs": 1.1,
+          "reused": null,
+          "problem": null
+        }
+      ]
+    },
+    {
+      "spec": "P02-Payrol-Approval-Flows",
+      "recorded_utc": "2026-10-28T01:15:51.2210000+00:00",
+      "ok": false,
+      "stable": false,
+      "wall_seconds": 502.3,
+      "has_code_fingerprint": false,
+      "scope_declared": true,
+      "rows": [
+        {
+          "n": "V-1",
+          "ok": true,
+          "exit": 0,
+          "secs": 25.1,
+          "reused": null,
+          "problem": null
+        },
+        {
+          "n": "V-2",
+          "ok": true,
+          "exit": 0,
+          "secs": 2.3,
+          "reused": null,
+          "problem": null
+        },
+        {
+          "n": "V-3",
+          "ok": true,
+          "exit": 0,
+          "secs": 433.8,
+          "reused": null,
+          "problem": null
+        },
+        {
+          "n": "V-4",
+          "ok": true,
+          "exit": 0,
+          "secs": 1.8,
+          "reused": null,
+          "problem": null
+        },
+        {
+          "n": "V-5",
+          "ok": true,
+          "exit": 0,
+          "secs": 2.4,
+          "reused": null,
+          "problem": null
+        }
+      ]
+    },
+    {
+      "spec": "P02-Payrol-Approval-Flows",
+      "recorded_utc": "2026-10-28T01:23:47.5400000+00:00",
+      "ok": false,
+      "stable": false,
+      "wall_seconds": 465.3,
+      "has_code_fingerprint": false,
+      "scope_declared": true,
+      "rows": [
+        {
+          "n": "V-1",
+          "ok": true,
+          "exit": 0,
+          "secs": 25.1,
+          "reused": null,
+          "problem": null
+        },
+        {
+          "n": "V-2",
+          "ok": true,
+          "exit": 0,
+          "secs": 3.2,
+          "reused": null,
+          "problem": null
+        },
+        {
+          "n": "V-3",
+          "ok": true,
+          "exit": 0,
+          "secs": 405.5,
+          "reused": null,
+          "problem": null
+        },
+        {
+          "n": "V-4",
+          "ok": true,
+          "exit": 0,
+          "secs": 1.2,
+          "reused": null,
+          "problem": null
+        },
+        {
+          "n": "V-5",
+          "ok": true,
+          "exit": 0,
+          "secs": 2.8,
+          "reused": null,
+          "problem": null
+        }
+      ]
+    },
+    {
+      "spec": "P03-Payrol-Employees-Contracts",
+      "recorded_utc": "2026-10-28T02:25:16.0470000+00:00",
+      "ok": false,
+      "stable": false,
+      "wall_seconds": 2125.3,
+      "has_code_fingerprint": false,
+      "scope_declared": true,
+      "rows": [
+        {
+          "n": "V-1",
+          "ok": false,
+          "exit": 1,
+          "secs": 787.7,
+          "reused": null,
+          "problem": null
+        },
+        {
+          "n": "V-2",
+          "ok": true,
+          "exit": 0,
+          "secs": 460.5,
+          "reused": null,
+          "problem": null
+        },
+        {
+          "n": "V-3",
+          "ok": false,
+          "exit": 1,
+          "secs": 49.7,
+          "reused": null,
+          "problem": null
+        },
+        {
+          "n": "V-4",
+          "ok": false,
+          "exit": 1,
+          "secs": 723.1,
+          "reused": null,
+          "problem": null
+        },
+        {
+          "n": "V-5",
+          "ok": true,
+          "exit": 0,
+          "secs": 40.9,
+          "reused": null,
+          "problem": null
+        },
+        {
+          "n": "V-6",
+          "ok": true,
+          "exit": 0,
+          "secs": 14.9,
+          "reused": null,
+          "problem": null
+        },
+        {
+          "n": "V-7",
+          "ok": true,
+          "exit": 0,
+          "secs": 4.4,
+          "reused": null,
+          "problem": null
+        },
+        {
+          "n": "V-8",
+          "ok": true,
+          "exit": 0,
+          "secs": 3.7,
+          "reused": null,
+          "problem": null
+        }
+      ]
+    },
+    {
+      "spec": "P03-Payrol-Employees-Contracts",
+      "recorded_utc": "2026-10-28T02:56:30.9660000+00:00",
+      "ok": false,
+      "stable": false,
+      "wall_seconds": 1792.7,
+      "has_code_fingerprint": false,
+      "scope_declared": true,
+      "rows": [
+        {
+          "n": "V-1",
+          "ok": false,
+          "exit": 1,
+          "secs": 542.8,
+          "reused": null,
+          "problem": null
+        },
+        {
+          "n": "V-2",
+          "ok": true,
+          "exit": 0,
+          "secs": 577.5,
+          "reused": null,
+          "problem": null
+        },
+        {
+          "n": "V-3",
+          "ok": false,
+          "exit": 1,
+          "secs": 40.9,
+          "reused": null,
+          "problem": null
+        },
+        {
+          "n": "V-4",
+          "ok": false,
+          "exit": 1,
+          "secs": 530.5,
+          "reused": null,
+          "problem": null
+        },
+        {
+          "n": "V-5",
+          "ok": true,
+          "exit": 0,
+          "secs": 35.0,
+          "reused": null,
+          "problem": null
+        },
+        {
+          "n": "V-6",
+          "ok": true,
+          "exit": 0,
+          "secs": 14.3,
+          "reused": null,
+          "problem": null
+        },
+        {
+          "n": "V-7",
+          "ok": true,
+          "exit": 0,
+          "secs": 4.5,
+          "reused": null,
+          "problem": null
+        },
+        {
+          "n": "V-8",
+          "ok": true,
+          "exit": 0,
+          "secs": 3.8,
+          "reused": null,
+          "problem": null
+        }
+      ]
+    }
+  ]
+}

@@ -17,7 +17,7 @@ Two rule types, from charter.md's Checkable rules table:
               limitation rather than silently under- or over-reporting.)
 
 Usage:
-    python check_charter.py [project-root]   # defaults to cwd
+    python check_charter.py [project-root] [--rule-prefix PREFIX]
 
 Exit code 0 = no violations (or no checkable rules — an empty table is valid).
 Exit code 1 = violations found.
@@ -129,21 +129,40 @@ def expand_glob(root: Path, glob_pattern: str):
     return sorted(files)
 
 
-def check_rule(root: Path, rule: dict):
+def check_rule(root: Path, rule: dict, glob_cache=None, text_cache=None):
     """Returns a list of violation strings for one rule; empty = passes."""
     try:
         pattern_re = re.compile(rule['pattern'])
     except re.error as e:
         return [f"rule '{rule['rule']}': invalid regex pattern {rule['pattern']!r} ({e})"]
 
-    files = expand_glob(root, rule['glob'])
+    glob_cache = {} if glob_cache is None else glob_cache
+    text_cache = {} if text_cache is None else text_cache
+    if rule['glob'] not in glob_cache:
+        glob_cache[rule['glob']] = expand_glob(root, rule['glob'])
+    files = glob_cache[rule['glob']]
+
+    def read_file(f):
+        if f not in text_cache:
+            try:
+                text = f.read_text(encoding='utf-8', errors='ignore')
+            except OSError:
+                text = None
+            # Large generated/vendor trees must not make the checker retain
+            # unbounded amounts of file content in memory.
+            size = len(text) * 4 if text is not None else 0
+            used = text_cache.get(None, 0)
+            if used + size <= 64 * 1024 * 1024:
+                text_cache[f] = text
+                text_cache[None] = used + size
+            return text
+        return text_cache[f]
     violations = []
 
     if rule['type'] == 'forbidden':
         for f in files:
-            try:
-                text = f.read_text(encoding='utf-8', errors='ignore')
-            except OSError:
+            text = read_file(f)
+            if text is None:
                 continue
             for lineno, line in enumerate(text.splitlines(), 1):
                 if pattern_re.search(line):
@@ -158,9 +177,8 @@ def check_rule(root: Path, rule: dict):
         return [f"'{rule['rule']}' — required pattern, but no files matched glob {rule['glob']!r}"]
     found = False
     for f in files:
-        try:
-            text = f.read_text(encoding='utf-8', errors='ignore')
-        except OSError:
+        text = read_file(f)
+        if text is None:
             continue
         if pattern_re.search(text):
             found = True
@@ -175,7 +193,15 @@ def check_rule(root: Path, rule: dict):
 
 def main():
     args = sys.argv[1:]
-    if len(args) > 1:
+    prefix = None
+    if '--rule-prefix' in args:
+        idx = args.index('--rule-prefix')
+        if idx + 1 >= len(args) or not args[idx + 1].strip():
+            print('Missing value for --rule-prefix')
+            sys.exit(2)
+        prefix = args[idx + 1].casefold()
+        args = args[:idx] + args[idx + 2:]
+    if len(args) > 1 or any(a.startswith('--') for a in args):
         print(__doc__)
         sys.exit(2)
 
@@ -191,6 +217,11 @@ def main():
 
     text = charter_path.read_text(encoding='utf-8')
     rules = parse_checkable_rules(text)
+    if prefix is not None:
+        rules = [r for r in rules if r['rule'].casefold().startswith(prefix)]
+        if not rules:
+            print('No checkable rules match --rule-prefix; nothing was checked.')
+            sys.exit(2)
 
     print(f"aidd charter check — {charter_path}")
     print("=" * 60)
@@ -200,8 +231,9 @@ def main():
         sys.exit(0)
 
     all_violations = []
+    glob_cache, text_cache = {}, {}
     for rule in rules:
-        all_violations.extend(check_rule(root, rule))
+        all_violations.extend(check_rule(root, rule, glob_cache, text_cache))
 
     if not all_violations:
         print(f"{len(rules)} rule(s) checked, no violations.")

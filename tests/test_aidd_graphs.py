@@ -31,12 +31,13 @@ def _w(p, text="x"):
 def test_charter_parsing_tolerant(tmp_path):
     _w(tmp_path / "charter.md", CHARTER)
     reg = {e["name"]: e for e in G.load_registry(tmp_path)}
-    assert set(reg) == {"db", "code"}
+    assert set(reg) == {"db", "code-graphify"}
     assert reg["db"]["kind"] == "db" and reg["db"]["refresh"] == "builtin:sql"
     assert reg["db"]["watch"] == ["eDoc/supabase/migrations/**"]
     assert reg["db"]["source"] == "charter"
     assert reg["db"]["output"].endswith(".aidd/graphs/db.json") and Path(reg["db"]["output"]).is_absolute()
-    assert reg["code"]["watch"] == ["src/**", "lib/**/*.py"] and reg["code"]["refresh"] == ""
+    assert reg["code-graphify"]["watch"] == ["src/**", "lib/**/*.py"] and reg["code-graphify"]["refresh"] == ""
+    assert reg["code-graphify"]["renamed_from"] == "code"
 
 
 def test_missing_charter_and_empty(tmp_path):
@@ -50,21 +51,23 @@ def test_autodetect_and_charter_wins(tmp_path):
     _w(tmp_path / "db" / "migrations" / "001.sql", "create table t(id int);")
     _w(tmp_path / "specs" / "index.toon", "")
     reg = {e["name"]: e for e in G.load_registry(tmp_path)}
-    assert set(reg) == {"code", "db", "spec"}
+    assert set(reg) == {"code-graphify", "db", "db-schema", "db-dml", "spec"}
     assert reg["db"]["refresh"] == "builtin:sql" and reg["db"]["watch"] == ["db/migrations/**"]
     assert reg["db"]["source"] == "auto"
     _w(tmp_path / "charter.md", "## Graphs\n| Name | Kind | Output | Refresh | Watch |\n|--|--|--|--|--|\n| db | db | x/db.json | echo hi | a/** |\n")
     reg = {e["name"]: e for e in G.load_registry(tmp_path)}
     assert reg["db"]["source"] == "charter" and reg["db"]["refresh"] == "echo hi"
-    assert reg["code"]["source"] == "auto"
+    assert reg["code-graphify"]["source"] == "auto"
+    assert reg["db-schema"]["refresh"] == "builtin:sql-schema"
+    assert reg["db-dml"]["refresh"] == "builtin:sql-dml"
 
 
 def test_match_watch_globs(tmp_path):
     _w(tmp_path / "charter.md", CHARTER)
     assert G.match_watch(tmp_path, "eDoc/supabase/migrations/a/b/001.sql") == ["db"]
     assert G.match_watch(tmp_path, "eDoc\\supabase\\migrations\\001.sql") == ["db"]
-    assert G.match_watch(tmp_path, str(tmp_path / "src" / "x" / "y.ts")) == ["code"]
-    assert G.match_watch(tmp_path, "lib/a/b/c.py") == ["code"]
+    assert G.match_watch(tmp_path, str(tmp_path / "src" / "x" / "y.ts")) == ["code-graphify"]
+    assert G.match_watch(tmp_path, "lib/a/b/c.py") == ["code-graphify"]
     assert G.match_watch(tmp_path, "lib/a/b/c.txt") == []
     assert G.match_watch(tmp_path, "src/node_modules/x.js") == []
     assert G.match_watch(tmp_path, "src/.git/x") == []
@@ -81,19 +84,27 @@ def test_status_states(tmp_path):
     _w(tmp_path / "charter.md", CHARTER + "")
     _w(tmp_path / "eDoc" / "supabase" / "migrations" / "001.sql")
     st = {r["name"]: r for r in G.status(tmp_path)}
-    assert st["db"]["state"] == "missing" and st["code"]["state"] == "missing"
+    assert st["db"]["state"] == "missing" and st["code-graphify"]["state"] == "missing"
     out = _w(tmp_path / ".aidd" / "graphs" / "db.json", "{}")
     now = time.time()
-    os.utime(tmp_path / "eDoc/supabase/migrations/001.sql", (now - 100, now - 100))
+    migration = tmp_path / "eDoc/supabase/migrations/001.sql"
+    os.utime(migration, (now - 100, now - 100))
     os.utime(out, (now - 10, now - 10))
+    entry = {e["name"]: e for e in G.load_registry(tmp_path)}["db"]
+    hashed = G._inputs_hashes(tmp_path, [entry])["db"]
+    G._write_stamp(tmp_path, entry, hashed)
     st = {r["name"]: r for r in G.status(tmp_path)}
     assert st["db"]["state"] == "fresh" and st["db"]["age_s"] >= 9
-    os.utime(tmp_path / "eDoc/supabase/migrations/001.sql", (now, now))
-    os.utime(out, (now - 50, now - 50))
+    os.utime(migration, (now, now))
+    G._SHA_MEMO.clear()  # each CLI invocation starts with a fresh process cache
+    assert {r["name"]: r for r in G.status(tmp_path)}["db"]["state"] == "fresh"
+    migration.write_text("changed SQL content", encoding="utf-8")
+    os.utime(migration, (now - 100, now - 100))
+    G._SHA_MEMO.clear()
     assert {r["name"]: r for r in G.status(tmp_path)}["db"]["state"] == "stale"
     # read-only graph: just exists/missing
     _w(tmp_path / "graphify-out" / "graph.json", "{}")
-    assert {r["name"]: r for r in G.status(tmp_path)}["code"]["state"] == "no-refresh"
+    assert {r["name"]: r for r in G.status(tmp_path)}["code-graphify"]["state"] == "no-refresh"
 
 
 def test_status_running(tmp_path, monkeypatch):
@@ -153,7 +164,7 @@ def test_refresh_lock_and_unknown(tmp_path):
 
 def test_refresh_readonly(tmp_path):
     _w(tmp_path / "graphify-out" / "graph.json", "{}")
-    r = G.refresh(tmp_path, "code")
+    r = G.refresh(tmp_path, "code-graphify")
     assert not r["started"] and "read-only" in r["reason"]
 
 
@@ -184,23 +195,23 @@ def _graph(tmp_path, key):
 def test_show_edges_and_links(tmp_path):
     for key in ("edges", "links"):
         _graph(tmp_path, key)
-        out = G.show(tmp_path, "code", "ORDERS")
+        out = G.show(tmp_path, "code-graphify", "ORDERS")
         assert out.splitlines()[0].startswith("orders  [table]")
         assert "-> has_column: orders.total" in out and "-> references: customers" in out
         assert "source: m/001.sql:L3" in out
-        out = G.show(tmp_path, "code", "total")
+        out = G.show(tmp_path, "code-graphify", "total")
         assert "orders.total" in out and "<- has_column: orders" in out and "data_type: numeric" in out
 
 
 def test_show_limit_messages(tmp_path):
     _graph(tmp_path, "edges")
-    out = G.show(tmp_path, "code", "orders", limit=3)
+    out = G.show(tmp_path, "code-graphify", "orders", limit=3)
     assert len(out.splitlines()) == 3 and "more" in out.splitlines()[-1]
-    assert "No node matching" in G.show(tmp_path, "code", "zzz")
+    assert "No node matching" in G.show(tmp_path, "code-graphify", "zzz")
     assert "No graph named" in G.show(tmp_path, "nope", "x")
     (tmp_path / "graphify-out" / "graph.json").unlink()
     _w(tmp_path / "charter.md", "## Graphs\n| Name | Kind | Output | Refresh | Watch |\n|--|--|--|--|--|\n| code | code | graphify-out/graph.json | echo | src/** |\n")
-    assert "aidd graphs refresh code --background" in G.show(tmp_path, "code", "x")
+    assert "aidd graphs refresh code-echo --background" in G.show(tmp_path, "code-echo", "x")
 
 
 def test_show_spec_hint(tmp_path):
@@ -215,6 +226,6 @@ def test_cli_list_status(tmp_path, capsys):
     assert "db" in capsys.readouterr().out
     assert G.main(["--root", str(tmp_path), "status", "--json"]) == 0
     rows = json.loads(capsys.readouterr().out)
-    assert {r["name"] for r in rows} == {"db", "code"}
+    assert {r["name"] for r in rows} == {"db", "code-graphify"}
     assert G.main(["--root", str(tmp_path), "explorer", "nope"]) == 1
     assert G.main(["--root", str(tmp_path)]) == 2

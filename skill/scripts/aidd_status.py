@@ -40,7 +40,9 @@ AIDD_TESTING=1). Answers recorded under 'unknown-session' are accepted. An answe
 is refused. An answer only counts if the user picked the REQUIRED option label of a question that
 offered it: "Approve" (tasks), "Yes, close" (close), "Abandon" (abandon).
 """
+import contextlib
 import hashlib
+import io
 import json
 import os
 import re
@@ -1461,8 +1463,28 @@ def _row_file_id(n, i):
 def _row_ok(code, body, expected):
     m = re.match(r'^\s*contains\s*:\s*(.+?)\s*$', expected or '', re.I)
     if m:
-        return m.group(1) in body
+        return code == 0 and m.group(1) in body
     return code == 0
+
+
+def _cached_pass_valid(data, result, expected):
+    """Re-evaluate old evidence against today's PASS rules before reuse."""
+    try:
+        if result.get('ok') is not True or result.get('exit') != 0:
+            return False
+        text = data.decode('utf-8', 'replace')
+        lines = text.splitlines()
+        if not lines or not re.match(r'^#\s.*\|\s*exit\s+0\s*\|', lines[0]):
+            return False
+        body = '\n'.join(lines[1:])
+        return _row_ok(0, body, expected) and rules.verify_output_problem(text, expected) is None
+    except Exception:
+        return False
+
+
+def _verification_key(value):
+    # Spaces inside quoted shell arguments are significant.
+    return str(value or '').strip()
 
 
 def _reusable_rows(d, prior, code_fp, full):
@@ -1477,6 +1499,10 @@ def _reusable_rows(d, prior, code_fp, full):
         for r in prior.get('results') or []:
             if not isinstance(r, dict) or r.get('ok') is not True or 'expected' not in r:
                 continue
+            # A row previously verified with explicit inputs cannot be reused
+            # under the broader legacy contract after Inputs are removed.
+            if r.get('input_globs'):
+                continue
             want = str(r.get('sha1') or '').lower()
             p = (base / str(r.get('evidence') or '')).resolve()
             try:
@@ -1484,10 +1510,41 @@ def _reusable_rows(d, prior, code_fp, full):
                 data = p.read_bytes()
             except Exception:
                 continue
-            if len(want) >= 12 and hashlib.sha1(data).hexdigest().startswith(want):
-                out[(rules._norm_cell(r.get('cmd')), rules._norm_cell(r.get('expected')))] = (data, r)
+            if (len(want) >= 12 and hashlib.sha1(data).hexdigest().startswith(want)
+                    and _cached_pass_valid(data, r, r.get('expected'))):
+                out[(_verification_key(r.get('cmd')), _verification_key(r.get('expected')))] = (data, r)
     except Exception:
         return {}
+    return out
+
+
+def _reusable_input_rows(d, prior, full):
+    """Read intact passing evidence carrying a per-row input fingerprint.
+
+    The aggregate run need not have passed: a row is reusable only when it
+    proved its own inputs stable, and the caller rechecks those inputs now.
+    """
+    out = {}
+    if full or not prior:
+        return out
+    base = d.resolve()
+    for row in prior.get('results') or []:
+        if not isinstance(row, dict) or row.get('ok') is not True:
+            continue
+        inputs, fp, sha = row.get('input_globs'), row.get('input_fp'), row.get('sha1')
+        if not isinstance(inputs, list) or not inputs or not fp or not sha:
+            continue
+        try:
+            path = (base / str(row.get('evidence') or '')).resolve()
+            path.relative_to(base)
+            data = path.read_bytes()
+            if hashlib.sha1(data).hexdigest() != sha or not _cached_pass_valid(data, row, row.get('expected')):
+                continue
+            key = (_verification_key(row.get('cmd')), _verification_key(row.get('expected')),
+                   tuple(inputs), fp)
+            out[key] = (data, row)
+        except (OSError, ValueError):
+            continue
     return out
 
 
@@ -1519,9 +1576,9 @@ def _round_lookup(root, entries, cmd, expected, st_all):
     code in this round, so it is never run again (a db_verify run builds a whole database)."""
     try:
         ttl = int(float(os.environ.get('AIDD_VERIFY_ROUND_TTL', '') or ROUND_TTL_DEFAULT))
-        key = (rules._norm_cell(cmd), rules._norm_cell(expected))
+        key = (_verification_key(cmd), _verification_key(expected))
         for e in reversed(entries):
-            if (rules._norm_cell(e.get('cmd')), rules._norm_cell(e.get('expected'))) != key:
+            if (_verification_key(e.get('cmd')), _verification_key(e.get('expected'))) != key:
                 continue
             if time.time() - float(e.get('ts') or 0) > ttl:
                 continue
@@ -1529,7 +1586,7 @@ def _round_lookup(root, entries, cmd, expected, st_all):
                 continue
             p = _round_paths(root)[1] / f"{e.get('sha1')}.txt"
             data = p.read_bytes()
-            if hashlib.sha1(data).hexdigest() == e.get('sha1'):
+            if hashlib.sha1(data).hexdigest() == e.get('sha1') and _cached_pass_valid(data, e, expected):
                 return data, e
     except Exception:
         pass
@@ -1586,7 +1643,55 @@ def cmd_verify_many(spec_args, full=False, bail=False):
     return worst
 
 
-def cmd_verify(spec_arg, full=False, bail=False):
+def _wave_rows(tasks_text, rows, wave):
+    """Select every row explicitly mapped to tasks in the requested wave.
+
+    Covers must name task IDs (T-01, T-02, ...); this makes coverage auditable
+    and fails closed when a task has no verification or the wave is ambiguous.
+    """
+    table = rules._table(rules._clean(tasks_text), r'waves\b')
+    if not table:
+        raise ValueError('tasks.md has no Waves table')
+    matches = [r for r in table[1] if len(r) >= 2 and r[0].strip().lower() == str(wave).strip().lower()]
+    if len(matches) != 1:
+        raise ValueError('wave missing or duplicated in Waves table')
+    task_re = re.compile(r'\bT-\d+\b', re.I)
+    known = {x.upper() for row in table[1] if len(row) >= 2 for x in task_re.findall(row[1])}
+    tasks = {x.upper() for x in task_re.findall(matches[0][1])}
+    if not tasks:
+        raise ValueError('wave has no task IDs')
+    selected = []
+    covered = set()
+    for row in rows:
+        referenced = {x.upper() for x in task_re.findall(row.get('covers') or '')}
+        unknown = referenced - known
+        if unknown:
+            raise ValueError('verification rows reference unknown wave tasks: ' + ', '.join(sorted(unknown)))
+        hits = referenced & tasks
+        if hits:
+            selected.append(row)
+            covered.update(hits)
+    missing = tasks - covered
+    if missing:
+        raise ValueError('wave tasks missing verification rows: ' + ', '.join(sorted(missing)))
+    ids = [_row_file_id(row.get('n'), i) for i, row in enumerate(selected, 1)]
+    if len(ids) != len(set(ids)):
+        raise ValueError('wave verification row IDs collide')
+    return selected
+
+
+def _latest_wave_run(root, spec, wave):
+    """Read the last separate wave event; it is never a spec close event."""
+    try:
+        found = [e for e in ev.events(root, kind='wave_verify_run')
+                 if str(e['detail'].get('spec')) == spec
+                 and str(e['detail'].get('wave')) == str(wave)]
+        return max(found, key=lambda e: e['ts'])['detail'] if found else None
+    except Exception:
+        return None
+
+
+def cmd_verify(spec_arg, full=False, bail=False, wave=None, result_sink=None):
     """aidd:FR-205 aidd:AC-209 aidd:AC-216 aidd:AC-218 `aidd verify <spec>`: run every `## Verification` row
     (shell, project root, AIDD_VERIFY_TIMEOUT per row), save `evidence/verify-<n>.txt` (header line
     `# <cmd> | exit <code> | <ISO ts>` + combined output), mark zero-test / too-short output failed,
@@ -1606,6 +1711,25 @@ def cmd_verify(spec_arg, full=False, bail=False):
             print(f"FAIL {v['rule']} {v['message']} → {v['fix']}")
         print(f'Refused: {d.name}/spec.md has no runnable "## Verification" row - nothing was executed.')
         return 1
+    if wave is not None:
+        if not re.fullmatch(r'[A-Za-z0-9_-]+', str(wave)):
+            print('Refused: invalid wave ID; nothing was executed.')
+            return 1
+        if bail:
+            print('Refused: --bail cannot verify a complete wave.')
+            return 1
+        try:
+            rows = _wave_rows(_read(d / 'tasks.md'), rows, wave)
+        except ValueError as e:
+            print(f'Refused: {e}; nothing was executed.')
+            return 1
+    # Validate the complete selected manifest before starting any expensive
+    # command. Each row is fingerprinted again immediately before execution.
+    for row in rows:
+        inputs = row.get('inputs') or []
+        if inputs and not rules.row_input_fingerprint(root, inputs):
+            print(f"Refused: row {row.get('n') or '?'} has missing or invalid Inputs; nothing was executed.")
+            return 1
     evid = d / 'evidence'
     try:
         evid.mkdir(parents=True, exist_ok=True)
@@ -1620,11 +1744,18 @@ def cmd_verify(spec_arg, full=False, bail=False):
     scope = rules.verification_scope(spec_text, _read(d / 'tasks.md'))   # [] = whole tree; else only these files count
     gen = rules.verification_generated(spec_text)             # files the commands rewrite on purpose (outputs)
     st_start = ev.code_state(root, scope=scope)
-    prior = ev.latest_verify_run(root, d.name)
+    if st_start is None:
+        print('Refused: cannot fingerprint the verification inputs; no verification commands were run. '
+              'Check the scope and fingerprint budget before retrying.', flush=True)
+        return 1
+    prior = (_latest_wave_run(root, d.name, wave) if wave is not None else None) or ev.latest_verify_run(root, d.name)
     pexcl = (list(prior.get('code_generated') or []) + list(prior.get('code_changed') or [])) if prior else []
     prior_fp = ev.fingerprint_of(st_start, scope, exclude=pexcl) if (prior and st_start) else None
     reuse = _reusable_rows(d, prior, prior_fp, full)        # read BEFORE any evidence file is rewritten
-    round_on = _round_enabled(full)
+    input_reuse = _reusable_input_rows(d, prior, full)
+    # Rows with explicit Inputs use their own fingerprinted cache; there is no
+    # reason to scan the entire tree for a round cache they cannot consume.
+    round_on = _round_enabled(full) and any(not r.get('inputs') for r in rows)
     round_entries = _round_load(root) if round_on else []
     # whole tree: the round cache key ignores Scope; the default 8 s budget is too short for a large dirty tree
     # (the state came back None and the cache silently never worked), so it gets a generous one.
@@ -1637,10 +1768,15 @@ def cmd_verify(spec_arg, full=False, bail=False):
         cmd, expected = r['cmd'], (r.get('expected') or 'exit 0')
         n = r.get('n') or str(i)
         fid = _row_file_id(n, i)
-        rel = f'evidence/verify-{fid}.txt'
+        rel = (f'evidence/verify-wave-{wave}-{fid}.txt' if wave is not None
+               else f'evidence/verify-{fid}.txt')
         final = d / rel
         tmp = evid / f'.verify-{fid}.{os.getpid()}.out'
-        hit = reuse.get((rules._norm_cell(cmd), rules._norm_cell(expected)))
+        inputs = r.get('inputs') or []
+        input_fp = rules.row_input_fingerprint(root, inputs) if inputs else None
+        key = (_verification_key(cmd), _verification_key(expected))
+        hit = (input_reuse.get((*key, tuple(inputs), input_fp)) if inputs and input_fp
+               else reuse.get(key) if not inputs else None)
         if hit is not None:
             try:
                 data = hit[0]
@@ -1649,11 +1785,13 @@ def cmd_verify(spec_arg, full=False, bail=False):
                 one_line = re.sub(r'[\r\n]+', ' ', cmd).strip()
                 res = {'n': str(n), 'cmd': cmd, 'expected': expected, 'exit': hit[1].get('exit', 0), 'ok': True,
                        'evidence': rel, 'sha1': hashlib.sha1(data).hexdigest(), 'reused': True}
+                if inputs:
+                    res.update(input_globs=inputs, input_fp=input_fp)
                 print(f'REUSED row {n}: {one_line[:100]} (passed earlier on the same code) → {rel}', flush=True)
                 return res
             except Exception:
                 pass                                         # could not copy the evidence: run the row for real
-        rhit = _round_lookup(root, round_entries, cmd, expected, st_all_start) if (round_on and st_all_start) else None
+        rhit = _round_lookup(root, round_entries, cmd, expected, st_all_start) if (not inputs and round_on and st_all_start) else None
         if rhit is not None:
             try:
                 data = rhit[0]
@@ -1670,7 +1808,8 @@ def cmd_verify(spec_arg, full=False, bail=False):
                 return res
             except Exception:
                 pass
-        problem = rules.verification_command_problem(cmd, expected, root)
+        problem = ('declared Inputs cannot be fingerprinted' if inputs and not input_fp else
+                   rules.verification_command_problem(cmd, expected, root))
         if problem:
             code, note, body, secs = -1, f'not run: {problem}', '', 0.0
         else:
@@ -1696,6 +1835,10 @@ def cmd_verify(spec_arg, full=False, bail=False):
             bad_out = rules.verify_output_problem(text, expected)
             if bad_out:
                 ok, why = False, bad_out
+        if inputs and ok:
+            end_fp = rules.row_input_fingerprint(root, inputs)
+            if not end_fp or end_fp != input_fp:
+                ok, why = False, 'declared Inputs changed during this check or cannot be fingerprinted'
         sha1 = ''
         try:
             data = text.encode('utf-8')
@@ -1706,6 +1849,8 @@ def cmd_verify(spec_arg, full=False, bail=False):
             ok, why = False, f'evidence file not written ({type(e).__name__})'
         res = {'n': str(n), 'cmd': cmd, 'expected': expected, 'exit': code, 'ok': bool(ok), 'evidence': rel,
                'sha1': sha1, 'secs': secs}
+        if inputs and ok:
+            res.update(input_globs=inputs, input_fp=input_fp)
         if why and not ok:
             res['problem'] = why
         print(f"{'PASS' if ok else 'FAIL'} row {n}: {one_line[:100]} (exit {code}, {secs} s)"
@@ -1720,15 +1865,27 @@ def cmd_verify(spec_arg, full=False, bail=False):
     except Exception:
         jobs = 1
     jobs = max(1, min(jobs, len(rows), 8))
+    indexed_rows = list(enumerate(rows, 1))
+    groups = {}
+    representatives = {}
+    if wave is not None:
+        for i, row in indexed_rows:
+            # Preserve quoted whitespace: commands that only look similar are
+            # not necessarily the same command.
+            key = (row['cmd'].strip(), (row.get('expected') or 'exit 0').strip(),
+                   tuple(row.get('inputs') or []))
+            rep = groups.setdefault(key, (i, row))
+            representatives[i] = rep[0]
+        indexed_rows = list(groups.values())
     t_all = time.monotonic()
     if jobs > 1:
-        print(f'running {len(rows)} row(s) with {jobs} in parallel (Jobs: {jobs})', flush=True)
+        print(f'running {len(indexed_rows)} unique check(s) with {jobs} in parallel (Jobs: {jobs})', flush=True)
         from concurrent.futures import ThreadPoolExecutor
         with ThreadPoolExecutor(max_workers=jobs) as pool:
-            results = list(pool.map(lambda ir: _one(*ir), enumerate(rows, 1)))
+            results = list(pool.map(lambda ir: _one(*ir), indexed_rows))
     else:
         results = []
-        for i, r in enumerate(rows, 1):
+        for i, r in indexed_rows:
             bad = next((x for x in results if not x['ok']), None)
             if bail and bad is not None:
                 # --bail: a row failed, so the rest of this spec is not run (the verification is FAILED anyway and
@@ -1745,6 +1902,29 @@ def cmd_verify(spec_arg, full=False, bail=False):
                                 'problem': why})
                 continue
             results.append(_one(i, r))
+    if wave is not None:
+        by_index = {i: result for (i, _), result in zip(indexed_rows, results)}
+        expanded = []
+        for i, row in enumerate(rows, 1):
+            rep_index = representatives[i]
+            result = dict(by_index[rep_index])
+            result['covers'] = row.get('covers') or ''
+            if i != rep_index:
+                n = row.get('n') or str(i)
+                rel = f'evidence/verify-wave-{wave}-{_row_file_id(n, i)}.txt'
+                result.update(n=str(n), evidence=rel, deduplicated_from=str(by_index[rep_index]['n']), secs=0.0)
+                try:
+                    data = (d / by_index[rep_index]['evidence']).read_bytes()
+                    if hashlib.sha1(data).hexdigest() != by_index[rep_index].get('sha1'):
+                        raise ValueError('source evidence hash mismatch')
+                    (d / rel).write_bytes(data)
+                    result['sha1'] = hashlib.sha1(data).hexdigest()
+                    print(f'DEDUPLICATED row {n}: same check as row {result["deduplicated_from"]} → {rel}', flush=True)
+                except (OSError, ValueError, KeyError) as e:
+                    result.update(ok=False, exit=-1, sha1='', problem=f'cannot copy evidence ({type(e).__name__})')
+                    print(f'FAIL row {n}: {result["problem"]}', flush=True)
+            expanded.append(result)
+        results = expanded
     timed = sorted((x.get('secs') or 0.0, x['n']) for x in results if not x.get('reused'))
     if timed:
         print(f'verify wall time {round(time.monotonic() - t_all, 1)} s; slowest row: {timed[-1][1]} ({timed[-1][0]} s)'
@@ -1760,9 +1940,20 @@ def cmd_verify(spec_arg, full=False, bail=False):
     excl = list(gen) + changed
     code_start = ev.fingerprint_of(st_start, scope, exclude=excl) if st_start else None
     code_end = ev.fingerprint_of(st_end, scope, exclude=excl) if st_end else None
-    stable = (not unexplained) if (st_start and st_end) else (fp_start == fp_end)       # docs may change meanwhile
+    # A missing end snapshot cannot prove stability, even when two fallback
+    # fingerprints happen to be equal (including None == None).
+    stable = bool(st_start and st_end and code_start is not None and code_end is not None and not unexplained)
+    # A row may have passed early in a long batch, then had its own inputs
+    # changed by another process before the batch finished.
+    for result in results:
+        if result.get('ok') and result.get('input_globs'):
+            fp = rules.row_input_fingerprint(root, result['input_globs'])
+            if not fp or fp != result.get('input_fp'):
+                result['ok'] = False
+                result['problem'] = 'declared Inputs changed before verification completed'
+                print(f"FAIL row {result['n']}: {result['problem']}", flush=True)
     all_ok = all(x['ok'] for x in results) and stable
-    if round_on and stable and st_all_start:
+    if round_on and stable and st_all_start and wave is None:
         _round_store(root, round_entries, results, d, st_all_start, ev.code_state(root, budget_s=120, reuse=True), gen)   # st_end's scan
     # code_since: when this exact code state was first verified; lineage: the table hashes verified on it.
     same_code = bool(prior and prior_fp is not None and prior.get('code_fp_end') == prior_fp)
@@ -1770,6 +1961,23 @@ def cmd_verify(spec_arg, full=False, bail=False):
     lineage = None
     if same_code:
         lineage = [x for x in (list(prior.get('verify_lineage') or []) + [prior.get('verify_hash')]) if x][-20:]
+    if wave is not None:
+        # Partial wave evidence must never create the complete-spec verify_run
+        # consumed by the close gate.
+        clean_results = [{k: (ev.redact_secrets(v, limit=500)[0] if isinstance(v, str) else v)
+                          for k, v in result.items()} for result in results]
+        recorded = ev.append(root, sess, 'wave_verify_run', spec=d.name, wave=str(wave),
+                             ok=all_ok, stable=stable, results=clean_results, started=started, verify_hash=vhash,
+                             code_fp_end=code_end, code_generated=gen, code_changed=changed[:200])
+        if not recorded:
+            print('FAIL: wave verification evidence could not be recorded.')
+            return 1
+        if result_sink is not None:
+            result_sink.update(ok=all_ok, stable=stable, results=clean_results, started=started,
+                               verify_hash=vhash, code_fp_end=code_end, code_scope=scope,
+                               code_generated=gen, code_changed=changed[:200])
+        print(f"wave {wave}: {'PASSED' if all_ok else 'FAILED'} ({sum(1 for x in results if x['ok'])}/{len(results)} rows)")
+        return 0 if all_ok else 1
     recorded = ev.append_verify_run(root, sess, d.name, all_ok, vhash, results, started, fp_start, fp_end, stable,
                                     code_fp_start=code_start, code_fp_end=code_end,
                                     code_since=code_since, verify_lineage=lineage, code_scope=scope or None,
@@ -1789,9 +1997,124 @@ def cmd_verify(spec_arg, full=False, bail=False):
     if not recorded:
         print('FAIL the verify_run event could not be recorded (evidence log not writable); close stays refused.')
         return 1
+    if result_sink is not None:
+        clean_results = [{k: (ev.redact_secrets(v, limit=500)[0] if isinstance(v, str) else v)
+                          for k, v in result.items()} for result in results]
+        result_sink.update(ok=all_ok, stable=stable, results=clean_results, started=started,
+                           verify_hash=vhash, code_fp_end=code_end, code_scope=scope,
+                           code_generated=gen, code_changed=changed[:200])
     print(f"verify_run recorded for {d.name}: {'PASSED' if all_ok else 'FAILED'} "
           f"({sum(1 for x in results if x['ok'])}/{len(results)} rows, verify hash {vhash})")
     return 0 if all_ok else 1
+
+
+def _verify_json_error(message, spec=None, wave=None, elapsed=0.0):
+    print(json.dumps({'version': 1, 'status': 'error', 'spec': spec, 'wave': wave,
+                      'reason': message, 'elapsed_seconds': round(elapsed, 3)}, ensure_ascii=False))
+    return 1
+
+
+def _write_redacted_diagnostics(text):
+    for line in text.splitlines():
+        sys.stderr.write(ev.redact_secrets(line)[0] + '\n')
+
+
+def _json_pass_evidence_problem(root, d, spec_text, rows, run):
+    """Revalidate this invocation's evidence immediately before emitting PASS."""
+    try:
+        scope = rules.verification_scope(spec_text, _read(d / 'tasks.md'))
+        if scope != (run.get('code_scope') or []):
+            return 'verification scope changed'
+        state = ev.code_state(root, scope=scope)
+        exclude = list(run.get('code_generated') or []) + list(run.get('code_changed') or [])
+        fingerprint = ev.fingerprint_of(state, scope, exclude=exclude) if state else None
+        if not fingerprint or fingerprint != run.get('code_fp_end'):
+            return 'code fingerprint changed or unavailable'
+        base = d.resolve()
+        for row, result in zip(rows, run['results']):
+            if result.get('ok') is not True:
+                return 'a verification row failed'
+            path = (base / str(result.get('evidence') or '')).resolve(strict=True)
+            path.relative_to(base)
+            data = path.read_bytes()
+            if not result.get('sha1') or hashlib.sha1(data).hexdigest() != result['sha1']:
+                return 'verification evidence missing or changed'
+            if not _cached_pass_valid(data, result, row.get('expected') or 'exit 0'):
+                return 'verification output does not satisfy PASS rules'
+            inputs = row.get('inputs') or []
+            if inputs:
+                if result.get('input_globs') != inputs:
+                    return 'verification input declaration changed'
+                current = rules.row_input_fingerprint(root, inputs)
+                if not current or current != result.get('input_fp'):
+                    return 'verification input fingerprint changed or unavailable'
+        return None
+    except Exception:
+        return 'verification evidence cannot be checked'
+
+
+def cmd_verify_json(spec_arg, full=False, bail=False, wave=None):
+    """Execute once and emit only a machine-readable verdict on stdout."""
+    started_wall, started_clock = time.time(), time.monotonic()
+    diagnostics = io.StringIO()
+    run = {}
+    try:
+        root = ev.find_root()
+        d = _resolve_spec(spec_arg, root)
+        with contextlib.redirect_stdout(diagnostics):
+            rc = cmd_verify(spec_arg, full=full, bail=bail, wave=wave, result_sink=run)
+        if diagnostics.getvalue():
+            _write_redacted_diagnostics(diagnostics.getvalue())
+        elapsed = time.monotonic() - started_clock
+        if d is None:
+            return _verify_json_error('spec not found', str(spec_arg), wave, elapsed)
+        root = ev.find_root(d)
+        # The execution returns its own recorded evidence directly; another
+        # concurrent invocation cannot replace it by becoming the latest event.
+        if not run or float(run.get('started') or 0) < started_wall - 0.01:
+            return _verify_json_error('no current verification evidence was recorded', d.name, wave, elapsed)
+        spec_text = _read(d / 'spec.md')
+        if str(run.get('verify_hash') or '') != rules.verification_hash(spec_text):
+            return _verify_json_error('verification manifest changed during execution', d.name, wave, elapsed)
+        rows = rules.parse_verification(spec_text)
+        if wave is not None:
+            rows = _wave_rows(_read(d / 'tasks.md'), rows, wave)
+        results = run.get('results')
+        ids = [str(r.get('n') or i) for i, r in enumerate(rows, 1)]
+        if (not rows or not isinstance(results, list) or len(results) != len(rows)
+                or [str(r.get('n')) for r in results if isinstance(r, dict)] != ids):
+            return _verify_json_error('recorded evidence does not cover the current manifest', d.name, wave, elapsed)
+        if rc == 0 and run.get('ok') is True and run.get('stable') is True:
+            problem = _json_pass_evidence_problem(root, d, spec_text, rows, run)
+            if problem:
+                return _verify_json_error(problem, d.name, wave, elapsed)
+        entries = []
+        for row, result in zip(rows, results):
+            skipped = bool(str(result.get('problem') or '').startswith('not run:'))
+            entries.append({'id': str(result['n']), 'covers': row.get('covers') or '',
+                            'ok': result.get('ok') is True, 'exit': result.get('exit'),
+                            'executed': not skipped and not result.get('reused') and not result.get('deduplicated_from'),
+                            'reused': bool(result.get('reused')),
+                            'deduplicated_from': result.get('deduplicated_from'),
+                            'skipped': skipped, 'seconds': result.get('secs'),
+                            'evidence': result.get('evidence'), 'problem': result.get('problem')})
+        passed = rc == 0 and run.get('ok') is True and run.get('stable') is True and all(r['ok'] for r in entries)
+        payload = {'version': 1, 'status': 'pass' if passed else 'fail', 'spec': d.name, 'wave': wave,
+                   'stable': run.get('stable') is True, 'verify_hash': run.get('verify_hash'),
+                   'elapsed_seconds': round(elapsed, 3), 'planned': ids,
+                   'executed': [r['id'] for r in entries if r['executed']],
+                   'reused': [r['id'] for r in entries if r['reused']],
+                   'deduplicated': [r['id'] for r in entries if r['deduplicated_from']],
+                   'failed': [r['id'] for r in entries if not r['ok']],
+                   'skipped': [r['id'] for r in entries if r['skipped']],
+                   'coverage': {r['id']: r['covers'] for r in entries}, 'rows': entries}
+        print(json.dumps(payload, ensure_ascii=False))
+        return 0 if passed else 1
+    except Exception as e:
+        if diagnostics.getvalue():
+            _write_redacted_diagnostics(diagnostics.getvalue())
+        return _verify_json_error(f'cannot report verification evidence ({type(e).__name__})',
+                                  str(spec_arg), wave, time.monotonic() - started_clock)
 
 
 def _tasks_hash(d):
@@ -1993,9 +2316,28 @@ def main(argv=None):
         if len(argv) >= 2 and argv[0] == 'verify':
             full = '--full' in argv[1:]
             bail = '--bail' in argv[1:]                          # stop a spec's rows at its first failure
-            specs = [a for a in argv[1:] if a not in ('--full', '--bail')]
+            as_json = '--json' in argv[1:]
+            args = argv[1:]
+            wave = None
+            if '--wave' in args:
+                pos = args.index('--wave')
+                if pos + 1 >= len(args) or not re.fullmatch(r'[A-Za-z0-9_-]+', args[pos + 1]):
+                    if as_json:
+                        return _verify_json_error('--wave requires a valid wave ID')
+                    print('Refused: --wave requires a wave ID.')
+                    return 1
+                wave = args[pos + 1]
+                args = args[:pos] + args[pos + 2:]
+            specs = [a for a in args if a not in ('--full', '--bail', '--json')]
+            if as_json and len(specs) != 1:
+                return _verify_json_error('--json requires exactly one spec', wave=wave)
+            if wave is not None and len(specs) != 1:
+                print('Refused: --wave requires exactly one spec.')
+                return 1
             if len(specs) == 1:
-                return cmd_verify(specs[0], full=full, bail=bail)  # aidd:FR-205 `aidd verify <spec> [--full] [--bail]`
+                if as_json:
+                    return cmd_verify_json(specs[0], full=full, bail=bail, wave=wave)
+                return cmd_verify(specs[0], full=full, bail=bail, wave=wave)
             if len(specs) > 1:
                 return cmd_verify_many(specs, full=full, bail=bail)  # one round: identical rows run once
         if len(argv) >= 3 and argv[0] == 'rules' and argv[1] == 'abandon':

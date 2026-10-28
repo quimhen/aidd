@@ -2038,6 +2038,7 @@ def parse_verification(spec_text):
         def col(*names):
             return next((i for i, h in enumerate(hn) if h in names), None)
         ni, ci, ei, vi = col('#', 'n', 'no', 'no.'), col('command', 'cmd'), col('expected'), col('covers')
+        ii = col('inputs')
         if ci is None:
             return []
         out = []
@@ -2046,10 +2047,13 @@ def parse_verification(spec_text):
             cmd = _strip_ticks(r[ci])
             if not cmd:
                 continue
-            out.append({'n': r[ni].strip() if ni is not None else str(len(out) + 1),
+            item = {'n': r[ni].strip() if ni is not None else str(len(out) + 1),
                         'cmd': cmd,
                         'expected': _strip_ticks(r[ei]) if ei is not None else '',
-                        'covers': r[vi].strip() if vi is not None else ''})
+                        'covers': r[vi].strip() if vi is not None else ''}
+            if ii is not None:
+                item['inputs'] = sorted(set(_strip_ticks(x.strip()) for x in r[ii].split(',') if x.strip()))
+            out.append(item)
         return out
     except Exception:
         return []
@@ -2184,6 +2188,45 @@ def _norm_cell(s):
     return re.sub(r'\s+', ' ', str(s or '')).strip()
 
 
+def row_input_fingerprint(root, globs):
+    """Fingerprint all declared file inputs; missing, unsafe or unstable inputs fail closed."""
+    try:
+        base = Path(root).resolve(strict=True)
+        patterns = sorted(set(globs))
+        if not patterns:
+            return None
+        files = set()
+        for pattern in patterns:
+            p = str(pattern).replace('\\', '/')
+            if not p or p.startswith('/') or ':' in p or '..' in p.split('/'):
+                return None
+            matches = [f for f in base.glob(p) if f.is_file()]
+            if not matches:
+                return None
+            for f in matches:
+                resolved = f.resolve(strict=True)
+                resolved.relative_to(base)
+                files.add(f)
+                if len(files) > 20000:
+                    return None
+        h = hashlib.sha256()
+        for p in patterns:
+            h.update(p.encode('utf-8') + b'\0')
+        for f in sorted(files, key=lambda x: x.relative_to(base).as_posix()):
+            before = f.stat()
+            h.update(f.relative_to(base).as_posix().encode('utf-8') + b'\0')
+            with f.open('rb') as stream:
+                for chunk in iter(lambda: stream.read(65536), b''):
+                    h.update(chunk)
+            after = f.stat()
+            if (before.st_size, before.st_mtime_ns) != (after.st_size, after.st_mtime_ns):
+                return None
+            h.update(b'\0')
+        return h.hexdigest()
+    except Exception:
+        return None
+
+
 def verification_hash(spec_text):
     """aidd:FR-205 sha1[:12] of the normalised `n|cmd|expected` rows joined by \\n (prose, Covers
     and blank lines do not change it); '' when the table has no row."""
@@ -2191,7 +2234,8 @@ def verification_hash(spec_text):
         rows = parse_verification(spec_text)
         if not rows:
             return ''
-        body = '\n'.join(f"{_norm_cell(r['n'])}|{_norm_cell(r['cmd'])}|{_norm_cell(r['expected'])}" for r in rows)
+        body = '\n'.join(f"{_norm_cell(r['n'])}|{r['cmd'].strip()}|{r['expected'].strip()}"
+                         + ('|inputs:' + ','.join(r['inputs']) if r.get('inputs') else '') for r in rows)
         return hashlib.sha1(body.encode('utf-8')).hexdigest()[:12]
     except Exception:
         return ''
@@ -2576,7 +2620,7 @@ def approval_evidence(spec_text, source, review_sha1=None, consent_ts=None):
 
 
 VERIFY_BAD_OUTPUT_RE = re.compile(
-    r'\bRan 0 tests?\b|\bNO TESTS RAN\b|\bNo test is available\b|\bcollected 0 items\b|\bTotal tests:\s*0\b', re.I)
+    r'\bRan 0 tests?\b|\bNO TESTS RAN\b|\bNo test is available\b|\bcollected 0 items\b|\bTotal tests:\s*0\b|\bpgTAP:\s*0\s+files\b', re.I)
 VERIFY_MIN_OUTPUT = 20
 _VERIFY_HEADER_RE = re.compile(r'^#\s.*\|\s*exit\s+-?\d+\s*\|')
 
@@ -2694,9 +2738,9 @@ def _rows_already_executed(spec_text, run):
         rows = parse_verification(spec_text)
         if not rows:
             return False
-        done = {(_norm_cell(r.get('cmd')), _norm_cell(r.get('expected'))) for r in (run.get('results') or [])
+        done = {(str(r.get('cmd') or '').strip(), str(r.get('expected') or '').strip(), tuple(r.get('input_globs') or [])) for r in (run.get('results') or [])
                 if isinstance(r, dict) and r.get('ok') is True and 'expected' in r}
-        return all((_norm_cell(r['cmd']), _norm_cell(r['expected'])) in done for r in rows)
+        return all((r['cmd'].strip(), r['expected'].strip(), tuple(r.get('inputs') or [])) in done for r in rows)
     except Exception:
         return False
 
@@ -2711,6 +2755,11 @@ def _run_problems(ev, root, spec_dir, spec_text, run, fingerprint=None):
     out = []
     changed = [str(x) for x in (run.get('code_changed') or [])]
     res0 = run.get('results') or []
+    for result in res0:
+        if isinstance(result, dict) and result.get('input_globs'):
+            fp = row_input_fingerprint(root, result['input_globs'])
+            if not fp or fp != result.get('input_fp'):
+                out.append(('stale', _v('R10', 'Verification row inputs changed or are unavailable.', rerun)))
     rows_ok = bool(res0) and all(isinstance(r, dict) and r.get('ok') is True for r in res0)
     # files the run rewrote are outputs when the spec now declares them `Generated:`: THIS run is accepted
     # as it is (no re-execution, no code edit); the only fix for the old "tree changed" failure is that line.

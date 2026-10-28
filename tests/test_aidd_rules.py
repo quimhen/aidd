@@ -1763,7 +1763,7 @@ class TestParseVerification(unittest.TestCase):
         self.assertRegex(base, r'^[0-9a-f]{12}$')
         self.assertEqual(R.verification_hash(vspec([GOOD_ROW], prose='Other prose entirely.')), base)
         self.assertEqual(R.verification_hash(vspec([('V-1', GOOD_ROW[1], 'exit 0', 'FR-9, AC-1')])), base)
-        self.assertEqual(R.verification_hash(vspec([('V-1', 'python  -m unittest   tests.test_x', 'exit 0', '')])), base)
+        self.assertNotEqual(R.verification_hash(vspec([('V-1', 'python  -m unittest   tests.test_x', 'exit 0', '')])), base)
         self.assertNotEqual(R.verification_hash(vspec([('V-1', 'python -m unittest tests.test_y', 'exit 0', '')])), base)
         self.assertNotEqual(R.verification_hash(vspec([('V-1', GOOD_ROW[1], 'contains: OK', '')])), base)
         self.assertNotEqual(R.verification_hash(vspec([('V-2', GOOD_ROW[1], 'exit 0', '')])), base)

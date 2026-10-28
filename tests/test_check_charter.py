@@ -2,6 +2,7 @@
 import subprocess
 import sys
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
@@ -60,6 +61,24 @@ class TestExpandGlob(unittest.TestCase):
 
 
 class TestCheckRule(unittest.TestCase):
+    def test_shared_caches_preserve_findings_and_read_once(self):
+        with TemporaryDirectory() as d:
+            root = Path(d)
+            source = root / 'a.js'
+            source.write_text('alpha beta\n', encoding='utf-8')
+            glob_cache, text_cache = {}, {}
+            rules = [dict(rule='alpha', type='forbidden', pattern='alpha', glob='*.js'),
+                     dict(rule='beta', type='forbidden', pattern='beta', glob='*.js')]
+            original = Path.read_text
+            reads = []
+            def counted(path, *args, **kwargs):
+                reads.append(path)
+                return original(path, *args, **kwargs)
+            with patch.object(cc, 'expand_glob', wraps=cc.expand_glob) as expand, patch.object(Path, 'read_text', counted):
+                violations = [v for rule in rules for v in cc.check_rule(root, rule, glob_cache, text_cache)]
+            self.assertEqual(len(violations), 2)
+            self.assertEqual(expand.call_count, 1)
+            self.assertEqual(reads, [source])
     def test_forbidden_pattern_found_is_a_violation(self):
         with TemporaryDirectory() as d:
             root = Path(d)
@@ -110,6 +129,20 @@ class TestCheckRule(unittest.TestCase):
 
 
 class TestEndToEnd(unittest.TestCase):
+    def test_rule_prefix_selects_rules_and_rejects_no_matches(self):
+        with TemporaryDirectory() as d:
+            root = Path(d)
+            (root / 'charter.md').write_text(
+                '## Checkable rules\n| Rule | Type | Pattern | Applies to (glob) |\n|---|---|---|---|\n'
+                '| Payrol: a | forbidden | alpha | *.txt |\n| Other: b | forbidden | beta | *.txt |\n', encoding='utf-8')
+            (root / 'a.txt').write_text('alpha beta', encoding='utf-8')
+            cmd = [sys.executable, str(SCRIPTS_DIR / 'check_charter.py'), str(root), '--rule-prefix']
+            selected = subprocess.run(cmd + ['payrol:'], capture_output=True, text=True, timeout=10)
+            self.assertEqual(selected.returncode, 1)
+            self.assertIn('Payrol: a', selected.stdout)
+            self.assertNotIn('Other: b', selected.stdout)
+            missing = subprocess.run(cmd + ['missing:'], capture_output=True, text=True, timeout=10)
+            self.assertEqual(missing.returncode, 2)
     def _run(self, cwd):
         return subprocess.run(
             [sys.executable, str(SCRIPTS_DIR / "check_charter.py"), str(cwd)],

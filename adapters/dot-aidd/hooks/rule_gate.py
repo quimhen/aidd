@@ -1430,6 +1430,10 @@ def _names_review(low, words=(), cwd_specs=False, cwd_abs=None):
     if any(re.search(_REVIEW_NAME_RE, r) for r in _readings(low)):
         return True
     for w in words:
+        # Removing quotes or escapes cannot create a wildcard character.
+        # Most shell words are plain arguments, so avoid normalizing them.
+        if not any(c in w for c in '*?[{'):
+            continue
         for path in {_unquote(w.lower().replace('\\', '/')).rstrip('/'), _unquote(_unescape(w.lower())).rstrip('/')}:
             leaf = path.split('/')[-1]
             if not leaf or not any(c in leaf for c in '*?[{'):
@@ -1744,10 +1748,13 @@ def _decide_bash(event, ti):
             return True, R9_BASH_MESSAGE + '\n' + REVIEW_MESSAGE
         lown = low.replace('\\', '/')
         words = [w for toks in _tokenize(cmd) for w in toks]
-        if _host_mention(lown) or any(_host_tok(w, cwd_abs, dirs=True) for w in words):
+        # The host check is pure for a fixed cwd; repeated padding words need
+        # only one resolution.  Preserve order for short-circuit behavior.
+        unique_words = dict.fromkeys(words)
+        if _host_mention(lown) or any(_host_tok(w, cwd_abs, dirs=True) for w in unique_words):
             msg = R9_BASH_MESSAGE + '\n' + HOST_GATE_MESSAGE    # aidd:FR-911 names the gate file
             if (ctx.get('host_extra') or _host_extra_mention(lown)
-                    or any(_host_tok(w, cwd_abs, extra=True) for w in words)):
+                    or any(_host_tok(w, cwd_abs, extra=True) for w in unique_words)):
                 msg += '\n' + HOST_GATE_EXTRA_MESSAGE           # aidd:FR-1110 aidd:FR-1111 only for the new files
             return True, msg
         if ctx.get('host_extra'):

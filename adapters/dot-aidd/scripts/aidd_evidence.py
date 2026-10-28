@@ -2167,8 +2167,14 @@ def code_state(root, budget_s=8.0, scope=None, reuse=False):
         full = None
         if hit is not None and reuse and time.monotonic() - hit[0] <= _CODE_STATE_TTL:
             full = hit[1]
+        elif srx is not None and not reuse:
+            # Avoid hashing the whole monorepo before checking a declared scope.
+            return _code_state_scan(root, budget_s, srx)
         else:
-            full = _code_state_scan(root, budget_s, None)
+            try:
+                full = _code_state_scan(root, budget_s, None)
+            except _FpOverBudget:
+                full = None
             if full is not None:
                 _CODE_STATE_FULL[key] = (time.monotonic(), full)
         if full is None:

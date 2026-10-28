@@ -388,6 +388,15 @@ class TestRuleGateShellSpeed(Base):
         # and this one 5.0-6.9 s (spec 011 measurement), so the margin is 10 s: it still proves "linear, not 15 s+".
         self.assertLess(dt, 10.0, f"400 KB took {dt:.3f}s")
 
+    def test_plain_padding_does_not_repeat_review_normalization_or_host_checks(self):
+        cmd = self.padded(400 * 1024)
+        with mock.patch.object(rule_gate, '_unquote', wraps=rule_gate._unquote) as unquote:
+            self.assertFalse(rule_gate._names_review('', ['a'] * 10000))
+            self.assertLessEqual(unquote.call_count, 2)
+        with mock.patch.object(rule_gate, '_host_tok', wraps=rule_gate._host_tok) as host:
+            self.assertTrue(self.new(cmd)[0])
+            self.assertLess(host.call_count, 20)
+
     def test_ac1003_2kb_heredoc_reading_aidd_allowed_under_500ms(self):
         cmd = "cat .aidd/AIDD.md\ncat <<'EOF'\n" + "a " * 1000 + "\nEOF\n"
         (blocked, msg), dt = self.timed(cmd)

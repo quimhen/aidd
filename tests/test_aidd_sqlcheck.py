@@ -53,11 +53,16 @@ class SqlCheckTests(unittest.TestCase):
         rc, _ = _run([])
         self.assertEqual(rc, 2)
 
-    def test_unknown_engine_without_cmd_skips_with_exit_0(self):
+    def test_unknown_engine_without_cmd_fails_closed(self):
         self.write("1.sql", OK_SQL)
         rc, out = _run([str(self.dir), "--engine", "mssql", "--no-cache"])
-        self.assertEqual(rc, 0)
+        self.assertEqual(rc, 2)
         self.assertIn("--cmd", out)
+
+    def test_empty_selection_fails_closed(self):
+        rc, out = _run([str(self.dir), "--engine", "mssql"])
+        self.assertEqual(rc, 2)
+        self.assertIn("no SQL files", out)
 
     def test_cmd_checker_pass_fail_and_cache(self):
         self.write("1.sql", OK_SQL)

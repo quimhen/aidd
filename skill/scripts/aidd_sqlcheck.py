@@ -22,8 +22,8 @@ Usage:
         Output ends with the apply manifest: every file in natural order, i.e. the exact input of the single
         database pass. Run the DB pass only when the exit code is 0.
 
-Exit codes: 0 all files compile (or checker unavailable: static check skipped, warning printed),
-            1 at least one file does not compile, 2 usage / unreadable path.
+Exit codes: 0 all files compile, 1 at least one file does not compile,
+            2 usage, unreadable path, empty selection or missing checker.
 Optional dependency for the postgres adapter: pip install pglast. Never prints a traceback.
 """
 import hashlib
@@ -181,20 +181,22 @@ def main(argv=None):
     except FileNotFoundError as exc:
         print(f'not found: {exc}')
         return 2
+    if not files:
+        print('ERROR: no SQL files selected; nothing was checked.')
+        return 2
     if cmd:
         check, tag = command_checker(cmd), '|cmd:' + hashlib.sha1(cmd.encode()).hexdigest()[:8]
     elif engine in ('postgres', 'postgresql', 'supabase'):
         try:
             import pglast.parser as parser
         except Exception:
-            print('WARNING: pglast is not installed (pip install pglast): static SQL check SKIPPED, '
-                  'the database pass will catch syntax errors instead.')
-            return 0
+            print('ERROR: pglast is not installed (pip install pglast): static SQL check not performed.')
+            return 2
         check, tag = (lambda _p, text: compile_text(text, parser)), '|postgres'
     else:
         print(f'no built-in static checker for engine "{engine}": pass its own compiler/linter with '
-              f'--cmd "<command with {{file}}>". Static check SKIPPED.')
-        return 0
+              f'--cmd "<command with {{file}}>". Static check not performed.')
+        return 2
     if not no_cache and cache_path is None:
         cache_path = str(Path.cwd() / '.aidd' / 'sqlcheck-cache.json')
     res = run(files, check, None if no_cache else cache_path, tag)
