@@ -1364,7 +1364,10 @@ def unit_approval_hash(unit, project_root):
     root = Path(project_root).resolve(strict=True)
     units = discover_units(root)
     by_key = {candidate.key: candidate for candidate in units}
-    if by_key.get(unit.key) != unit:
+    candidate = by_key.get(unit.key)
+    fields = ('schema_version', 'spec_id', 'unit_id', 'sequence', 'parents', 'paths', 'targets')
+    if candidate is None or any(getattr(candidate, field) != getattr(unit, field, None)
+                                for field in fields):
         raise ValueError('unit is absent from or differs from its manifest')
     required = set()
     pending = [unit.key]
@@ -1402,6 +1405,54 @@ def unit_approval_hash(unit, project_root):
                              separators=(',', ':')).encode('utf-8')
         digests[candidate.key] = hashlib.sha256(encoded).hexdigest()
     return digests[unit.key]
+
+
+def unit_review_package(unit, project_root):
+    """Produce an exact, digest-bound unit review payload, not consent.
+
+    Approval consumers must use the entire canonical string; a substring or
+    digest supplied by the caller is insufficient to establish what was shown.
+    """
+    import json
+    root = Path(project_root).resolve(strict=True)
+    initial = unit_approval_hash(unit, root)
+    unit_dir = f'specs/{unit.spec_id}/amendments/{unit.unit_id}/'
+    task_names = [name for name in sorted(unit.paths)
+                  if name.startswith(unit_dir)
+                  and re.fullmatch(r'tasks(?:-[A-Za-z0-9_-]+)?\.md',
+                                   name[len(unit_dir):])]
+    if not task_names:
+        raise ValueError('unit has no declared task file')
+    tasks = []
+    for name in task_names:
+        try:
+            path = (root / name).resolve(strict=True)
+            path.relative_to(root)
+            content = path.read_bytes().decode('utf-8')
+        except (OSError, UnicodeError, RuntimeError, ValueError) as exc:
+            raise ValueError('unit task file unavailable: ' + name) from exc
+        if not content.strip():
+            raise ValueError('unit task file is empty: ' + name)
+        tasks.append({'path': name, 'content': content})
+    if unit_approval_hash(unit, root) != initial:
+        raise ValueError('unit changed while review package was generated')
+    return json.dumps({'format': 'aidd-unit-review-v1', 'unit': unit.key,
+                       'project': hashlib.sha256(os.path.normcase(str(root)).encode('utf-8')).hexdigest(),
+                       'digest': initial, 'parents': sorted(unit.parents),
+                       'targets': sorted(unit.targets), 'tasks': tasks},
+                      ensure_ascii=True, sort_keys=True, separators=(',', ':'))
+
+
+def unit_consent_question(package):
+    """Exact question to be submitted to the trusted host question tool."""
+    import json
+    data = json.loads(package)
+    if (data.get('format') != 'aidd-unit-review-v1'
+            or not re.fullmatch(r'[0-9a-f]{64}', str(data.get('project', '')))
+            or not re.fullmatch(r'[0-9a-f]{64}', str(data.get('digest', '')))
+            or not re.fullmatch(r'[A-Za-z0-9_-]+:[A-Za-z0-9_-]+', str(data.get('unit', '')))):
+        raise ValueError('invalid unit review package')
+    return f"Aprobar unidad? [unit:{data['unit']}:{data['digest']}]\n{package}"
 
 
 def approval_hash(tasks_text):

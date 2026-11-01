@@ -1456,23 +1456,27 @@ def main(argv=None):
                 raise ValueError('unit review requires a spec under project specs/')
             try:
                 from .aidd_units import discover_units
-                from .aidd_rules import unit_approval_hash
+                from .aidd_rules import unit_review_package, unit_consent_question
             except ImportError:
                 from aidd_units import discover_units
-                from aidd_rules import unit_approval_hash
+                from aidd_rules import unit_review_package, unit_consent_question
             root = d.parent.parent
             matches = [u for u in discover_units(root)
                        if u.spec_id == d.name and u.unit_id == a.unit]
             if len(matches) != 1:
                 raise ValueError(f'unit not found or ambiguous: {a.unit}')
             unit = matches[0]
-            digest = unit_approval_hash(unit, root)
+            package = unit_review_package(unit, root)
+            import json
+            digest = json.loads(package)['digest']
             print(f'Unit: {unit.spec_id}:{unit.unit_id}')
             print(f'Sequence: {unit.sequence}')
             print(f'Digest (SHA-256): {digest}')
             print('Parents: ' + (', '.join(unit.parents) or '(none)'))
             print('Inputs: ' + (', '.join(unit.paths) or '(none)'))
             print('Targets: ' + (', '.join(unit.targets) or '(none)'))
+            print('Trusted host question (no consent recorded):')
+            print(unit_consent_question(package))
             print('Status: proposed; this summary is not owner approval')
             return 0
         if a.check or a.wait or a.comments or a.summary:

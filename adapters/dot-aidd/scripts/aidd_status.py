@@ -1254,6 +1254,88 @@ def _summary_answer(ev, root, session, since, tag):
     return None
 
 
+def _unit_summary_consent(root, session, question, tag, since):
+    """Match the whole generated question in a trusted hook answer, not a substring."""
+    if not session or session == 'unknown-session':
+        return None
+    try:
+        for event in reversed(ev.events(root, session=session, kind='answer', since=since)):
+            if (event.get('session') != session or event.get('ts', 0) <= since
+                    or event.get('ts', 0) > time.time() + 1):
+                continue
+            detail = event.get('detail') or {}
+            pairs, options = detail.get('pairs'), detail.get('options')
+            if not isinstance(pairs, list):
+                continue
+            for index, pair in enumerate(pairs):
+                if not isinstance(pair, (list, tuple)) or len(pair) != 2 or tag not in str(pair[0]):
+                    continue
+                # The newest response to this unit/tag is authoritative, even if
+                # it rejects or alters the question/options.
+                if (str(pair[0]) != question or str(pair[1]).strip() != SUMMARY_LABEL
+                        or not isinstance(options, list) or index >= len(options)
+                        or not isinstance(options[index], (list, tuple))
+                        or SUMMARY_LABEL not in options[index]):
+                    return None
+                return event
+    except Exception:
+        return None
+    return None
+
+
+def cmd_approve_unit(spec_arg, unit_id):
+    """Approve only after an exact, fresh host-recorded owner answer."""
+    d = _resolve_spec(spec_arg)
+    if d is None:
+        print(f'Not a spec directory: {spec_arg}')
+        return 1
+    root = ev.find_root(d)
+    try:
+        try:
+            from .aidd_units import discover_units
+        except ImportError:
+            from aidd_units import discover_units
+        units = discover_units(root)
+        matches = [u for u in units if u.spec_id == d.name and u.unit_id == unit_id]
+        if len(matches) != 1:
+            raise ValueError('unit not found or ambiguous')
+        unit = matches[0]
+        package = rules.unit_review_package(unit, root)
+        data = json.loads(package)
+        question = rules.unit_consent_question(package)
+        tag = f"[unit:{unit.key}:{data['digest']}]"
+        by_key = {u.key: u for u in units}
+        pending, required = [unit.key], set()
+        while pending:
+            key = pending.pop()
+            if key not in required:
+                required.add(key)
+                pending.extend(by_key[key].parents)
+        paths = []
+        for key in required:
+            u = by_key[key]
+            paths.append(Path(root) / 'specs' / u.spec_id / 'amendments' / u.unit_id / 'manifest.json')
+            paths.extend(Path(root) / path for path in u.paths)
+        since = max(path.stat().st_mtime for path in paths)
+        session = _current_session(root)
+        answer = _unit_summary_consent(root, session, question, tag, since)
+        if answer is None:
+            print('Refused: no fresh trusted host answer for the complete unit review package; '
+                  'Codex consent is not yet supported. No approval was recorded.')
+            return 1
+        if rules.unit_review_package(unit, root) != package:
+            raise ValueError('unit changed after consent')
+        if not ev.append(root, session, 'unit_approved', spec=d.name, unit_id=unit.unit_id,
+                         digest=data['digest'], consent_ts=answer['ts'],
+                         review_sha256=hashlib.sha256(package.encode('utf-8')).hexdigest()):
+            raise ValueError('could not record unit approval')
+        print(f"Unit {unit.key} approved: {data['digest']}")
+        return 0
+    except (OSError, KeyError, TypeError, ValueError) as exc:
+        print(f'Refused: {exc}. No unit approval was recorded.')
+        return 1
+
+
 def cmd_approve(spec_arg):
     d = _resolve_spec(spec_arg)
     if d is None:
@@ -2423,6 +2505,9 @@ def main(argv=None):
             except Exception as e:   # status never fails and never reports an "internal error" (D14)
                 print(f'aidd status: could not read some state ({type(e).__name__}); nothing was changed.')
                 return 0
+        if (len(argv) == 5 and argv[:2] == ['rules', 'approve']
+                and argv[3] == '--unit'):
+            return cmd_approve_unit(argv[2], argv[4])
         if len(argv) == 3 and argv[0] == 'rules' and argv[1] in ('check', 'approve', 'close', 'activate'):
             return {'check': cmd_check, 'approve': cmd_approve, 'close': cmd_close,
                     'activate': cmd_activate}[argv[1]](argv[2])

@@ -66,6 +66,7 @@ VERBATIM_SCRIPTS = [
     "aidd_memory_import.py",
     "aidd_rules.py",
     "aidd_units.py",
+    "aidd_reuse.py",
     "aidd_evidence.py",
     "aidd_pending.py",
     "aidd_status.py",
@@ -120,6 +121,7 @@ DOTAIDD_HOOKS = REPO_ROOT / "adapters" / "dot-aidd" / "hooks"
 # closure: the gate, its host adapter and the helpers they import).
 VERBATIM_HOOKS = [
     "host_adapter.py",
+    "codex_patch.py",
     "rule_gate.py",
     "_common.py",
     "require_aidd.py",

@@ -19,15 +19,18 @@ class UnitReview(unittest.TestCase):
             unit = spec / 'amendments/a'
             unit.mkdir(parents=True)
             (root / 'input.md').write_text('input', encoding='utf-8')
+            (unit / 'tasks.md').write_text('Review all tasks', encoding='utf-8')
             (unit / 'manifest.json').write_text(json.dumps(dict(
                 schema_version=1, spec_id='s', unit_id='a', sequence=1,
-                parents=[], paths=['input.md'], targets=['output.py'])), encoding='utf-8')
+                parents=[], paths=['input.md', 'specs/s/amendments/a/tasks.md'],
+                targets=['output.py'])), encoding='utf-8')
             before = sorted(p.relative_to(root).as_posix() for p in root.rglob('*'))
             cmd = [sys.executable, str(SCRIPT), str(spec), '--unit', 'a', '--summary']
             result = subprocess.run(cmd, capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertRegex(result.stdout, r'Digest \(SHA-256\): [0-9a-f]{64}')
             self.assertIn('not owner approval', result.stdout)
+            self.assertIn('Review all tasks', result.stdout)
             self.assertEqual(before, sorted(p.relative_to(root).as_posix() for p in root.rglob('*')))
             result = subprocess.run([*cmd[:-2], 'missing', '--summary'], capture_output=True, text=True)
             self.assertEqual(result.returncode, 1)

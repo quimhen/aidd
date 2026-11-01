@@ -113,6 +113,8 @@ def discover_units(project_root: Path) -> tuple[UnitManifest, ...]:
     try:
         root = project_root.resolve(strict=True)
         specs = root / "specs"
+        if specs.is_symlink() and not specs.exists():
+            raise ValueError(f"broken specs link: {specs}")
         if not specs.exists():
             return ()
         _contained(specs, root)
@@ -147,12 +149,15 @@ def discover_units(project_root: Path) -> tuple[UnitManifest, ...]:
 def resolve_units(units: Sequence[UnitManifest]) -> tuple[UnitManifest, ...]:
     """Return a stable topological order, rejecting ambiguity and cycles."""
     by_key: dict[str, UnitManifest] = {}
+    folded_keys: set[str] = set()
     sequences: set[tuple[str, int]] = set()
     for unit in units:
-        if unit.key in by_key or (unit.spec_id, unit.sequence) in sequences:
+        if (unit.key.casefold() in folded_keys
+                or (unit.spec_id.casefold(), unit.sequence) in sequences):
             raise ValueError(f"duplicate unit ID or sequence: {unit.key}")
         by_key[unit.key] = unit
-        sequences.add((unit.spec_id, unit.sequence))
+        folded_keys.add(unit.key.casefold())
+        sequences.add((unit.spec_id.casefold(), unit.sequence))
     indegree = {key: 0 for key in by_key}
     children: dict[str, list[str]] = {key: [] for key in by_key}
     for unit in units:
@@ -178,3 +183,38 @@ def resolve_units(units: Sequence[UnitManifest]) -> tuple[UnitManifest, ...]:
     if len(result) != len(by_key):
         raise ValueError("unit dependency cycle")
     return tuple(result)
+
+
+def unit_for_target(units: Sequence[UnitManifest], project_root: Path,
+                    target: Path) -> UnitManifest | None:
+    """Find the unique most-derived owner of a canonical target.
+
+    Includes drafts: an unapproved descendant must never fall back to its
+    approved ancestor. None means the path has no declared unit owner.
+    """
+    root = Path(project_root).resolve(strict=True)
+    try:
+        resolved = _contained(Path(target) if Path(target).is_absolute()
+                              else root / target, root)
+        name = resolved.relative_to(root).as_posix()
+    except (OSError, ValueError) as exc:
+        raise ValueError('invalid unit target') from exc
+    ordered = resolve_units(units)
+    by_key = {unit.key: unit for unit in ordered}
+    # Treat case aliases conservatively even on volumes whose sensitivity is
+    # unknown, so a mixed-case spelling cannot silently fall back to legacy.
+    owners = [unit for unit in ordered if any(
+        name.casefold() == declared.casefold() for declared in unit.targets)]
+    if not owners:
+        return None
+    ancestors: dict[str, set[str]] = {}
+    for unit in ordered:
+        inherited = set(unit.parents)
+        for parent in unit.parents:
+            inherited.update(ancestors[parent])
+        ancestors[unit.key] = inherited
+    maximal = [unit for unit in owners if not any(
+        unit.key in ancestors[other.key] for other in owners if other.key != unit.key)]
+    if len(maximal) != 1:
+        raise ValueError('incomparable unit owners for target: ' + name)
+    return by_key[maximal[0].key]
