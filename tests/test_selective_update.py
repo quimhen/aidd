@@ -592,6 +592,12 @@ class SelectiveUpdateTests(unittest.TestCase):
         module.recover_transaction(self.base / 'journal')
         self.assertEqual(module._windows_security_descriptor(path), before)
 
+    def test_auto_inheritance_fallback_is_restricted_to_exact_flag_difference(self):
+        expected = 'O:ownerG:groupD:AI(A;ID;FA;;;SY)'
+        self.assertTrue(module._only_missing_dacl_auto_inheritance(expected, 'O:ownerG:groupD:(A;ID;FA;;;SY)'))
+        self.assertFalse(module._only_missing_dacl_auto_inheritance(expected, 'O:otherG:groupD:(A;ID;FA;;;SY)'))
+        self.assertFalse(module._only_missing_dacl_auto_inheritance(expected, 'O:ownerG:groupD:(A;ID;FR;;;SY)'))
+
     @unittest.skipUnless(os.name == 'nt', 'Windows security descriptor behavior')
     def test_windows_replacement_refused_if_security_unreadable(self):
         path = self.target / 'scripts' / 'x.py'

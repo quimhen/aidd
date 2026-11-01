@@ -19,6 +19,7 @@ import json
 import os
 import re
 import stat
+import subprocess
 import sys
 import tempfile
 import time
@@ -432,6 +433,10 @@ def _windows_security_descriptor(path):
     return _windows_security_snapshot(path)['sddl']
 
 
+def _only_missing_dacl_auto_inheritance(expected, actual):
+    return 'D:AI(' in expected and actual == expected.replace('D:AI(', 'D:(', 1)
+
+
 def _restore_windows_security(path, snapshot):
     import ctypes
     from ctypes import wintypes
@@ -448,7 +453,21 @@ def _restore_windows_security(path, snapshot):
         data = ctypes.create_string_buffer(raw)
         if not setter(str(path), snapshot['flags'], data):
             raise OSError(ctypes.get_last_error(), 'cannot restore Windows security descriptor')
-    if _windows_security_descriptor(path) != snapshot['sddl']:
+    actual = _windows_security_descriptor(path)
+    expected = snapshot['sddl']
+    if actual != expected and _only_missing_dacl_auto_inheritance(expected, actual):
+        # ReplaceFileW can clear only the auto-inherited control flag. Ask
+        # Windows to re-evaluate inheritance, then require exact equality.
+        system_root = os.environ.get('SystemRoot')
+        if not system_root:
+            raise RuntimeError('Windows system directory is unavailable')
+        executable = Path(system_root) / 'System32' / 'icacls.exe'
+        result = subprocess.run([str(executable), str(path), '/inheritance:e'],
+                                stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        if result.returncode:
+            raise RuntimeError('Windows ACL inheritance restoration failed: ' + str(path))
+        actual = _windows_security_descriptor(path)
+    if actual != expected:
         raise RuntimeError('Windows security descriptor could not be restored: ' + str(path))
 
 
