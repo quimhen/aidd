@@ -1,0 +1,63 @@
+AIDD 009 amendment 01 T-22 — observed CI evidence (not a closure verdict)
+Run https://github.com/quimhen/aidd/actions/runs/41341206332
+Head 9d041a647faacbbfc2f1d6ecdbf7e178711ece2f
+Base 4114eb6d2c3fdcb7b58389c00f25b911298ff4bf
+Tested merge e3bd5827b234aec7b3d631f8de9411dcf222a12a (checkout log)
+
+ubuntu Python 3.11: job 124951407895, SUCCESS; Ran 2545 tests in 210.080s; OK (skipped=19)
+  Guard loader preflight: PASS; required IDs started/not skipped: 18/18, skipped=0.
+  test_host_install: started=37, skips=0 (none)
+  test_host_gates: started=75, skips=0 (none)
+  test_host_doctor: started=36, skips=0 (none)
+  test_aidd_status: started=147, skips=0 (none)
+  test_dot_aidd_mirror: started=13, skips=0 (none)
+  Per-module collection totals: INDETERMINATE (runner logs started IDs, not independent per-module collection counts).
+
+windows Python 3.11: job 124951408038, SUCCESS; Ran 2545 tests in 364.336s; OK (skipped=18)
+  Guard loader preflight: PASS; required IDs started/not skipped: 18/18, skipped=0.
+  test_host_install: started=37, skips=0 (none)
+  test_host_gates: started=75, skips=0 (none)
+  test_host_doctor: started=36, skips=0 (none)
+  test_aidd_status: started=147, skips=0 (none)
+  test_dot_aidd_mirror: started=13, skips=0 (none)
+  Per-module collection totals: INDETERMINATE (runner logs started IDs, not independent per-module collection counts).
+
+ubuntu Python 3.12: job 124951408039, SUCCESS; Ran 2545 tests in 166.130s; OK (skipped=19)
+  Guard loader preflight: PASS; required IDs started/not skipped: 18/18, skipped=0.
+  test_host_install: started=37, skips=0 (none)
+  test_host_gates: started=75, skips=0 (none)
+  test_host_doctor: started=36, skips=0 (none)
+  test_aidd_status: started=147, skips=0 (none)
+  test_dot_aidd_mirror: started=13, skips=0 (none)
+  Per-module collection totals: INDETERMINATE (runner logs started IDs, not independent per-module collection counts).
+
+windows Python 3.12: job 124951408090, SUCCESS; Ran 2545 tests in 464.124s; OK (skipped=18)
+  Guard loader preflight: PASS; required IDs started/not skipped: 18/18, skipped=0.
+  test_host_install: started=37, skips=0 (none)
+  test_host_gates: started=75, skips=0 (none)
+  test_host_doctor: started=36, skips=0 (none)
+  test_aidd_status: started=147, skips=0 (none)
+  test_dot_aidd_mirror: started=13, skips=0 (none)
+  Per-module collection totals: INDETERMINATE (runner logs started IDs, not independent per-module collection counts).
+
+windows Python 3.10: job 124951408172, SUCCESS; Ran 2545 tests in 491.294s; OK (skipped=18)
+  Guard loader preflight: PASS; required IDs started/not skipped: 18/18, skipped=0.
+  test_host_install: started=37, skips=0 (none)
+  test_host_gates: started=75, skips=0 (none)
+  test_host_doctor: started=36, skips=0 (none)
+  test_aidd_status: started=147, skips=0 (none)
+  test_dot_aidd_mirror: started=13, skips=0 (none)
+  Per-module collection totals: INDETERMINATE (runner logs started IDs, not independent per-module collection counts).
+
+ubuntu Python 3.10: job 124951408320, SUCCESS; Ran 2545 tests in 225.771s; OK (skipped=19)
+  Guard loader preflight: PASS; required IDs started/not skipped: 18/18, skipped=0.
+  test_host_install: started=37, skips=0 (none)
+  test_host_gates: started=75, skips=0 (none)
+  test_host_doctor: started=36, skips=0 (none)
+  test_aidd_status: started=147, skips=0 (none)
+  test_dot_aidd_mirror: started=13, skips=0 (none)
+  Per-module collection totals: INDETERMINATE (runner logs started IDs, not independent per-module collection counts).
+
+Historical pre-consolidation pytest vs unittest case-ID comparison: INDETERMINATE; no matching comparison evidence located in spec evidence. Do not remove V-1–V-4 or claim full historical coverage consolidation on this run alone.
+Nonhistorical skips: see full job logs; this compact evidence enumerates the five T-25 historical modules only.
+This records the tested merge, not any changes after the head shown above.
