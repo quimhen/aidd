@@ -350,6 +350,28 @@ def _attributed_edits(root, spec, tasks_text):
         return None
 
 
+def _unit_audit_states(root, spec_id):
+    """Evaluate versioned audit receipts without dispatching another auditor."""
+    try:
+        from . import aidd_unit_audit as audit, aidd_units as units
+    except ImportError:
+        import aidd_unit_audit as audit
+        import aidd_units as units
+    if not units.list_spec_unit_keys(root, spec_id):
+        return []
+    try:
+        _, environment_id = audit.review_environment()
+    except (OSError, ValueError):
+        environment_id = None
+    def provenance(event):
+        runner = (event.get('detail') or {}).get('runner') or {}
+        if runner.get('provider') == 'aidd-local-codex-v1':
+            return audit.local_runner_provenance(root, event)
+        return audit.codex_provenance(root, event, ev)
+    return audit.plan_impact(root, spec_id, ev.events(root, kind='unit_audit'), rules, units,
+                             environment_id=environment_id, provenance_verifier=provenance)['units']
+
+
 def _build_status(spec_dir, root=None, named=False, fingerprint=None):
     d = Path(spec_dir).resolve()
     root = Path(root) if root else ev.find_root(d)
@@ -386,6 +408,16 @@ def _build_status(spec_dir, root=None, named=False, fingerprint=None):
     since_edit = max([e['ts'] for e in edits], default=0.0)
     st['code_edits'] = len(edits)
     st['tasks']['approval_recorded'] = _approval_recorded(root, d.name, tasks_text) if approval == 'valid' else False
+    try:
+        st['tasks']['unit_approvals'] = rules.unit_approval_states(root, d.name, ev)
+    except (OSError, ValueError) as exc:
+        st['tasks']['unit_approvals'] = None
+        st['tasks']['unit_approval_error'] = str(exc)
+    try:
+        st['unit_audits'] = _unit_audit_states(root, d.name)
+    except (OSError, ValueError, TypeError) as exc:
+        st['unit_audits'] = None
+        st['unit_audit_error'] = str(exc)
     doms = sorted(rules.required_domains(d))
     missing = set(rules.uncovered_domains(root, None, d.name, since_edit, spec_dir=d))
     st['auditors'] = {dom: dom not in missing for dom in doms}
@@ -1628,9 +1660,122 @@ def _reusable_rows(d, prior, code_fp, full):
     return out
 
 
+def _contract_environment_id(cmd, declaration):
+    """Observable host identity for an owner's offline hermetic contract.
+
+    This is not a sandbox: the owner must ensure the command has no external
+    state, undeclared dependencies or time-dependent results.
+    """
+    try:
+        import importlib.metadata
+        import platform
+        import shlex
+        import shutil
+        sections = [section.strip() for section in declaration.split(';')]
+        if len(sections) != 3 or sections[0].lower() != 'contract:offline':
+            return None
+        options = {}
+        for section in sections[1:]:
+            key, sep, value = section.partition('=')
+            key = key.strip().lower()
+            if not sep or key not in ('vars', 'packages') or key in options:
+                return None
+            values = [item.strip() for item in value.split(',')]
+            if not values or any(not item for item in values):
+                return None
+            if len(values) == 1 and values[0].lower() == 'none':
+                values = []
+            elif any(item.lower() == 'none' for item in values):
+                return None
+            options[key] = values
+        if set(options) != {'vars', 'packages'}:
+            return None
+        variables = options['vars']
+        package_names = options['packages']
+        if (any(not re.fullmatch(r'[A-Za-z_][A-Za-z0-9_]*', name) for name in variables)
+                or len(set(variables)) != len(variables)
+                or any(not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.-]*', name) for name in package_names)
+                or len({re.sub(r'[-_.]+', '-', name).lower() for name in package_names}) != len(package_names)):
+            return None
+        environment = [(name, os.environ[name]) for name in sorted(variables)]
+        # Keep the supported surface deliberately narrow. Shell composition,
+        # interpreters other than this Python and DB runners cannot opt in.
+        if any(c in cmd for c in '|&;<>\n\r`$'):
+            return None
+        parts = shlex.split(cmd, posix=(os.name != 'nt'))
+        if len(parts) < 2 or Path(parts[0].strip('"\'')).name.lower() not in ('python', 'python.exe', 'python3'):
+            return None
+        runner = shutil.which(parts[0].strip('"\''))
+        if not runner or Path(runner).resolve() != Path(sys.executable).resolve():
+            return None
+        if not parts[1].strip('"\'').lower().endswith('.py'):
+            return None
+        executable = hashlib.sha256(Path(runner).read_bytes()).hexdigest()
+        packages = []
+        for name in sorted(package_names, key=str.lower):
+            dist = importlib.metadata.distribution(name)
+            metadata = dist.read_text('METADATA')
+            direct_url = dist.read_text('direct_url.json')
+            if direct_url and json.loads(direct_url).get('dir_info', {}).get('editable'):
+                return None
+            files = dist.files
+            if metadata is None or not files:
+                return None
+            file_hashes = []
+            paths = sorted((str(item), item) for item in files)
+            if len({path for path, _ in paths}) != len(paths):
+                return None
+            for relative, item in paths:
+                path = Path(dist.locate_file(item))
+                if path.is_symlink() or not path.is_file():
+                    return None
+                before = path.stat()
+                digest = hashlib.sha256()
+                with path.open('rb') as source:
+                    for chunk in iter(lambda: source.read(1024 * 1024), b''):
+                        digest.update(chunk)
+                    opened = os.fstat(source.fileno())
+                after = path.stat()
+                identity = lambda st: (st.st_dev, st.st_ino, st.st_size, st.st_mtime_ns)
+                if identity(before) != identity(opened) or identity(before) != identity(after):
+                    return None
+                file_hashes.append((relative, digest.hexdigest()))
+            packages.append((name, dist.version, hashlib.sha256(metadata.encode('utf-8')).hexdigest(), file_hashes))
+        if environment != [(name, os.environ[name]) for name in sorted(variables)]:
+            return None
+        payload = {'format': 'aidd-offline-contract-v3', 'executable': executable,
+                   'version': sys.version, 'platform': platform.platform(),
+                   'environment': environment, 'packages': packages,
+                   'contract': declaration.strip()}
+        return hashlib.sha256(json.dumps(payload, ensure_ascii=True, sort_keys=True,
+                                         separators=(',', ':')).encode('utf-8')).hexdigest()
+    except (OSError, ValueError, TypeError, KeyError, AttributeError, importlib.metadata.PackageNotFoundError):
+        return None
+
+
 def _reusable_input_rows(d, prior, full):
-    """No isolated runner currently attests that a row is reusable."""
-    return {}
+    """Return intact previous PASS rows only under the explicit offline contract."""
+    out = {}
+    if full or not prior or prior.get('stable') is not True:
+        return out
+    for row in prior.get('results') or []:
+        try:
+            if (row.get('ok') is not True or row.get('reuse_policy') != 'hermetic'
+                    or not row.get('input_globs') or not row.get('input_fp')
+                    or not row.get('environment_id') or not row.get('environment_declaration')):
+                continue
+            p = (d.resolve() / str(row.get('evidence') or '')).resolve()
+            p.relative_to(d.resolve())
+            data = p.read_bytes()
+            if (hashlib.sha1(data).hexdigest() != row.get('sha1')
+                    or not _cached_pass_valid(data, row, row.get('expected'))):
+                continue
+            key = (_verification_key(row.get('cmd')), _verification_key(row.get('expected')),
+                   tuple(row['input_globs']), row['input_fp'], row['environment_declaration'])
+            out[key] = (data, row)
+        except (OSError, ValueError, TypeError, KeyError):
+            continue
+    return out
 
 
 ROUND_TTL_DEFAULT = 6 * 3600
@@ -1714,7 +1859,7 @@ def _round_store(root, entries, results, d, st_all_start, st_all_end, gen):
 
 
 def cmd_verify_many(spec_args, full=False, bail=False, wave=None, result_sink=None):
-    """Run a coordinated round and summarize each spec; automatic row reuse is disabled."""
+    """Run a coordinated round and share eligible offline contract evidence."""
     if wave is not None:
         if bail:
             print('Refused: --bail cannot verify a complete wave; nothing was executed.')
@@ -1735,8 +1880,8 @@ def cmd_verify_many(spec_args, full=False, bail=False, wave=None, result_sink=No
                 print(f'Refused: {d.name}: {exc}; nothing was executed.')
                 return 1
     worst, out = 0, []
-    # An input fingerprint and a 'hermetic' label do not prove environment identity.
-    wave_cache = None
+    # Only explicit offline contracts can use this in-memory round cache.
+    wave_cache = {} if _round_enabled(full) else None
     for s in spec_args:
         print(f'\n=== aidd verify {s} ===', flush=True)
         run = {}
@@ -1883,6 +2028,47 @@ def _task_selection_fingerprint(tasks_text, spec_text, task_ids):
     return hashlib.sha256(raw).hexdigest()
 
 
+def _changed_task_selection(root, spec, base=None):
+    """Select declared Covers whose declared Inputs intersect a Git diff.
+
+    This is a provisional direct relationship, not a proof of transitive
+    dependency closure or of a previously verified baseline.
+    """
+    try:
+        from . import aidd_unit_audit as impact
+    except ImportError:
+        import aidd_unit_audit as impact
+    paths = impact.git_changed_paths(root, base)
+    spec_id = impact.resolve_spec_id(root, str(spec))
+    metadata = {f'specs/{spec_id}/{name}'.lower() for name in
+                ('spec.md', 'tasks.md', 'plan.md', 'contracts.md', 'mockup-audit.md')}
+    if any(path.replace('\\', '/').lower() in metadata for path in paths):
+        raise ValueError('spec policy changed; affected tasks cannot be determined from declared Inputs')
+    d = Path(root) / 'specs' / spec_id
+    tasks_text = _read(d / 'tasks.md')
+    rows = rules.parse_verification(_read(d / 'spec.md'))
+    task_ids = set()
+    for line in rules._clean(tasks_text).splitlines():
+        if line.lstrip().startswith('|'):
+            cells = rules._split_row(line)
+            match = re.fullmatch(r'[`*\s]*(T-\d+)[`*\s]*', cells[0], re.I) if cells else None
+        else:
+            match = re.match(r'^\s*#{1,3}\s+(T-\d+)\b', line, re.I)
+        if match:
+            task_ids.add(match.group(1).upper())
+    if not rows or not task_ids or any(not row.get('inputs') or not row.get('covers') for row in rows):
+        raise ValueError('each verification row needs explicit Inputs and Covers')
+    selected = []
+    for task in sorted(task_ids):
+        related_rows = _task_rows(tasks_text, rows, [task])
+        if any(rules._glob_hit(path.replace('\\', '/'), row['inputs'])
+               for row in related_rows for path in paths):
+            selected.append(task)
+    if not selected:
+        raise ValueError('no declared task Inputs match the Git changes; no verification was executed')
+    return selected
+
+
 def _latest_wave_run(root, spec, wave):
     """Read the last separate wave event; it is never a spec close event."""
     try:
@@ -1993,8 +2179,8 @@ def cmd_verify(spec_arg, full=False, bail=False, wave=None, result_sink=None, wa
     # state. Wave reuse is opt-in, scoped to this invocation, and hermetic only.
     reuse = {}
     input_reuse = {} if wave is not None or task_ids is not None else _reusable_input_rows(d, prior, full)
-    if any(r.get('reuse') == 'hermetic' for r in rows):
-        print('Hermetic reuse unavailable: declared inputs and environment do not prove isolation; rows will run.', flush=True)
+    if any(r.get('reuse') == 'hermetic' and r.get('environment', '').strip().lower().startswith('contract:offline;') for r in rows):
+        print('Offline reuse relies on the owner contract; isolation and transitive Inputs are not independently verified.', flush=True)
     # Rows with explicit Inputs use their own fingerprinted cache; there is no
     # reason to scan the entire tree for a round cache they cannot consume.
     # Legacy round cache has no external-environment identity; do not consume it.
@@ -2002,7 +2188,7 @@ def cmd_verify(spec_arg, full=False, bail=False, wave=None, result_sink=None, wa
     round_entries = _round_load(root) if round_on else []
     # whole tree: the round cache key ignores Scope; the default 8 s budget is too short for a large dirty tree
     # (the state came back None and the cache silently never worked), so it gets a generous one.
-    st_all_start = ev.code_state(root, budget_s=120, reuse=True) if round_on or wave_cache is not None else None
+    st_all_start = ev.code_state(root, budget_s=120, reuse=True) if round_on else None
     if round_on and not st_all_start:
         print('note: whole-tree fingerprint unavailable (budget); the round cache is off for this run', flush=True)
     results = []
@@ -2021,17 +2207,22 @@ def cmd_verify(spec_arg, full=False, bail=False, wave=None, result_sink=None, wa
         inputs = r.get('inputs') or []
         input_fp = rules.row_input_fingerprint(root, inputs) if inputs else None
         env_decl = r.get('environment', '')
-        env_id = None  # No verifiable isolation provider exists.
+        env_id = (_contract_environment_id(cmd, env_decl)
+                  if r.get('reuse') == 'hermetic' and inputs and not full else None)
         key = (_verification_key(cmd), _verification_key(expected))
         # For this one multi-spec wave, share exact checks only on identical
         # declared inputs (or the whole code tree when Inputs are absent).
-        wave_fp = None  # no environment attestation exists in the current runner
-        wave_key = (str(root), cmd.strip(), expected.strip(), tuple(inputs), wave_fp) if wave_fp else None
+        wave_key = ((str(root), _verification_key(cmd), _verification_key(expected), tuple(inputs),
+                     input_fp, env_decl.strip(), env_id)
+                    if wave_cache is not None and input_fp and env_id and not full else None)
         shared = wave_cache.get(wave_key) if wave_key else None
         if shared:
             data, saved = shared
             try:
-                if hashlib.sha1(data).hexdigest() != saved['sha1']:
+                if (hashlib.sha1(data).hexdigest() != saved['sha1']
+                        or not _cached_pass_valid(data, saved, expected)
+                        or rules.row_input_fingerprint(root, inputs) != input_fp
+                        or _contract_environment_id(cmd, env_decl) != env_id):
                     raise ValueError('shared evidence hash mismatch')
                 final.write_bytes(data)
                 res = dict(saved, n=str(n), evidence=rel, reused=True, round=True, secs=0.0)
@@ -2041,7 +2232,8 @@ def cmd_verify(spec_arg, full=False, bail=False, wave=None, result_sink=None, wa
                 pass
         hit = (input_reuse.get((*key, tuple(inputs), input_fp, env_decl.strip()))
                if inputs and input_fp and env_id and r.get('reuse') == 'hermetic' else None)
-        if hit is not None:
+        if (hit is not None and hit[1].get('environment_id') == env_id
+                and _contract_environment_id(cmd, env_decl) == env_id):
             try:
                 data = hit[0]
                 with open(final, 'wb') as fh:
@@ -2121,6 +2313,8 @@ def cmd_verify(spec_arg, full=False, bail=False, wave=None, result_sink=None, wa
             res.update(input_globs=inputs, input_fp=input_fp, input_algorithm=ev.EVIDENCE_ALGORITHM)
             if r.get('reuse') == 'hermetic':
                 res['reuse_policy'] = 'hermetic'
+                if env_id and _contract_environment_id(cmd, env_decl) == env_id:
+                    res.update(environment_id=env_id, environment_declaration=env_decl.strip())
         if why and not ok:
             res['problem'] = why
         print(f"{'PASS' if ok else 'FAIL'} row {n}: {one_line[:100]} (exit {code}, {secs} s)"
@@ -2228,6 +2422,12 @@ def cmd_verify(spec_arg, full=False, bail=False, wave=None, result_sink=None, wa
                 result['ok'] = False
                 result['problem'] = 'declared Inputs changed before verification completed'
                 print(f"FAIL row {result['n']}: {result['problem']}", flush=True)
+        if result.get('ok') and result.get('environment_id'):
+            current = _contract_environment_id(result['cmd'], result.get('environment_declaration', ''))
+            if not current or current != result['environment_id']:
+                result['ok'] = False
+                result['problem'] = 'contract environment changed before verification completed'
+                print(f"FAIL row {result['n']}: {result['problem']}", flush=True)
     all_ok = all(x['ok'] for x in results) and stable
     if task_ids is not None:
         try:
@@ -2243,26 +2443,30 @@ def cmd_verify(spec_arg, full=False, bail=False, wave=None, result_sink=None, wa
             verification_hash_end = None
             all_ok = stable = False
             print('FAIL selected tasks or verification policy could not be rechecked.', flush=True)
-    if wave_cache is not None and stable and st_all_start:
-        st_all_end = ev.code_state(root, budget_s=120, reuse=True)
+    if wave_cache is not None and stable and not full:
         for result in results:
             inputs = result.get('input_globs') or []
             # Failed rows need their declared Inputs from the original row; they
             # may be shared only if their inputs remained stable too.
             original = next((r for r in rows if str(r.get('n')) == result['n']), None)
             inputs = (original or {}).get('inputs') or inputs
-            if not original or original.get('reuse') != 'hermetic' or not inputs or result.get('ok') is not True:
+            if (not original or original.get('reuse') != 'hermetic' or not inputs
+                    or result.get('ok') is not True or not result.get('environment_id')):
                 continue
             before = result.get('input_fp')
             after = rules.row_input_fingerprint(root, inputs)
             if not before or before != after or not result.get('sha1'):
                 continue
-            if inputs and result.get('input_fp') != before:
+            environment_id = result['environment_id']
+            declaration = result.get('environment_declaration', '')
+            if _contract_environment_id(result['cmd'], declaration) != environment_id:
                 continue
             try:
                 data = (d / result['evidence']).read_bytes()
                 if hashlib.sha1(data).hexdigest() == result['sha1']:
-                    wave_cache[(str(root), result['cmd'].strip(), result['expected'].strip(), tuple(inputs), before)] = (data, result)
+                    key = (str(root), _verification_key(result['cmd']), _verification_key(result['expected']),
+                           tuple(inputs), before, declaration, environment_id)
+                    wave_cache[key] = (data, result)
             except OSError:
                 pass
     if round_on and stable and st_all_start and wave is None:
@@ -2511,6 +2715,25 @@ def _close_gaps(d, root):
     verify_run (rules.verification_gaps), auditors newer than max(last code edit, verify_run) and, for a
     closing auditor, its qa-audit.md rows (rules.closing_audit_gaps). Legacy specs keep the old path."""
     gaps = []
+    try:
+        for unit in rules.unit_approval_states(root, d.name, ev):
+            if not unit['approved']:
+                gaps.append(f"R6 unit {unit['unit']} has no current owner approval → review this unit.")
+    except (OSError, ValueError) as exc:
+        gaps.append(f'R6 unit approvals cannot be verified ({exc}) → correct the unit manifests.')
+    unit_audits = []
+    try:
+        unit_audits = _unit_audit_states(root, d.name)
+        for unit in unit_audits:
+            if unit.get('status') == 'indeterminate':
+                gaps.append(f"R7 unit {unit['unit']} scope is indeterminate ({unit.get('reason')}).")
+                continue
+            for domain, result in unit.get('domains', {}).items():
+                if result.get('status') != 'current':
+                    gaps.append(f"R7 unit {unit['unit']} {domain} audit is {result.get('status')}: "
+                                f"{result.get('reason')} → review this unit and domain.")
+    except (OSError, ValueError, TypeError) as exc:
+        gaps.append(f'R7 unit audit evidence cannot be verified ({exc}).')
     tasks_t = _read(d / 'tasks.md')
     if not (d / 'tasks.md').exists() or not rules.approval_valid(tasks_t):
         gaps.append('R6 tasks.md has no valid approval → ask the user, then `aidd rules approve <spec_dir>`.')
@@ -2552,10 +2775,15 @@ def _close_gaps(d, root):
                             f"only {', '.join(sorted(imp['domains']))}. Declare `{imp['suggest']}` under `## Verification` "
                             'in spec.md (the owner approves it with the spec) instead of auditing every domain.')
             for dom in missing:
-                gaps.append(f'R7 no distinct {dom} auditor subagent ran after the last code edit and the last '
-                            f'verify_run → dispatch ONE closing auditor whose prompt starts '
-                            f'`CLOSING AUDIT [domains: {doms}] [tasks:{h8}] [verify:{v8}]` (or one auditor per '
-                            'domain), then rewrite qa-audit.md.')
+                if unit_audits:
+                    gaps.append(f'R7 baseline {dom} audit is indeterminate: historical evidence does not '
+                                'establish current baseline scope. Review only the unproven baseline scope; '
+                                'current unit audits remain valid.')
+                else:
+                    gaps.append(f'R7 no distinct {dom} auditor subagent ran after the last code edit and the last '
+                                f'verify_run → dispatch ONE closing auditor whose prompt starts '
+                                f'`CLOSING AUDIT [domains: {doms}] [tasks:{h8}] [verify:{v8}]` (or one auditor per '
+                                'domain), then rewrite qa-audit.md.')
         try:
             gaps += [_fmt_violation(v) for v in rules.closing_audit_gaps(ev, root, d)]
         except Exception as e:      # fail closed
@@ -2564,8 +2792,12 @@ def _close_gaps(d, root):
     # D1: a code edit applies to every open spec (no per-spec attribution)
     since = max([e['ts'] for e in ev.events(root, kind='code_edit')], default=0.0)
     for dom in sorted(rules.uncovered_domains(root, None, d.name, since, spec_dir=d)):
-        gaps.append(f'R7 no distinct {dom} auditor subagent ran after the last code edit → dispatch one whose '
-                    f'prompt/description names "{dom}", then rewrite qa-audit.md.')
+        if unit_audits:
+            gaps.append(f'R7 baseline {dom} audit is indeterminate: historical evidence does not establish '
+                        'current baseline scope. Review only the unproven baseline scope; current unit audits remain valid.')
+        else:
+            gaps.append(f'R7 no distinct {dom} auditor subagent ran after the last code edit → dispatch one whose '
+                        f'prompt/description names "{dom}", then rewrite qa-audit.md.')
     return gaps
 
 
@@ -2707,6 +2939,7 @@ def main(argv=None):
         if argv == ['verify', '--help']:
             print('Usage: aidd verify <spec> [<spec> ...] [--full] [--bail] [--json] [--wave ID]')
             print('       aidd verify <spec> --tasks T-01,T-02')
+            print('       aidd verify <spec> --changed [--base COMMIT]')
             print('Task selection runs matching verification rows and records partial evidence; it does not close a spec.')
             return 0
         if len(argv) >= 2 and argv[0] == 'verify':
@@ -2715,6 +2948,20 @@ def main(argv=None):
             as_json = '--json' in argv[1:]
             args = argv[1:]
             task_ids = None
+            changed = '--changed' in args
+            base = None
+            if args.count('--changed') > 1 or args.count('--base') > 1:
+                print('Refused: --changed and --base may appear only once.')
+                return 1
+            if '--base' in args:
+                pos = args.index('--base')
+                if not changed or pos + 1 >= len(args) or args[pos + 1].startswith('-'):
+                    print('Refused: --base requires --changed and a commit.')
+                    return 1
+                base = args[pos + 1]
+                args = args[:pos] + args[pos + 2:]
+            if changed:
+                args.remove('--changed')
             if '--tasks' in args:
                 if args.count('--tasks') != 1:
                     print('Refused: --tasks must appear once.')
@@ -2740,6 +2987,18 @@ def main(argv=None):
                 wave = args[pos + 1]
                 args = args[:pos] + args[pos + 2:]
             specs = [a for a in args if a not in ('--full', '--bail', '--json')]
+            if changed:
+                if len(specs) != 1 or task_ids is not None or as_json or wave is not None or full or bail:
+                    print('Refused: --changed requires one spec and cannot be combined with --tasks, --json, --wave, --full or --bail.')
+                    return 1
+                try:
+                    root = ev.find_root()
+                    task_ids = _changed_task_selection(root, specs[0], base)
+                except (OSError, ValueError, TypeError) as error:
+                    print(f'Refused: {error}; nothing was verified.')
+                    return 1
+                print('Git selection is provisional: direct declared Inputs only; transitive dependencies and baseline are not attested.')
+                print('Selected tasks: ' + ', '.join(task_ids))
             if task_ids is not None:
                 if len(specs) != 1 or as_json or wave is not None or full or bail:
                     print('Refused: --tasks requires one spec and cannot be combined with --json, --wave, --full or --bail.')

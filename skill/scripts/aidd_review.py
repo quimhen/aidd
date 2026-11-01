@@ -1426,7 +1426,7 @@ def _parser():
     p.add_argument('--full', action='store_true',
                    help='generate the long page with heading keys (templates/review-full.html)')
     p.add_argument('--unit', metavar='ID',
-                   help='select an amendment unit; requires --summary and never records consent')
+                   help='select an amendment unit for --summary or optional --visual review')
     mode = p.add_mutually_exclusive_group()
     mode.add_argument('--check', action='store_true',
                       help='print ONE status line (exit 0 complete / 2 pending / 3 stale, legacy, too many items)')
@@ -1436,6 +1436,8 @@ def _parser():
                       help='print `<CODE>: <comment>` for commented codes only')
     mode.add_argument('--summary', action='store_true',
                       help='print the mechanical summary (at most 30 lines); writes nothing')
+    mode.add_argument('--visual', action='store_true',
+                      help='serve an optional local approval page for --unit')
     p.add_argument('--timeout', type=float, default=3600.0, metavar='S', help='--wait timeout (default 3600)')
     p.add_argument('--interval', type=float, default=2.0, metavar='S', help='--wait poll interval (default 2)')
     return p
@@ -1459,8 +1461,14 @@ def main(argv=None):
             print(f'aidd review: spec folder not found: {d}', file=sys.stderr)
             return 1
         if a.unit:
-            if not a.summary or a.open or a.full:
-                p.error('--unit requires --summary and cannot be combined with --open or --full')
+            if (not (a.summary or a.visual) or a.full or (a.open and not a.visual)):
+                p.error('--unit requires --summary or --visual; --open requires --visual')
+            if a.visual:
+                try:
+                    from .aidd_unit_visual import serve_unit_review
+                except ImportError:
+                    from aidd_unit_visual import serve_unit_review
+                return serve_unit_review(d, a.unit, open_browser=a.open, timeout=a.timeout)
             if d.parent.name != 'specs':
                 raise ValueError('unit review requires a spec under project specs/')
             try:
@@ -1488,6 +1496,8 @@ def main(argv=None):
             print(unit_consent_question(package))
             print('Status: proposed; this summary is not owner approval')
             return 0
+        if a.visual:
+            p.error('--visual requires --unit')
         if a.check or a.wait or a.comments or a.summary:
             _items()
             sm = _state()

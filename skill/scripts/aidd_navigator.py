@@ -5,10 +5,36 @@ import argparse
 import json
 import os
 import re
+import tempfile
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
 MAX_SOURCE_BYTES = 512 * 1024
+
+
+def _active_unit_reviews(root):
+    """Ephemeral links only; following one never constitutes approval."""
+    directory = Path(tempfile.gettempdir()) / 'aidd-unit-reviews'
+    result = {}
+    try:
+        files = list(directory.glob('review-*.json'))[:500]
+    except OSError:
+        return result
+    for path in files:
+        try:
+            if path.is_symlink() or path.stat().st_size > 4096:
+                continue
+            data = json.loads(path.read_text(encoding='utf-8'))
+            if (data.get('project') != os.path.normcase(str(root.resolve())) or
+                    not isinstance(data.get('expires'), (int, float)) or data['expires'] <= time.time() or
+                    not re.fullmatch(r'http://127\.0\.0\.1:[0-9]{1,5}/[A-Za-z0-9_-]{32,}', str(data.get('url', ''))) or
+                    not all(re.fullmatch(r'[A-Za-z0-9_-]+', str(data.get(k, ''))) for k in ('spec', 'unit'))):
+                continue
+            result.setdefault(data['spec'], []).append({'unit': data['unit'], 'url': data['url']})
+        except (OSError, ValueError, TypeError):
+            continue
+    return result
 
 
 def _objective(text: str) -> str:
@@ -82,6 +108,7 @@ def _read(path: Path) -> str:
 
 def collect_specs(project: Path) -> list[dict]:
     root = project.resolve(strict=True)
+    active_reviews = _active_unit_reviews(root)
     specs = root / 'specs'
     if _link(specs) or not specs.is_dir():
         return []
@@ -123,7 +150,8 @@ def collect_specs(project: Path) -> list[dict]:
                        'tasks_text': tasks or 'Tareas no disponibles.',
                        'amendments': amendments, 'units': unit_lines, 'screens': screens,
                        'screen_revisions': _screen_revisions(units, directory.name), 'evidence': evidence_names, 'files': files,
-                       'review_url': review_url, 'history': history.get(directory.name)})
+                       'review_url': review_url, 'unit_reviews': active_reviews.get(directory.name, []),
+                       'history': history.get(directory.name)})
     return output
 
 

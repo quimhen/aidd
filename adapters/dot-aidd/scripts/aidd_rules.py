@@ -1481,6 +1481,33 @@ def unit_review_package(unit, project_root):
     return json.dumps(payload, ensure_ascii=True, sort_keys=True, separators=(',', ':'))
 
 
+def unit_approval_states(project_root, spec_id, evidence):
+    """Current unit seals; a base spec seal remains a separate requirement.
+
+    The semantic unit digest excludes administrative task status in schema v2.
+    The recorded package hash proves which material was shown at consent time;
+    it must not be compared to administrative changes made afterwards.
+    """
+    try:
+        from .aidd_units import discover_unit_scope
+    except ImportError:
+        from aidd_units import discover_unit_scope
+    units = discover_unit_scope(Path(project_root), spec_id)
+    events = evidence.events(project_root, kind='unit_approved')
+    result = []
+    for unit in units:
+        if unit.spec_id != spec_id:
+            continue
+        digest = unit_approval_hash(unit, project_root)
+        approved = any((e.get('detail') or {}).get('spec') == spec_id
+                       and (e.get('detail') or {}).get('unit_id') == unit.unit_id
+                       and (e.get('detail') or {}).get('digest') == digest
+                       and re.fullmatch(r'[0-9a-f]{64}', str((e.get('detail') or {}).get('review_sha256', '')))
+                       for e in events)
+        result.append({'unit': unit.unit_id, 'digest': digest, 'approved': approved})
+    return result
+
+
 def unit_consent_question(package):
     """Exact question to be submitted to the trusted host question tool."""
     import json
@@ -1909,6 +1936,14 @@ def check_spec_dir(spec_dir, root=None, session=None, static_only=False):
                           'Restore skill/scripts/aidd_evidence.py (reinstall AIDD hooks).'))
             return _dedup(out)
         root = Path(root) if root else ev.find_root(d)
+        try:
+            for state in unit_approval_states(root, d.name, ev):
+                if not state['approved']:
+                    out.append(_v('R6', f"Unit {state['unit']} has no current owner approval.",
+                                  'Review and approve this unit; the base approval remains unchanged.'))
+        except (OSError, ValueError) as exc:
+            out.append(_v('R6', f'Unit approvals cannot be verified ({exc}).',
+                          'Correct the unit manifests and retry.'))
         out += _evidence_rules(ev, d, root, session, spec_t, tasks_p.exists(), plan_p, tasks_p, qa_p)
     except Exception as e:  # pragma: no cover - defensive
         out.append(_v('R5', f'check_spec_dir failed internally ({e}).', 'Report this to the AIDD maintainers.'))

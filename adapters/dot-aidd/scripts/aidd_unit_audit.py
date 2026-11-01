@@ -10,8 +10,10 @@ import hashlib
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
+import uuid
 from pathlib import Path, PurePosixPath, PureWindowsPath
 
 _HEX = re.compile(r'[0-9a-f]{64}\Z')
@@ -198,6 +200,124 @@ def codex_provenance(root, event, evidence, identity_attestor=None):
         return {'verified': True, 'reason': 'host lifecycle and assignment verified'}
     except (OSError, TypeError, ValueError, KeyError):
         return {'verified': False, 'reason': 'host lifecycle is unreadable'}
+
+
+def review_environment():
+    """Identity of the locally trusted runner, Codex executable and configuration."""
+    exe = shutil.which('codex')
+    if not exe:
+        raise ValueError('codex executable unavailable')
+    executable = Path(exe).resolve(strict=True)
+    config = Path(os.environ.get('CODEX_HOME', str(Path.home() / '.codex'))) / 'config.toml'
+    values = [hashlib.sha256(executable.read_bytes()).hexdigest(),
+              hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
+              hashlib.sha256(config.read_bytes()).hexdigest() if config.is_file() else 'no-config']
+    return executable, hashlib.sha256('\n'.join(values).encode()).hexdigest()
+
+
+def local_runner_provenance(root, event):
+    """Trust boundary: this machine and the AIDD runner, not a Codex hook.
+
+    The runner records its actual fresh child process and captured output. This
+    is local operational evidence, not protection against a hostile local user
+    able to rewrite the event log or replace the runner.
+    """
+    d = event.get('detail') or {}
+    receipt = d.get('runner') or {}
+    try:
+        if (receipt.get('provider') != 'aidd-local-codex-v1'
+                or receipt.get('checkout') != str(Path(root).resolve(strict=True))
+                or receipt.get('sandbox') != 'read-only' or receipt.get('exit_code') != 0
+                or type(receipt.get('pid')) is not int or receipt['pid'] <= 0
+                or type(receipt.get('parent_pid')) is not int or receipt['pid'] == receipt['parent_pid']
+                or not receipt.get('thread_id') or receipt['thread_id'] != d.get('auditor_id')
+                or not receipt.get('git_head') or receipt.get('scope_digest') != d.get('scope', {}).get('digest')):
+            return {'verified': False, 'reason': 'local reviewer receipt incomplete'}
+        return {'verified': True, 'reason': 'trusted local runner captured a separate Codex review'}
+    except (OSError, ValueError, TypeError, KeyError):
+        return {'verified': False, 'reason': 'local reviewer report is unreadable'}
+
+
+def run_unit_review(root, unit, domains, units, evidence, *, executable=None, environment_id=None):
+    """Run ONE fresh read-only reviewer for affected domains and record its real result."""
+    root = Path(root).resolve(strict=True)
+    if executable is None or environment_id is None:
+        executable, environment_id = review_environment()
+    before = units.unit_impact_snapshot(unit, root)
+    git = ['git', '-C', str(root), 'rev-parse']
+    checkout = subprocess.check_output(git + ['--show-toplevel'], text=True).strip()
+    if Path(checkout).resolve(strict=True) != root:
+        raise ValueError('project root is not the Git checkout root')
+    head = subprocess.check_output(git + ['HEAD'], text=True).strip()
+    closure = units.discover_unit_scope(root, unit.spec_id, [unit.key])
+    paths = sorted({path for item in closure for path in
+                    (*item.paths, *item.targets, *item.inputs, *item.config,
+                     *(ref.source for ref in item.visual_refs),
+                     *(asset for ref in item.visual_refs for asset in ref.assets))})
+    prompt = ('Independently review only this AIDD unit and its declared dependency closure. '
+              'Do not modify files or run tests. Inspect the listed files and their relevant relationships. '
+              'Assess each requested domain. Return ONLY JSON with keys verdicts and findings; '
+              'verdicts must map each requested domain to PASS or FAIL. If evidence is incomplete, '
+              'use FAIL and describe the gap. For visual fidelity, a PASS requires real screen capture '
+              'and comparison evidence; source inspection alone is insufficient. Do not invent executed checks.\n'
+              + json.dumps({'unit': unit.key, 'scope_digest': before['digest'], 'paths': paths,
+                            'parents': before['parents'], 'domains': domains}, ensure_ascii=False))
+    cmd = [str(executable), 'exec', '--ephemeral', '--sandbox', 'read-only', '--json', '-C', str(root), '-']
+    process = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                               text=True, encoding='utf-8', errors='replace')
+    try:
+        output, error = process.communicate(prompt, timeout=3600)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        process.communicate()
+        raise ValueError('review process timed out; no receipt recorded')
+    if process.returncode != 0:
+        raise ValueError('review process failed: ' + error[-1000:])
+    thread = None
+    message = None
+    completed = False
+    for line in output.splitlines():
+        row = json.loads(line)
+        if row.get('type') == 'thread.started':
+            if thread is not None:
+                raise ValueError('ambiguous reviewer thread')
+            thread = row.get('thread_id')
+        if row.get('type') == 'item.completed' and (row.get('item') or {}).get('type') == 'agent_message':
+            message = row['item'].get('text')
+        if row.get('type') == 'turn.completed':
+            completed = True
+    if not thread or not completed or not message or process.pid == os.getpid():
+        raise ValueError('reviewer did not produce a completed independent result')
+    result = json.loads(message)
+    verdicts = result.get('verdicts') if isinstance(result, dict) else None
+    if (not isinstance(verdicts, dict) or set(verdicts) != set(domains)
+            or any(value not in ('PASS', 'FAIL') for value in verdicts.values())
+            or not isinstance(result.get('findings'), (str, list))):
+        raise ValueError('reviewer verdict is incomplete or invalid')
+    if units.unit_impact_snapshot(unit, root) != before or subprocess.check_output(git + ['HEAD'], text=True).strip() != head:
+        raise ValueError('scope or Git HEAD changed during review; no receipt recorded')
+    dispatch = uuid.uuid4().hex
+    report_dir = root / 'specs' / unit.spec_id / 'audit-reports'
+    for ancestor in (root / 'specs', root / 'specs' / unit.spec_id, report_dir):
+        if ancestor.is_symlink():
+            raise ValueError('symlink in report directory')
+    report_dir.mkdir(parents=True, exist_ok=True)
+    report = report_dir / (dispatch + '.json')
+    captured = {'thread_id': thread, 'scope_digest': before['digest'], 'verdicts': verdicts,
+                'findings': result['findings'], 'reviewer_output': message}
+    report.write_text(json.dumps(captured, ensure_ascii=False, sort_keys=True), encoding='utf-8')
+    relative = report.relative_to(root).as_posix()
+    digest = _report_digest(root, relative)
+    receipt = {'provider': 'aidd-local-codex-v1', 'checkout': str(root), 'sandbox': 'read-only',
+               'pid': process.pid, 'parent_pid': os.getpid(), 'exit_code': process.returncode,
+               'thread_id': thread, 'git_head': head, 'scope_digest': before['digest']}
+    for domain in domains:
+        if not evidence.append(root, dispatch, 'unit_audit', unit=unit.key, domain=domain, scope=before,
+                rules_version='unit-audit-v1', environment_id=environment_id, report_path=relative,
+                report_sha256=digest, auditor_id=thread, implementer_ids=['runner-parent:' + str(os.getpid())],
+                dispatch_id=dispatch, outcome=verdicts[domain], runner=receipt):
+            raise ValueError('could not record reviewer evidence for ' + domain)
+    return {'dispatch_id': dispatch, 'report_path': relative, 'verdicts': verdicts}
 
 
 def domains_for_unit(unit, rules, spec_dir):
@@ -588,15 +708,34 @@ def main(argv=None):
     parser.add_argument('--task', help='restrict the legacy inventory to one task ID')
     parser.add_argument('--changed', action='store_true', help='show only working tree changes (provisional, not an audit baseline)')
     parser.add_argument('--base', help='compare a commit hash with HEAD as well (not proof of an audit baseline)')
+    parser.add_argument('--run-review', metavar='UNIT', help='launch one fresh independent Codex review for this unit')
     args = parser.parse_args(argv)
     try:
         root = ev.find_root(Path(args.root).resolve())
         if root is None:
             raise ValueError('project root not found')
-        # The runtime currently has no validated environment/provenance provider;
-        # its absence is explicit and cannot be bypassed by command-line input.
-        verifier = lambda event: codex_provenance(root, event, ev)
+        try:
+            executable, environment_id = review_environment()
+        except (OSError, ValueError):
+            executable, environment_id = None, None
+        verifier = lambda event: (local_runner_provenance(root, event)
+                                  if (event.get('detail') or {}).get('runner', {}).get('provider') == 'aidd-local-codex-v1'
+                                  else codex_provenance(root, event, ev))
         spec_id = resolve_spec_id(root, args.spec_id)
+        if args.run_review:
+            if not executable or not environment_id:
+                raise ValueError('Codex executable and environment identity are required for review')
+            key = spec_id + ':' + args.run_review
+            if key not in units.list_spec_unit_keys(root, spec_id):
+                raise ValueError('unit not found')
+            unit = units.load_unit(root / 'specs' / spec_id / 'amendments' / args.run_review / 'manifest.json', root)
+            snapshot = units.unit_impact_snapshot(unit, root)
+            rows = ev.events(root, kind='unit_audit')
+            domains = [domain for domain in domains_for_unit(unit, rules, root / 'specs' / spec_id)
+                       if evaluate_audit(root, snapshot, domain, 'unit-audit-v1', environment_id, rows, verifier)['status'] != 'current']
+            review = run_unit_review(root, unit, domains, units, ev, executable=executable, environment_id=environment_id) if domains else {'note': 'all unit domains already have current audit evidence'}
+            print(json.dumps(review, ensure_ascii=False, sort_keys=True))
+            return 1 if 'FAIL' in review.get('verdicts', {}).values() else 0
         if args.task and not re.fullmatch(r'T-\d+', args.task, re.I):
             raise ValueError('invalid task ID')
         changed_paths = git_changed_paths(root, args.base) if args.changed or args.base else None
@@ -608,7 +747,7 @@ def main(argv=None):
                           if changed_paths is not None else set())
         effective_paths = [path for path in changed_paths if path not in administrative] if changed_paths is not None else None
         plan = plan_impact(root, spec_id, ev.events(root, kind='unit_audit'), rules, units,
-                           provenance_verifier=verifier, task_id=args.task, changed_paths=effective_paths, base=args.base)
+                           environment_id=environment_id, provenance_verifier=verifier, task_id=args.task, changed_paths=effective_paths, base=args.base)
         if plan.get('changed') is not None:
             plan['changed']['administrative_only'] = sorted(administrative)
         if args.json:
