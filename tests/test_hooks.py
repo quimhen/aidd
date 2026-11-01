@@ -843,6 +843,18 @@ class TestDispatchAttribution(RecorderCase):
     """Spec 006 FR-004: one `subagent` row per dispatch (tool_use_id), a hook_error when the row is lost."""
     TI = {"subagent_type": "general-purpose", "description": "Auditor", "prompt": "audit performance"}
 
+    def test_codex_dispatch_records_real_request_and_returned_identity(self):
+        import hashlib
+        message = 'Review unit s:a with scope abc'
+        result = self.hook('mark_agent_dispatch.py', tool_use_id='codex-1',
+                           tool_input={'task_name': 'reviewer', 'message': message},
+                           tool_response={'agent_id': 'agent-123', 'task_name': '/root/reviewer'})
+        self.assertEqual(result.returncode, 0)
+        row = self.ev('subagent')[-1]['detail']
+        self.assertEqual(row['request_sha256'], hashlib.sha256(message.encode()).hexdigest())
+        self.assertEqual(row['result_agent_id'], 'agent-123')
+        self.assertEqual(row['result_task_name'], '/root/reviewer')
+
     def _run_in_process(self, name, event, append_result, kinds=("subagent",)):
         """Run hook `name` in this process with aidd_evidence.append forced to `append_result` for rows
         of `kinds` (other kinds go through the real append)."""

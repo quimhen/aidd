@@ -125,12 +125,22 @@ def _record_subagent():
             _model, _msrc = _resolve_model(_ti, _cwd)
         except Exception:
             _model, _msrc = _s(_ti.get('model'))[:200], ''
+        request_text = _s(_ti.get('prompt')) or _s(_ti.get('message'))
         detail = dict(phase='post',
                       type=_s(_ti.get('subagent_type')),
                       model=_model,
                       model_source=_msrc,
-                      desc=_s(_ti.get('description'))[:200],
-                      head=_ev.redact_secrets(_s(_ti.get('prompt')), limit=400)[0])
+                      desc=(_s(_ti.get('description')) or _s(_ti.get('task_name')))[:200],
+                      head=_ev.redact_secrets(request_text, limit=400)[0])
+        if request_text:
+            detail['request_sha256'] = hashlib.sha256(request_text.encode('utf-8')).hexdigest()
+        response = event.get('tool_response')
+        if isinstance(response, dict):
+            # A returned task name is not automatically a lifecycle agent ID.
+            if isinstance(response.get('agent_id'), str) and response['agent_id']:
+                detail['result_agent_id'] = response['agent_id'][:200]
+            if isinstance(response.get('task_name'), str) and response['task_name']:
+                detail['result_task_name'] = response['task_name'][:200]
         if _tid:
             detail['tool_use_id'] = _tid
         try:  # aidd:FR-209 size and hash of the final report; absent when the payload has no text
