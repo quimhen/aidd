@@ -330,7 +330,7 @@ class TestLedger(EvBase):
             self.assertTrue(st["mapper"])
             self.assertTrue(st["graph"])
             self.assertEqual(st["tasks"], {"approval": "pending", "waves": 2, "critical_path_min": 35,
-                                         "approval_recorded": False, "tokens_k": 230})
+                                         "approval_recorded": False, "tokens_k": 230, "unit_approvals": []})
             self.assertEqual(st["code_edits"], 3)
             self.assertEqual(st["auditors"], {"functional": False, "security": True})
             text = aidd_status.format_status(st) + "\n" + aidd_status.format_global(aidd_status._global(root))

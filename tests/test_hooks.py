@@ -553,7 +553,8 @@ class TestRecorders(RecorderCase):
         for name in ("tasks.md", "TASKS.MD", "tasks.md.", "tasks.md::$DATA", "sub/../tasks.md"):
             self.hook("mark_code_edit.py", tool_input={"file_path": str(d / name)})
         e = self.ev("spec_edit")
-        self.assertEqual(len(e), 5)
+        # Trailing dots and alternate data streams are aliases only on Windows.
+        self.assertEqual(len(e), 5 if sys.platform == "win32" else 3)
         self.assertEqual({x["detail"]["file"] for x in e}, {"tasks.md"})
         self.assertEqual(aidd_evidence.open_specs(self.root), ["001-x"])
 
