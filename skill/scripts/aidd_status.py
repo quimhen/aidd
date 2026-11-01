@@ -2704,6 +2704,11 @@ def main(argv=None):
         if len(argv) == 3 and argv[0] == 'rules' and argv[1] in ('check', 'approve', 'close', 'activate'):
             return {'check': cmd_check, 'approve': cmd_approve, 'close': cmd_close,
                     'activate': cmd_activate}[argv[1]](argv[2])
+        if argv == ['verify', '--help']:
+            print('Usage: aidd verify <spec> [<spec> ...] [--full] [--bail] [--json] [--wave ID]')
+            print('       aidd verify <spec> --tasks T-01,T-02')
+            print('Task selection runs matching verification rows and records partial evidence; it does not close a spec.')
+            return 0
         if len(argv) >= 2 and argv[0] == 'verify':
             full = '--full' in argv[1:]
             bail = '--bail' in argv[1:]                          # stop a spec's rows at its first failure
