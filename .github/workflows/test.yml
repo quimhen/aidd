@@ -10,6 +10,7 @@ jobs:
   unittest:
     name: Python ${{ matrix.python-version }} on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -17,8 +18,14 @@ jobs:
         python-version: ["3.10", "3.11", "3.12"]
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-      - name: Run the stdlib-only test suite (no dependencies to install)
-        run: python -m unittest discover -s tests -v
+      - name: Verify pinned guard baseline is available
+        run: git cat-file -e '3cf5fccaa395f1dbe709b0ce800d1ad412418d39^{commit}'
+      - name: Install test-only dependencies
+        run: python -m pip install -r tests/requirements-test.txt
+      - name: Run one discovery with guard and coverage checks
+        run: python tests/run_parallel.py --ci-guard

@@ -81,6 +81,51 @@ _NEGATION_RE = re.compile(r"\b(not|no|don'?t|do not|never|nunca|reject|rechaz\w*
 _PH = '\x00'          # inline placeholder delimiter (NUL is stripped from the input first)
 
 
+def visual_revision_binding(spec_dir, revision):
+    """Bind a declared screen reference and local assets; not runtime evidence."""
+    from collections.abc import Mapping
+    try:
+        from .aidd_units import _paths
+    except ImportError:
+        from aidd_units import _paths
+    keys = {'screen_id', 'revision_id', 'source', 'assets', 'states', 'viewports'}
+    if not isinstance(revision, Mapping) or set(revision) != keys:
+        raise ValueError('invalid screen revision fields')
+    for key in ('screen_id', 'revision_id', 'source'):
+        if not isinstance(revision[key], str) or not revision[key].strip():
+            raise ValueError(f'invalid screen revision {key}')
+    for key in ('assets', 'states', 'viewports'):
+        values = revision[key]
+        if (not isinstance(values, list) or any(not isinstance(x, str) or not x.strip() for x in values)
+                or len(set(values)) != len(values)):
+            raise ValueError(f'invalid screen revision {key}')
+    for viewport in revision['viewports']:
+        match = re.fullmatch(r'([0-9]+)x([0-9]+)', viewport)
+        if not match or int(match.group(1)) < 1 or int(match.group(2)) < 1:
+            raise ValueError(f'invalid viewport: {viewport}')
+    spec = Path(spec_dir).resolve(strict=True)
+    if spec.parent.name != 'specs':
+        raise ValueError('screen revision requires a spec under project specs/')
+    root = spec.parent.parent.resolve(strict=True)
+    paths = _paths([revision['source'], *revision['assets']], root, 'visual sources')
+    entries = []
+    for name in paths:
+        try:
+            path = (root / name).resolve(strict=True)
+            path.relative_to(root)
+            if not path.is_file():
+                raise ValueError('not a file')
+            entries.append({'path': name, 'sha256': hashlib.sha256(path.read_bytes()).hexdigest()})
+        except (OSError, RuntimeError, ValueError) as exc:
+            raise ValueError(f'visual source unavailable: {name}') from exc
+    payload = {'format': 'aidd-visual-revision-v1', 'screen_id': revision['screen_id'],
+               'revision_id': revision['revision_id'], 'source': entries[0],
+               'assets': sorted(entries[1:], key=lambda x: x['path']),
+               'states': sorted(revision['states']), 'viewports': sorted(revision['viewports'])}
+    return hashlib.sha256(json.dumps(payload, sort_keys=True, ensure_ascii=False,
+                                    separators=(',', ':')).encode('utf-8')).hexdigest()
+
+
 # ---------------------------------------------------------------------------
 # The two review modules (lazy; aidd:FR-301 module split)
 # ---------------------------------------------------------------------------
@@ -1371,6 +1416,8 @@ def _parser():
     p.add_argument('--open', action='store_true', help='open the page in the default browser')
     p.add_argument('--full', action='store_true',
                    help='generate the long page with heading keys (templates/review-full.html)')
+    p.add_argument('--unit', metavar='ID',
+                   help='select an amendment unit; requires --summary and never records consent')
     mode = p.add_mutually_exclusive_group()
     mode.add_argument('--check', action='store_true',
                       help='print ONE status line (exit 0 complete / 2 pending / 3 stale, legacy, too many items)')
@@ -1402,6 +1449,32 @@ def main(argv=None):
         if not d.is_dir():
             print(f'aidd review: spec folder not found: {d}', file=sys.stderr)
             return 1
+        if a.unit:
+            if not a.summary or a.open or a.full:
+                p.error('--unit requires --summary and cannot be combined with --open or --full')
+            if d.parent.name != 'specs':
+                raise ValueError('unit review requires a spec under project specs/')
+            try:
+                from .aidd_units import discover_units
+                from .aidd_rules import unit_approval_hash
+            except ImportError:
+                from aidd_units import discover_units
+                from aidd_rules import unit_approval_hash
+            root = d.parent.parent
+            matches = [u for u in discover_units(root)
+                       if u.spec_id == d.name and u.unit_id == a.unit]
+            if len(matches) != 1:
+                raise ValueError(f'unit not found or ambiguous: {a.unit}')
+            unit = matches[0]
+            digest = unit_approval_hash(unit, root)
+            print(f'Unit: {unit.spec_id}:{unit.unit_id}')
+            print(f'Sequence: {unit.sequence}')
+            print(f'Digest (SHA-256): {digest}')
+            print('Parents: ' + (', '.join(unit.parents) or '(none)'))
+            print('Inputs: ' + (', '.join(unit.paths) or '(none)'))
+            print('Targets: ' + (', '.join(unit.targets) or '(none)'))
+            print('Status: proposed; this summary is not owner approval')
+            return 0
         if a.check or a.wait or a.comments or a.summary:
             _items()
             sm = _state()

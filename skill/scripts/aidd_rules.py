@@ -1349,6 +1349,61 @@ def _table_exclusions(cells):
     return [i for i, c in enumerate(cells) if re.sub(r'[\s*`_]+', ' ', c).strip().lower() in _HASH_EXCLUDED]
 
 
+def unit_approval_hash(unit, project_root):
+    """Hash a declared amendment and its transitive dependencies, not a seal.
+
+    This read-only primitive does not alter or replace legacy approval_hash or
+    establish owner consent. All declared inputs and parents must be present.
+    """
+    import json
+    try:
+        from .aidd_units import discover_units
+    except ImportError:
+        from aidd_units import discover_units
+
+    root = Path(project_root).resolve(strict=True)
+    units = discover_units(root)
+    by_key = {candidate.key: candidate for candidate in units}
+    if by_key.get(unit.key) != unit:
+        raise ValueError('unit is absent from or differs from its manifest')
+    required = set()
+    pending = [unit.key]
+    while pending:
+        key = pending.pop()
+        if key not in required:
+            required.add(key)
+            pending.extend(by_key[key].parents)
+    digests = {}
+    for candidate in units:
+        if candidate.key not in required:
+            continue
+        inputs = []
+        for name in sorted(candidate.paths):
+            try:
+                path = (root / name).resolve(strict=True)
+                path.relative_to(root)
+                if not path.is_file():
+                    raise ValueError('unit dependency is not a file: ' + name)
+                content = path.read_bytes()
+            except (OSError, RuntimeError, ValueError) as exc:
+                raise ValueError('unit dependency unavailable: ' + name) from exc
+            inputs.append({'path': name, 'sha256': hashlib.sha256(content).hexdigest()})
+        payload = {
+            'format': 'aidd-unit-approval-v1',
+            'spec_id': candidate.spec_id,
+            'unit_id': candidate.unit_id,
+            'sequence': candidate.sequence,
+            'parents': [{'unit': key, 'sha256': digests[key]}
+                        for key in sorted(candidate.parents)],
+            'inputs': inputs,
+            'targets': sorted(candidate.targets),
+        }
+        encoded = json.dumps(payload, ensure_ascii=False, sort_keys=True,
+                             separators=(',', ':')).encode('utf-8')
+        digests[candidate.key] = hashlib.sha256(encoded).hexdigest()
+    return digests[unit.key]
+
+
 def approval_hash(tasks_text):
     """sha1[:12] of the text with the `Approved:` lines removed, newlines normalised to \\n,
     trailing whitespace stripped (per line and at the end), and (M7) lines/cells named `Status`,
@@ -2721,15 +2776,11 @@ class FingerprintOnce:
 
 
 def _glob_hit(rel, globs):
-    """True when the root-relative `rel` matches any glob (`**` any depth, `*` inside one segment)."""
+    """Use the canonical scope matcher; invalid Generated declarations match nothing."""
     try:
-        for g in globs or []:
-            g = str(g).strip().strip('`').replace('\\', '/').lstrip('./')
-            if not g:
-                continue
-            rx = re.escape(g).replace(r'\*\*/', '(?:.*/)?').replace(r'\*\*', '.*').replace(r'\*', '[^/]*')
-            if re.match('^(?:' + rx + ('.*' if g.endswith('/') else '') + ')$', str(rel).replace('\\', '/')):
-                return True
+        import aidd_evidence as ev
+        rx = ev._scope_re(globs)
+        return rx is not None and ev.in_scope(rel, rx)
     except Exception:
         pass
     return False
@@ -2771,6 +2822,12 @@ def _run_problems(ev, root, spec_dir, spec_text, run, fingerprint=None):
     # files the run rewrote are outputs when the spec now declares them `Generated:`: THIS run is accepted
     # as it is (no re-execution, no code edit); the only fix for the old "tree changed" failure is that line.
     gen_now = verification_generated(spec_text)
+    try:
+        import aidd_evidence as evidence_module
+        evidence_module._scope_re(gen_now)
+        evidence_module._scope_re(run.get('code_generated') or [])
+    except (ValueError, re.error):
+        out.append(('stale', _v('R10', 'Invalid Generated pattern in current or recorded verification.', rerun)))
     explained = bool(changed) and rows_ok and all(_glob_hit(c, gen_now) for c in changed)
     if run.get('ok') is not True and not explained:
         out.append(('failed', _v('R10', f'The last verify_run of {spec} failed.',
@@ -2790,7 +2847,32 @@ def _run_problems(ev, root, spec_dir, spec_text, run, fingerprint=None):
                                 f'Run `aidd verify {spec}`: it re-runs ONLY the changed rows and reuses the rest while the code is unchanged.')))
     f = getattr(ev, 'last_code_edit_ts', None)
     scope = [str(x) for x in (run.get('code_scope') or [])]
-    excl = [str(x) for x in (run.get('code_generated') or [])] + changed      # outputs the run itself rewrote
+    algorithm = run.get('code_algorithm')
+    current_algorithm = getattr(ev, 'EVIDENCE_ALGORITHM', 'raw-sql-v2-glob-v2')
+    if algorithm != current_algorithm:
+        def safe_literals(values):
+            for value in values:
+                value = str(value).replace('\\', '/')
+                if any(c in value for c in '*?[]') or value.lower().endswith('.sql'):
+                    return False
+            try:
+                import aidd_evidence as evidence_module
+                evidence_module._scope_re(values)
+                return True
+            except (ValueError, re.error):
+                return False
+        current_scope = verification_scope(spec_text, _read(d / 'tasks.md'))
+        recorded_generated = [str(x) for x in (run.get('code_generated') or [])]
+        legacy_fp = run.get('code_fp_end')
+        legacy_safe = (not algorithm and isinstance(legacy_fp, str)
+                       and re.fullmatch(r'c2:[0-9a-f]{16}', legacy_fp) is not None
+                       and bool(scope) and scope == current_scope
+                       and sorted(recorded_generated) == sorted(gen_now)
+                       and safe_literals(scope) and safe_literals(recorded_generated))
+        if not legacy_safe:
+            out.append(('stale', _v('R10', 'Verification fingerprint algorithm is legacy or unknown for this scope.', rerun)))
+    from glob import escape as escape_glob
+    excl = [str(x) for x in (run.get('code_generated') or [])] + [escape_glob(x) for x in changed]
     try:
         last = ((float(f(root, scope, excl) if (scope or excl) else f(root))) if callable(f) else None)
         started = float(run.get('started') or 0.0)

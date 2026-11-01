@@ -6,12 +6,13 @@ Reads observations / session_summaries and appends curated AIDD-TOON memory entr
 never starts its worker. Stdlib only.
 """
 import json
+import os
 import re
 import shutil
 import sqlite3
 import sys
 import tempfile
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import aidd_memory as mem  # noqa: E402
@@ -121,24 +122,48 @@ _BAD_SEG_MARKERS = ('/appdata/', '/.claude/', '/scratchpad/', '/node_modules/')
 def _norm_repo_file(f, root):
     """Return a project-relative POSIX path, or None when `f` is junk / outside the root."""
     f = str(f or '').strip().strip('\'"`').replace(chr(92), '/')
-    if not f or any(c in f for c in ' \t()[]{}<>|*?;,'):
+    if not f or any(c in f for c in '\t<>|*?;'):
         return None
     while f.startswith('./'):
         f = f[2:]
-    if _ABS_RE.match(f):
-        r = Path(root).resolve().as_posix().rstrip('/')
-        if f.lower() == r.lower() or not f.lower().startswith(r.lower() + '/'):
-            return None  # absolute path outside the destination root (plans, scratchpads...)
-        f = f[len(r) + 1:]
-    if '..' in f.split('/') or not _PATH_OK_RE.match(f):
+    if '..' in f.split('/') or f.startswith('~/'):
         return None
-    segs = f.split('/')
+    windows_path = PureWindowsPath(f)
+    if os.name != 'nt' and (windows_path.drive or f.startswith('//')):
+        return None
+    try:
+        resolved_root = Path(root).resolve(strict=False)
+        # Do not resolve a foreign Windows share (which could cause network access).
+        if f.startswith('//') and (os.name != 'nt' or
+                                   windows_path.drive.lower() != PureWindowsPath(str(resolved_root)).drive.lower()):
+            return None
+        candidate = Path(f) if _ABS_RE.match(f) else resolved_root / f
+        if _ABS_RE.match(f):
+            try:
+                lexical_relative = candidate.absolute().relative_to(Path(root).absolute()).as_posix()
+            except ValueError:
+                lexical_relative = candidate.absolute().relative_to(resolved_root).as_posix()
+        else:
+            lexical_relative = f
+        relative = candidate.resolve(strict=False).relative_to(resolved_root).as_posix()
+    except (OSError, RuntimeError, ValueError):
+        return None
+    if not _PATH_OK_RE.match(relative):
+        return None
+    segs = relative.split('/')
     if segs[0].lower() in _BAD_FIRST_SEG or segs[0].lower().startswith('program'):
         return None
-    wrapped = '/' + f.lower() + '/'
+    wrapped = '/' + relative.lower() + '/'
     if any(m in wrapped for m in _BAD_SEG_MARKERS):
         return None
-    return f
+    # Also reject a sensitive lexical path even if an internal link points elsewhere.
+    lexical_parts = lexical_relative.lower().strip('/').split('/')
+    if lexical_parts[0] in _BAD_FIRST_SEG or lexical_parts[0].startswith('program'):
+        return None
+    lexical = '/' + '/'.join(lexical_parts) + '/'
+    if any(m in lexical for m in _BAD_SEG_MARKERS):
+        return None
+    return relative
 
 
 def _files(modified, read, root):

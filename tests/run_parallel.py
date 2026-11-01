@@ -15,19 +15,199 @@ An optional solo retry diagnoses flaky tests but never changes a failed run into
 import os
 import argparse
 import ast
+import hashlib
 import json
 import re
 import signal
 import subprocess
 import sys
 import time
+import unittest
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 SRC_DIRS = ('skill/scripts', 'skill/hooks', 'adapters/dot-aidd/scripts', 'aidd')
 DOC_EXT = {'.md', '.markdown', '.txt', '.rst'}
 IMPORT_RE = re.compile(r'^\s*(?:import|from)\s+([A-Za-z_]\w*)', re.M)
+
+# Names are exact identities, not just counts: replacing or skipping a required
+# historical case must fail the one-pass CI run.
+REQUIRED_IDS = frozenset(
+    [f'test_aidd_readiness.TestAiddReadiness.{name}' for name in (
+        'test_reports_explicit_line_references_and_real_hashes',
+        'test_missing_required_artifact_is_not_checked',
+        'test_changed_input_during_checker_is_unstable',
+        'test_checker_failures_are_preserved_gaps',
+        'test_checker_failures_are_preserved_checker_error',
+        'test_pending_approval_and_implementation_refs_are_deferred',
+        'test_invalid_approval_is_not_deferred',
+        'test_cli_does_not_overwrite_existing_output', 'test_real_checker_is_invoked')]
+    + [f'test_visual_review_binding.TestVisualReviewBinding.{name}' for name in (
+        'test_changed_missing_or_unrecorded_snapshot_never_passes',
+        'test_new_snapshot_changes_all_item_digests',
+        'test_incomplete_external_and_escape_declarations_are_refused',
+        'test_legacy_review_digest_is_unchanged',
+        'test_snapshot_resolution_error_fails_closed',
+        'test_approval_binding_blocks_code_and_close_after_new_snapshot')]
+    + [f'test_rule_gate_shell_speed.TestRuleGateShellSpeed.{name}' for name in (
+        'test_equivalence_handwritten', 'test_equivalence_generated_300',
+        'test_equivalence_bare_names_that_are_links')]
+)
+
+REQUIRED_008_NEW_IDS = frozenset(
+    [f'test_coverage_manifest.TestCoverageManifest.{n}' for n in (
+        'test_complete_sorted', 'test_missing_fails', 'test_duplicate_fails',
+        'test_collection_error_fails', 'test_no_test_execution',
+        'test_added_or_renamed_id_fails', 'test_check_requires_matching_manifest')]
+    + [f'test_ci_runner.TestCIRunner.test_manifest_{n}' for n in (
+        'complete', 'missing_id', 'new_id', 'duplicate_id', 'required_skip',
+        'class_skip', 'changed', 'wrong_digest', 'empty', 'unreadable',
+        'malformed', 'cli_single_worker', 'worker_single_suite',
+        'cli_incomplete_options', 'cli_invalid_combinations', 'timeout',
+        'loader_failure', 'discovery_failure')]
+    + ['test_ci_runner.TestCIRunner.test_legacy_cli_unchanged']
+)
+
+MANIFEST_DIR = ROOT / 'specs' / '008-aidd-compact-review-direct-save'
+MANIFEST_MODULES = frozenset(('test_aidd_review', 'test_review_template', 'test_aidd_status',
+    'test_cli_rules', 'test_typed_confirmations', 'test_rule_gate', 'test_aidd_rules',
+    'test_dot_aidd_mirror'))
+MANIFEST_ID = re.compile(r'^test_[A-Za-z0-9_]+(?:\.[A-Za-z_][A-Za-z0-9_]*){2,}$')
+
+
+def load_coverage_manifest(path):
+    resolved = Path(path).resolve(strict=True)
+    if not resolved.is_relative_to(MANIFEST_DIR.resolve()):
+        raise ValueError('manifest escapes spec directory')
+    data = resolved.read_bytes()
+    decoded = data.decode('utf-8')
+    lines = decoded.splitlines()
+    if (not lines or not decoded.endswith('\n') or '\r' in decoded
+            or lines != sorted(set(lines)) or any(not MANIFEST_ID.fullmatch(x) for x in lines)):
+        raise ValueError('empty, duplicate, unsorted or malformed manifest')
+    return data, frozenset(lines)
+
+
+def suite_ids(suite):
+    ids = []
+    for item in suite:
+        if isinstance(item, unittest.TestSuite):
+            ids.extend(suite_ids(item))
+        else:
+            ids.append(item.id().removeprefix('tests.'))
+    return ids
+
+
+class TrackingResult(unittest.TextTestResult):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.started_ids = []
+        self.skipped_ids = []
+        self.expected_failure_ids = []
+
+    def startTest(self, test):
+        self.started_ids.append(test.id())
+        super().startTest(test)
+
+    def addSkip(self, test, reason):
+        parent = getattr(test, 'test_case', None)
+        if not isinstance(parent, unittest.TestCase):
+            parent = test
+        self.skipped_ids.append((parent.id(), str(reason)))
+        super().addSkip(test, reason)
+
+    def addExpectedFailure(self, test, err):
+        self.expected_failure_ids.append(test.id())
+        super().addExpectedFailure(test, err)
+
+
+def run_suite(suite, stream, required_ids):
+    try:
+        result = unittest.TextTestRunner(stream=stream, verbosity=2, resultclass=TrackingResult).run(suite)
+        started = {ident.removeprefix('tests.') for ident in result.started_ids}
+        skipped = {ident.removeprefix('tests.') for ident, _ in result.skipped_ids}
+        required = {ident.removeprefix('tests.') for ident in required_ids}
+        missing = required - started
+        required_skips = required & skipped
+        expected_failures = required & {ident.removeprefix('tests.') for ident in result.expected_failure_ids}
+        print(f'Started {len(result.started_ids)}; skipped {len(result.skipped_ids)}', file=stream)
+        for ident in result.started_ids:
+            print(f'STARTED {ident}', file=stream)
+        for ident, reason in result.skipped_ids:
+            print(f'SKIPPED {ident}: {reason}', file=stream)
+        for ident in sorted(missing):
+            print(f'MISSING required case: {ident}', file=stream)
+        for ident in sorted(required_skips):
+            print(f'SKIPPED required case: {ident}', file=stream)
+        for ident in sorted(expected_failures):
+            print(f'EXPECTED FAILURE in required case: {ident}', file=stream)
+        return 0 if result.testsRun and result.wasSuccessful() and not missing and not required_skips and not expected_failures else 1
+    except Exception as exc:
+        print(f'CI instrumentation failed: {exc}', file=stream)
+        return 1
+
+
+def load_old_guard():
+    # Import the exact loader used by the equivalence tests, rather than merely
+    # checking that the git object exists.
+    tests_dir = str(ROOT / 'tests')
+    if tests_dir not in sys.path:
+        sys.path.insert(0, tests_dir)
+    from test_rule_gate_shell_speed import load_old_guard as load
+    return load()
+
+
+def ci_worker(stream=None, manifest=None, digest=None):
+    stream = stream or sys.stdout
+    try:
+        guard, reason = load_old_guard()
+        if guard is None:
+            print(f'Guard loader preflight failed: {reason}', file=stream)
+            return 1
+        print('Guard loader preflight passed', file=stream)
+        required = REQUIRED_IDS
+        if manifest is not None:
+            data, ids = load_coverage_manifest(manifest)
+            if hashlib.sha256(data).hexdigest() != digest:
+                raise ValueError('manifest digest mismatch')
+        loader = unittest.TestLoader()
+        suite = loader.discover(str(ROOT / 'tests'))
+        if loader.errors:
+            raise ValueError('discovery errors: ' + '; '.join(loader.errors))
+        if manifest is not None:
+            selected = [i for i in suite_ids(suite) if i.split('.', 1)[0] in MANIFEST_MODULES]
+            if len(selected) != len(set(selected)) or set(selected) != ids:
+                raise ValueError('manifest identities differ from discovery')
+            required = REQUIRED_IDS | REQUIRED_008_NEW_IDS | ids
+        result = run_suite(suite, stream, required)
+        if manifest is not None:
+            after, _ = load_coverage_manifest(manifest)
+            if hashlib.sha256(after).hexdigest() != digest:
+                raise ValueError('manifest changed during execution')
+        return result
+    except Exception as exc:
+        print(f'CI collection or instrumentation failed: {exc}', file=stream)
+        return 1
+
+
+def run_checked(argv, timeout_seconds=1500):
+    try:
+        proc = subprocess.run([sys.executable, str(Path(__file__).resolve()), '--ci-guard-worker', *argv],
+                              cwd=str(ROOT), capture_output=True, text=True, encoding='utf-8',
+                              errors='replace', timeout=timeout_seconds,
+                              env={**os.environ, 'PYTHONIOENCODING': 'utf-8'})
+    except subprocess.TimeoutExpired:
+        print(f'CI worker timeout after {timeout_seconds} seconds', file=sys.stderr)
+        return 1
+    except OSError as exc:
+        print(f'CI worker failed to start: {exc}', file=sys.stderr)
+        return 1
+    print(proc.stdout, end='')
+    print(proc.stderr, end='', file=sys.stderr)
+    return proc.returncode
 
 
 def sources():
@@ -233,6 +413,35 @@ def run(unit, timeout=600):
 
 
 def main(argv):
+    if argv == ['--ci-guard']:
+        return run_checked([])
+    if argv == ['--ci-guard-worker']:
+        return ci_worker()
+    if any(a.startswith('--coverage-') or a.startswith('--manifest-') or a.startswith('--ci-guard') for a in argv):
+        try:
+            flags = ('--coverage-manifest', '--manifest-sha256', '--coverage-timeout')
+            modes = ('--ci-guard', '--ci-guard-worker')
+            if len(argv) != 7 or sum(argv.count(x) for x in modes) != 1 or any(argv.count(x) != 1 for x in flags):
+                raise ValueError('manifest mode requires exactly one mode and all three options')
+            mode = next(x for x in modes if x in argv)
+            values = {flag: argv[argv.index(flag) + 1] for flag in flags}
+            if any(value.startswith('--') for value in values.values()):
+                raise ValueError('an option cannot be a value')
+            consumed = [mode, *(v for flag in flags for v in (flag, values[flag]))]
+            if sorted(consumed) != sorted(argv):
+                raise ValueError('unexpected argument')
+            if not re.fullmatch(r'[0-9a-f]{64}', values['--manifest-sha256']):
+                raise ValueError('invalid SHA-256')
+            timeout = float(values['--coverage-timeout'])
+            if not (timeout > 0 and timeout < float('inf')):
+                raise ValueError('invalid timeout')
+            options = [v for flag in flags for v in (flag, values[flag])]
+            if mode == '--ci-guard':
+                return run_checked(options, timeout_seconds=timeout)
+            return ci_worker(manifest=values['--coverage-manifest'], digest=values['--manifest-sha256'])
+        except (ValueError, IndexError):
+            print('invalid manifest options', file=sys.stderr)
+            return 2
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('-j', type=int, default=min(8, os.cpu_count() or 2))
     parser.add_argument('--changed', action='store_true')

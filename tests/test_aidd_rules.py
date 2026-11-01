@@ -18,6 +18,42 @@ import aidd_rules as R  # noqa: E402
 QUOTE = 'user — "no hace falta el flowmap"'
 
 
+class TestGeneratedPatternSafety(unittest.TestCase):
+    def test_generated_matcher_accepts_character_classes(self):
+        self.assertTrue(R._glob_hit('output/report1.bin', ['output/report[0-9].bin']))
+        self.assertFalse(R._glob_hit('output/reportx.bin', ['output/report[0-9].bin']))
+        self.assertFalse(R._glob_hit('output/report1.bin', ['../output/**']))
+
+    def test_legacy_freshness_is_selective_and_does_not_rewrite_event(self):
+        import aidd_evidence as ev
+        spec_text = ('## Verification\nScope: src/check.py\n'
+                     '| # | Command | Expected |\n|---|---|---|\n| V-1 | python src/check.py | exit 0 |\n')
+        with tempfile.TemporaryDirectory() as tmp:
+            d = Path(tmp) / '001-test'
+            d.mkdir()
+            (d / 'tasks.md').write_text('', encoding='utf-8')
+            run = {'ok': True, 'stable': True, 'results': [{'ok': True}], 'code_scope': ['src/check.py'],
+                   'code_fp_end': 'c2:0123456789abcdef', 'verify_hash': R.verification_hash(spec_text), 'started': 1}
+            original = dict(run)
+            with patch.object(ev, 'last_code_edit_ts', return_value=0), \
+                 patch.object(ev, 'code_fingerprint', return_value='c2:0123456789abcdef'):
+                problems = R._run_problems(ev, Path(tmp), d, spec_text, run)
+                self.assertFalse(any('fingerprint algorithm' in v['message'] for _, v in problems), problems)
+                self.assertEqual(run, original)
+                for missing_fp in (None, '', 'c2:', 'c2:invalid', 'not-c2'):
+                    changed_run = dict(run, code_fp_end=missing_fp)
+                    problems = R._run_problems(ev, Path(tmp), d, spec_text, changed_run)
+                    self.assertTrue(any('fingerprint algorithm' in v['message'] for _, v in problems), problems)
+                for scope in ([], ['src/*.py'], ['src/check.sql']):
+                    changed_text = spec_text.replace('Scope: src/check.py', 'Scope: ' + ', '.join(scope))
+                    changed_run = dict(run, code_scope=scope)
+                    problems = R._run_problems(ev, Path(tmp), d, changed_text, changed_run)
+                    self.assertTrue(any('fingerprint algorithm' in v['message'] for _, v in problems), problems)
+                unknown = dict(run, code_algorithm='future-unknown')
+                problems = R._run_problems(ev, Path(tmp), d, spec_text, unknown)
+                self.assertTrue(any('fingerprint algorithm' in v['message'] for _, v in problems), problems)
+
+
 def rules(vs):
     return {v['rule'] for v in vs}
 
@@ -1967,7 +2003,7 @@ class _GateSpec(unittest.TestCase):
         self.vh = R.verification_hash(self.spec_text)
         sha = hashlib.sha1((d / 'evidence' / 'verify-1.txt').read_bytes()).hexdigest()
         self.run = {'ts': 500.0, 'ok': True, 'verify_hash': self.vh, 'started': 400.0, 'fingerprint_start': 'fp',
-                    'fingerprint_end': 'fp', 'stable': True,
+                    'fingerprint_end': 'fp', 'stable': True, 'code_algorithm': 'raw-sql-v2-glob-v2',
                     'results': [{'n': 'V-1', 'cmd': 'python -m unittest tests.test_x', 'exit': 0, 'ok': True,
                                  'evidence': 'evidence/verify-1.txt', 'sha1': sha}]}
         self.approved = {'spec': spec_id, 'hash': R.approval_hash(self.tasks_text), 'gate': 2, 'source': 'review+answer',

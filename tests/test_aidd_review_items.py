@@ -962,10 +962,43 @@ def load_real(spec_dir):
 class TestRealFiles(unittest.TestCase):
     """The real b1SycLink files (only the five sources are read)."""
 
-    def test_f28_175_codes_absolute_and_relative(self):  # F28 now has 177 codes
+    def test_f28_codes_absolute_and_relative(self):
         d = REAL_ROOT / 'F28-DB-Unification-Sync'
-        r = I.extract_items(load_real(d.resolve()))
-        self.assertEqual(len(r['order']), 177)
+        sources = load_real(d.resolve())
+        r = I.extract_items(sources)
+        self.assertEqual(len(r['order']), len(set(r['order'])))
+        self.assertEqual(set(r['order']), set(r['items']))
+        # Independently read task IDs from the live task table: additions must
+        # appear in the review even as the total number of items changes.
+        task_ids = re.findall(r'^\|\s*(T-\d+[a-z]?)\s*\|', sources['tasks.md'], re.MULTILINE)
+        self.assertGreaterEqual(len(task_ids), len(F28_T))
+        self.assertEqual(set(task_ids), set(codes_of(r, 'tasks')))
+        questions = []
+        for heading in ('Minimum Requirements Checklist', 'Optional Align questions'):
+            section = re.search(r'^## ' + re.escape(heading) + r'\s*\n(.*?)(?=^##\s|\Z)',
+                                sources['spec.md'], re.MULTILINE | re.DOTALL)
+            self.assertIsNotNone(section)
+            cells = re.findall(r'^\|\s*((?:\\\||[^|])*)\|', section.group(1), re.MULTILINE)
+            questions.extend(cell.strip().replace(r'\|', '|') for cell in cells[2:])
+        expected_questions = ['Q%d' % n for n in range(1, len(questions) + 1)]
+        self.assertEqual([code for code in codes_of(r, 'questions') if code.startswith('Q')],
+                         expected_questions)
+        self.assertEqual([r['items'][code]['text'] for code in expected_questions], questions)
+        # Compare all other coded rows with their source tables independently of
+        # the production parser, including decisions in the questions tab.
+        for source, prefix, tab in (
+            ('spec.md', 'D', 'questions'),
+            ('spec.md', 'FR-', 'fr'),
+            ('spec.md', 'AC-', 'ac'),
+            ('contracts.md', 'API-', 'api'),
+            ('spec.md', 'V-', 'verification'),
+        ):
+            with self.subTest(category=prefix):
+                pattern = r'^\|\s*(' + re.escape(prefix) + r'\d+[a-z]?)\s*\|'
+                expected = re.findall(pattern, sources[source], re.MULTILINE)
+                self.assertTrue(expected)
+                actual = [code for code in codes_of(r, tab) if code.startswith(prefix)]
+                self.assertEqual(expected, actual)
         self.assertEqual(r['warnings'], [])
         self.assertEqual([t['id'] for t in r['tabs']],
                          ['summary', 'questions', 'fr', 'ac', 'api', 'tasks', 'verification'])
@@ -977,8 +1010,13 @@ class TestRealFiles(unittest.TestCase):
             rel = None
         if rel is not None:
             self.assertEqual(I.extract_items(load_real(rel))['order'], r['order'])
-        self.assertGreater(len(I.target_files(load_real(d)['tasks.md'])), 0)
-        self.assertEqual(I.wave_count(load_real(d)['tasks.md']), 10)
+        self.assertGreater(len(I.target_files(sources['tasks.md'])), 0)
+        waves = re.search(r'^## Waves\s*\n(.*?)(?=^##\s|\Z)',
+                          sources['tasks.md'], re.MULTILINE | re.DOTALL)
+        self.assertIsNotNone(waves)
+        wave_rows = re.findall(r'^\|\s*\d+\s*\|', waves.group(1), re.MULTILINE)
+        self.assertGreaterEqual(len(wave_rows), 10)
+        self.assertEqual(I.wave_count(sources['tasks.md']), len(wave_rows))
 
     def test_f23_questions_and_warnings(self):
         r = I.extract_items(load_real(REAL_ROOT / 'F23-eDoc-POS'))

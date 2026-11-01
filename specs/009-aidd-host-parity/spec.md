@@ -63,6 +63,13 @@ None: no `SCREEN-nn` code appears in this spec.
 | FR-912 | The host adapter creates the session "AIDD invoked" marker itself on the first event of an AIDD project (`.aidd/AIDD.md` exists), so the legacy `require_aidd` check does not block with a Claude-only instruction; outside an AIDD project the adapter exits 0 without calling the gate | — |
 | FR-913 | The quote rules read the same everywhere: the spec template, `AIDD.md` and `SKILL.md` state that a typed quote needs 5+ words and must postdate the first `spec.md` draft, and an answer to a question needs 2+ words | — |
 | FR-914 | `aidd status` shows the date of the last hook error and counts `rules_override` events only since a stated date, so an old record does not read as a current alarm | — |
+| FR-915 | CI matrix executes stdlib discovery and actually collects all cases previously defined in the two pytest-only modules without requiring pytest. | — |
+| FR-916 | flowmap parses and renders on Python 3.10–3.12 without changing JSON escaping or script boundary behavior. | — |
+| FR-917 | R6/R9 correctly classify native POSIX and Windows paths, drive, UNC and extended UNC spellings; ambiguous foreign-platform spellings fail closed for protected artifacts without treating an unrelated native path as inside the project. | FR-905 |
+| FR-918 | Memory import keeps absolute in-project files as relative paths, keeps valid relative paths and rejects outside, traversal and sensitive paths on Windows and POSIX. | — |
+| FR-919 | CI loads the pinned old guard and confirms required equivalence cases actually ran; absent history, loader errors, missing cases or skips fail the check. | FR-1003 |
+| FR-920 | On each OS, record the old/current/desired decision for each path probe before implementing any owner-reviewed, enumerated security correction; all other FR-1003 cases retain exact decision and message equivalence. | FR-1003 |
+| FR-921 | Existing `python -m pytest` verification rows use pinned test-only pytest without a runtime dependency; changing those rows requires separate approval. | FR-901 |
 
 ## Acceptance cases
 
@@ -74,6 +81,14 @@ None: no `SCREEN-nn` code appears in this spec.
 | AC-004 | a fixture project with no `.aidd/` | `aidd doctor` exits 1 and says to run `aidd install --host <h>`; the adapter exits 0 without gating | yes |
 | AC-005 | `.opencode/opencode.json` of b1SycLink already lists `graphify.js` and `aidd.js`; its `.aidd/memory/` has entries | install adds nothing twice, keeps `graphify.js` and deletes nothing in `.aidd/memory/` | yes |
 | AC-006 | b1SycLink on a Gemini host, tasks of `P10-Payrol-Outputs` reviewed with `aidd review --wait` and approved by the owner | `aidd rules approve` records the approval and the next code write is allowed | no |
+| AC-907 | CI discovery, `test_aidd_readiness.py` | At least nine unittest cases run, including both parameter values, no missing pytest. | no |
+| AC-908 | CI discovery, `test_visual_review_binding.py` | At least six unittest cases run, including snapshot approval binding. | no |
+| AC-909 | `D:/proj/specs/F23-eDoc-POS/tasks.md`, `\\\\server\\share\\specs\\F23-eDoc-POS\\tasks.md`, extended UNC, native POSIX and `..` | Protected tokens cannot bypass R6/R9; legitimate unrelated paths are allowed. | yes |
+| AC-910 | An absolute existing file inside temp project and `C:/Users/someone/.claude/plans/x.md` outside | Import records only the inside path in relative POSIX form. | yes |
+| AC-911 | CI 3.10/3.11/3.12 on Ubuntu and Windows | Syntax/import and full discovery pass; old-guard comparison is executed, not skipped because of a shallow clone. | no |
+| AC-912 | Old/current/desired comparison for every reported guard regression and foreign drive/UNC spelling | Any intentional old-to-new difference is enumerated, security-justified and owner-reviewed; all other results and messages remain equivalent. | yes |
+| AC-913 | Runner fixture: missing, skipped, failing, crashing or timed-out required case | CI exits nonzero with a useful diagnostic; zero-case or skipped coverage is never success. | yes |
+| AC-914 | Missing relative file, in-root path whose parent symlink points outside, foreign absolute and sibling-prefix path | A missing relative file remains allowed only after existing-parent containment is established; outside or unprovable absolute paths are rejected. | yes |
 
 ## Verification
 
@@ -86,6 +101,19 @@ Scope: auto
 | V-3 | python -m pytest tests/test_host_doctor.py -q | exit 0 | FR-909, FR-910 |
 | V-4 | python -m pytest tests/test_aidd_status.py tests/test_dot_aidd_mirror.py -q | exit 0 | FR-913, FR-914 |
 | V-5 | python tests/run_parallel.py | exit 0 | FR-901 |
+<!-- 009 amendment 01 integrated for review; approvals pending -->
+
+### Amendment 01: proposed verification, pending R10 approval
+
+Existing V-1–V-5 remain in the table and historical records remain unchanged. The following replacement is a proposal, not an additional executable row. Do not consolidate until T-22/T-25 establish coverage and report skips.
+
+
+| # | Command | Expected | Covers |
+|---|---|---|---|
+| V-5 | `python tests/run_parallel.py --ci-guard` | exit 0 | FR-901..FR-921, AC-907..AC-914 |
+
+
+Proposed consolidation: V-5 replaces the existing V-1–V-5 executable rows only after the collection-only comparison and per-case coverage checks in T-25 prove that V-1–V-4's five targeted modules are included in full with identical case identities and no unexpected skips. Preserve the prior rows and outputs as historical provenance outside the executable Verification table; map every covered FR to V-5. If a specific case or assertion cannot be proven equivalent, keep only that uncovered check as a separate row and do not declare consolidation complete. The V-5 change requires R10 and fresh approval of the final table; it does not authorize any fabricated result. Focused commands in T-15–T-20 and T-24–T-25 are wave checks only; they do not become extra final verification rows. Each matrix cell executes V-5 exactly once. Local Windows results do not prove Ubuntu. No row is declared hermetic; no CI result is claimed.
 
 ## Optimization brief
 

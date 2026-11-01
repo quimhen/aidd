@@ -80,11 +80,24 @@ class TestR9ProtectedPaths(Base):
         self.assertBlocked(self.gate(".aidd/memory/../evidence/events.toon", content="x"), "R9")
 
     def test_bypass_case_backslash_dotdot_and_relative(self):
-        self.assertBlocked(self.gate(str(self.root / ".AIDD" / "Evidence" / "events.toon"), content="x"), "R9")
-        self.assertBlocked(self.gate(str(self.root) + "\\.aidd\\evidence\\events.toon", content="x"), "R9")
+        case_path = str(self.root / ".AIDD" / "Evidence" / "events.toon")
+        slash_path = str(self.root) + "\\.aidd\\evidence\\events.toon"
+        if os.name == 'nt':
+            self.assertBlocked(self.gate(case_path, content="x"), "R9")
+        elif rule_gate._posix_case_insensitive(str(self.root)) is False:
+            # The case-distinct path is not a native alias of .aidd on POSIX.
+            self.assertAllowed(self.gate(case_path, content="x"))
+        else:
+            self.assertBlocked(self.gate(case_path, content="x"), "R9")
+        # Backslash spellings are conservatively protected on both platforms.
+        self.assertBlocked(self.gate(slash_path, content="x"), "R9")
         self.assertBlocked(self.gate(str(self.root / "specs" / ".." / ".aidd" / "evidence" / "events.toon"),
                                      content="x"), "R9")
         self.assertBlocked(self.gate(".aidd/active_spec", content="x"), "R9")   # relative to cwd
+        if os.name != 'nt' and rule_gate._posix_case_insensitive(str(self.root)) is False:
+            self.put(TASKS, tasks_text())
+            self.open_spec()
+            self.assertBlocked(self.gate(case_path, content="x"), "R6")
 
     def test_edit_tool_also_blocked_and_log_untouched(self):
         self.ev("prompt", text="hola")
@@ -142,6 +155,20 @@ class TestB3CanonicalPaths(Base):
 
     def test_plan_md_spellings_are_all_gated(self):
         self.put(SPEC, spec_text())
+        if os.name != 'nt':
+            plan = self.put(PLAN, '# existing plan\n')
+            for name in ("plan.md", "sub/../plan.md", "sub\\..\\PLAN.MD"):
+                self.assertBlocked(self.gate("specs/001-x/" + name, content="# plan"), "find_spec")
+            for name in ("PLAN.md", "Plan.md", "plan.md.", "plan.md ", "plan.md::$DATA"):
+                with self.subTest(name=name):
+                    alias = self.root / 'specs/001-x' / name
+                    same = alias.exists() and os.path.samefile(plan, alias)
+                    result = self.gate(str(alias), content="# plan")
+                    if same:
+                        self.assertBlocked(result, 'find_spec')
+                    else:
+                        self.assertAllowed(result)
+            return
         for name in ("PLAN.md", "Plan.md", "plan.md.", "plan.md ", "plan.md::$DATA", "sub/../plan.md",
                      "sub\\..\\PLAN.MD"):
             r = self.gate("specs/001-x/" + name, content="# plan")
@@ -150,6 +177,27 @@ class TestB3CanonicalPaths(Base):
     def test_tasks_spec_and_qa_spellings_are_all_gated(self):
         self.put(SPEC, spec_text())
         self.ev("code_edit", path="src/a.py", spec="001-x")
+        if os.name != 'nt':
+            self.put(TASKS, tasks_text())
+            self.put(QA, '# existing qa\n')
+            self.assertBlocked(self.gate("specs/001-x/tasks.md", content=tasks_text()), "find_spec")
+            self.assertBlocked(self.gate("specs/001-x/qa-audit.md", content="# qa"), "R7")
+            self.assertBlocked(self.gate("specs/001-x/spec.md", content="# nothing\n"), "R2")
+            for name, canonical, rule in (("TASKS.MD", TASKS, 'find_spec'),
+                                          ("QA-AUDIT.md", QA, 'R7'),
+                                          ("qa-audit.md.", QA, 'R7'),
+                                          ("SPEC.MD", SPEC, 'R2'),
+                                          ("spec.md::$DATA", SPEC, 'R2')):
+                with self.subTest(name=name):
+                    alias = self.root / 'specs/001-x' / name
+                    original = self.root / canonical
+                    same = alias.exists() and os.path.samefile(original, alias)
+                    result = self.gate(str(alias), content="# nothing\n")
+                    if same:
+                        self.assertBlocked(result, rule)
+                    else:
+                        self.assertAllowed(result)
+            return
         self.assertBlocked(self.gate("specs/001-x/TASKS.MD", content=tasks_text()), "find_spec")
         self.assertBlocked(self.gate("specs/001-x/QA-AUDIT.md", content="# qa"), "R7")
         self.assertBlocked(self.gate("specs/001-x/qa-audit.md.", content="# qa"), "R7")

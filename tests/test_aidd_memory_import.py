@@ -232,6 +232,66 @@ class TestHardening(Base):
         self.run_import()
         self.assertEqual(self.by_title("File junk")["files"], ["src/ok.py", "src/win.py", "rel/p.ts"])
 
+    def test_native_paths_require_real_containment(self):
+        src = self.root / "src"
+        src.mkdir()
+        inside = src / "ok.py"
+        inside.write_text("pass\n", encoding="utf-8")
+        sibling = self.tmp / "proj-sibling"
+        sibling.mkdir()
+        outside = sibling / "outside.py"
+        outside.write_text("pass\n", encoding="utf-8")
+        self.assertEqual(imp._norm_repo_file(str(inside), self.root), "src/ok.py")
+        self.assertEqual(imp._norm_repo_file("src/new/missing.py", self.root), "src/new/missing.py")
+        self.assertIsNone(imp._norm_repo_file(str(outside), self.root))
+        self.assertIsNone(imp._norm_repo_file("src/../outside.py", self.root))
+        self.assertIsNone(imp._norm_repo_file(".claude/plans/private.md", self.root))
+        self.assertIsNone(imp._norm_repo_file(r"\\server\share\secret.py", self.root))
+        if os.name != "nt":
+            self.assertIsNone(imp._norm_repo_file("C:/foreign/secret.py", self.root))
+            differently_cased = self.tmp / "PROJ" / "src" / "ok.py"
+            self.assertIsNone(imp._norm_repo_file(str(differently_cased), self.root))
+        else:
+            other_drive = "Y:" if self.root.drive.upper() == "Z:" else "Z:"
+            self.assertIsNone(imp._norm_repo_file(other_drive + "/foreign/secret.py", self.root))
+
+    def test_symlink_escape_rejects_existing_and_missing_files(self):
+        external = self.tmp / "external"
+        external.mkdir()
+        (external / "existing.py").write_text("pass\n", encoding="utf-8")
+        link = self.root / "escape"
+        try:
+            link.symlink_to(external, target_is_directory=True)
+        except (OSError, NotImplementedError) as exc:
+            if os.name != "nt":
+                self.skipTest(f"native directory symlink unavailable: {exc}")
+            result = subprocess.run(["cmd.exe", "/c", "mklink", "/J", str(link), str(external)],
+                                    capture_output=True, text=True, check=False)
+            if result.returncode != 0:
+                self.skipTest("native directory symlink and junction unavailable")
+            self.addCleanup(lambda: os.rmdir(link) if link.exists() else None)
+        self.assertIsNone(imp._norm_repo_file("escape/existing.py", self.root))
+        self.assertIsNone(imp._norm_repo_file("escape/nonexistent.py", self.root))
+        self.assertIsNone(imp._norm_repo_file(str(link / "existing.py"), self.root))
+
+    def test_blocked_lexical_directory_cannot_alias_safe_file(self):
+        src = self.root / "src"
+        src.mkdir()
+        safe_file = src / "ok.py"
+        safe_file.write_text("pass\n", encoding="utf-8")
+        blocked = self.root / "tmp"
+        try:
+            blocked.symlink_to(src, target_is_directory=True)
+        except (OSError, NotImplementedError) as exc:
+            if os.name != "nt":
+                self.skipTest(f"native directory symlink unavailable: {exc}")
+            result = subprocess.run(["cmd.exe", "/c", "mklink", "/J", str(blocked), str(src)],
+                                    capture_output=True, text=True, check=False)
+            if result.returncode != 0:
+                self.skipTest("native directory symlink and junction unavailable")
+            self.addCleanup(lambda: os.rmdir(blocked) if blocked.exists() else None)
+        self.assertIsNone(imp._norm_repo_file("tmp/ok.py", self.root))
+
     def test_scrub_patterns(self):
         cases = {
             "password=hunter22": "hunter22", "PASSWD: abc123xyz": "abc123xyz", "pwd = s3cret": "s3cret",

@@ -2081,6 +2081,23 @@ class TestVerify(Spec007Base):
             self.assertEqual(r.returncode, 0, r.stdout)                                      # declared: stable from the start
             self.assertIn("declared Generated", r.stdout)
 
+    def test_generated_class_matches_rewrite_and_invalid_current_generated_stales(self):
+        tmp, root, d = self.vproject([('python src/stamp.py', 'exit 0')])
+        with tmp:
+            (root / 'src' / 'stamp.py').write_text(
+                'from pathlib import Path\nPath("src/report1.bin").write_bytes(b"out")\n'
+                'print("three assertions passed successfully")\n', encoding='utf-8')
+            spec = d / 'spec.md'
+            original = spec.read_text(encoding='utf-8')
+            spec.write_text(original.replace('## Verification\n',
+                            '## Verification\n\nGenerated: src/report[0-9].bin\n', 1), encoding='utf-8')
+            result = run_script('verify', 'F23-eDoc-POS', cwd=root)
+            self.assertEqual(result.returncode, 0, result.stdout)
+            self.assertEqual(aidd_rules.verification_state(d, root)['status'], 'passed')
+            spec.write_text(spec.read_text(encoding='utf-8').replace('src/report[0-9].bin', 'src/[broken'),
+                            encoding='utf-8')
+            self.assertEqual(aidd_rules.verification_state(d, root)['status'], 'stale')
+
     def test_failing_zero_test_and_short_output_rows_fail(self):
         for cmd, why in (("python src/fail.py", "exit 3"), ("python src/zero.py", "zero tests ran"),
                          ("python src/billing.py", "output too short")):
@@ -2434,7 +2451,8 @@ class TestStatusFingerprintOnce(Spec007Base):
                     "evidence": "evidence/verify-1.txt", "sha1": hashlib.sha1(body).hexdigest()}]
             tick()
             self.assertTrue(ev.append_verify_run(root, "s1", d.name, True, vh, res, time.time() - 1,
-                                                 "fp-now", "fp-now", True))
+                                                 "fp-now", "fp-now", True,
+                                                 code_algorithm=ev.EVIDENCE_ALGORITHM))
         return tmp, root, d1, d2
 
     def status(self, args):

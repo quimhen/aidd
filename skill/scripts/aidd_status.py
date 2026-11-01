@@ -18,9 +18,8 @@ Usage:
     aidd_status.py rules activate <spec_dir>    point the per-spec code gate (.aidd/gate_spec) at an open spec
     aidd_status.py verify <spec_dir>            run every `## Verification` row, save evidence/verify-<n>.txt
                                                 and record a `verify_run` event (exit 1 when a row fails)
-    aidd_status.py verify <specA> <specB> ...   ONE ROUND: a row (same command, same code) that already passed for
-                                                an earlier spec of the round is reused, not re-run (ROUND-REUSED);
-                                                `--full` or AIDD_VERIFY_ROUND=off disables it
+    aidd_status.py verify <specA> <specB> ...   run a coordinated round; automatic row reuse is disabled until
+                                                environment identity can be verified
     aidd_status.py verify ... --bail            stop a spec's remaining rows at its first failing row (they are
                                                 recorded as "not run"); use it to save time while things are broken
     aidd_status.py rules close <spec_id>        record spec_closed(completed): needs a valid approval,
@@ -1523,33 +1522,8 @@ def _reusable_rows(d, prior, code_fp, full):
 
 
 def _reusable_input_rows(d, prior, full):
-    """Read intact passing evidence carrying a per-row input fingerprint.
-
-    The aggregate run need not have passed: a row is reusable only when it
-    proved its own inputs stable, and the caller rechecks those inputs now.
-    """
-    out = {}
-    if full or not prior:
-        return out
-    base = d.resolve()
-    for row in prior.get('results') or []:
-        if not isinstance(row, dict) or row.get('ok') is not True or row.get('reuse_policy') != 'hermetic':
-            continue
-        inputs, fp, sha = row.get('input_globs'), row.get('input_fp'), row.get('sha1')
-        if not isinstance(inputs, list) or not inputs or not fp or not sha:
-            continue
-        try:
-            path = (base / str(row.get('evidence') or '')).resolve()
-            path.relative_to(base)
-            data = path.read_bytes()
-            if hashlib.sha1(data).hexdigest() != sha or not _cached_pass_valid(data, row, row.get('expected')):
-                continue
-            key = (_verification_key(row.get('cmd')), _verification_key(row.get('expected')),
-                   tuple(inputs), fp)
-            out[key] = (data, row)
-        except (OSError, ValueError):
-            continue
-    return out
+    """No row reuse until an independently verified environment identity exists."""
+    return {}
 
 
 ROUND_TTL_DEFAULT = 6 * 3600
@@ -1633,8 +1607,7 @@ def _round_store(root, entries, results, d, st_all_start, st_all_end, gen):
 
 
 def cmd_verify_many(spec_args, full=False, bail=False, wave=None, result_sink=None):
-    """`aidd verify <specA> <specB> ...`: one ROUND. Identical rows (same command, same code) run once for the
-    whole round and are reused by the others (see _round_lookup); the summary lists each spec's result."""
+    """Run a coordinated round and summarize each spec; automatic row reuse is disabled."""
     if wave is not None:
         if bail:
             print('Refused: --bail cannot verify a complete wave; nothing was executed.')
@@ -1655,7 +1628,8 @@ def cmd_verify_many(spec_args, full=False, bail=False, wave=None, result_sink=No
                 print(f'Refused: {d.name}: {exc}; nothing was executed.')
                 return 1
     worst, out = 0, []
-    wave_cache = None if full else {}
+    # An input fingerprint and a 'hermetic' label do not prove environment identity.
+    wave_cache = None
     for s in spec_args:
         print(f'\n=== aidd verify {s} ===', flush=True)
         run = {}
@@ -1770,18 +1744,28 @@ def cmd_verify(spec_arg, full=False, bail=False, wave=None, result_sink=None, wa
     fp_start = ev.worktree_fingerprint(root)
     scope = rules.verification_scope(spec_text, _read(d / 'tasks.md'))   # [] = whole tree; else only these files count
     gen = rules.verification_generated(spec_text)             # files the commands rewrite on purpose (outputs)
+    try:
+        ev._scope_re(scope)
+        ev._scope_re(gen)
+    except (ValueError, re.error):
+        print('Refused: invalid Scope or Generated pattern; no verification commands were run.', flush=True)
+        return 1
     st_start = ev.code_state(root, scope=scope)
     if st_start is None:
         print('Refused: cannot fingerprint the verification inputs; no verification commands were run. '
               'Check the scope and fingerprint budget before retrying.', flush=True)
         return 1
     prior = (_latest_wave_run(root, d.name, wave) if wave is not None else None) or ev.latest_verify_run(root, d.name)
-    pexcl = (list(prior.get('code_generated') or []) + list(prior.get('code_changed') or [])) if prior else []
+    from glob import escape as escape_glob
+    pexcl = (list(prior.get('code_generated') or []) +
+             [escape_glob(x) for x in (prior.get('code_changed') or [])]) if prior else []
     prior_fp = ev.fingerprint_of(st_start, scope, exclude=pexcl) if (prior and st_start) else None
     # A file fingerprint alone does not describe a database or other external
     # state. Wave reuse is opt-in, scoped to this invocation, and hermetic only.
     reuse = {}
     input_reuse = {} if wave is not None else _reusable_input_rows(d, prior, full)
+    if any(r.get('reuse') == 'hermetic' and r.get('inputs') for r in rows):
+        print('not reusable: environment identity not verified', flush=True)
     # Rows with explicit Inputs use their own fingerprinted cache; there is no
     # reason to scan the entire tree for a round cache they cannot consume.
     # Legacy round cache has no external-environment identity; do not consume it.
@@ -1807,7 +1791,7 @@ def cmd_verify(spec_arg, full=False, bail=False, wave=None, result_sink=None, wa
         key = (_verification_key(cmd), _verification_key(expected))
         # For this one multi-spec wave, share exact checks only on identical
         # declared inputs (or the whole code tree when Inputs are absent).
-        wave_fp = input_fp if wave_cache is not None and r.get('reuse') == 'hermetic' and inputs else None
+        wave_fp = None  # no environment attestation exists in the current runner
         wave_key = (str(root), cmd.strip(), expected.strip(), tuple(inputs), wave_fp) if wave_fp else None
         shared = wave_cache.get(wave_key) if wave_key else None
         if shared:
@@ -1896,7 +1880,7 @@ def cmd_verify(spec_arg, full=False, bail=False, wave=None, result_sink=None, wa
         res = {'n': str(n), 'cmd': cmd, 'expected': expected, 'exit': code, 'ok': bool(ok), 'evidence': rel,
                'sha1': sha1, 'secs': secs}
         if inputs and input_fp and end_fp == input_fp:
-            res.update(input_globs=inputs, input_fp=input_fp)
+            res.update(input_globs=inputs, input_fp=input_fp, input_algorithm=ev.EVIDENCE_ALGORITHM)
             if r.get('reuse') == 'hermetic':
                 res['reuse_policy'] = 'hermetic'
         if why and not ok:
@@ -1920,8 +1904,7 @@ def cmd_verify(spec_arg, full=False, bail=False, wave=None, result_sink=None, wa
         for i, row in indexed_rows:
             # Preserve quoted whitespace: commands that only look similar are
             # not necessarily the same command.
-            key = ((row['cmd'].strip(), (row.get('expected') or 'exit 0').strip(), tuple(row.get('inputs') or []))
-                   if not full and row.get('reuse') == 'hermetic' and row.get('inputs') else ('unique', i))
+            key = ('unique', i)  # no environment attestation, even within one wave
             rep = groups.setdefault(key, (i, row))
             representatives[i] = rep[0]
         indexed_rows = list(groups.values())
@@ -1990,7 +1973,7 @@ def cmd_verify(spec_arg, full=False, bail=False, wave=None, result_sink=None, wa
     # later makes the gate accept the very same run (no re-execution, no edit of the generator).
     changed = ev.state_diff(st_start, st_end) if (st_start and st_end) else []
     unexplained = [c for c in changed if not rules._glob_hit(c, gen)]
-    excl = list(gen) + changed
+    excl = list(gen) + [escape_glob(x) for x in changed]
     code_start = ev.fingerprint_of(st_start, scope, exclude=excl) if st_start else None
     code_end = ev.fingerprint_of(st_end, scope, exclude=excl) if st_end else None
     # A missing end snapshot cannot prove stability, even when two fallback
@@ -2043,20 +2026,22 @@ def cmd_verify(spec_arg, full=False, bail=False, wave=None, result_sink=None, wa
                           for k, v in result.items()} for result in results]
         recorded = ev.append(root, sess, 'wave_verify_run', spec=d.name, wave=str(wave),
                              ok=all_ok, stable=stable, results=clean_results, started=started, verify_hash=vhash,
-                             code_fp_end=code_end, code_generated=gen, code_changed=changed[:200])
+                             code_fp_end=code_end, code_generated=gen, code_changed=changed[:200],
+                             code_algorithm=ev.EVIDENCE_ALGORITHM)
         if not recorded:
             print('FAIL: wave verification evidence could not be recorded.')
             return 1
         if result_sink is not None:
             result_sink.update(ok=all_ok, stable=stable, results=clean_results, started=started,
                                verify_hash=vhash, code_fp_end=code_end, code_scope=scope,
-                               code_generated=gen, code_changed=changed[:200])
+                               code_generated=gen, code_changed=changed[:200], code_algorithm=ev.EVIDENCE_ALGORITHM)
         print(f"wave {wave}: {'PASSED' if all_ok else 'FAILED'} ({sum(1 for x in results if x['ok'])}/{len(results)} rows)")
         return 0 if all_ok else 1
     recorded = ev.append_verify_run(root, sess, d.name, all_ok, vhash, results, started, fp_start, fp_end, stable,
                                     code_fp_start=code_start, code_fp_end=code_end,
                                     code_since=code_since, verify_lineage=lineage, code_scope=scope or None,
-                                    code_changed=changed[:200] or None, code_generated=gen or None)
+                                    code_changed=changed[:200] or None, code_generated=gen or None,
+                                    code_algorithm=ev.EVIDENCE_ALGORITHM)
     if scope:
         print(f'scope: {", ".join(scope)} (edits outside it, e.g. other specs, do not invalidate this verification)')
     if changed and not unexplained:
@@ -2077,7 +2062,7 @@ def cmd_verify(spec_arg, full=False, bail=False, wave=None, result_sink=None, wa
                           for k, v in result.items()} for result in results]
         result_sink.update(ok=all_ok, stable=stable, results=clean_results, started=started,
                            verify_hash=vhash, code_fp_end=code_end, code_scope=scope,
-                           code_generated=gen, code_changed=changed[:200])
+                           code_generated=gen, code_changed=changed[:200], code_algorithm=ev.EVIDENCE_ALGORITHM)
     print(f"verify_run recorded for {d.name}: {'PASSED' if all_ok else 'FAILED'} "
           f"({sum(1 for x in results if x['ok'])}/{len(results)} rows, verify hash {vhash})")
     return 0 if all_ok else 1
@@ -2098,10 +2083,18 @@ def _json_pass_evidence_problem(root, d, spec_text, rows, run):
     """Revalidate this invocation's evidence immediately before emitting PASS."""
     try:
         scope = rules.verification_scope(spec_text, _read(d / 'tasks.md'))
+        try:
+            ev._scope_re(rules.verification_generated(spec_text))
+            ev._scope_re(run.get('code_generated') or [])
+        except (ValueError, re.error):
+            return 'invalid Generated pattern'
+        if run.get('code_algorithm') != ev.EVIDENCE_ALGORITHM:
+            return 'code fingerprint algorithm unavailable or changed'
         if scope != (run.get('code_scope') or []):
             return 'verification scope changed'
         state = ev.code_state(root, scope=scope)
-        exclude = list(run.get('code_generated') or []) + list(run.get('code_changed') or [])
+        from glob import escape as escape_glob
+        exclude = list(run.get('code_generated') or []) + [escape_glob(x) for x in (run.get('code_changed') or [])]
         fingerprint = ev.fingerprint_of(state, scope, exclude=exclude) if state else None
         if not fingerprint or fingerprint != run.get('code_fp_end'):
             return 'code fingerprint changed or unavailable'
@@ -2120,6 +2113,8 @@ def _json_pass_evidence_problem(root, d, spec_text, rows, run):
             if inputs:
                 if result.get('input_globs') != inputs:
                     return 'verification input declaration changed'
+                if result.get('input_algorithm') != ev.EVIDENCE_ALGORITHM:
+                    return 'verification input fingerprint algorithm unavailable or changed'
                 current = rules.row_input_fingerprint(root, inputs)
                 if not current or current != result.get('input_fp'):
                     return 'verification input fingerprint changed or unavailable'

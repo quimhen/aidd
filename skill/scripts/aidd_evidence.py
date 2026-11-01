@@ -1110,7 +1110,7 @@ def latest_approved(root, spec, hash=None):
 
 
 _VERIFY_EXTRA = ('code_fp_start', 'code_fp_end', 'code_since', 'verify_lineage', 'code_scope',
-                 'code_changed', 'code_generated')
+                 'code_changed', 'code_generated', 'code_algorithm')
 
 
 def append_verify_run(root, session, spec, ok, verify_hash, results, started, fingerprint_start,
@@ -1198,7 +1198,10 @@ def last_code_edit_ts(root, scope=None, exclude=None):
                 best = max(best, e['ts'])
         return best
     except Exception:
-        return 0.0
+        try:
+            return max((e['ts'] for e in events(root, kind='code_edit')), default=0.0)
+        except Exception:
+            return 0.0
 
 
 def code_edits_for(root, spec, since_ts, include_unstamped=True):
@@ -1835,6 +1838,10 @@ class _FpUnavailable(Exception):
     """git is missing, failing or not a repo here: use the mtime fallback."""
 
 
+class _FpInputUnsafe(Exception):
+    """A listed input is unreadable or unstable; falling back would hide it."""
+
+
 class _FpOverBudget(Exception):
     """Over the file cap or the time budget: the fingerprint is None."""
 
@@ -1953,20 +1960,12 @@ def _fp_is_doc(rel):
     return os.path.splitext(rel)[1].lower() in _FP_DOC_EXT
 
 
-# Amendment to spec 006: a comment- or whitespace-only edit of a .sql file is documentation, not code. It
-# neither counts as a `code_edit` nor changes the code fingerprint, so it never forces a re-verify or a
-# re-audit of the closing domains. Strings and [bracketed]/"quoted" identifiers are kept verbatim.
-_SQL_TOKEN_RE = re.compile(r"'(?:[^']|'')*'|\[[^\]]*\]|\"[^\"]*\"|(?:\s|--[^\n]*|/\*.*?\*/)+", re.S)
-_SQL_MAX_BYTES = 5 * 1024 * 1024
+EVIDENCE_ALGORITHM = 'raw-sql-v2-glob-v2'
 
 
 def sql_semantic(text):
-    """`text` without SQL comments, with whitespace runs collapsed to one space (string literals and quoted
-    identifiers untouched). Two scripts with the same result run the same statements."""
-    def rep(m):
-        s = m.group(0)
-        return ' ' if (s[0].isspace() or s.startswith('--') or s.startswith('/*')) else s
-    return _SQL_TOKEN_RE.sub(rep, str(text or '')).strip()
+    """Preserve SQL text: the caller has not supplied a reliable dialect/context."""
+    return '' if text is None else str(text)
 
 
 def _decode_sql(data):
@@ -1979,64 +1978,95 @@ def _decode_sql(data):
 
 
 def sql_digest(data):
-    """sha1 hex of the comment/whitespace-free form of a .sql file's bytes (UTF-8, UTF-8 BOM, UTF-16 or cp1252)."""
-    return hashlib.sha1(sql_semantic(_decode_sql(data)).encode('utf-8', errors='replace')).hexdigest()
+    """SHA-256 of exact SQL bytes, independent of encoding or dialect."""
+    return hashlib.sha256(data).hexdigest()
 
 
 def comment_only_edit(path, tool_input):
-    """True when an Edit/MultiEdit of the .sql file at `path` (already applied on disk) changed only comments
-    or whitespace. The pre-edit text is rebuilt by undoing the edits; anything ambiguous (a Write, a missing or
-    repeated new_string, a file over 5 MB, any error) is False so the edit still counts as code (fail closed)."""
-    try:
-        p = Path(path)
-        if p.suffix.lower() != '.sql' or not isinstance(tool_input, dict):
-            return False
-        edits = tool_input.get('edits')
-        if not isinstance(edits, list) or not edits:
-            edits = [tool_input]
-        if p.stat().st_size > _SQL_MAX_BYTES:
-            return False
-        after = _decode_sql(p.read_bytes())
-        before = after
-        for e in reversed(edits):
-            old, new = e.get('old_string'), e.get('new_string')
-            if not isinstance(old, str) or not isinstance(new, str) or not old or not new:
-                return False
-            if before.count(new) == 0 or (before.count(new) > 1 and not e.get('replace_all')):
-                return False
-            before = before.replace(new, old) if e.get('replace_all') else before.replace(new, old, 1)
-        return sql_semantic(before) == sql_semantic(after)
-    except Exception:
-        return False
+    """Without an explicit SQL dialect, no edit is provably comment-only."""
+    return False
 
 
-_SQL_MEMO = {}     # (path, size, mtime_ns) -> digest: an unchanged .sql is normalised once per process
-
-
-def _fp_sql_chunk(root, rel):
+def _fp_sql_chunk(root, rel, deadline=None):
+    """Two matching reads detect observed races; controlled worktrees remain required."""
     try:
         p = Path(root, rel)
-        stt = p.stat()
-        if stt.st_size > _SQL_MAX_BYTES:
-            return None
-        key = (str(p), stt.st_size, stt.st_mtime_ns)
-        dig = _SQL_MEMO.get(key)
-        if dig is None:
-            dig = _SQL_MEMO[key] = sql_digest(p.read_bytes())
-        return rel.encode('utf-8', errors='surrogateescape') + b'\0sql:' + dig.encode('ascii') + b'\0'
-    except Exception:
-        return None
+        def metadata():
+            st = p.stat()
+            return st.st_size, st.st_mtime_ns
+        def digest():
+            h = hashlib.sha256()
+            with p.open('rb') as stream:
+                while True:
+                    if deadline is not None:
+                        _fp_left(deadline)
+                    chunk = stream.read(65536)
+                    if not chunk:
+                        break
+                    h.update(chunk)
+            return h.hexdigest()
+        before = metadata()
+        first = digest()
+        middle = metadata()
+        second = digest()
+        after = metadata()
+        if deadline is not None:
+            _fp_left(deadline)
+        if before != middle or middle != after or first != second:
+            raise _FpInputUnsafe()
+        return rel.encode('utf-8', errors='surrogateescape') + b'\0sql-raw-v2:' + first.encode('ascii') + b'\0'
+    except _FpOverBudget:
+        raise
+    except (OSError, ValueError) as exc:
+        raise _FpInputUnsafe() from exc
 
 
 def _scope_re(globs):
-    """Compiled regex for a list of root-relative globs (`**` any depth, `*` within one segment); None = no scope."""
+    """Compile safe root-relative, case-sensitive segment globs; reject malformed patterns."""
+    import fnmatch
     parts = []
     for g in globs or []:
-        g = str(g).strip().strip('`').replace('\\', '/').lstrip('./')
+        g = str(g).strip().strip('`').replace('\\', '/')
         if not g:
             continue
-        rx = re.escape(g).replace(r'\*\*/', '(?:.*/)?').replace(r'\*\*', '.*').replace(r'\*', '[^/]*')
-        parts.append(rx + ('.*' if g.endswith('/') else ''))
+        while g.startswith('./'):
+            g = g[2:]
+        if not g or g.startswith('/') or ':' in g or '..' in g.split('/'):
+            raise ValueError('unsafe root-relative glob')
+        rx = []
+        i = 0
+        while i < len(g):
+            c = g[i]
+            if c == '*':
+                if i + 1 < len(g) and g[i + 1] == '*':
+                    if i + 2 < len(g) and g[i + 2] == '/':
+                        rx.append('(?:[^/]+/)*')
+                        i += 3
+                        continue
+                    rx.append('.*')
+                    i += 2
+                    continue
+                rx.append('[^/]*')
+            elif c == '?':
+                rx.append('[^/]')
+            elif c == '[':
+                j = i + 1
+                if j < len(g) and g[j] in ('!', '^'):
+                    j += 1
+                if j < len(g) and g[j] == ']':
+                    j += 1
+                j = g.find(']', j)
+                if j < 0 or '/' in g[i:j + 1]:
+                    raise ValueError('malformed glob character class')
+                translated = fnmatch.translate(g[i:j + 1])
+                if translated[4:-3] == '(?!)':
+                    raise ValueError('invalid glob character range')
+                rx.append('(?!/)' + translated[4:-3])
+                i = j
+            else:
+                rx.append(re.escape(c))
+            i += 1
+        parts.append(''.join(rx) + ('.*' if g.endswith('/') else ''))
     return re.compile('^(?:' + '|'.join(parts) + ')$') if parts else None
 
 
@@ -2054,19 +2084,27 @@ def _code_state_git(root, deadline, srx):
     paths = sorted({p for p in raw.decode('utf-8', errors='surrogateescape').split('\0') if p})
     keep = []
     for rel in paths:
-        if _fp_is_doc(rel) or '\n' in rel or not _fp_outside(rel) or not in_scope(rel, srx):
+        if _fp_is_doc(rel) or not _fp_outside(rel) or not in_scope(rel, srx):
+            continue
+        if '\n' in rel:
+            if rel.lower().endswith('.sql'):
+                raise _FpInputUnsafe()
             continue
         if os.path.isfile(os.path.join(str(root), rel)):
             keep.append(rel)
+        elif rel.lower().endswith('.sql'):
+            raise _FpInputUnsafe()
     if len(keep) > _FP_MAX_FILES:
         raise _FpOverBudget()
     state = {}
     if keep:
-        shas = _blob_shas(root, keep, deadline)       # aidd:FR-023 the single hash-object implementation
+        non_sql = [rel for rel in keep if not rel.lower().endswith('.sql')]
+        shas = _blob_shas(root, non_sql, deadline)   # SQL is independently streamed and verified
         for rel in keep:
-            state[rel] = rel.encode('utf-8', errors='surrogateescape') + b'\0' + shas[rel].encode('ascii') + b'\0'
             if rel.lower().endswith('.sql'):
-                state[rel] = _fp_sql_chunk(root, rel) or state[rel]
+                state[rel] = _fp_sql_chunk(root, rel, deadline)
+            else:
+                state[rel] = rel.encode('utf-8', errors='surrogateescape') + b'\0' + shas[rel].encode('ascii') + b'\0'
     return 'git', state
 
 
@@ -2114,7 +2152,9 @@ def blob_shas(root, rels, budget_s=8.0):
 def _code_state_mtimes(root, deadline, srx):
     state = {}
     base = os.path.abspath(str(root))
-    for cur, dirs, files in os.walk(base):
+    def unsafe_walk(error):
+        raise _FpInputUnsafe() from error
+    for cur, dirs, files in os.walk(base, onerror=unsafe_walk):
         _fp_left(deadline)
         top = os.path.normcase(os.path.abspath(cur)) == os.path.normcase(base)
         dirs[:] = sorted(d for d in dirs if d not in _FP_SKIP_ANY and not (top and d in _FP_SKIP_TOP))
@@ -2127,11 +2167,13 @@ def _code_state_mtimes(root, deadline, srx):
                 continue
             try:
                 st = os.stat(full)
-            except OSError:
+            except OSError as exc:
+                if rel.lower().endswith('.sql'):
+                    raise _FpInputUnsafe() from exc
                 continue
             state[rel] = f'{rel}\0{st.st_size}\0{st.st_mtime_ns}\n'.encode('utf-8', errors='surrogateescape')
             if rel.lower().endswith('.sql'):
-                state[rel] = _fp_sql_chunk(base, rel) or state[rel]
+                state[rel] = _fp_sql_chunk(base, rel, deadline)
             if len(state) > _FP_MAX_FILES:
                 raise _FpOverBudget()
     return 'mtime', state

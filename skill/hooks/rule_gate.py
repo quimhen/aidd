@@ -649,9 +649,82 @@ def _code_gate(ev, rules, roots):
 
 # ----------------------------------------------------------------- file-tool targets
 
+def _posix_case_insensitive(parent):
+    """Infer an existing directory's case behavior without creating files; None is unknown."""
+    try:
+        from itertools import islice
+        with os.scandir(parent) as entries:
+            observed = list(islice(entries, 257))
+        names = {entry.name for entry in observed}
+        truncated = len(observed) > 256
+        for entry in observed[:256]:
+            name = entry.name
+            for pos, char in enumerate(name):
+                if char in 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ':
+                    other = name[:pos] + char.swapcase() + name[pos + 1:]
+                    # Two actual directory entries prove case sensitivity,
+                    # even if hard links resolve to the same inode.
+                    if other in names:
+                        return False
+                    if truncated:
+                        return None  # the alternative may be beyond the scan limit
+                    try:
+                        return os.path.samefile(entry.path, os.path.join(parent, other))
+                    except FileNotFoundError:
+                        if os.path.exists(entry.path):
+                            return False
+                        break  # the original disappeared: try another entry
+                    except OSError:
+                        break
+    except OSError:
+        pass
+    return None
+
+
+def _posix_spec_canonical(cp, artifact_names):
+    """Canonicalize spec aliases only when the containing directory may fold case."""
+    if os.name == 'nt':
+        return cp
+    parts = cp.split('/')
+    for i, part in enumerate(parts):
+        low = part.lower()
+        if part == low or not (low == 'specs' or (i == len(parts) - 1 and low in artifact_names)):
+            continue
+        parent = '/'.join(parts[:i]) or '/'
+        fold = _posix_case_insensitive(parent) is not False
+        if not fold and i == len(parts) - 1 and low in artifact_names:
+            # Distinct case-sensitive names can still be hard links to the
+            # same protected artifact; treat the known alias as protected.
+            try:
+                fold = os.path.samefile('/'.join(parts[:i + 1]), os.path.join(parent, low))
+            except FileNotFoundError:
+                fold = False
+            except OSError:
+                fold = True
+        if fold:
+            parts[i] = low
+    return '/'.join(parts)
+
+
 def _protected(ev, cp, segs):
     for i, s in enumerate(segs):
-        if s == '.aidd':
+        protected_dir = s == '.aidd'
+        if os.name != 'nt' and not protected_dir and s.lower() == '.aidd':
+            # POSIX volumes may be case-insensitive. Compare existing native
+            # directories by identity rather than assuming their spelling is
+            # a distinct object; never follow a foreign path token here.
+            candidate = '/'.join(segs[:i + 1])
+            canonical = '/'.join(segs[:i] + ['.aidd'])
+            try:
+                protected_dir = os.path.samefile(candidate, canonical)
+            except FileNotFoundError:
+                # The directory can be created by this very write. Infer the
+                # parent's case behavior without writing a probe; unknown is
+                # protected until the filesystem identity can be established.
+                protected_dir = _posix_case_insensitive(os.path.dirname(candidate)) is not False
+            except OSError:
+                protected_dir = True  # uncertain identity must not open R9
+        if protected_dir:
             nxt = segs[i + 1] if i + 1 < len(segs) else None
             if nxt == 'memory':
                 continue
@@ -757,7 +830,7 @@ def _decide_path(event, ti, fp):
     ev = _ev()
     cwd = C.str_field(event, 'cwd') or None
     rp = ev.real_path(fp, cwd)
-    cp = ev.canon_path(fp, cwd)
+    cp = _posix_spec_canonical(ev.canon_path(fp, cwd), C.SPEC_ARTIFACT_NAMES)
     segs = cp.split('/')
     name = segs[-1]
 
@@ -789,7 +862,10 @@ def _decide_path(event, ti, fp):
     roots = ev.project_roots(rp)
     outer_rel = ev.rel_to_root(cp, roots[-1]) if roots else None
     st = _spec_target(ev, rp, cp, roots)
-    gated = C.is_r6_gated(cp, outer_rel)
+    # R6 classifies suffixes and named build files case-insensitively, while
+    # retaining the native path and directory casing for containment checks.
+    r6_path = cp.rsplit('/', 1)[0] + '/' + name.lower() if '/' in cp else name.lower()
+    gated = C.is_r6_gated(r6_path, outer_rel)
     if st is None and not gated and name not in C.SPEC_ARTIFACT_NAMES:
         return False, ''
 
@@ -1246,7 +1322,10 @@ def _specs_tok(tok, cwd_specs=False, cwd_abs=None):
             if i == 0 or _is_numeric_id(nxt):
                 return True
             if segs[-1] in leaves and i + 2 < len(segs) and nxt:
-                if _is_abs(t):                         # N-1: decide on the ROOT-relative path when a root exists
+                # A foreign Windows drive path is a lexical token on POSIX; it
+                # must never be resolved as a local path below the shell cwd.
+                foreign_drive = os.name != 'nt' and len(t) >= 2 and t[0].isalpha() and t[1] == ':'
+                if _is_abs(t) and not foreign_drive:  # N-1: native ROOT-relative path when a root exists
                     p = _abs_path(tok)
                     rel = _locate(p) if p else None
                     if rel is not None and not (len(rel) >= 3 and rel[0] == 'specs'):

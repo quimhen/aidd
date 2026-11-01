@@ -18,6 +18,16 @@ from tests import test_aidd_status as fixtures
 class WaveVerificationTests(unittest.TestCase):
     tasks = '## Waves\n| Wave | Tasks |\n|---|---|\n| 1 | T-01, T-02 |\n| 2 | T-03 |\n'
 
+    def test_hermetic_label_without_environment_identity_cannot_reuse(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            data = b'# test | exit 0 | 2026-10-27\nverified: three assertions passed\n'
+            (root / 'ok.txt').write_bytes(data)
+            row = {'ok': True, 'exit': 0, 'cmd': 'test', 'expected': 'exit 0', 'input_globs': ['a.py'],
+                   'input_fp': 'fingerprint', 'evidence': 'ok.txt', 'sha1': hashlib.sha1(data).hexdigest(),
+                   'reuse_policy': 'hermetic', 'input_algorithm': 'raw-sql-v2-glob-v2'}
+            self.assertEqual(status._reusable_input_rows(root, {'results': [row]}, False), {})
+
     def test_wave_requires_and_selects_every_task(self):
         rows = [{'covers': 'T-01'}, {'covers': 'T-02 T-03'}, {'covers': 'T-03'}]
         self.assertEqual(status._wave_rows(self.tasks, rows, '1'), rows[:2])
@@ -38,7 +48,7 @@ class WaveVerificationTests(unittest.TestCase):
                    'input_fp': 'fingerprint', 'evidence': 'ok.txt', 'sha1': sha, 'reuse_policy': 'hermetic'}
             prior = {'stable': False, 'results': [row]}
             key = ('test', 'exit 0', ('a.py',), 'fingerprint')
-            self.assertIn(key, status._reusable_input_rows(root, prior, False))
+            self.assertNotIn(key, status._reusable_input_rows(root, prior, False))
             self.assertEqual(status._reusable_input_rows(root, {'results': [dict(row, reuse_policy='')]}, False), {})
             self.assertEqual(status._reusable_input_rows(root, prior, True), {})
             # Removing Inputs is a different contract: the prior per-row
@@ -116,12 +126,19 @@ class WaveVerificationTests(unittest.TestCase):
             row = {'expected': 'exit 0', 'inputs': inputs}
             result = {'ok': True, 'exit': 0, 'expected': 'exit 0', 'evidence': 'result.txt',
                       'sha1': hashlib.sha1(data).hexdigest(), 'input_globs': inputs,
-                      'input_fp': status.rules.row_input_fingerprint(root, inputs)}
-            run = {'results': [result], 'code_scope': [], 'code_fp_end': 'code1'}
+                      'input_fp': status.rules.row_input_fingerprint(root, inputs),
+                      'input_algorithm': status.ev.EVIDENCE_ALGORITHM}
+            run = {'results': [result], 'code_scope': [], 'code_fp_end': 'code1',
+                   'code_algorithm': status.ev.EVIDENCE_ALGORITHM}
             with patch.object(status.rules, 'verification_scope', return_value=[]), \
                  patch.object(status.ev, 'code_state', return_value=('git', {'a': b'a'})), \
                  patch.object(status.ev, 'fingerprint_of', return_value='code1') as code_fp:
                 self.assertIsNone(status._json_pass_evidence_problem(root, spec, '', [row], run))
+                self.assertIn('Generated', status._json_pass_evidence_problem(
+                    root, spec, '## Verification\nGenerated: src/[broken\n', [row], run))
+                result['input_algorithm'] = 'unknown'
+                self.assertIn('algorithm', status._json_pass_evidence_problem(root, spec, '', [row], run))
+                result['input_algorithm'] = status.ev.EVIDENCE_ALGORITHM
                 evidence.write_bytes(data + b'corrupted')
                 self.assertIn('evidence', status._json_pass_evidence_problem(root, spec, '', [row], run))
                 evidence.write_bytes(data)
@@ -182,8 +199,8 @@ class WaveEndToEnd(fixtures.Spec007Base):
             self.assertEqual(report['status'], 'pass')
             self.assertEqual([s['spec'] for s in report['specs']], ['001-wave', '002-wave'])
             self.assertEqual([s['coverage'] for s in report['specs']], [{'V-1': 'T-01'}, {'V-1': 'T-02'}])
-            self.assertEqual(report['specs'][1]['reused'], ['V-1'])
-            self.assertEqual((first / 'count.txt').read_text(), '1')
+            self.assertEqual(report['specs'][1]['reused'], [])
+            self.assertEqual((first / 'count.txt').read_text(), '2')
 
     def test_multi_spec_wave_json_preflight_error_has_no_execution(self):
         text = ('# Spec\n## Verification\n| # | Command | Expected | Covers | Inputs |\n'
@@ -235,8 +252,8 @@ class WaveEndToEnd(fixtures.Spec007Base):
                 'print("three assertions passed successfully")\n', encoding='utf-8')
             result = fixtures.run_script('verify', '001-wave', '002-wave', '--wave', '1', cwd=root)
             self.assertEqual(result.returncode, 0, result.stdout)
-            self.assertEqual((first / 'count.txt').read_text(), '1')
-            self.assertIn('ROUND-REUSED row V-1', result.stdout)
+            self.assertEqual((first / 'count.txt').read_text(), '2')
+            self.assertNotIn('ROUND-REUSED row V-1', result.stdout)
             for name, cover in [('001-wave', 'T-01'), ('002-wave', 'T-02')]:
                 run = status._latest_wave_run(root, name, '1')
                 self.assertTrue(run['ok'])
@@ -290,7 +307,7 @@ class WaveEndToEnd(fixtures.Spec007Base):
             self.assertEqual(first.returncode, 0, first.stdout)
             second = fixtures.run_script('verify', '001-wave', cwd=root)
             self.assertEqual(second.returncode, 0, second.stdout)
-            self.assertIn('REUSED row V-1', second.stdout)
+            self.assertNotIn('REUSED row V-1', second.stdout)
             (spec / 'spec.md').write_text(text.replace('hermetic', ''), encoding='utf-8')
             third = fixtures.run_script('verify', '001-wave', cwd=root)
             self.assertEqual(third.returncode, 0, third.stdout)
@@ -332,8 +349,8 @@ class WaveEndToEnd(fixtures.Spec007Base):
             report = json.loads(result.stdout)
             self.assertEqual(report['status'], 'pass')
             self.assertEqual(report['planned'], ['V-1', 'V-2'])
-            self.assertEqual(report['executed'], ['V-1'])
-            self.assertEqual(report['deduplicated'], ['V-2'])
+            self.assertEqual(report['executed'], ['V-1', 'V-2'])
+            self.assertEqual(report['deduplicated'], [])
             self.assertEqual(report['coverage'], {'V-1': 'T-01', 'V-2': 'T-02'})
             self.assertIn('wave 1: PASSED', result.stderr)
             (root / 'src' / 'check.py').unlink()
@@ -373,11 +390,11 @@ class WaveEndToEnd(fixtures.Spec007Base):
                              'print("three assertions passed successfully")\n', encoding='utf-8')
             result = fixtures.run_script('verify', '001-wave', '--wave', '1', cwd=root)
             self.assertEqual(result.returncode, 0, result.stdout)
-            self.assertIn('DEDUPLICATED row V-2', result.stdout)
-            self.assertEqual((spec / 'count.txt').read_text(), '1')
+            self.assertNotIn('DEDUPLICATED row V-2', result.stdout)
+            self.assertEqual((spec / 'count.txt').read_text(), '2')
             recorded = status._latest_wave_run(root, '001-wave', '1')
             self.assertEqual([r['covers'] for r in recorded['results']], ['T-01', 'T-02'])
-            self.assertEqual(recorded['results'][1]['deduplicated_from'], 'V-1')
+            self.assertNotIn('deduplicated_from', recorded['results'][1])
             self.assertTrue((spec / recorded['results'][0]['evidence']).is_file())
             self.assertTrue((spec / recorded['results'][1]['evidence']).is_file())
 

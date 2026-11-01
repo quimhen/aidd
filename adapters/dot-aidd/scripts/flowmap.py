@@ -1465,7 +1465,8 @@ def render_html(flows, title='Flowmap', spec=''):
                  f'<div class="pane hide" data-pane="matrix"><div class="card"><h4>Who does what, in which process</h4><div class="scroll">{_matrix_html(f)}</div></div></div>'
                  '<div class="trail"></div></div>')
     P.append('<div id="info"></div></main>')
-    P.append(f'<script type="application/json" id="model">{json.dumps(model).replace("</", "<\\/")}</script><script>{JS}</script></body></html>')
+    model_json = json.dumps(model).replace("</", "<\\/")
+    P.append(f'<script type="application/json" id="model">{model_json}</script><script>{JS}</script></body></html>')
     return ''.join(P)
 
 
