@@ -68,6 +68,7 @@ VERBATIM_SCRIPTS = [
     "aidd_units.py",
     "aidd_reuse.py",
     "aidd_unit_audit.py",
+    "aidd_provider_attestation.py",
     "aidd_unit_consent.py",
     "aidd_navigator.py",
     "aidd_evidence.py",

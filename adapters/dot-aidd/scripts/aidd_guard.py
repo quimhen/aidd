@@ -21,6 +21,7 @@ as a `guard_override {hook, mode, rules}` event. An internal error fails open (e
 """
 import os
 import hashlib
+import json
 import re
 import subprocess
 import sys
@@ -258,8 +259,11 @@ def _evaluate_owners(root, owners, allow_partial=False):
     out = []
     for d, files in owners:
         state = _light_status(root, d, ev, rules, approved)
-        partial = (allow_partial and _partial_passes(root, d, files, verify_status, ev, rules,
-                    (state.get('verification') or {}).get('ts')))
+        threshold = (state.get('verification') or {}).get('ts')
+        if allow_partial:
+            threshold = max(float(threshold or 0), _latest_partial_failure(root, d, files, ev))
+        partial = (allow_partial and (_partial_passes(root, d, files, verify_status, ev, rules, threshold)
+                                      or _provider_partial_passes(root, d, files, ev, threshold)))
         out += _spec_findings(root, d, state, files, partial)
     return out
 
@@ -423,6 +427,8 @@ def _partial_passes(root, d, code, status, ev, rules, full_ts):
     """Read the latest relevant runner receipt; unknown coverage cannot bypass verify."""
     try:
         tasks_text, spec_text = _read_small(d / 'tasks.md'), _read_small(d / 'spec.md')
+        if tasks_text is None or spec_text is None:
+            return False
         owners = _task_owners(tasks_text)
         affected = {task for task, paths in owners.items() if set(paths) & set(code)}
         if not affected or any(not any(path in paths for paths in owners.values()) for path in code):
@@ -470,6 +476,84 @@ def _partial_passes(root, d, code, status, ev, rules, full_ts):
             return True
         return False
     except (OSError, ValueError, TypeError, KeyError, subprocess.SubprocessError):
+        return False
+
+
+def _latest_partial_failure(root, d, code, evidence):
+    """A newer failed relevant partial must supersede any earlier PASS."""
+    try:
+        pending_dir = d / 'evidence'
+        staged_ids = {hashlib.sha256(('aidd-provider-target-v1\0' + path).encode('utf-8')).hexdigest()
+                      for path in code}
+        if pending_dir.exists():
+            if pending_dir.is_symlink():
+                return float('inf')
+            for marker in pending_dir.glob('provider-*.pending'):
+                if marker.is_symlink() or marker.stat().st_size > 1024 * 1024:
+                    return float('inf')
+                data = json.loads(marker.read_text(encoding='utf-8'))
+                values = data.get('targets') if isinstance(data, dict) else None
+                if (not isinstance(data, dict) or data.get('format') != 'aidd-provider-pending-v1'
+                        or data.get('spec') != d.name or not isinstance(values, list) or not values
+                        or any(not isinstance(item, str) or not re.fullmatch(r'[0-9a-f]{64}', item) for item in values)):
+                    return float('inf')
+                if set(values) & staged_ids:
+                    return float('inf')
+        owners = _task_owners(_read_small(d / 'tasks.md') or '')
+        affected = {task for task, paths in owners.items() if set(paths) & set(code)}
+        latest = 0.0
+        provider_events = evidence.events(root, kind='provider_verify_run')
+        for event in provider_events:
+            detail = event.get('detail') or {}
+            tasks = detail.get('tasks') or {}
+            if detail.get('spec') != d.name:
+                continue
+            if not isinstance(tasks, dict):
+                return float('inf')
+            for task_id, task in tasks.items():
+                if isinstance(task, dict) and set(task.get('targets') or []) & set(code):
+                    affected.add(str(task_id).upper())
+        for event in evidence.events(root, kind='task_verify_run'):
+            detail = event.get('detail') or {}
+            if (detail.get('spec') == d.name and detail.get('ok') is False
+                    and affected & {str(task).upper() for task in detail.get('tasks') or []}):
+                latest = max(latest, float(event.get('ts') or 0))
+        for event in provider_events:
+            detail = event.get('detail') or {}
+            tasks = detail.get('tasks') or {}
+            if not isinstance(tasks, dict):
+                return float('inf')
+            targets = {path for item in tasks.values() if isinstance(item, dict) for path in item.get('targets') or []}
+            if detail.get('spec') == d.name and detail.get('outcome') != 'PASS' and not targets:
+                return float('inf')
+            if detail.get('spec') == d.name and detail.get('outcome') != 'PASS' and targets & set(code):
+                latest = max(latest, float(event.get('ts') or 0))
+        return latest + 0.001 if latest else 0.0
+    except (OSError, ValueError, TypeError, UnicodeError):
+        return float('inf')
+
+
+def _provider_partial_passes(root, d, code, evidence, full_ts):
+    try:
+        try:
+            from . import aidd_provider_attestation as provider
+        except ImportError:
+            import aidd_provider_attestation as provider
+        events = evidence.events(root, kind='provider_verify_run')
+        for event in reversed(events):
+            detail = event.get('detail') or {}
+            tasks = detail.get('tasks') or {}
+            if not isinstance(tasks, dict):
+                return False
+            targets = {path for item in tasks.values() if isinstance(item, dict) for path in item.get('targets') or []}
+            if detail.get('spec') != d.name or not targets & set(code):
+                continue
+            if detail.get('outcome') != 'PASS' or float(event.get('ts') or 0) < float(full_ts or 0):
+                return False
+            approve = provider.unit_approval_verifier(root, detail['coverage_path'], detail['policy_path'], evidence)
+            return provider.evaluate_event(root, event, code, approve)['eligible'] is True
+        return False
+    except (OSError, ValueError, TypeError, KeyError, ImportError):
         return False
 
 
