@@ -1349,6 +1349,15 @@ def _table_exclusions(cells):
     return [i for i, c in enumerate(cells) if re.sub(r'[\s*`_]+', ' ', c).strip().lower() in _HASH_EXCLUDED]
 
 
+def _unit_visual_projection(refs):
+    """Canonical visual metadata; roles, states, viewports and assets are sets."""
+    return [{'screen_id': ref.screen_id, 'revision_id': ref.revision_id,
+             'source': ref.source, 'assets': sorted(ref.assets),
+             'states': sorted(ref.states), 'roles': sorted(ref.roles),
+             'viewports': sorted(ref.viewports)} for ref in sorted(
+                 refs, key=lambda item: (item.screen_id, item.revision_id))]
+
+
 def unit_approval_hash(unit, project_root):
     """Hash a declared amendment and its transitive dependencies, not a seal.
 
@@ -1357,18 +1366,25 @@ def unit_approval_hash(unit, project_root):
     """
     import json
     try:
-        from .aidd_units import discover_units
+        from .aidd_units import discover_unit_scope
     except ImportError:
-        from aidd_units import discover_units
+        from aidd_units import discover_unit_scope
 
     root = Path(project_root).resolve(strict=True)
-    units = discover_units(root)
+    units = discover_unit_scope(root, unit.spec_id, [unit.key])
     by_key = {candidate.key: candidate for candidate in units}
     candidate = by_key.get(unit.key)
     fields = ('schema_version', 'spec_id', 'unit_id', 'sequence', 'parents', 'paths', 'targets')
     if candidate is None or any(getattr(candidate, field) != getattr(unit, field, None)
                                 for field in fields):
         raise ValueError('unit is absent from or differs from its manifest')
+    if candidate.schema_version == 2:
+        from dataclasses import asdict
+        try:
+            if asdict(candidate) != asdict(unit):
+                raise ValueError('unit differs from its manifest')
+        except TypeError as exc:
+            raise ValueError('invalid unit representation') from exc
     required = set()
     pending = [unit.key]
     while pending:
@@ -1390,7 +1406,20 @@ def unit_approval_hash(unit, project_root):
                 content = path.read_bytes()
             except (OSError, RuntimeError, ValueError) as exc:
                 raise ValueError('unit dependency unavailable: ' + name) from exc
-            inputs.append({'path': name, 'sha256': hashlib.sha256(content).hexdigest()})
+            unit_prefix = f'specs/{candidate.spec_id}/amendments/{candidate.unit_id}/'
+            is_unit_tasks = (candidate.schema_version == 2 and name.startswith(unit_prefix)
+                             and re.fullmatch(r'tasks(?:-[A-Za-z0-9_-]+)?\.md', name[len(unit_prefix):]))
+            if is_unit_tasks:
+                try:
+                    projection = approval_projection(content.decode('utf-8'))
+                except UnicodeError as exc:
+                    raise ValueError('unit task file is not UTF-8: ' + name) from exc
+                if projection is None:
+                    raise ValueError('unit task file exceeds semantic projection limit: ' + name)
+                digest = hashlib.sha256(('aidd-task-projection-v1\n' + projection).encode('utf-8')).hexdigest()
+            else:
+                digest = hashlib.sha256(content).hexdigest()
+            inputs.append({'path': name, 'sha256': digest})
         payload = {
             'format': 'aidd-unit-approval-v1',
             'spec_id': candidate.spec_id,
@@ -1401,6 +1430,11 @@ def unit_approval_hash(unit, project_root):
             'inputs': inputs,
             'targets': sorted(candidate.targets),
         }
+        if candidate.schema_version == 2:
+            payload['format'] = 'aidd-unit-approval-v3'
+            payload.update(version=candidate.version, declared_inputs=sorted(candidate.inputs),
+                           config=sorted(candidate.config),
+                           visual_refs=_unit_visual_projection(candidate.visual_refs))
         encoded = json.dumps(payload, ensure_ascii=False, sort_keys=True,
                              separators=(',', ':')).encode('utf-8')
         digests[candidate.key] = hashlib.sha256(encoded).hexdigest()
@@ -1436,32 +1470,38 @@ def unit_review_package(unit, project_root):
         tasks.append({'path': name, 'content': content})
     if unit_approval_hash(unit, root) != initial:
         raise ValueError('unit changed while review package was generated')
-    return json.dumps({'format': 'aidd-unit-review-v1', 'unit': unit.key,
-                       'project': hashlib.sha256(os.path.normcase(str(root)).encode('utf-8')).hexdigest(),
-                       'digest': initial, 'parents': sorted(unit.parents),
-                       'targets': sorted(unit.targets), 'tasks': tasks},
-                      ensure_ascii=True, sort_keys=True, separators=(',', ':'))
+    payload = {'format': 'aidd-unit-review-v1', 'unit': unit.key,
+               'project': hashlib.sha256(os.path.normcase(str(root)).encode('utf-8')).hexdigest(),
+               'digest': initial, 'parents': sorted(unit.parents),
+               'targets': sorted(unit.targets), 'tasks': tasks}
+    if unit.schema_version == 2:
+        payload.update(format='aidd-unit-review-v2', version=unit.version,
+                       inputs=sorted(unit.inputs), config=sorted(unit.config),
+                       visual_refs=_unit_visual_projection(unit.visual_refs))
+    return json.dumps(payload, ensure_ascii=True, sort_keys=True, separators=(',', ':'))
 
 
 def unit_consent_question(package):
     """Exact question to be submitted to the trusted host question tool."""
     import json
     data = json.loads(package)
-    if (data.get('format') != 'aidd-unit-review-v1'
+    if (data.get('format') not in ('aidd-unit-review-v1', 'aidd-unit-review-v2')
             or not re.fullmatch(r'[0-9a-f]{64}', str(data.get('project', '')))
             or not re.fullmatch(r'[0-9a-f]{64}', str(data.get('digest', '')))
             or not re.fullmatch(r'[A-Za-z0-9_-]+:[A-Za-z0-9_-]+', str(data.get('unit', '')))):
         raise ValueError('invalid unit review package')
+    if data['format'] == 'aidd-unit-review-v2':
+        if (not isinstance(data.get('version'), str) or not re.fullmatch(r'[A-Za-z0-9_-]+', data['version'])
+                or any(not isinstance(data.get(field), list) for field in ('inputs', 'config', 'visual_refs'))):
+            raise ValueError('invalid v2 unit review metadata')
     return f"Aprobar unidad? [unit:{data['unit']}:{data['digest']}]\n{package}"
 
 
-def approval_hash(tasks_text):
-    """sha1[:12] of the text with the `Approved:` lines removed, newlines normalised to \\n,
-    trailing whitespace stripped (per line and at the end), and (M7) lines/cells named `Status`,
-    `Tracker ref`, `PR/Spec ref` excluded so write-back tools do not void an approval."""
+def approval_projection(tasks_text):
+    """Semantic task text shared by legacy approval and incremental scope hashes."""
     t = _norm_nl(tasks_text)
-    if len(t) > MAX_CHARS:  # never scanned: a stable fingerprint of the raw text; never valid
-        return hashlib.sha1(t.encode('utf-8', 'replace')).hexdigest()[:12]
+    if len(t) > MAX_CHARS:
+        return None
     lines = t.split('\n')
     out = []
     excl = []   # excluded column indexes of the table we are in
@@ -1483,7 +1523,15 @@ def approval_hash(tasks_text):
         else:
             excl = []
         out.append(s)
-    return hashlib.sha1('\n'.join(out).rstrip().encode('utf-8')).hexdigest()[:12]
+    return '\n'.join(out).rstrip()
+
+
+def approval_hash(tasks_text):
+    """Legacy sha1[:12] over the approved semantic task projection."""
+    projection = approval_projection(tasks_text)
+    if projection is None:  # preserve historical behavior for oversized input
+        return hashlib.sha1(_norm_nl(tasks_text).encode('utf-8', 'replace')).hexdigest()[:12]
+    return hashlib.sha1(projection.encode('utf-8')).hexdigest()[:12]
 
 
 def _approval_lines(tasks_text):
@@ -2148,7 +2196,7 @@ def parse_verification(spec_text):
         def col(*names):
             return next((i for i, h in enumerate(hn) if h in names), None)
         ni, ci, ei, vi = col('#', 'n', 'no', 'no.'), col('command', 'cmd'), col('expected'), col('covers')
-        ii, ri = col('inputs'), col('reuse')
+        ii, ri, envi = col('inputs'), col('reuse'), col('environment')
         if ci is None:
             return []
         out = []
@@ -2165,6 +2213,8 @@ def parse_verification(spec_text):
                 item['inputs'] = sorted(set(_strip_ticks(x.strip()) for x in r[ii].split(',') if x.strip()))
             if ri is not None:
                 item['reuse'] = r[ri].strip().lower()
+            if envi is not None:
+                item['environment'] = _strip_ticks(r[envi]).strip()
             out.append(item)
         return out
     except Exception:
@@ -2348,7 +2398,8 @@ def verification_hash(spec_text):
             return ''
         body = '\n'.join(f"{_norm_cell(r['n'])}|{r['cmd'].strip()}|{r['expected'].strip()}"
                          + ('|inputs:' + ','.join(r['inputs']) if r.get('inputs') else '')
-                         + ('|reuse:' + r['reuse'] if r.get('reuse') else '') for r in rows)
+                         + ('|reuse:' + r['reuse'] if r.get('reuse') else '')
+                         + ('|environment:' + r['environment'] if r.get('environment') else '') for r in rows)
         return hashlib.sha1(body.encode('utf-8')).hexdigest()[:12]
     except Exception:
         return ''

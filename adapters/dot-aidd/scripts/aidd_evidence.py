@@ -840,7 +840,8 @@ def count(root, kind, **match):
 # Typed recorders (new kinds)
 # ---------------------------------------------------------------------------
 
-def append_answer(root, session, text, pairs, options=None, tool_use_id=None):
+def append_answer(root, session, text, pairs, options=None, tool_use_id=None, question_sha256=None,
+                  question_semantic_sha256=None):
     """`pairs` = [[question, answer], ...]; `options` (optional) = [[label, ...], ...] aligned with
     pairs: the option labels the question OFFERED (affirmative_answer requires the chosen answer to
     be one of them). `tool_use_id` (optional) is stored in the detail when given."""
@@ -849,6 +850,10 @@ def append_answer(root, session, text, pairs, options=None, tool_use_id=None):
         d['options'] = options
     if tool_use_id:
         d['tool_use_id'] = str(tool_use_id)
+    if question_sha256 is not None:
+        d['question_sha256'] = question_sha256
+    if question_semantic_sha256 is not None:
+        d['question_semantic_sha256'] = question_semantic_sha256
     append(root, session, 'answer', **d)
 
 

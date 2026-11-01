@@ -3,7 +3,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from skill.scripts.aidd_rules import unit_review_package
+from skill.scripts.aidd_rules import unit_consent_question, unit_review_package
 from skill.scripts.aidd_units import UnitManifest, discover_units, unit_for_target
 
 
@@ -38,6 +38,23 @@ class UnitReviewPackage(unittest.TestCase):
         self.manifest([])
         with self.assertRaisesRegex(ValueError, 'no declared task'):
             unit_review_package(self.unit(), self.root)
+
+    def test_v2_review_shows_version_dependencies_and_visual_metadata(self):
+        path = self.directory / 'manifest.json'
+        data = json.loads(path.read_text(encoding='utf-8'))
+        data.update(schema_version=2, version='v3', inputs=['input.py'], config=['config.json'],
+                    visual_refs=[{'screen_id': 'SCREEN-1', 'revision_id': 'v2', 'source': 'mock.html',
+                                  'assets': [], 'states': ['ready'], 'roles': ['admin'],
+                                  'viewports': ['1280x800']}])
+        path.write_text(json.dumps(data), encoding='utf-8')
+        package = unit_review_package(self.unit(), self.root)
+        value = json.loads(package)
+        self.assertEqual(value['format'], 'aidd-unit-review-v2')
+        self.assertEqual(value['version'], 'v3')
+        self.assertEqual(value['inputs'], ['input.py'])
+        self.assertEqual(value['config'], ['config.json'])
+        self.assertEqual(value['visual_refs'][0]['roles'], ['admin'])
+        self.assertIn(package, unit_consent_question(package))
         self.manifest([self.task_path])
         (self.directory / 'tasks.md').write_text('', encoding='utf-8')
         with self.assertRaisesRegex(ValueError, 'empty'):

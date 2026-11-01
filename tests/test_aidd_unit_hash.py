@@ -2,6 +2,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from skill.scripts.aidd_units import discover_units
 from skill.scripts.aidd_rules import approval_hash, unit_approval_hash
@@ -53,6 +54,33 @@ class UnitHash(unittest.TestCase):
     def test_legacy_hash_unchanged(self):
         self.assertEqual(approval_hash('hello\n'), approval_hash('hello\r\n'))
         self.assertEqual(12, len(approval_hash('hello\n')))
+
+    def test_v2_approval_binds_declarations_but_not_target_bytes(self):
+        path = self.root / 'specs' / 's' / 'amendments' / 'parent' / 'manifest.json'
+        data = json.loads(path.read_text(encoding='utf-8'))
+        data.update(schema_version=2, version='v1', inputs=['input.txt'],
+                    config=[], visual_refs=[], targets=['target.py'])
+        path.write_text(json.dumps(data), encoding='utf-8')
+        self.file('target.py', 'before')
+        first = self.digest('parent')
+        self.file('target.py', 'after')
+        self.assertEqual(first, self.digest('parent'))
+        data['inputs'] = ['other-input.txt']
+        path.write_text(json.dumps(data), encoding='utf-8')
+        self.assertNotEqual(first, self.digest('parent'))
+
+    def test_v2_equivalent_dataclass_from_top_level_import_is_accepted(self):
+        import importlib
+        import sys
+        path = self.root / 'specs' / 's' / 'amendments' / 'parent' / 'manifest.json'
+        data = json.loads(path.read_text(encoding='utf-8'))
+        data.update(schema_version=2, version='v1', inputs=[], config=[], visual_refs=[])
+        path.write_text(json.dumps(data), encoding='utf-8')
+        scripts = str(Path(__file__).resolve().parents[1] / 'skill' / 'scripts')
+        with patch.object(sys, 'path', [scripts, *sys.path]):
+            foreign = importlib.import_module('aidd_units')
+            foreign_unit = next(u for u in foreign.discover_units(self.root) if u.unit_id == 'parent')
+        self.assertEqual(unit_approval_hash(foreign_unit, self.root), self.digest('parent'))
 
 
 if __name__ == '__main__':

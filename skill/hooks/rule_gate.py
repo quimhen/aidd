@@ -1854,10 +1854,52 @@ def _decide_bash(event, ti):
 
 # ----------------------------------------------------------------------------- core
 
+def _decide_codex_patch(event):
+    """Assess every native patch target; fail closed when content cannot be proven."""
+    try:
+        from codex_patch import normalize_codex_patch, project_patch
+        from pathlib import Path
+        normalized = normalize_codex_patch(event)
+        cwd = event.get('cwd') or os.getcwd()
+        paths = [entry['file_path'] for entry in normalized['tool_input']['edits']]
+        sensitive = False
+        for path in paths:
+            resolved = Path(path)
+            if not resolved.is_absolute():
+                resolved = Path(cwd) / resolved
+            resolved = resolved.resolve(strict=False)
+            if resolved.exists() and resolved.stat().st_nlink > 1:
+                raise ValueError('hardlinked patch target cannot be assessed safely')
+            name = _ev().canon_path(str(resolved)).replace('\\', '/').rsplit('/', 1)[-1].rstrip('. ').casefold()
+            if ':' in name:
+                raise ValueError('alternate streams are unsupported')
+            if name in ('spec.md', 'tasks.md', 'plan.md', 'contracts.md', 'qa-audit.md', '.env') or name.startswith('.env.'):
+                sensitive = True
+        if sensitive:
+            projected = project_patch(event['tool_input']['command'], cwd)
+            for target in projected:
+                single = dict(event, tool_name='Write', tool_input={
+                    'file_path': target.source, 'content': target.prospective})
+                blocked, message = _decide_path(single, single['tool_input'], target.source)
+                if blocked:
+                    return True, message
+        else:
+            ti = normalized['tool_input']
+            for path in paths:
+                blocked, message = _decide_path(normalized, ti, path)
+                if blocked:
+                    return True, message
+    except Exception:
+        return True, 'AIDD: cannot safely assess this apply_patch; use a supported file operation'
+    return False, ''
+
+
 def decide(event):
     """Return (blocked, message). `event` must be a dict."""
     _clear_caches()                                            # aidd:FR-1001 every decision starts clean
     import _common as C
+    if event.get('tool_name') == 'apply_patch':
+        return _decide_codex_patch(event)
     ti = C.tool_input_of(event)
     if event.get('tool_name') in SHELL_TOOLS:
         return _decide_bash(event, ti)

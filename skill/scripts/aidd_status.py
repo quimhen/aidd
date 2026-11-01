@@ -1254,7 +1254,7 @@ def _summary_answer(ev, root, session, since, tag):
     return None
 
 
-def _unit_summary_consent(root, session, question, tag, since):
+def _unit_summary_consent(root, session, question, tag, since, semantic_digest=None):
     """Match the whole generated question in a trusted hook answer, not a substring."""
     if not session or session == 'unknown-session':
         return None
@@ -1270,14 +1270,26 @@ def _unit_summary_consent(root, session, question, tag, since):
             for index, pair in enumerate(pairs):
                 if not isinstance(pair, (list, tuple)) or len(pair) != 2 or tag not in str(pair[0]):
                     continue
+                hashes = detail.get('question_sha256')
+                recorded_hash = hashes[index] if isinstance(hashes, list) and index < len(hashes) else None
+                exact_question = str(pair[0]) == question
+                if not exact_question and recorded_hash:
+                    exact_question = (str(pair[0]) == question[:1000]
+                                      and recorded_hash == hashlib.sha256(question.encode('utf-8')).hexdigest())
+                semantic_hashes = detail.get('question_semantic_sha256')
+                if (not exact_question and semantic_digest and isinstance(semantic_hashes, list)
+                        and index < len(semantic_hashes) and semantic_hashes[index] == semantic_digest
+                        and isinstance(recorded_hash, str) and re.fullmatch(r'[0-9a-f]{64}', recorded_hash)
+                        and str(pair[0]).startswith(f'Aprobar unidad? {tag}\n')):
+                    exact_question = True
                 # The newest response to this unit/tag is authoritative, even if
                 # it rejects or alters the question/options.
-                if (str(pair[0]) != question or str(pair[1]).strip() != SUMMARY_LABEL
+                if (not exact_question or str(pair[1]).strip() != SUMMARY_LABEL
                         or not isinstance(options, list) or index >= len(options)
                         or not isinstance(options[index], (list, tuple))
                         or SUMMARY_LABEL not in options[index]):
                     return None
-                return event
+                return event, recorded_hash or hashlib.sha256(question.encode('utf-8')).hexdigest()
     except Exception:
         return None
     return None
@@ -1317,17 +1329,30 @@ def cmd_approve_unit(spec_arg, unit_id):
             paths.append(Path(root) / 'specs' / u.spec_id / 'amendments' / u.unit_id / 'manifest.json')
             paths.extend(Path(root) / path for path in u.paths)
         since = max(path.stat().st_mtime for path in paths)
+        semantic_digest = None
+        if unit.schema_version == 2:
+            try:
+                from .aidd_unit_consent import unit_question_semantic_sha256
+            except ImportError:
+                from aidd_unit_consent import unit_question_semantic_sha256
+            semantic_digest = unit_question_semantic_sha256(question)
+            # Freshness is semantic: administrative status edits may update mtime
+            # without changing the exact work and dependencies the owner saw.
+            since = 0
         session = _current_session(root)
-        answer = _unit_summary_consent(root, session, question, tag, since)
-        if answer is None:
+        matched = _unit_summary_consent(root, session, question, tag, since, semantic_digest)
+        if matched is None:
             print('Refused: no fresh trusted host answer for the complete unit review package; '
                   'Codex consent is not yet supported. No approval was recorded.')
             return 1
+        answer, shown_question_hash = matched
         if rules.unit_review_package(unit, root) != package:
             raise ValueError('unit changed after consent')
         if not ev.append(root, session, 'unit_approved', spec=d.name, unit_id=unit.unit_id,
                          digest=data['digest'], consent_ts=answer['ts'],
-                         review_sha256=hashlib.sha256(package.encode('utf-8')).hexdigest()):
+                         review_sha256=hashlib.sha256(package.encode('utf-8')).hexdigest(),
+                         shown_question_sha256=shown_question_hash,
+                         question_semantic_sha256=semantic_digest):
             raise ValueError('could not record unit approval')
         print(f"Unit {unit.key} approved: {data['digest']}")
         return 0
@@ -1604,7 +1629,7 @@ def _reusable_rows(d, prior, code_fp, full):
 
 
 def _reusable_input_rows(d, prior, full):
-    """No row reuse until an independently verified environment identity exists."""
+    """No isolated runner currently attests that a row is reusable."""
     return {}
 
 
@@ -1763,6 +1788,101 @@ def _wave_rows(tasks_text, rows, wave):
     return selected
 
 
+def _task_rows(tasks_text, rows, task_ids):
+    """Select rows whose explicit Covers include the requested real task IDs."""
+    if not task_ids or len(set(task_ids)) != len(task_ids):
+        raise ValueError('tasks must be nonempty and unique')
+    known = set()
+    for line in rules._clean(tasks_text).splitlines():
+        if line.lstrip().startswith('|'):
+            cells = rules._split_row(line)
+            match = re.fullmatch(r'[`*\s]*(T-\d+)[`*\s]*', cells[0], re.I) if cells else None
+        else:
+            match = re.match(r'^\s*#{1,3}\s+(T-\d+)\b', line, re.I)
+        if match:
+            known.add(match.group(1).upper())
+    selected_ids = {str(value).upper() for value in task_ids}
+    if any(not re.fullmatch(r'T-\d+', value) for value in selected_ids) or not selected_ids <= known:
+        raise ValueError('unknown or invalid task IDs: ' + ', '.join(sorted(selected_ids - known)))
+    by_number = {}
+    for value in known:
+        by_number.setdefault(int(value[2:]), set()).add(value)
+    selected, covered = [], set()
+    range_re = re.compile(r'\b(T-\d+)\s*(?:\.\.|–|—|\bto\b)\s*(T-\d+)\b', re.I)
+    for row in rows:
+        covers = row.get('covers') or ''
+        if re.search(r'\b(?:except|excepto|excluding|exclude|omitting|omit|salvo|menos|sin|not)\b', covers, re.I) and re.search(r'\bT-', covers, re.I):
+            raise ValueError('ambiguous exclusion in task Covers')
+        if re.search(r'\bT-(?!\d+\b)', covers, re.I):
+            raise ValueError('invalid task identifier in Covers')
+        without_ranges = range_re.sub('', covers)
+        if (re.search(r'\bT-\d+\s*(?:\.\.|…|–|—|\bto\b|-\s*T-)', without_ranges, re.I)
+                or re.search(r'(?:\.\.|…|–|—|\bto\b)\s*T-\d+\b', without_ranges, re.I)
+                or re.search(r'\bT-\d+\s*/\s*(?:T-)?\d', without_ranges, re.I)):
+            raise ValueError('invalid or ambiguous task range in Covers')
+        referenced = {x.upper() for x in re.findall(r'\bT-\d+\b', covers, re.I)}
+        for start, end in range_re.findall(covers):
+            low, high = int(start[2:]), int(end[2:])
+            if low > high:
+                raise ValueError('invalid descending task range in Covers')
+            for number, variants in by_number.items():
+                if low <= number <= high:
+                    if len(variants) != 1:
+                        raise ValueError('ambiguous task IDs in Covers range')
+                    referenced.update(variants)
+        hits = selected_ids & referenced
+        if hits:
+            selected.append(row)
+            covered.update(hits)
+    if selected_ids - covered:
+        raise ValueError('tasks missing verification rows: ' + ', '.join(sorted(selected_ids - covered)))
+    ids = [_row_file_id(row.get('n'), i) for i, row in enumerate(selected, 1)]
+    if len(ids) != len(set(ids)):
+        raise ValueError('task verification row IDs collide')
+    return selected
+
+
+def _task_selection_fingerprint(tasks_text, spec_text, task_ids):
+    """Hash selected task text and verification policy, excluding unrelated tasks."""
+    selected = {value.upper() for value in task_ids}
+    rows = _task_rows(tasks_text, rules.parse_verification(spec_text), sorted(selected))
+    task_parts = {value: [] for value in selected}
+    header = None
+    for line in rules._clean(tasks_text).splitlines():
+        if not line.strip().startswith('|'):
+            header = None
+            continue
+        cells = rules._split_row(line)
+        columns = [re.sub(r'[`*_]', '', c).strip().lower() for c in cells]
+        if 'target file' in columns:
+            header = line
+            continue
+        match = re.fullmatch(r'[`*\s]*(T-\d+)[`*\s]*', cells[0], re.I) if cells else None
+        if header and match and match.group(1).upper() in selected:
+            separator = '| ' + ' | '.join('---' for _ in rules._split_row(header)) + ' |'
+            projection = rules.approval_projection('\n'.join((header, separator, line)))
+            if projection is None:
+                raise ValueError('selected task table is too large')
+            task_parts[match.group(1).upper()].append(projection)
+    headings = list(re.finditer(r'(?m)^#{1,3}\s+([^\r\n]+)', tasks_text))
+    for index, heading in enumerate(headings):
+        match = re.match(r'(T-\d+)\b', heading.group(1), re.I)
+        if not match or match.group(1).upper() not in selected:
+            continue
+        end = headings[index + 1].start() if index + 1 < len(headings) else len(tasks_text)
+        projection = rules.approval_projection(tasks_text[heading.start():end])
+        if projection is None:
+            raise ValueError('selected task block is too large')
+        task_parts[match.group(1).upper()].append(projection)
+    if any(not parts for parts in task_parts.values()):
+        raise ValueError('selected task content cannot be fingerprinted')
+    policy = [{key: row.get(key) for key in ('n', 'cmd', 'expected', 'covers', 'inputs', 'reuse', 'environment')}
+              for row in rows]
+    payload = {'format': 'aidd-task-selection-v1', 'tasks': task_parts, 'rows': policy}
+    raw = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(',', ':')).encode('utf-8')
+    return hashlib.sha256(raw).hexdigest()
+
+
 def _latest_wave_run(root, spec, wave):
     """Read the last separate wave event; it is never a spec close event."""
     try:
@@ -1774,7 +1894,7 @@ def _latest_wave_run(root, spec, wave):
         return None
 
 
-def cmd_verify(spec_arg, full=False, bail=False, wave=None, result_sink=None, wave_cache=None):
+def cmd_verify(spec_arg, full=False, bail=False, wave=None, result_sink=None, wave_cache=None, task_ids=None):
     """aidd:FR-205 aidd:AC-209 aidd:AC-216 aidd:AC-218 `aidd verify <spec>`: run every `## Verification` row
     (shell, project root, AIDD_VERIFY_TIMEOUT per row), save `evidence/verify-<n>.txt` (header line
     `# <cmd> | exit <code> | <ISO ts>` + combined output), mark zero-test / too-short output failed,
@@ -1794,6 +1914,19 @@ def cmd_verify(spec_arg, full=False, bail=False, wave=None, result_sink=None, wa
             print(f"FAIL {v['rule']} {v['message']} → {v['fix']}")
         print(f'Refused: {d.name}/spec.md has no runnable "## Verification" row - nothing was executed.')
         return 1
+    if task_ids is not None:
+        if wave is not None or full or bail:
+            print('Refused: --tasks cannot be combined with --wave, --full or --bail; nothing was executed.')
+            return 1
+        try:
+            tasks_text_start = _read(d / 'tasks.md')
+            selection_fp_start = _task_selection_fingerprint(tasks_text_start, spec_text, task_ids)
+            rows = _task_rows(tasks_text_start, rows, task_ids)
+        except ValueError as e:
+            print(f'Refused: {e}; nothing was executed.')
+            return 1
+        for row in rows:
+            print(f"selected row {row.get('n') or '?'} covers: {row.get('covers') or '(none)'}", flush=True)
     if wave is not None:
         if not re.fullmatch(r'[A-Za-z0-9_-]+', str(wave)):
             print('Refused: invalid wave ID; nothing was executed.')
@@ -1813,6 +1946,15 @@ def cmd_verify(spec_arg, full=False, bail=False, wave=None, result_sink=None, wa
         if inputs and not rules.row_input_fingerprint(root, inputs):
             print(f"Refused: row {row.get('n') or '?'} has missing or invalid Inputs; nothing was executed.")
             return 1
+        if task_ids is not None:
+            expected = row.get('expected') or ''
+            if not expected or not (rules._EXPECT_EXIT0_RE.match(expected) or rules._EXPECT_CONTAINS_RE.match(expected)):
+                print(f"Refused: row {row.get('n') or '?'} has empty or unsupported Expected; nothing was executed.")
+                return 1
+            problem = rules.verification_command_problem(row['cmd'], expected, root)
+            if problem:
+                print(f"Refused: row {row.get('n') or '?'}: {problem}; nothing was executed.")
+                return 1
     evid = d / 'evidence'
     try:
         evid.mkdir(parents=True, exist_ok=True)
@@ -1825,6 +1967,11 @@ def cmd_verify(spec_arg, full=False, bail=False, wave=None, result_sink=None, wa
     started = time.time()
     fp_start = ev.worktree_fingerprint(root)
     scope = rules.verification_scope(spec_text, _read(d / 'tasks.md'))   # [] = whole tree; else only these files count
+    if task_ids is not None and all(row.get('inputs') for row in rows):
+        scope = sorted({pattern for row in rows for pattern in row['inputs']})
+        print('task scope uses declared Inputs only; transitive completeness is not attested.', flush=True)
+    elif task_ids is not None:
+        print('task scope is the existing spec scope; complete per-row Inputs were not declared.', flush=True)
     gen = rules.verification_generated(spec_text)             # files the commands rewrite on purpose (outputs)
     try:
         ev._scope_re(scope)
@@ -1837,7 +1984,7 @@ def cmd_verify(spec_arg, full=False, bail=False, wave=None, result_sink=None, wa
         print('Refused: cannot fingerprint the verification inputs; no verification commands were run. '
               'Check the scope and fingerprint budget before retrying.', flush=True)
         return 1
-    prior = (_latest_wave_run(root, d.name, wave) if wave is not None else None) or ev.latest_verify_run(root, d.name)
+    prior = None if task_ids is not None else ((_latest_wave_run(root, d.name, wave) if wave is not None else None) or ev.latest_verify_run(root, d.name))
     from glob import escape as escape_glob
     pexcl = (list(prior.get('code_generated') or []) +
              [escape_glob(x) for x in (prior.get('code_changed') or [])]) if prior else []
@@ -1845,9 +1992,9 @@ def cmd_verify(spec_arg, full=False, bail=False, wave=None, result_sink=None, wa
     # A file fingerprint alone does not describe a database or other external
     # state. Wave reuse is opt-in, scoped to this invocation, and hermetic only.
     reuse = {}
-    input_reuse = {} if wave is not None else _reusable_input_rows(d, prior, full)
-    if any(r.get('reuse') == 'hermetic' and r.get('inputs') for r in rows):
-        print('not reusable: environment identity not verified', flush=True)
+    input_reuse = {} if wave is not None or task_ids is not None else _reusable_input_rows(d, prior, full)
+    if any(r.get('reuse') == 'hermetic' for r in rows):
+        print('Hermetic reuse unavailable: declared inputs and environment do not prove isolation; rows will run.', flush=True)
     # Rows with explicit Inputs use their own fingerprinted cache; there is no
     # reason to scan the entire tree for a round cache they cannot consume.
     # Legacy round cache has no external-environment identity; do not consume it.
@@ -1859,17 +2006,22 @@ def cmd_verify(spec_arg, full=False, bail=False, wave=None, result_sink=None, wa
     if round_on and not st_all_start:
         print('note: whole-tree fingerprint unavailable (budget); the round cache is off for this run', flush=True)
     results = []
+    if task_ids is not None:
+        import uuid
+        task_run_id = uuid.uuid4().hex
 
     def _one(i, r):
         cmd, expected = r['cmd'], (r.get('expected') or 'exit 0')
         n = r.get('n') or str(i)
         fid = _row_file_id(n, i)
-        rel = (f'evidence/verify-wave-{wave}-{fid}.txt' if wave is not None
-               else f'evidence/verify-{fid}.txt')
+        rel = (f'evidence/verify-tasks-{task_run_id}-{fid}.txt' if task_ids is not None else
+               (f'evidence/verify-wave-{wave}-{fid}.txt' if wave is not None else f'evidence/verify-{fid}.txt'))
         final = d / rel
         tmp = evid / f'.verify-{fid}.{os.getpid()}.out'
         inputs = r.get('inputs') or []
         input_fp = rules.row_input_fingerprint(root, inputs) if inputs else None
+        env_decl = r.get('environment', '')
+        env_id = None  # No verifiable isolation provider exists.
         key = (_verification_key(cmd), _verification_key(expected))
         # For this one multi-spec wave, share exact checks only on identical
         # declared inputs (or the whole code tree when Inputs are absent).
@@ -1887,8 +2039,8 @@ def cmd_verify(spec_arg, full=False, bail=False, wave=None, result_sink=None, wa
                 return res
             except (OSError, ValueError, KeyError):
                 pass
-        hit = (input_reuse.get((*key, tuple(inputs), input_fp))
-               if inputs and input_fp and r.get('reuse') == 'hermetic' else None)
+        hit = (input_reuse.get((*key, tuple(inputs), input_fp, env_decl.strip()))
+               if inputs and input_fp and env_id and r.get('reuse') == 'hermetic' else None)
         if hit is not None:
             try:
                 data = hit[0]
@@ -1898,7 +2050,9 @@ def cmd_verify(spec_arg, full=False, bail=False, wave=None, result_sink=None, wa
                 res = {'n': str(n), 'cmd': cmd, 'expected': expected, 'exit': hit[1].get('exit', 0), 'ok': True,
                        'evidence': rel, 'sha1': hashlib.sha1(data).hexdigest(), 'reused': True}
                 if inputs:
-                    res.update(input_globs=inputs, input_fp=input_fp, reuse_policy='hermetic')
+                    res.update(input_globs=inputs, input_fp=input_fp, reuse_policy='hermetic',
+                               input_algorithm=ev.EVIDENCE_ALGORITHM, environment_id=env_id,
+                               environment_declaration=env_decl.strip())
                 print(f'REUSED row {n}: {one_line[:100]} (passed earlier on the same code) → {rel}', flush=True)
                 return res
             except Exception:
@@ -1961,6 +2115,8 @@ def cmd_verify(spec_arg, full=False, bail=False, wave=None, result_sink=None, wa
             ok, why = False, f'evidence file not written ({type(e).__name__})'
         res = {'n': str(n), 'cmd': cmd, 'expected': expected, 'exit': code, 'ok': bool(ok), 'evidence': rel,
                'sha1': sha1, 'secs': secs}
+        if task_ids is not None:
+            res['covers'] = r.get('covers') or ''
         if inputs and input_fp and end_fp == input_fp:
             res.update(input_globs=inputs, input_fp=input_fp, input_algorithm=ev.EVIDENCE_ALGORITHM)
             if r.get('reuse') == 'hermetic':
@@ -1979,6 +2135,8 @@ def cmd_verify(spec_arg, full=False, bail=False, wave=None, result_sink=None, wa
     except Exception:
         jobs = 1
     jobs = max(1, min(jobs, len(rows), 8))
+    if task_ids is not None:
+        jobs = 1  # Keep partial checks serialized, including DB/build commands.
     indexed_rows = list(enumerate(rows, 1))
     groups = {}
     representatives = {}
@@ -2071,6 +2229,20 @@ def cmd_verify(spec_arg, full=False, bail=False, wave=None, result_sink=None, wa
                 result['problem'] = 'declared Inputs changed before verification completed'
                 print(f"FAIL row {result['n']}: {result['problem']}", flush=True)
     all_ok = all(x['ok'] for x in results) and stable
+    if task_ids is not None:
+        try:
+            spec_text_end = _read(d / 'spec.md')
+            tasks_text_end = _read(d / 'tasks.md')
+            selection_fp_end = _task_selection_fingerprint(tasks_text_end, spec_text_end, task_ids)
+            verification_hash_end = rules.verification_hash(spec_text_end)
+            if selection_fp_end != selection_fp_start:
+                all_ok = stable = False
+                print('FAIL selected tasks or verification policy changed during execution.', flush=True)
+        except (OSError, ValueError, TypeError):
+            selection_fp_end = None
+            verification_hash_end = None
+            all_ok = stable = False
+            print('FAIL selected tasks or verification policy could not be rechecked.', flush=True)
     if wave_cache is not None and stable and st_all_start:
         st_all_end = ev.code_state(root, budget_s=120, reuse=True)
         for result in results:
@@ -2101,6 +2273,27 @@ def cmd_verify(spec_arg, full=False, bail=False, wave=None, result_sink=None, wa
     lineage = None
     if same_code:
         lineage = [x for x in (list(prior.get('verify_lineage') or []) + [prior.get('verify_hash')]) if x][-20:]
+    if task_ids is not None:
+        clean_results = [{k: (ev.redact_secrets(v, limit=500)[0] if isinstance(v, str) else v)
+                          for k, v in result.items()} for result in results]
+        recorded = ev.append(root, sess, 'task_verify_run', spec=d.name, tasks=sorted(task_ids),
+                             run_id=task_run_id, ok=all_ok, stable=stable, results=clean_results,
+                             started=started, verify_hash=vhash, verify_hash_end=verification_hash_end,
+                             selection_fp_start=selection_fp_start, selection_fp_end=selection_fp_end,
+                             selection_algorithm='aidd-task-selection-v1', code_fp_end=code_end,
+                             code_scope=scope, scope_attested=False, code_algorithm=ev.EVIDENCE_ALGORITHM)
+        if not recorded:
+            print('FAIL: task verification evidence could not be recorded.')
+            return 1
+        if result_sink is not None:
+            result_sink.update(ok=all_ok, stable=stable, results=clean_results, started=started,
+                               verify_hash=vhash, code_fp_end=code_end, code_scope=scope,
+                               verify_hash_end=verification_hash_end, selection_fp_start=selection_fp_start,
+                               selection_fp_end=selection_fp_end, selection_algorithm='aidd-task-selection-v1',
+                               scope_attested=False, tasks=sorted(task_ids))
+        print(f"task verification: {'PASSED' if all_ok else 'FAILED'} "
+              f"({sum(1 for x in results if x['ok'])}/{len(results)} rows); not a full-spec verification")
+        return 0 if all_ok else 1
     if wave is not None:
         # Partial wave evidence must never create the complete-spec verify_run
         # consumed by the close gate.
@@ -2516,6 +2709,21 @@ def main(argv=None):
             bail = '--bail' in argv[1:]                          # stop a spec's rows at its first failure
             as_json = '--json' in argv[1:]
             args = argv[1:]
+            task_ids = None
+            if '--tasks' in args:
+                if args.count('--tasks') != 1:
+                    print('Refused: --tasks must appear once.')
+                    return 1
+                pos = args.index('--tasks')
+                if pos + 1 >= len(args):
+                    print('Refused: --tasks requires comma-separated task IDs.')
+                    return 1
+                task_ids = [part.strip().upper() for part in args[pos + 1].split(',')]
+                if (not task_ids or any(not re.fullmatch(r'T-\d+', part) for part in task_ids)
+                        or len(set(task_ids)) != len(task_ids)):
+                    print('Refused: --tasks requires unique comma-separated task IDs.')
+                    return 1
+                args = args[:pos] + args[pos + 2:]
             wave = None
             if '--wave' in args:
                 pos = args.index('--wave')
@@ -2527,6 +2735,11 @@ def main(argv=None):
                 wave = args[pos + 1]
                 args = args[:pos] + args[pos + 2:]
             specs = [a for a in args if a not in ('--full', '--bail', '--json')]
+            if task_ids is not None:
+                if len(specs) != 1 or as_json or wave is not None or full or bail:
+                    print('Refused: --tasks requires one spec and cannot be combined with --json, --wave, --full or --bail.')
+                    return 1
+                return cmd_verify(specs[0], task_ids=task_ids)
             if as_json and len(specs) > 1 and wave is not None:
                 return cmd_verify_many_json(specs, full=full, bail=bail, wave=wave)
             if as_json and len(specs) != 1:

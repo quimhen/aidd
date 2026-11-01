@@ -137,10 +137,7 @@ Commands the tool runs at close (`aidd verify`); output goes to `specs/008-aidd-
 
 | # | Command | Expected | Covers |
 |---|---|---|---|
-| V-1 | `python -m unittest discover -s tests` | exit 0 | FR-301..FR-313 |
-| V-2 | `python -m unittest tests.test_aidd_review tests.test_review_template` | exit 0 | FR-301..FR-306, FR-309..FR-313, AC-301..AC-309, AC-311, AC-312, AC-314..AC-326 |
-| V-3 | `python -m unittest tests.test_aidd_status tests.test_cli_rules tests.test_typed_confirmations tests.test_rule_gate tests.test_aidd_rules` | exit 0 | FR-304, FR-307, FR-309 (REVIEW_MESSAGE without `cat`), FR-313 (exact `Aprobar con resumen` label, `source=summary`, stale/current page, forged answer refused), AC-303 (2 001-item spec refused for a bare tagged answer, with and without a `review.html`), AC-307, AC-310, AC-327..AC-330 |
-| V-4 | `python -m unittest tests.test_dot_aidd_mirror` | exit 0 | FR-308, AC-313 |
+| V-1 | `python tests/run_parallel.py --ci-guard --coverage-manifest specs/008-aidd-compact-review-direct-save/verification-required-ids.txt --manifest-sha256 74de8cc80120edcca2315e4a02a198495b7b0f4c76bb05cebff547c9a141bdc2 --coverage-timeout 3600` | exit 0 | FR-301..FR-317, AC-301..AC-330, AC-332..AC-337, T-380, T-381, T-382, T-383, T-384 |
 | V-5 | `python tests/e2e_review_roundtrip.py` | contains: ROUNDTRIP OK | FR-303..FR-306, FR-309..FR-312, AC-306, AC-308, AC-309, AC-317, AC-320, AC-323 end to end |
 
 Owner-run (not executable by the agent): open the compact page of `F28-DB-Unification-Sync` in Chrome from `file://`, pick the spec folder once, press Approve, and see the agent's tagged question appear without moving any file. T-06 does one real-browser smoke of everything that does not need the native folder picker (tabs, checks, fallback download) and records in `evidence/` that the picker itself is owner-only.

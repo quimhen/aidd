@@ -21,7 +21,7 @@ _MAX_TARGETS = 100
 
 def _checked_path(root, name):
     """Refuse aliases, escapes, non-portable names and unresolved parents."""
-    if (not name or not name.isascii() or name != name.strip() or '\\' in name
+    if (not name or name != name.strip() or '\\' in name
             or PureWindowsPath(name).drive or PureWindowsPath(name).root
             or PurePosixPath(name).is_absolute() or ':' in name
             or any(x in ('', '.', '..') or x.endswith(('.', ' ')) for x in name.split('/'))):
@@ -49,10 +49,10 @@ def _checked_path(root, name):
 def project_patch(command: str, cwd: str) -> list[PatchTarget]:
     """Project a strict native-patch subset, without writing or authorizing it.
 
-    Exact ASCII/LF, a single unique contiguous hunk, no moves/deletes/aliases.
+    Exact UTF-8/LF, a single unique contiguous hunk, no moves/deletes/aliases.
     A projection is not a guarantee against mutation after this function returns.
     """
-    if (not isinstance(command, str) or len(command) > 4 * 1024 * 1024 or not command.isascii()
+    if (not isinstance(command, str) or len(command.encode('utf-8')) > 4 * 1024 * 1024
             or any(ord(c) < 32 and c not in '\n\t' for c in command)):
         raise ValueError('unsupported patch encoding')
     try:
@@ -89,7 +89,7 @@ def project_patch(command: str, cwd: str) -> list[PatchTarget]:
                 added.append(lines[i][1:])
                 i += 1
             prospective = ''.join(x + '\n' for x in added)
-            if len(prospective) > _MAX_FILE:
+            if len(prospective.encode('utf-8')) > _MAX_FILE:
                 raise ValueError('file too large')
             out.append(PatchTarget(operation, name, None, None, prospective))
             continue
@@ -117,7 +117,7 @@ def project_patch(command: str, cwd: str) -> list[PatchTarget]:
                 raise ValueError('file changed during projection')
             if not raw or len(raw) > _MAX_FILE or b'\r' in raw or b'\x00' in raw or not raw.endswith(b'\n'):
                 raise ValueError('unsupported original encoding')
-            original = raw.decode('ascii')
+            original = raw.decode('utf-8')
         except (OSError, UnicodeDecodeError) as exc:
             raise ValueError('unreadable original file') from exc
         source_lines = original[:-1].split('\n')
@@ -128,7 +128,7 @@ def project_patch(command: str, cwd: str) -> list[PatchTarget]:
         n = positions[0]
         projected = source_lines[:n] + after + source_lines[n + len(before):]
         prospective = ''.join(x + '\n' for x in projected)
-        if len(prospective) > _MAX_FILE:
+        if len(prospective.encode('utf-8')) > _MAX_FILE:
             raise ValueError('file too large')
         out.append(PatchTarget(operation, name, None, original, prospective))
     if not out:

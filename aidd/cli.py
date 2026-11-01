@@ -7,6 +7,7 @@ channels (this CLI for a human at a terminal or CI; the skill's hooks for an
 AI agent) — never two copies of the logic to keep in sync.
 """
 import argparse
+import json
 import os
 import subprocess
 import sys
@@ -70,6 +71,17 @@ def cmd_readiness(args):
     if args.output:
         extra.extend(["--output", args.output])
     return _run("aidd_readiness.py", extra)
+
+
+def cmd_navigator(args):
+    return _run("aidd_navigator.py", [args.project, "--output", args.output])
+
+
+def cmd_runtime(args):
+    print(json.dumps({'python': sys.executable, 'cli': str(Path(__file__).resolve()),
+                      'scripts': str(_find_scripts_dir().resolve()),
+                      'pycache_prefix': sys.pycache_prefix}))
+    return 0
 
 
 def cmd_flow(args):
@@ -337,6 +349,14 @@ def build_parser():
     p_readiness.add_argument("--output", help="write JSON to a new file")
     p_readiness.set_defaults(func=cmd_readiness)
 
+    p_runtime = sub.add_parser('runtime', help='Show the effective Python interpreter, CLI and scripts directory')
+    p_runtime.set_defaults(func=cmd_runtime)
+
+    p_navigator = sub.add_parser('navigator', help='Generate a read-only local spec navigator (does not record approval)')
+    p_navigator.add_argument('project', nargs='?', default='.', help='project root')
+    p_navigator.add_argument('--output', required=True, help='HTML output file')
+    p_navigator.set_defaults(func=cmd_navigator)
+
     p_flow = sub.add_parser("flow", help="Flowmap: render a visual-flow.toon to an interactive actors x processes flow + pseudocode")
     p_flow.add_argument("flow_file")
     p_flow.add_argument("-o", "--output")
@@ -427,6 +447,7 @@ def build_parser():
     for _name, _script, _pre, _help in (
             ("job", "aidd_job.py", [], "Run a tool once per set of inputs: run [--bg] | wait | last | list; same command on same file contents = CACHED (aidd_job.py)"),
             ("triage", "aidd_triage.py", [], "Group the failures of `aidd verify` evidence across specs: shared vs specific (aidd_triage.py)"),
+            ("impact", "aidd_unit_audit.py", [], "Inspect affected units and audit domains without executing checks"),
             ("tools", "aidd_tools.py", [], "Catalog of AIDD and project tools by task: tools [keywords] (aidd_tools.py)"),
             ("size", "aidd_tools.py", ["size"], "Size the work XS/S/M/L and print the analysis parameters: size --spec <id> | --files <f...> (aidd_tools.py size)")):
         _p = sub.add_parser(_name, help=_help, add_help=False)
@@ -610,6 +631,8 @@ def main(argv=None):
         sys.exit(_run("aidd_graphs.py", argv[1:]))
     if argv and argv[0] == "component":
         sys.exit(_run("component_graph.py", argv[1:]))
+    if argv and argv[0] == "impact":
+        sys.exit(_run("aidd_unit_audit.py", argv[1:]))
     if argv and argv[0] in ("job", "triage", "tools", "size"):
         # aidd:FR-038 / FR-041 — same passthrough as `graphs`; each script owns its parsing.
         _script = {"job": "aidd_job.py", "triage": "aidd_triage.py",

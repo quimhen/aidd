@@ -958,7 +958,15 @@ def load_real(spec_dir):
     return out
 
 
-@unittest.skipUnless((REAL_ROOT / 'F28-DB-Unification-Sync' / 'spec.md').is_file(), 'b1SycLink checkout not present')
+def real_checkout_available():
+    try:
+        return (REAL_ROOT / 'F28-DB-Unification-Sync' / 'spec.md').is_file()
+    except OSError:
+        # An inaccessible or locked volume is unavailable, not an import error.
+        return False
+
+
+@unittest.skipUnless(real_checkout_available(), 'b1SycLink checkout absent or inaccessible')
 class TestRealFiles(unittest.TestCase):
     """The real b1SycLink files (only the five sources are read)."""
 

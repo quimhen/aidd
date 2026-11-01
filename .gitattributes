@@ -1,2 +1,3 @@
 *.html text eol=lf
 *.toon text eol=lf
+specs/008-aidd-compact-review-direct-save/verification-required-ids.txt text eol=lf

@@ -67,6 +67,9 @@ VERBATIM_SCRIPTS = [
     "aidd_rules.py",
     "aidd_units.py",
     "aidd_reuse.py",
+    "aidd_unit_audit.py",
+    "aidd_unit_consent.py",
+    "aidd_navigator.py",
     "aidd_evidence.py",
     "aidd_pending.py",
     "aidd_status.py",
@@ -122,6 +125,7 @@ DOTAIDD_HOOKS = REPO_ROOT / "adapters" / "dot-aidd" / "hooks"
 VERBATIM_HOOKS = [
     "host_adapter.py",
     "codex_patch.py",
+    "codex_subagent.py",
     "rule_gate.py",
     "_common.py",
     "require_aidd.py",

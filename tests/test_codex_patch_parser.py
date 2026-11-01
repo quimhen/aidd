@@ -7,6 +7,7 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'skill' / 'hooks'))
 from codex_patch import normalize_codex_patch, project_patch
+import rule_gate
 
 
 class CodexPatchParserTests(unittest.TestCase):
@@ -40,6 +41,35 @@ class CodexPatchParserTests(unittest.TestCase):
         self.assertEqual([x['file_path'] for x in normalize_codex_patch(self.event(patch))
                           ['tool_input']['edits']], ['a'])
 
+    def test_gate_checks_projected_sensitive_content(self):
+        with tempfile.TemporaryDirectory() as folder:
+            (Path(folder) / 'tasks.md').write_text('old\n', encoding='ascii', newline='')
+            event = self.event('*** Begin Patch\n*** Update File: tasks.md\n@@\n-old\n+new\n*** End Patch\n')
+            event['cwd'] = folder
+            with patch.object(rule_gate, '_decide_path', return_value=(False, '')) as check:
+                self.assertFalse(rule_gate.decide(event)[0])
+            self.assertEqual(check.call_args.args[1]['content'], 'new\n')
+
+    def test_gate_fails_closed_on_unexpected_parser_error(self):
+        with patch('codex_patch.normalize_codex_patch', side_effect=RuntimeError('unexpected')):
+            self.assertTrue(rule_gate.decide(self.event('*** Begin Patch\n*** End Patch\n'))[0])
+
+    def test_gate_checks_all_paths_and_rejects_hardlink(self):
+        with tempfile.TemporaryDirectory() as folder:
+            event = self.event('*** Begin Patch\n*** Add File: a.py\n+x\n*** Add File: b.py\n+y\n*** End Patch\n')
+            event['cwd'] = folder
+            with patch.object(rule_gate, '_decide_path', side_effect=[(False, ''), (True, 'blocked')]) as check:
+                self.assertTrue(rule_gate.decide(event)[0])
+                self.assertEqual(check.call_count, 2)
+            source = Path(folder) / 'tasks.md'
+            source.write_text('x\n')
+            try:
+                (Path(folder) / 'alias.md').hardlink_to(source)
+            except OSError:
+                self.skipTest('hardlink unavailable')
+            event['tool_input']['command'] = '*** Begin Patch\n*** Update File: alias.md\n@@\n-x\n+y\n*** End Patch\n'
+            self.assertTrue(rule_gate.decide(event)[0])
+
 
 class CodexPatchProjectionTests(unittest.TestCase):
     def setUp(self):
@@ -68,7 +98,6 @@ class CodexPatchProjectionTests(unittest.TestCase):
                     self.update('-missing\n+b\n'),
                     self.update('-a\n+b\n@@\n-a\n+c\n'),
                     self.update('-a\n+b\n*** End of File\n'),
-                    self.update('-a\n+é\n'),
                     '*** Begin Patch\n*** Delete File: a.txt\n*** End Patch\n',
                     '*** Begin Patch\n*** Add File: ../escape\n+x\n*** End Patch\n',
                     '*** Begin Patch\r\n*** Add File: new\r\n+x\r\n*** End Patch\r\n']
@@ -76,8 +105,13 @@ class CodexPatchProjectionTests(unittest.TestCase):
             with self.subTest(command=command), self.assertRaises(ValueError):
                 project_patch(command, str(self.root))
 
-    def test_non_ascii_crlf_and_missing_newline_originals(self):
-        for content in (b'a\r\n', b'a', 'é\n'.encode(), b''):
+    def test_utf8_text_and_name(self):
+        (self.root / 'tareas-ñ.md').write_bytes('línea\n'.encode())
+        result = project_patch(self.update('-línea\n+aprobación\n', 'tareas-ñ.md'), str(self.root))
+        self.assertEqual(result[0].prospective, 'aprobación\n')
+
+    def test_crlf_and_missing_newline_originals(self):
+        for content in (b'a\r\n', b'a', b''):
             (self.root / 'a.txt').write_bytes(content)
             with self.subTest(content=content), self.assertRaises(ValueError):
                 project_patch(self.update('-a\n+b\n'), str(self.root))

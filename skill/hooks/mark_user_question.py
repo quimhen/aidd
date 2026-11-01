@@ -6,6 +6,7 @@ ANSWERED (`answer`: raw response text + [question, answer] pairs parsed from `to
 The AIDD rules use these as evidence that a human was actually consulted and said yes (e.g.
 before tasks.md approval). Always exits 0; a recorder failure never breaks the session.
 """
+import hashlib
 import sys
 from pathlib import Path
 
@@ -48,10 +49,30 @@ try:
     _resp = event.get('tool_response')
     if _resp is not None:
         _text, _pairs = _ev.parse_answers(_resp, _known if _clean else [])
+        # parse_answers anchors each response against the complete question
+        # before truncating display text. Bind that question without storing
+        # the potentially long review package in the evidence log.
+        _hashes = None
+        _semantic_hashes = None
+        if (_clean and len(_pairs) == len(_known) and _pairs
+                and all(isinstance(p, (list, tuple)) and len(p) == 2
+                        and p[0] == q[:1000] for p, q in zip(_pairs, _known))):
+            _hashes = [hashlib.sha256(q.encode('utf-8')).hexdigest() for q in _known]
+            try:
+                from aidd_unit_consent import unit_question_semantic_sha256
+                _semantic_hashes = []
+                for _question in _known:
+                    try:
+                        _semantic_hashes.append(unit_question_semantic_sha256(_question))
+                    except ValueError:
+                        _semantic_hashes.append(None)
+            except ImportError:
+                pass
         _text = _ev.redact_secrets(_text, limit=2000)[0]
         _pairs = [[p[0], _ev.redact_secrets(p[1], limit=1000)[0]] if isinstance(p, (list, tuple)) and len(p) == 2
                   else p for p in _pairs]
-        _ev.append_answer(_root, _sid, _text, _pairs, options=_options if _pairs else None)
+        _ev.append_answer(_root, _sid, _text, _pairs, options=_options if _pairs else None,
+                          question_sha256=_hashes, question_semantic_sha256=_semantic_hashes)
 except Exception as _e:
     try:
         _ev.record_hook_error(_cwd, _sid, 'mark_user_question', _e)

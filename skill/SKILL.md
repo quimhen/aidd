@@ -511,6 +511,7 @@ Use for EVERY requirement, feature, bugfix, or change request in this codebase b
 
 ## Verification and approval economy (user preference)
 
+- Use `aidd impact <spec> --changed --base <commit>` to identify affected tasks and units using Git and declared dependencies; an unverified base is diagnostic, not historical audit proof. Use `aidd verify <spec> --tasks T-01,T-02` to run the relevant verification-table commands once; its evidence is partial and does not close the spec. Never scan files line by line merely to identify changes.
 - Reuse valid execution evidence only when the relevant inputs, dependencies and environment are established. Before running overlapping checks, compare their collected cases and required coverage; do not repeat an unchanged suite or independent audit merely to refresh administrative state. Report omissions and unverified environments explicitly.
 - Present a concrete increment for the owner's review. Respect approval already given in the conversation and do not ask the owner to repeat it merely for formatting; record consent only through a supported, authentic mechanism. Never invent approval or audit events, or claim a visual approval or versioned-unit gate exists before it is implemented.
 - Preserve historical approvals and evidence when evolving amendments. A versioned amendment or screen reference must identify its inputs and dependencies; if the current tooling cannot validate its independent seal, state that limitation and retain the applicable existing checks.

@@ -89,7 +89,7 @@ def visual_revision_binding(spec_dir, revision):
     except ImportError:
         from aidd_units import _paths
     keys = {'screen_id', 'revision_id', 'source', 'assets', 'states', 'viewports'}
-    if not isinstance(revision, Mapping) or set(revision) != keys:
+    if not isinstance(revision, Mapping) or set(revision) not in (keys, keys | {'roles'}):
         raise ValueError('invalid screen revision fields')
     for key in ('screen_id', 'revision_id', 'source'):
         if not isinstance(revision[key], str) or not revision[key].strip():
@@ -99,6 +99,12 @@ def visual_revision_binding(spec_dir, revision):
         if (not isinstance(values, list) or any(not isinstance(x, str) or not x.strip() for x in values)
                 or len(set(values)) != len(values)):
             raise ValueError(f'invalid screen revision {key}')
+    if 'roles' in revision:
+        roles = revision['roles']
+        if (not isinstance(roles, list) or not roles
+                or any(not isinstance(x, str) or not x.strip() for x in roles)
+                or len({x.casefold() for x in roles}) != len(roles)):
+            raise ValueError('invalid screen revision roles')
     for viewport in revision['viewports']:
         match = re.fullmatch(r'([0-9]+)x([0-9]+)', viewport)
         if not match or int(match.group(1)) < 1 or int(match.group(2)) < 1:
@@ -122,6 +128,9 @@ def visual_revision_binding(spec_dir, revision):
                'revision_id': revision['revision_id'], 'source': entries[0],
                'assets': sorted(entries[1:], key=lambda x: x['path']),
                'states': sorted(revision['states']), 'viewports': sorted(revision['viewports'])}
+    if 'roles' in revision:
+        payload['format'] = 'aidd-visual-revision-v2'
+        payload['roles'] = sorted(revision['roles'])
     return hashlib.sha256(json.dumps(payload, sort_keys=True, ensure_ascii=False,
                                     separators=(',', ':')).encode('utf-8')).hexdigest()
 
