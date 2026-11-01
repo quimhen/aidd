@@ -519,6 +519,13 @@ def _move_new_no_replace(temporary, path):
         raise OSError(ctypes.get_errno(), 'atomic no-replace move failed')
 
 
+def _require_cache_alias_safety(paths):
+    # Prefixed bytecode is keyed by the spelling of the import path; on Windows
+    # 8.3 aliases can map the same source to another, uninspected cache tree.
+    if os.name == 'nt' and sys.pycache_prefix is not None and any(Path(path).suffix.casefold() == '.py' for path in paths):
+        raise ValueError('Windows Python update with a cache prefix cannot safely enumerate path aliases')
+
+
 def _python_cache_timestamps(source):
     """Find timestamp pycs; reject hash pycs because runtimes may trust them unchecked."""
     caches = [source.parent / '__pycache__']
@@ -744,6 +751,7 @@ def recover_transaction(journal_dir):
                 raise ValueError('Windows ACL changed or cannot be reconciled automatically: ' + str(target))
         if current == item['after'] and current != item['before']:
             restore.append((target, item))
+    _require_cache_alias_safety(target for target, item in restore if item['before'] is not None)
     record['state'] = 'rolling_back'
     _write_journal(journal / 'transaction.json', record)
     for target, item in restore:
@@ -853,6 +861,7 @@ def apply_transaction(plans, journal_dir):
     prepared = [entry for plan in plans for entry in _plan_entries(plan)]
     if not prepared:
         return 0
+    _require_cache_alias_safety(target / item['path'] for target, item, _ in prepared)
     _check_package_records(prepared)
     keys = [str(target / item['path']).casefold() for target, item, _ in prepared]
     if len(set(keys)) != len(keys):

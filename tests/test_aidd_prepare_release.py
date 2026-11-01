@@ -52,6 +52,21 @@ class ReleaseInventoryTests(unittest.TestCase):
                                'HEAD', Path(sys.executable), 'none')
         self.assertFalse((self.repo / 'stage').exists())
 
+    def test_destination_cache_prefix_is_verified_before_staging(self):
+        stage = self.repo / 'stage'
+        prefix = str(self.repo / 'recipient-cache')
+        with patch.object(module, '_check_path_launcher', return_value='python'), \
+             patch.object(sys, 'pycache_prefix', None):
+            with self.assertRaisesRegex(ValueError, 'prefix does not match'):
+                module.prepare(self.repo, self.repo, [self.repo], None, stage, 'HEAD', sys.executable, prefix)
+        self.assertFalse(stage.exists())
+        if os.name == 'nt':
+            with patch.object(module, '_check_path_launcher', return_value='python'), \
+                 patch.object(sys, 'pycache_prefix', prefix):
+                with self.assertRaisesRegex(ValueError, 'cache prefix'):
+                    module.prepare(self.repo, self.repo, [self.repo], None, stage, 'HEAD', sys.executable, prefix)
+            self.assertFalse(stage.exists())
+
     def test_unicode_inventory_and_unsupported_package_change(self):
         for root in ('skill', 'adapters/dot-aidd'):
             (self.repo / root / 'scripts' / 'módulo.py').write_text('x', encoding='utf-8')

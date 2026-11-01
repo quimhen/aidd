@@ -14,7 +14,7 @@ class UnitImpact(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
-        self.root = Path(self.temp.name)
+        self.root = Path(self.temp.name).resolve()
         for path in ('first.py', 'second.py', 'shared.json',
                      'runner.py', 'screen.html', 'asset.png'):
             (self.root / path).write_bytes(('content:' + path).encode())

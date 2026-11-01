@@ -1,0 +1,3 @@
+# Selective update: Windows Python cache prefixes
+
+On Windows, modifying Python files or restoring their previous contents is refused when `sys.pycache_prefix` is active. A short 8.3 import path can address another prefixed bytecode cache for the same source, so inspecting the long-name cache alone cannot prove stale bytecode is absent. The refusal happens before creating a transaction journal or changing source, cache, or an existing recovery journal. Before updating or recovering, reconcile prefixed caches for every runtime and import-path alias that may use these files; the updater cannot establish their absence from another runtime. Run the updater with its prefix disabled only after that reconciliation. This restriction does not apply to non-Python changes.

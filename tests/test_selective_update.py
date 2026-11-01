@@ -23,7 +23,7 @@ class SelectiveUpdateTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
-        self.base = Path(self.temp.name)
+        self.base = Path(self.temp.name).resolve()
         self.source = self.base / 'source'
         self.target = self.base / 'target'
         self.baseline = self.base / 'baseline'
@@ -531,6 +531,14 @@ class SelectiveUpdateTests(unittest.TestCase):
                 invalidation_mode=py_compile.PycInvalidationMode.TIMESTAMP))
             timestamp = int.from_bytes(bytecode.read_bytes()[8:12], 'little')
             plan = module.make_plan(self.source, self.target, ['scripts/x.py'], self.baseline)
+            if os.name == 'nt':
+                prior_cache = bytecode.read_bytes()
+                with self.assertRaisesRegex(ValueError, 'cache prefix'):
+                    module.apply_plan(plan, self.base / 'journal')
+                self.assertEqual(path.read_bytes(), old)
+                self.assertEqual(bytecode.read_bytes(), prior_cache)
+                self.assertFalse((self.base / 'journal').exists())
+                return
             with patch.object(module.time, 'time', return_value=timestamp):
                 module.apply_plan(plan, self.base / 'journal')
             env = os.environ.copy()
@@ -539,6 +547,19 @@ class SelectiveUpdateTests(unittest.TestCase):
             result = subprocess.run([sys.executable, '-c', code, str(path.parent)],
                                     capture_output=True, text=True, check=True, env=env)
             self.assertEqual(result.stdout.strip(), 'new')
+
+    @unittest.skipUnless(os.name == 'nt', 'Windows cache path alias behavior')
+    def test_prefixed_cache_recovery_does_not_change_source_or_journal(self):
+        path = self.target / 'scripts' / 'x.py'
+        plan = module.make_plan(self.source, self.target, ['scripts/x.py'], self.baseline)
+        journal = self.base / 'journal'
+        module.apply_plan(plan, journal)
+        before = (journal / 'transaction.json').read_bytes()
+        with patch.object(sys, 'pycache_prefix', str(self.base / 'cache')):
+            with self.assertRaisesRegex(ValueError, 'cache prefix'):
+                module.recover_transaction(journal)
+        self.assertEqual(path.read_bytes(), b'new')
+        self.assertEqual((journal / 'transaction.json').read_bytes(), before)
 
     def test_bound_runtime_refuses_changed_prefix_before_apply_and_recovery(self):
         plan = module.make_plan(self.source, self.target, ['scripts/x.py'], self.baseline, bind_runtime=True)

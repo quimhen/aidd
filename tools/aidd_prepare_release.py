@@ -131,6 +131,8 @@ def prepare(repo, project, profiles, codex_config, output, baseline, expected_py
     wanted_prefix = None if expected_prefix == 'none' else os.path.normcase(os.path.realpath(expected_prefix))
     if actual_prefix != wanted_prefix:
         raise ValueError('configured Python bytecode prefix does not match this runtime')
+    if os.name == 'nt' and actual_prefix is not None:
+        raise ValueError('Windows release with a cache prefix cannot safely enumerate path aliases')
     revision = _git(repo, 'rev-parse', '--verify', baseline + '^{commit}').decode('ascii').strip()
     skill_files, adapter_files = inventory(repo, revision)
     if 'SKILL.md' not in skill_files:
