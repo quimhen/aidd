@@ -448,6 +448,7 @@ def build_parser():
             ("job", "aidd_job.py", [], "Run a tool once per set of inputs: run [--bg] | wait | last | list; same command on same file contents = CACHED (aidd_job.py)"),
             ("triage", "aidd_triage.py", [], "Group the failures of `aidd verify` evidence across specs: shared vs specific (aidd_triage.py)"),
             ("impact", "aidd_unit_audit.py", [], "Inspect affected units and audit domains without executing checks"),
+            ("units", "aidd_units.py", [], "Plan, apply or safely revert an explicit unit migration"),
             ("tools", "aidd_tools.py", [], "Catalog of AIDD and project tools by task: tools [keywords] (aidd_tools.py)"),
             ("size", "aidd_tools.py", ["size"], "Size the work XS/S/M/L and print the analysis parameters: size --spec <id> | --files <f...> (aidd_tools.py size)")):
         _p = sub.add_parser(_name, help=_help, add_help=False)
@@ -633,6 +634,8 @@ def main(argv=None):
         sys.exit(_run("component_graph.py", argv[1:]))
     if argv and argv[0] == "impact":
         sys.exit(_run("aidd_unit_audit.py", argv[1:]))
+    if argv and argv[0] == "units":
+        sys.exit(_run("aidd_units.py", argv[1:]))
     if argv and argv[0] in ("job", "triage", "tools", "size"):
         # aidd:FR-038 / FR-041 — same passthrough as `graphs`; each script owns its parsing.
         _script = {"job": "aidd_job.py", "triage": "aidd_triage.py",

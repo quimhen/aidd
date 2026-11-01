@@ -7,7 +7,10 @@ from __future__ import annotations
 import heapq
 import hashlib
 import json
+import os
 import re
+import tempfile
+import time
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Sequence
@@ -495,6 +498,234 @@ def unit_impact_snapshot(unit: UnitManifest, project_root: Path) -> dict:
     if unit.key in result['errors']:
         raise ValueError(result['errors'][unit.key])
     return result['snapshots'][unit.key]
+
+
+def _migration_link(path: Path) -> bool:
+    junction = getattr(path, 'is_junction', None)
+    return path.is_symlink() or (callable(junction) and junction())
+
+
+def _migration_file(root: Path, relative: str) -> Path:
+    """Require an existing regular, non-linked in-project input."""
+    path = root
+    for part in relative.split('/'):
+        path = path / part
+        if _migration_link(path):
+            raise ValueError('migration input contains a symbolic link: ' + relative)
+    if not path.is_file() or path.resolve(strict=True).relative_to(root).as_posix() != relative:
+        raise ValueError('migration input missing or ambiguous: ' + relative)
+    return path
+
+
+def _migration_parents(root, current, keys):
+    by_key = {unit.key: unit for unit in current}
+    values = {}
+    for key in keys:
+        pending, closure = [key], set()
+        while pending:
+            item = pending.pop()
+            if item not in by_key:
+                raise ValueError('missing parent: ' + item)
+            if item not in closure:
+                closure.add(item)
+                pending.extend(by_key[item].parents)
+        files = {}
+        for parent_key in sorted(closure):
+            parent = by_key[parent_key]
+            names = set(parent.paths + parent.targets + parent.inputs + parent.config)
+            names.add(f'specs/{parent.spec_id}/amendments/{parent.unit_id}/manifest.json')
+            for ref in parent.visual_refs:
+                names.add(ref.source)
+                names.update(ref.assets)
+            for name in sorted(names):
+                files[name] = hashlib.sha256(_migration_file(root, name).read_bytes()).hexdigest()
+        values[key] = hashlib.sha256(json.dumps(files, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+    return values
+
+
+def migration_plan(project_root, spec_id, manifest_path):
+    """Propose a unit from explicit inputs; the plan asserts no historic audit or consent."""
+    root = Path(project_root).resolve(strict=True)
+    if not _ID.fullmatch(spec_id):
+        raise ValueError('invalid spec identifier')
+    spec = root / 'specs' / spec_id
+    if not spec.is_dir() or _migration_link(spec) or _migration_link(root / 'specs'):
+        raise ValueError('spec directory missing or linked')
+    source = Path(manifest_path)
+    if _migration_link(source) or not source.is_file():
+        raise ValueError('manifest must be a regular file')
+    raw = source.read_bytes()
+    if len(raw) > _MAX_BYTES:
+        raise ValueError('manifest exceeds 1 MiB')
+    data = json.loads(raw.decode('utf-8'), object_pairs_hook=_pairs)
+    if not isinstance(data, dict) or data.get('spec_id') != spec_id or not isinstance(data.get('unit_id'), str) or not _ID.fullmatch(data['unit_id']):
+        raise ValueError('manifest identity does not match spec')
+    # Reuse the production loader in a temporary layout; validate actual paths
+    # separately below against the real checkout and its symlinks.
+    with tempfile.TemporaryDirectory(prefix='aidd-unit-plan-') as temp:
+        temporary = Path(temp)
+        location = temporary / 'specs' / spec_id / 'amendments' / data['unit_id']
+        location.mkdir(parents=True)
+        (location / 'manifest.json').write_bytes(raw)
+        candidate = load_unit(location / 'manifest.json', temporary)
+    if candidate.schema_version != 2:
+        raise ValueError('migration requires complete manifest schema version 2')
+    amendments = spec / 'amendments'
+    if _migration_link(amendments) or (amendments.exists() and not amendments.is_dir()):
+        raise ValueError('amendments directory is linked or invalid')
+    candidates = [p for p in amendments.iterdir() if p.name.casefold() == candidate.unit_id.casefold()] if amendments.exists() else []
+    if (len(candidates) != 1 or candidates[0].name != candidate.unit_id or _migration_link(candidates[0])
+            or not candidates[0].is_dir() or (candidates[0] / 'manifest.json').exists()
+            or (candidates[0] / 'manifest.json').is_symlink()):
+        raise ValueError('unit directory must already exist, be unambiguous and have no manifest')
+    unit_prefix = f'specs/{spec_id}/amendments/{candidate.unit_id}/'
+    if not any(name.startswith(unit_prefix) and re.fullmatch(r'tasks(?:-[A-Za-z0-9_-]+)?\.md',
+                                                             name[len(unit_prefix):]) for name in candidate.paths):
+        raise ValueError('unit must declare its own existing task file')
+    if not (candidate.targets or candidate.inputs or candidate.config or candidate.visual_refs):
+        raise ValueError('unit has no declared execution scope')
+    _paths(list(candidate.paths), root, 'paths')
+    _paths(list(candidate.targets), root, 'targets')
+    _paths(list(candidate.inputs), root, 'inputs')
+    _paths(list(candidate.config), root, 'config')
+    names = set(candidate.paths + candidate.targets + candidate.inputs + candidate.config)
+    for ref in candidate.visual_refs:
+        names.add(ref.source)
+        names.update(ref.assets)
+    hashes = {name: hashlib.sha256(_migration_file(root, name).read_bytes()).hexdigest() for name in sorted(names)}
+    current = []
+    for other_spec in (root / 'specs').iterdir():
+        if not other_spec.is_dir() or not (other_spec / 'amendments').exists():
+            continue
+        for key in list_spec_unit_keys(root, other_spec.name):
+            if key == candidate.key:
+                continue
+            other_id = key.split(':', 1)[1]
+            current.append(load_unit(other_spec / 'amendments' / other_id / 'manifest.json', root))
+    resolve_units((*current, candidate))
+    parents = _migration_parents(root, current, candidate.parents)
+    payload = {'format': 'aidd-unit-migration-plan-v1', 'spec': spec_id, 'unit': candidate.unit_id,
+               'manifest_sha256': hashlib.sha256(raw).hexdigest(), 'files': hashes, 'parents': parents,
+               'destination': f'specs/{spec_id}/amendments/{candidate.unit_id}/manifest.json'}
+    payload['digest'] = hashlib.sha256(json.dumps(payload, sort_keys=True, ensure_ascii=False,
+                                               separators=(',', ':')).encode('utf-8')).hexdigest()
+    return payload
+
+
+def migration_apply(project_root, spec_id, manifest_path, digest):
+    """Create a unit exclusively after verifying the exact reviewed plan."""
+    root = Path(project_root).resolve(strict=True)
+    plan = migration_plan(root, spec_id, manifest_path)
+    if digest != plan['digest']:
+        raise ValueError('migration plan changed; inspect a new plan')
+    raw = Path(manifest_path).read_bytes()
+    if hashlib.sha256(raw).hexdigest() != plan['manifest_sha256']:
+        raise ValueError('manifest changed while applying')
+    spec = root / 'specs' / spec_id
+    directory = spec / 'amendments' / plan['unit']
+    receipt_dir = spec / 'unit-migration-receipts'
+    if _migration_link(receipt_dir) or (receipt_dir.exists() and not receipt_dir.is_dir()):
+        raise ValueError('migration receipt directory is linked or invalid')
+    receipt = receipt_dir / (plan['unit'] + '.json')
+    if receipt.exists() or receipt.is_symlink():
+        raise ValueError('migration receipt already exists')
+    receipt_dir.mkdir(exist_ok=True)
+    created = directory / 'manifest.json'
+    try:
+        with created.open('xb') as stream:
+            stream.write(raw)
+        load_unit(created, root)
+        discover_unit_scope(root, spec_id, [spec_id + ':' + plan['unit']])
+        actual_hashes = {name: hashlib.sha256(_migration_file(root, name).read_bytes()).hexdigest()
+                         for name in plan['files']}
+        actual_parents = _migration_parents(root, discover_units(root), plan['parents'])
+        if actual_hashes != plan['files'] or actual_parents != plan['parents']:
+            raise ValueError('migration inputs changed during apply')
+        record = {'format': 'aidd-unit-migration-v1', 'unit': spec_id + ':' + plan['unit'],
+                  'manifest_sha256': plan['manifest_sha256'], 'plan_digest': digest, 'created_at': time.time()}
+        with receipt.open('x', encoding='utf-8') as stream:
+            try:
+                json.dump(record, stream, ensure_ascii=False, sort_keys=True)
+            except Exception:
+                stream.close()
+                receipt.unlink()
+                raise
+    except Exception:
+        if created.is_file() and not created.is_symlink() and created.read_bytes() == raw:
+            created.unlink()
+        raise
+    return record
+
+
+def migration_revert(project_root, spec_id, unit_id, evidence):
+    """Remove only the unchanged migration-created unit with no subsequent evidence."""
+    root = Path(project_root).resolve(strict=True)
+    if not _ID.fullmatch(spec_id) or not _ID.fullmatch(unit_id):
+        raise ValueError('invalid unit identity')
+    spec = root / 'specs' / spec_id
+    directory = spec / 'amendments' / unit_id
+    manifest = directory / 'manifest.json'
+    receipt = spec / 'unit-migration-receipts' / (unit_id + '.json')
+    for part in (root / 'specs', spec, spec / 'amendments', directory, manifest, receipt.parent, receipt):
+        if _migration_link(part):
+            raise ValueError('linked migration path cannot be reverted')
+    record = json.loads(receipt.read_text(encoding='utf-8'))
+    key = spec_id + ':' + unit_id
+    if record.get('format') != 'aidd-unit-migration-v1' or record.get('unit') != key:
+        raise ValueError('invalid migration receipt')
+    if hashlib.sha256(manifest.read_bytes()).hexdigest() != record.get('manifest_sha256'):
+        raise ValueError('unit manifest changed since migration')
+    if any(key in unit.parents for unit in discover_units(root)):
+        raise ValueError('other units depend on this unit')
+    for kind in ('unit_approved', 'unit_audit', 'task_verify_run', 'verify_run'):
+        for event in evidence.events(root, kind=kind):
+            detail = event.get('detail') or {}
+            refers_to_unit = detail.get('unit') == key or (detail.get('spec') == spec_id and detail.get('unit_id') == unit_id)
+            newer_verification = (kind in ('task_verify_run', 'verify_run') and detail.get('spec') == spec_id
+                                  and float(event.get('ts') or 0) >= float(record['created_at']) - 0.01)
+            if refers_to_unit or newer_verification:
+                raise ValueError('subsequent evidence exists; migration cannot be reverted safely')
+    manifest.unlink()
+    receipt.unlink()
+    return {'unit': key, 'reverted': True, 'historical_evidence_unchanged': True}
+
+
+def main(argv=None):
+    import argparse
+    try:
+        from . import aidd_evidence as evidence
+    except ImportError:
+        import aidd_evidence as evidence
+    parser = argparse.ArgumentParser(description='Plan, apply or safely revert a unit migration')
+    sub = parser.add_subparsers(dest='action', required=True)
+    for name in ('plan', 'apply'):
+        command = sub.add_parser(name)
+        command.add_argument('spec')
+        command.add_argument('--manifest', required=True)
+        if name == 'apply':
+            command.add_argument('--digest', required=True)
+    command = sub.add_parser('revert')
+    command.add_argument('spec')
+    command.add_argument('unit')
+    parser.add_argument('--root', default='.')
+    args = parser.parse_args(argv)
+    try:
+        root = evidence.find_root(Path(args.root).resolve())
+        if args.action == 'plan':
+            result = migration_plan(root, args.spec, args.manifest)
+        elif args.action == 'apply':
+            result = migration_apply(root, args.spec, args.manifest, args.digest)
+        else:
+            result = migration_revert(root, args.spec, args.unit, evidence)
+        print(json.dumps(result, ensure_ascii=False, sort_keys=True))
+        return 0
+    except (OSError, ValueError, TypeError, KeyError, UnicodeError) as exc:
+        print('unit migration unavailable: ' + str(exc), file=__import__('sys').stderr)
+        return 1
+
+
+if __name__ == '__main__':
+    raise SystemExit(main())
 
 
 def unit_for_target(units: Sequence[UnitManifest], project_root: Path,
