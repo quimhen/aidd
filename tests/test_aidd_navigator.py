@@ -4,6 +4,8 @@ import re
 import tempfile
 import unittest
 import sys
+from types import SimpleNamespace
+from unittest.mock import patch
 from pathlib import Path
 
 FILE = Path(__file__).resolve().parents[1] / 'skill' / 'scripts' / 'aidd_navigator.py'
@@ -64,6 +66,22 @@ class NavigatorTests(unittest.TestCase):
                 with self.subTest(path=path), self.assertRaises(ValueError):
                     module.main([str(root), '--output', str(path)])
                 self.assertFalse(path.exists())
+
+    def test_objective_and_real_history_are_not_inferred_from_files(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / '.aidd').mkdir()
+            spec = root / 'specs' / '001-example'
+            spec.mkdir(parents=True)
+            (spec / 'spec.md').write_text('# Example\n| Business objective | Reducir pruebas duplicadas |', encoding='utf-8')
+            events = [{'ts': 1700000000, 'detail': {'spec': '001-example', 'ok': True}},
+                      {'ts': 1700000100, 'detail': {'spec': '001-example', 'ok': False}}]
+            fake = SimpleNamespace(events=lambda root, kind: events)
+            with patch.dict(sys.modules, {'aidd_evidence': fake}):
+                result = module.collect_specs(root)[0]
+            self.assertEqual(result['summary'], 'Reducir pruebas duplicadas')
+            self.assertEqual(result['history']['rounds'], 2)
+            self.assertEqual(result['history']['result'], 'no aprobada')
 
 
 if __name__ == '__main__':

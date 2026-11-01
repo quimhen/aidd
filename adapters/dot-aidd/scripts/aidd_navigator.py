@@ -5,9 +5,46 @@ import argparse
 import json
 import os
 import re
+from datetime import datetime, timezone
 from pathlib import Path
 
 MAX_SOURCE_BYTES = 512 * 1024
+
+
+def _objective(text: str) -> str:
+    for line in text.splitlines():
+        cells = [part.strip() for part in line.strip().strip('|').split('|')]
+        if len(cells) >= 2 and ('business objective' in cells[0].casefold()
+                                or cells[0].casefold().startswith('objetivo')):
+            return cells[1].strip('`') or 'Objetivo no disponible.'
+    return 'Objetivo no disponible.'
+
+
+def _verification_history(root: Path) -> dict:
+    """Read recorded rounds once, without treating historical success as current."""
+    if not (root / '.aidd').is_dir():
+        return {}
+    try:
+        try:
+            from . import aidd_evidence as ev
+        except ImportError:
+            import aidd_evidence as ev
+        history = {}
+        for event in ev.events(root, kind='verify_run'):
+            detail = event.get('detail') or {}
+            spec = detail.get('spec')
+            if not isinstance(spec, str) or not spec:
+                continue
+            item = history.setdefault(spec, {'rounds': 0, 'last': '', 'result': 'indeterminado'})
+            item['rounds'] += 1
+            timestamp = event.get('ts')
+            if isinstance(timestamp, (int, float)) and timestamp > 0:
+                item['last'] = datetime.fromtimestamp(timestamp, timezone.utc).strftime('%Y-%m-%d %H:%M UTC')
+            item['result'] = ('aprobada' if detail.get('ok') is True else
+                              'no aprobada' if detail.get('ok') is False else 'indeterminado')
+        return history
+    except (OSError, ValueError, TypeError, OverflowError):
+        return {}
 
 
 def _link(path: Path) -> bool:
@@ -45,6 +82,7 @@ def collect_specs(project: Path) -> list[dict]:
         unit_error = ''
     except (ImportError, OSError, ValueError) as exc:
         units, unit_error = (), f'No se pudieron leer las unidades: {type(exc).__name__}'
+    history = _verification_history(root)
     output = []
     for directory in sorted(specs.iterdir(), key=lambda item: item.name.casefold()):
         if _link(directory) or not directory.is_dir():
@@ -68,11 +106,11 @@ def collect_specs(project: Path) -> list[dict]:
             unit_lines.append(unit_error)
         review = directory / 'review.html'
         review_url = review.resolve().as_uri() if review.is_file() and not _link(review) else ''
-        output.append({'id': directory.name, 'title': title, 'summary': 'Documento base de la especificación',
+        output.append({'id': directory.name, 'title': title, 'summary': _objective(text),
                        'spec': text, 'plan': plan or 'Plan no disponible.', 'tasks': len(task_ids),
                        'tasks_text': tasks or 'Tareas no disponibles.',
                        'amendments': amendments, 'units': unit_lines, 'screens': screens, 'evidence': evidence_names, 'files': files,
-                       'review_url': review_url})
+                       'review_url': review_url, 'history': history.get(directory.name)})
     return output
 
 
