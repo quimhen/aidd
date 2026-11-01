@@ -2141,6 +2141,17 @@ def cmd_verify(spec_arg, full=False, bail=False, wave=None, result_sink=None, wa
             if problem:
                 print(f"Refused: row {row.get('n') or '?'}: {problem}; nothing was executed.")
                 return 1
+    guard_scope_start = None
+    if task_ids is not None:
+        try:
+            try:
+                from . import aidd_guard as guard
+            except ImportError:
+                import aidd_guard as guard
+            guard_scope_start = guard.partial_scope(root, tasks_text_start, spec_text, task_ids, sys.modules[__name__], rules)
+        except (OSError, ValueError, TypeError, KeyError):
+            # Execution remains useful as partial evidence, but cannot waive a commit gate.
+            pass
     evid = d / 'evidence'
     try:
         evid.mkdir(parents=True, exist_ok=True)
@@ -2480,12 +2491,21 @@ def cmd_verify(spec_arg, full=False, bail=False, wave=None, result_sink=None, wa
     if task_ids is not None:
         clean_results = [{k: (ev.redact_secrets(v, limit=500)[0] if isinstance(v, str) else v)
                           for k, v in result.items()} for result in results]
+        guard_scope = None
+        if all_ok and guard_scope_start is not None:
+            try:
+                ending_scope = guard.partial_scope(root, tasks_text_end, spec_text_end, task_ids, sys.modules[__name__], rules)
+                if ending_scope == guard_scope_start:
+                    guard_scope = ending_scope
+            except (OSError, ValueError, TypeError, KeyError):
+                pass
         recorded = ev.append(root, sess, 'task_verify_run', spec=d.name, tasks=sorted(task_ids),
                              run_id=task_run_id, ok=all_ok, stable=stable, results=clean_results,
                              started=started, verify_hash=vhash, verify_hash_end=verification_hash_end,
                              selection_fp_start=selection_fp_start, selection_fp_end=selection_fp_end,
                              selection_algorithm='aidd-task-selection-v1', code_fp_end=code_end,
-                             code_scope=scope, scope_attested=False, code_algorithm=ev.EVIDENCE_ALGORITHM)
+                             code_scope=scope, scope_attested=False, code_algorithm=ev.EVIDENCE_ALGORITHM,
+                             guard_scope=guard_scope)
         if not recorded:
             print('FAIL: task verification evidence could not be recorded.')
             return 1

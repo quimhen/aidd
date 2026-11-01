@@ -20,7 +20,9 @@ AIDD_GUARD=warn turns blocks into warnings, AIDD_GUARD=off disables the guard; e
 as a `guard_override {hook, mode, rules}` event. An internal error fails open (exit 0, `hook_error`).
 """
 import os
+import hashlib
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -160,9 +162,11 @@ def _changed_since(root, files, ts):
     return hit
 
 
-def _verify_findings(root, spec, status, code):
+def _verify_findings(root, spec, status, code, partial_ok=False):
     v = status.get('verification') or {}
     state = v.get('status')
+    if partial_ok:
+        return []
     if state == 'failed':
         return [_finding('verify', f'aidd verify: the last `aidd verify {spec}` failed.',
                          f'fix the failing rows (specs/{spec}/evidence/verify-<n>.txt), then aidd verify {spec}')]
@@ -237,23 +241,26 @@ def evaluate(root, files, status=None):
     return _evaluate_owners(root, _owning_specs(root, code))
 
 
-def _spec_findings(root, d, status, code):
+def _spec_findings(root, d, status, code, partial_ok=False):
     if not status or status.get('unparseable'):
         return []                               # unreadable spec: fail open, never a false block
     spec = str(status.get('spec') or d.name)
     return (_approval_findings(spec, status) + _chain_findings(status)
-            + _verify_findings(root, spec, status, code) + _qa_findings(d, spec))
+            + _verify_findings(root, spec, status, code, partial_ok) + _qa_findings(d, spec))
 
 
-def _evaluate_owners(root, owners):
+def _evaluate_owners(root, owners, allow_partial=False):
     """Findings of every (spec_dir, staged code files) pair, from ONE light read per spec."""
     if not owners:
         return []
-    ev, _status, rules = _libs3()
+    ev, verify_status, rules = _libs3()
     approved = _safe_list(lambda: ev.events(root, kind='approved'))
     out = []
     for d, files in owners:
-        out += _spec_findings(root, d, _light_status(root, d, ev, rules, approved), files)
+        state = _light_status(root, d, ev, rules, approved)
+        partial = (allow_partial and _partial_passes(root, d, files, verify_status, ev, rules,
+                    (state.get('verification') or {}).get('ts')))
+        out += _spec_findings(root, d, state, files, partial)
     return out
 
 
@@ -333,6 +340,137 @@ def _owns(targets, rel, rules):
     hit = getattr(rules, '_glob_hit', None)
     globs = [t for t in targets if '*' in t or t.endswith('/')]
     return bool(globs) and callable(hit) and hit(rel, globs)
+
+
+def _task_owners(tasks_text):
+    owners, column, previous = {}, None, None
+    for raw in tasks_text.split('\n'):
+        line = raw.strip()
+        if not line.startswith('|'):
+            column, previous = None, None
+            continue
+        cells = _cells(line)
+        if cells and all(_SEPARATOR_CELL_RE.match(c) for c in cells if c) and any(cells):
+            hits = [i for i, h in enumerate(previous or []) if _TARGET_HEAD_RE.search(h)]
+            column = hits[0] if len(hits) == 1 else None
+            continue
+        match = re.fullmatch(r'[`*\s]*(T-\d+)[`*\s]*', cells[0], re.I) if cells else None
+        if match and column is not None and column < len(cells):
+            task = match.group(1).upper()
+            paths = _target_cell_paths(cells[column])
+            if task in owners or not paths:
+                raise ValueError('ambiguous task ownership')
+            owners[task] = paths
+        previous = cells
+    return owners
+
+
+def partial_scope(root, tasks_text, spec_text, task_ids, status, rules):
+    """Capture explicit task ownership and test inputs, not transitive proof."""
+    selected = {x.upper() for x in task_ids}
+    owners = _task_owners(tasks_text)
+    if not selected or not selected <= owners.keys():
+        raise ValueError('selected tasks lack exact ownership')
+    paths = {path for task in selected for path in owners[task]}
+    if any(any(ch in path for ch in '*?[]') or path.startswith('/') or '..' in path.split('/')
+           or '\\' in path or ':' in path for path in paths):
+        raise ValueError('partial guard needs exact relative target paths')
+    if any(task not in selected and set(targets) & paths for task, targets in owners.items()):
+        raise ValueError('target is owned by another task not selected')
+    rows = rules.parse_verification(spec_text)
+    mapping = {}
+    for task in sorted(selected):
+        task_rows = status._task_rows(tasks_text, rows, [task])
+        for row in task_rows:
+            if (row.get('reuse') != 'hermetic' or not str(row.get('environment') or '').lower().startswith('contract:offline;')
+                    or not row.get('inputs') or any(not rules._glob_hit(path, row['inputs']) for path in owners[task])):
+                raise ValueError('task row lacks explicit offline coverage of its target files')
+        mapping[task] = {'paths': sorted(owners[task]), 'rows': sorted(str(row['n']) for row in task_rows)}
+    hashes = {}
+    base = Path(root).resolve(strict=True)
+    for path in sorted(paths):
+        file = base
+        for part in path.split('/'):
+            file = file / part
+            if file.is_symlink():
+                raise ValueError('linked target is not eligible')
+        file.resolve(strict=True).relative_to(base)
+        if not file.is_file():
+            raise ValueError('missing target')
+        hashes[path] = hashlib.sha256(file.read_bytes()).hexdigest()
+    return {'format': 'aidd-guard-partial-v1', 'tasks': mapping, 'files': hashes}
+
+
+def _staged_hash(root, path):
+    # Both the index mode and the blob bytes must match; no worktree mtime shortcut.
+    index = subprocess.check_output(['git', '-C', str(root), 'ls-files', '-s', '-z', '--', path], timeout=5)
+    entries = [part for part in index.split(b'\0') if part]
+    if len(entries) != 1:
+        raise ValueError('missing or ambiguous index entry')
+    meta, indexed = entries[0].split(b'\t', 1)
+    mode, _oid, stage = meta.split()
+    if mode not in (b'100644', b'100755') or stage != b'0' or os.fsdecode(indexed).replace('\\', '/') != path:
+        raise ValueError('index entry is not a regular file')
+    obj = ':' + path
+    size = int(subprocess.check_output(['git', '-C', str(root), 'cat-file', '-s', obj], timeout=5))
+    if size > 10 * 1024 * 1024:
+        raise ValueError('staged blob too large')
+    blob = subprocess.check_output(['git', '-C', str(root), 'cat-file', 'blob', obj], timeout=5)
+    return hashlib.sha256(blob).hexdigest()
+
+
+def _partial_passes(root, d, code, status, ev, rules, full_ts):
+    """Read the latest relevant runner receipt; unknown coverage cannot bypass verify."""
+    try:
+        tasks_text, spec_text = _read_small(d / 'tasks.md'), _read_small(d / 'spec.md')
+        owners = _task_owners(tasks_text)
+        affected = {task for task, paths in owners.items() if set(paths) & set(code)}
+        if not affected or any(not any(path in paths for paths in owners.values()) for path in code):
+            return False
+        events = [e for e in ev.events(root, kind='task_verify_run') if (e.get('detail') or {}).get('spec') == d.name]
+        for event in reversed(events):
+            detail = event.get('detail') or {}
+            receipt = detail.get('guard_scope') or {}
+            recorded_files = receipt.get('files') or {}
+            relevant_tasks = {str(x).upper() for x in (detail.get('tasks') or [])} & affected
+            if not relevant_tasks:
+                continue
+            if not set(code) & set(recorded_files):
+                return False
+            if (float(event.get('ts') or 0) < float(full_ts or 0) or detail.get('ok') is not True
+                    or detail.get('stable') is not True or not set(code) <= set(recorded_files)):
+                return False
+            ids = detail.get('tasks') or []
+            current = partial_scope(root, tasks_text, spec_text, ids, status, rules)
+            if current != receipt or detail.get('selection_algorithm') != 'aidd-task-selection-v1':
+                return False
+            if status._task_selection_fingerprint(tasks_text, spec_text, ids) != detail.get('selection_fp_end'):
+                return False
+            if detail.get('selection_fp_start') != detail.get('selection_fp_end'):
+                return False
+            if any(_staged_hash(root, path) != recorded_files[path] for path in code):
+                return False
+            rows = detail.get('results') or []
+            expected = {n for task in current['tasks'].values() for n in task['rows']}
+            if not rows or {str(row.get('n')) for row in rows} != expected:
+                return False
+            for row in rows:
+                if (row.get('ok') is not True or not row.get('input_globs') or not row.get('input_fp')
+                        or not row.get('environment_id') or not row.get('environment_declaration')):
+                    return False
+                if rules.row_input_fingerprint(root, row['input_globs']) != row['input_fp']:
+                    return False
+                if status._contract_environment_id(row['cmd'], row['environment_declaration']) != row['environment_id']:
+                    return False
+                relative = str(row.get('evidence') or '')
+                target = (d / relative).resolve(strict=True)
+                target.relative_to((d / 'evidence').resolve(strict=True))
+                if hashlib.sha1(target.read_bytes()).hexdigest() != row.get('sha1'):
+                    return False
+            return True
+        return False
+    except (OSError, ValueError, TypeError, KeyError, subprocess.SubprocessError):
+        return False
 
 
 def _owning_specs(root, code):
@@ -442,7 +580,7 @@ def _run(action, root, ev):
         print('aidd guard: warning — code is staged but no open spec owns it and there is no gate pointer; '
               'allowed. Run `aidd status` to see the open specs.')
         return 0
-    findings = _evaluate_owners(root, owners)
+    findings = _evaluate_owners(root, owners, allow_partial=action == 'commit')
     if not findings:
         return 0
     if action == 'push' or mode == 'warn':
