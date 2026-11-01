@@ -83,6 +83,15 @@ class NavigatorTests(unittest.TestCase):
             self.assertEqual(result['history']['rounds'], 2)
             self.assertEqual(result['history']['result'], 'no aprobada')
 
+    def test_screen_revision_includes_roles_states_and_viewports(self):
+        ref = SimpleNamespace(screen_id='SCREEN-85', revision_id='v2', roles=('ADMIN',),
+                              states=('error',), viewports=('1280x800',))
+        unit = SimpleNamespace(spec_id='s', unit_id='amend-2', visual_refs=(ref,))
+        text = module._screen_revisions([unit], 's')[0]
+        for expected in ('SCREEN-85', 'v2', 'amend-2', 'ADMIN', 'error', '1280x800'):
+            self.assertIn(expected, text)
+        self.assertEqual(module._screen_revisions([unit], 'other'), [])
+
 
 if __name__ == '__main__':
     unittest.main()

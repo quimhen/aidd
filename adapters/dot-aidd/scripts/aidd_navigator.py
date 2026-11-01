@@ -47,6 +47,18 @@ def _verification_history(root: Path) -> dict:
         return {}
 
 
+def _screen_revisions(units, spec_id):
+    lines = []
+    for unit in units:
+        if unit.spec_id != spec_id:
+            continue
+        for ref in unit.visual_refs:
+            lines.append(f'{ref.screen_id} · versión {ref.revision_id} · enmienda {unit.unit_id}'
+                         f' · roles: {", ".join(ref.roles)} · estados: {", ".join(ref.states)}'
+                         f' · resoluciones: {", ".join(ref.viewports)}')
+    return sorted(lines)
+
+
 def _link(path: Path) -> bool:
     try:
         stat = os.lstat(path)
@@ -109,7 +121,8 @@ def collect_specs(project: Path) -> list[dict]:
         output.append({'id': directory.name, 'title': title, 'summary': _objective(text),
                        'spec': text, 'plan': plan or 'Plan no disponible.', 'tasks': len(task_ids),
                        'tasks_text': tasks or 'Tareas no disponibles.',
-                       'amendments': amendments, 'units': unit_lines, 'screens': screens, 'evidence': evidence_names, 'files': files,
+                       'amendments': amendments, 'units': unit_lines, 'screens': screens,
+                       'screen_revisions': _screen_revisions(units, directory.name), 'evidence': evidence_names, 'files': files,
                        'review_url': review_url, 'history': history.get(directory.name)})
     return output
 
