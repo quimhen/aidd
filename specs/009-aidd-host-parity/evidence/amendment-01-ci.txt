@@ -61,3 +61,5 @@ ubuntu Python 3.10: job 124951408320, SUCCESS; Ran 2545 tests in 225.771s; OK (s
 Historical pre-consolidation pytest vs unittest case-ID comparison: INDETERMINATE; no matching comparison evidence located in spec evidence. Do not remove V-1–V-4 or claim full historical coverage consolidation on this run alone.
 Nonhistorical skips: see full job logs; this compact evidence enumerates the five T-25 historical modules only.
 This records the tested merge, not any changes after the head shown above.
+
+GitHub Git commit API: tested merge and head have identical tree SHA 9c87e9fe82e994687dfe577b5c44a274c4b78978. Merge parents are base 4114eb6d2c3fdcb7b58389c00f25b911298ff4bf and head 9d041a647faacbbfc2f1d6ecdbf7e178711ece2f. This establishes matching committed tree content, not equivalence of runtime environments.
