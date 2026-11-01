@@ -14,6 +14,21 @@ from tests import run_parallel as runner
 
 
 class TestRunner(unittest.TestCase):
+    def test_ci_output_preserves_unicode_and_exit_with_cp1252_streams(self):
+        stdout_bytes, stderr_bytes = io.BytesIO(), io.BytesIO()
+        stdout = io.TextIOWrapper(stdout_bytes, encoding='cp1252', newline='')
+        stderr = io.TextIOWrapper(stderr_bytes, encoding='cp1252', newline='')
+        result = subprocess.CompletedProcess([], 7, 'stdout \u2192 ok\n', 'stderr \u2192 failed\n')
+        with patch.object(runner.subprocess, 'run', return_value=result), \
+             patch.object(sys, 'stdout', stdout), patch.object(sys, 'stderr', stderr):
+            self.assertEqual(runner.run_checked([]), 7)
+            stdout.flush()
+            stderr.flush()
+        self.assertEqual(stdout_bytes.getvalue().decode('utf-8'), 'stdout \u2192 ok\n')
+        self.assertEqual(stderr_bytes.getvalue().decode('utf-8'), 'stderr \u2192 failed\n')
+        stdout.close()
+        stderr.close()
+
     def test_git_error_is_not_an_empty_change_set(self):
         failed = subprocess.CompletedProcess([], 128, '', 'not a repository')
         with patch.object(runner.subprocess, 'run', return_value=failed):

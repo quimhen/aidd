@@ -205,8 +205,13 @@ def run_checked(argv, timeout_seconds=1500):
     except OSError as exc:
         print(f'CI worker failed to start: {exc}', file=sys.stderr)
         return 1
-    print(proc.stdout, end='')
-    print(proc.stderr, end='', file=sys.stderr)
+    # CI can provide cp1252 streams on Windows even when the child emits UTF-8.
+    # Configure both parent streams before relaying output, preserving all text.
+    for stream, output in ((sys.stdout, proc.stdout), (sys.stderr, proc.stderr)):
+        reconfigure = getattr(stream, 'reconfigure', None)
+        if reconfigure is not None:
+            reconfigure(encoding='utf-8')
+        stream.write(output)
     return proc.returncode
 
 
