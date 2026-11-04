@@ -244,3 +244,57 @@ The following behavioral contract supplements the historical plan and prevails f
 | Compatibility | `tests.test_wave_verification` | Existing hermetic reuse and external-state fail-closed behavior unchanged |
 
 An independent audit verifies soundness, generated-output handling, correctness and migration after executed evidence exists.
+
+## Amendment 03/04 (2026-11-03) — naming contract
+
+Names are exact and frozen (copied from the amendment drafts); owners may add private helpers, never rename these. Python stdlib only; snake_case with a leading underscore for module-private helpers. Mirrors are byte copies made by `cp`, never by hand.
+
+### Amendment 03 — cross-spec reuse of offline-contract rows (T-22..T-25)
+
+| Item | Contract |
+|---|---|
+| File (production) | `skill/scripts/aidd_status.py` (T-23); byte mirror `adapters/dot-aidd/scripts/aidd_status.py` (T-24); docs `skill/SKILL.md` paragraph `**Incremental verification and reusable checks.**` (T-25) |
+| File (tests, new) | `tests/test_contract_store.py` (T-22) |
+| Constants | `CONTRACT_STORE_VERSION = 'contract-reuse-v1'`, `CONTRACT_STORE_MAX_ENTRIES = 300`, `_DB_RUNNER_RE = re.compile(r'db_verify\|psql\|pg_prove\|docker\|supabase\|--tap', re.I)` (right after `ROUND_MAX_ENTRIES`) |
+| `_contract_store_paths(root) -> tuple[Path, Path]` | `(Path(root) / '.aidd' / 'evidence' / f'{CONTRACT_STORE_VERSION}.json', Path(root) / '.aidd' / 'evidence' / CONTRACT_STORE_VERSION)` |
+| `_contract_store_key(cmd, expected, inputs, input_fp, declaration, environment_id) -> str` | sha256 hex of `json.dumps([_verification_key(cmd), _verification_key(expected), sorted(inputs), input_fp, declaration.strip(), environment_id], ensure_ascii=True, separators=(',', ':'))` |
+| `_contract_store_get(root, key, expected) -> tuple[bytes, dict] \| None` | last index entry with `key`; object bytes returned only when their sha256 equals `entry['sha256']` and `_cached_pass_valid` accepts them; any exception -> `None` |
+| `_contract_store_put(root, key, data, result, spec_name) -> None` | object written with mode `'xb'` (never overwritten); index entry replaced by key, capped at `CONTRACT_STORE_MAX_ENTRIES`, written via `<json>.<pid>.tmp` + `os.replace`; exceptions propagate to the caller |
+| `_contract_environment_id` | one added line after the shell-metacharacter check: `if _DB_RUNNER_RE.search(cmd): return None` |
+| Store files | `.aidd/evidence/contract-reuse-v1.json` (index `{"version": "contract-reuse-v1", "entries": [{"key", "sha256", "sha1", "cmd", "expected", "exit", "ok", "spec", "ts"}]}`) and `.aidd/evidence/contract-reuse-v1/<sha256>.txt` |
+| Result fields | `cross_spec`, `source_spec`, `source_sha256` (plus the existing `reused`) |
+| Output text | stdout prefix `CROSS-REUSED row`; note `note: contract store not written (<ExceptionType>)` |
+| Existing entry point (signature unchanged) | `cmd_verify(spec_arg, full=False, bail=False, wave=None, result_sink=None, wave_cache=None, task_ids=None)` |
+| Test class | `CrossSpecContractReuse(unittest.TestCase)`: `test_second_invocation_other_spec_reuses`, `test_any_identity_change_executes`, `test_damaged_store_executes`, `test_failure_is_never_stored`, `test_db_runner_has_no_environment_id`, `test_full_and_round_off_disable`, `test_non_contract_rows_unchanged`, `test_store_write_failure_is_a_note` |
+| SKILL.md tokens | literal `CROSS-REUSED` and the runner list `db_verify`, `psql`, `pg_prove`, `docker`, `supabase`, `--tap` |
+| Untouched | `round_on`, `_round_lookup`, `_round_store`, `_reusable_input_rows`, `wave_cache` semantics, `aidd_rules.py` |
+
+### Amendment 04 — task-state resolution in `aidd progress` / `aidd pending` (T-26..T-29)
+
+| Item | Contract |
+|---|---|
+| File (production) | `skill/scripts/aidd_progress.py` (T-27); byte mirror `adapters/dot-aidd/scripts/aidd_progress.py` (T-28); docs `skill/SKILL.md` after the `aidd progress` description (T-29) |
+| File (tests, new) | `tests/test_progress_resolution.py` (T-26) |
+| Constants | `DELETE_RE = re.compile(r'([\w.\-/]+)\s*\(delete[^)]*\)', re.I)`, `ALIAS_FILE = '.aidd/graphs/path-aliases.toon'` |
+| `_delete_paths(raw_cell, short) -> list[str]` | expanded paths marked `(delete)` in the raw Target cell (before backticks are stripped) |
+| `_renumbered(root, p) -> Path \| None` | only for `migrations/` paths whose base name matches `^(\d+)_(.+)$`; exactly one candidate (via `_index(root)`) with the same `(.+)` and a different prefix, else None |
+| `_alias_target(root, p) -> Path \| None` | file with the aliased base name in the same directory, when it exists and is larger than `STUB_BYTES`; any exception -> None |
+| `_load_aliases(root) -> dict[str, str]` | reads `ALIAS_FILE` as UTF-8; keeps lines starting with two spaces split on `,` with at least 2 fields as `{old: new}`; cached per root like `_INDEX` |
+| `parse_tasks(text)` | signature unchanged; adds key `delete` (list of str) per task |
+| `task_state(task, root)` | signature unchanged; may also return `'renamed'` (counts as present in `Impl%`) |
+| `_resolve` | signature and return type unchanged |
+| Alias graph format | `version: 1`, `generated: <iso>`, `aliases[N]{old,new,scope,reason}:`, then N rows indented two spaces |
+| Test class | `TaskStateResolution(unittest.TestCase)`: `test_delete_target_gone_is_present`, `test_delete_target_still_there_is_missing`, `test_renumbered_migration_is_renamed`, `test_ambiguous_renumber_is_missing`, `test_alias_file_resolves_rename`, `test_bad_alias_is_missing_without_error`, `test_prose_task_id_is_not_a_task`, `test_project_without_cases_is_unchanged` |
+| SKILL.md tokens | target marker `(delete)`, state `renamed`, graph file `.aidd/graphs/path-aliases.toon` (section `aliases[N]{old,new,scope,reason}:`), key `delete` in `parse_tasks` |
+| Untouched | `aidd_pending.py`, `aidd_status.py`, the `progress.json` schema except the added `renamed` state |
+
+### Requirement -> file map (amendments 03/04)
+
+| FR | File / function | Test file | Task |
+|---|---|---|---|
+| FR-220, FR-221, FR-223 | `aidd_status.py` `_contract_store_paths`, `_contract_store_key`, `_contract_store_get`, `_contract_store_put`, `cmd_verify` | `tests/test_contract_store.py` | T-22, T-23, T-24 |
+| FR-222 | `aidd_status.py` `_DB_RUNNER_RE`, `_contract_environment_id`; `skill/SKILL.md` | `tests/test_contract_store.py`, `tests/test_dot_aidd_mirror.py` | T-22, T-23, T-25 |
+| FR-230, FR-235 | `aidd_progress.py` `parse_tasks`, `_delete_paths`, `DELETE_RE` | `tests/test_progress_resolution.py` | T-26, T-27, T-28 |
+| FR-231, FR-232, FR-233, FR-234 | `aidd_progress.py` `task_state`, `_renumbered`, `_alias_target`, `_load_aliases`, `ALIAS_FILE`; `skill/SKILL.md` | `tests/test_progress_resolution.py`, `tests/test_aidd_progress.py` | T-26, T-27, T-28, T-29 |
+
+Waves: amendment 03 and 04 run after wave 7 as waves 8 (T-22, T-26), 9 (T-23, T-25, T-27) and 10 (T-24, T-28, T-29); the two `skill/SKILL.md` edits (T-25, T-29) are in different waves, so no file has two owners in one wave.

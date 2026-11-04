@@ -1702,6 +1702,8 @@ def _contract_environment_id(cmd, declaration):
         # interpreters other than this Python and DB runners cannot opt in.
         if any(c in cmd for c in '|&;<>\n\r`$'):
             return None
+        if _DB_RUNNER_RE.search(cmd):
+            return None
         parts = shlex.split(cmd, posix=(os.name != 'nt'))
         if len(parts) < 2 or Path(parts[0].strip('"\'')).name.lower() not in ('python', 'python.exe', 'python3'):
             return None
@@ -1780,11 +1782,77 @@ def _reusable_input_rows(d, prior, full):
 
 ROUND_TTL_DEFAULT = 6 * 3600
 ROUND_MAX_ENTRIES = 300
+CONTRACT_STORE_VERSION = 'contract-reuse-v1'
+CONTRACT_STORE_MAX_ENTRIES = 300
+_DB_RUNNER_RE = re.compile(r'db_verify|psql|pg_prove|docker|supabase|--tap', re.I)
 
 
 def _round_enabled(full):
     """Cross-spec round cache is on unless --full or AIDD_VERIFY_ROUND=off."""
     return not full and os.environ.get('AIDD_VERIFY_ROUND', '').strip().lower() not in ('off', '0', 'false', 'no')
+
+
+def _contract_store_paths(root):
+    """aidd:FR-220 (index file, object directory) of the project contract-reuse store."""
+    base = Path(root) / '.aidd' / 'evidence'
+    return base / f'{CONTRACT_STORE_VERSION}.json', base / CONTRACT_STORE_VERSION
+
+
+def _contract_store_key(cmd, expected, inputs, input_fp, declaration, environment_id):
+    """aidd:FR-221 identity of an offline-contract row: command, Expected, Inputs, their fingerprint,
+    the environment declaration and the observed environment id."""
+    payload = json.dumps([_verification_key(cmd), _verification_key(expected), sorted(inputs), input_fp,
+                          declaration.strip(), environment_id], ensure_ascii=True, separators=(',', ':'))
+    return hashlib.sha256(payload.encode('utf-8')).hexdigest()
+
+
+def _contract_store_get(root, key, expected):
+    """aidd:FR-221 aidd:FR-223 (data, entry) of the last intact PASS stored under `key`, else None.
+    Any read, parse or validation problem returns None (the row is executed)."""
+    try:
+        index_path, object_dir = _contract_store_paths(root)
+        index = json.loads(index_path.read_text(encoding='utf-8'))
+        if index.get('version') != CONTRACT_STORE_VERSION:
+            return None
+        entry = None
+        for item in index.get('entries') or []:
+            if isinstance(item, dict) and item.get('key') == key:
+                entry = item
+        if entry is None:
+            return None
+        data = (object_dir / f"{entry['sha256']}.txt").read_bytes()
+        if hashlib.sha256(data).hexdigest() == entry['sha256'] and _cached_pass_valid(data, entry, expected):
+            return data, entry
+        return None
+    except Exception:
+        return None
+
+
+def _contract_store_put(root, key, data, result, spec_name):
+    """aidd:FR-220 store one PASS row: content-addressed object (never overwritten) plus one index entry.
+    Exceptions propagate to the caller."""
+    index_path, object_dir = _contract_store_paths(root)
+    object_dir.mkdir(parents=True, exist_ok=True)
+    sha256 = hashlib.sha256(data).hexdigest()
+    try:
+        with open(object_dir / f'{sha256}.txt', 'xb') as fh:
+            fh.write(data)
+    except FileExistsError:
+        pass
+    try:
+        index = json.loads(index_path.read_text(encoding='utf-8'))
+        entries = index.get('entries') if index.get('version') == CONTRACT_STORE_VERSION else []
+        entries = [e for e in (entries or []) if isinstance(e, dict)]
+    except Exception:
+        entries = []
+    entries = [e for e in entries if e.get('key') != key]
+    entries.append({'key': key, 'sha256': sha256, 'sha1': result['sha1'], 'cmd': result['cmd'],
+                    'expected': result['expected'], 'exit': 0, 'ok': True, 'spec': spec_name, 'ts': time.time()})
+    entries = entries[-CONTRACT_STORE_MAX_ENTRIES:]
+    tmp = index_path.parent / f'{index_path.name}.{os.getpid()}.tmp'
+    tmp.write_text(json.dumps({'version': CONTRACT_STORE_VERSION, 'entries': entries}, ensure_ascii=False),
+                   encoding='utf-8')
+    os.replace(tmp, index_path)
 
 
 def _round_paths(root):
@@ -2260,6 +2328,30 @@ def cmd_verify(spec_arg, full=False, bail=False, wave=None, result_sink=None, wa
                 return res
             except Exception:
                 pass                                         # could not copy the evidence: run the row for real
+        # aidd:FR-221 cross-spec, cross-invocation lookup of offline-contract PASS rows.
+        if (wave is None and task_ids is None and _round_enabled(full) and inputs and input_fp and env_id
+                and r.get('reuse') == 'hermetic'):
+            try:
+                store_key = _contract_store_key(cmd, expected, inputs, input_fp, env_decl, env_id)
+                chit = _contract_store_get(root, store_key, expected)
+                if (chit is not None and rules.row_input_fingerprint(root, inputs) == input_fp
+                        and _contract_environment_id(cmd, env_decl) == env_id):
+                    data, entry = chit
+                    with open(final, 'wb') as fh:
+                        fh.write(data)
+                    one_line = re.sub(r'[\r\n]+', ' ', cmd).strip()
+                    res = {'n': str(n), 'cmd': cmd, 'expected': expected, 'exit': entry.get('exit', 0), 'ok': True,
+                           'evidence': rel, 'sha1': hashlib.sha1(data).hexdigest(), 'reused': True}
+                    if inputs:
+                        res.update(input_globs=inputs, input_fp=input_fp, reuse_policy='hermetic',
+                                   input_algorithm=ev.EVIDENCE_ALGORITHM, environment_id=env_id,
+                                   environment_declaration=env_decl.strip())
+                    res.update(cross_spec=True, source_spec=entry['spec'], source_sha256=entry['sha256'], secs=0.0)
+                    print(f"CROSS-REUSED row {n} (PASS): {one_line[:100]} (passed in {entry['spec']} on the same "
+                          f"Inputs and environment) → {rel}", flush=True)
+                    return res
+            except Exception:
+                pass                                         # store unusable: run the row for real
         rhit = _round_lookup(root, round_entries, cmd, expected, st_all_start) if (not inputs and round_on and st_all_start) else None
         if rhit is not None:
             try:
@@ -2480,6 +2572,32 @@ def cmd_verify(spec_arg, full=False, bail=False, wave=None, result_sink=None, wa
                     wave_cache[key] = (data, result)
             except OSError:
                 pass
+    # aidd:FR-220 store the PASS offline-contract rows executed in this stable run for later invocations.
+    if wave is None and task_ids is None and _round_enabled(full) and stable:
+        for result in results:
+            original = next((r for r in rows if str(r.get('n')) == result['n']), None)
+            inputs = (original or {}).get('inputs') or result.get('input_globs') or []
+            if (not original or original.get('reuse') != 'hermetic' or not inputs
+                    or result.get('ok') is not True or not result.get('environment_id')
+                    or result.get('reused')):
+                continue
+            before = result.get('input_fp')
+            after = rules.row_input_fingerprint(root, inputs)
+            if not before or before != after or not result.get('sha1'):
+                continue
+            environment_id = result['environment_id']
+            declaration = result.get('environment_declaration', '')
+            if _contract_environment_id(result['cmd'], declaration) != environment_id:
+                continue
+            try:
+                data = (d / result['evidence']).read_bytes()
+                if hashlib.sha1(data).hexdigest() != result['sha1']:
+                    continue
+                store_key = _contract_store_key(result['cmd'], result['expected'], inputs, before,
+                                                declaration, environment_id)
+                _contract_store_put(root, store_key, data, result, d.name)
+            except (OSError, ValueError, TypeError, KeyError) as e:
+                print(f'note: contract store not written ({type(e).__name__})', flush=True)
     if round_on and stable and st_all_start and wave is None:
         _round_store(root, round_entries, results, d, st_all_start, ev.code_state(root, budget_s=120, reuse=True), gen)   # st_end's scan
     # code_since: when this exact code state was first verified; lineage: the table hashes verified on it.

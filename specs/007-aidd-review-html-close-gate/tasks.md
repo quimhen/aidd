@@ -26,8 +26,20 @@ One row = one owner agent for one file (plus its mirror and its tests). Codes ar
 | T-14 | FR-211, AC-222..225 | `skill/scripts/aidd_evidence.py` + `adapters/dot-aidd/scripts/aidd_evidence.py` + `tests/test_code_fingerprint.py` + `tests/test_verify_regressions.py`, same owner as T-13 | LOGIC | | | new cache policy, changing consuming specs |
 | T-15 | FR-211, AC-230, AC-233 | `skill/scripts/aidd_rules.py` + `adapters/dot-aidd/scripts/aidd_rules.py` + `tests/test_aidd_rules.py` + `tests/test_aidd_status.py`, same owner as T-13 | LOGIC | | | DB, approval behavior |
 | T-16 | FR-211, FR-212, AC-224, AC-229, AC-233 | `skill/scripts/aidd_status.py` + `adapters/dot-aidd/scripts/aidd_status.py` + `skill/scripts/aidd_rules.py` + `adapters/dot-aidd/scripts/aidd_rules.py` + `tests/test_wave_verification.py` + `tests/test_aidd_status.py`, same owner as T-13 | LOGIC | | | new cache policy, DB |
+| T-22 | FR-220, FR-221, FR-222, FR-223, AC-251..AC-258 | `tests/test_contract_store.py` + `tests/test_verify_git_contract.py` | LOGIC | | | any production code; any other test file; any other assertion of test_verify_git_contract.py |
+| T-23 | FR-220, FR-221, FR-222, FR-223 | `skill/scripts/aidd_status.py`, same owner as T-16 | LOGIC | | | `round_on`, `_round_*` functions, `aidd_rules.py`, any non-contract row behaviour |
+| T-24 | FR-220..FR-223 (mirror) | `adapters/dot-aidd/scripts/aidd_status.py` | LOGIC | | | any change that is not a byte copy of T-23's file |
+| T-25 | FR-222 docs | `skill/SKILL.md` | LOGIC | | | any other section of SKILL.md; b1SycLink files |
+| T-26 | FR-230..FR-235, AC-261..AC-268 | `tests/test_progress_resolution.py` | LOGIC | | | any production code; any other test file |
+| T-27 | FR-230..FR-235 | `skill/scripts/aidd_progress.py` | LOGIC | | | `aidd_pending.py`, `aidd_status.py`, output format of `aidd progress` except the new `renamed` count |
+| T-28 | FR-230..FR-235 (mirror) | `adapters/dot-aidd/scripts/aidd_progress.py` | LOGIC | | | any change that is not a byte copy of T-27's file |
+| T-29 | FR-231, FR-233 docs | `skill/SKILL.md`, same owner as T-25 | LOGIC | | | any other section; b1SycLink files |
 
 FR-205 and FR-206 have no installed effect until the owner installs the new scripts; the close of spec 007 itself goes through the legacy path (it was approved before `gate: 2` existed), see spec.md "Bootstrap".
+
+Amendment 03 (T-22..T-25, cross-spec reuse of offline-contract rows): every task prompt restates: scope in and out exactly as written; stop and report on any ambiguity; one responsibility per function; snake_case Python functions with a leading underscore for module private helpers (the convention of `aidd_status.py`); design for failure (every store read/write in `try/except (OSError, ValueError, TypeError, KeyError)`, fail closed = execute the row); tool-first (bulk mirror sync by `cp`/script, never by hand-typing the file twice); repo rules: no temporary databases, `db_verify.py` is never run, no `aidd verify` by the builder. Analysis parameters: `aidd size --files skill/scripts/aidd_status.py tests/test_contract_store.py` → expected L (gate rules / CLI area).
+
+Amendment 04 (T-26..T-29, task-state resolution): every task prompt restates: scope in and out exactly as written; stop and report on any ambiguity; one responsibility per function; snake_case with a leading underscore for module-private helpers; design for failure (every file read in `try/except (OSError, UnicodeDecodeError, ValueError)`, fail closed = report `missing`); tool-first (mirror sync by `cp`/script, never by hand); no databases, `db_verify.py` never run, no `aidd verify` by the builder. Analysis parameters: `aidd size --files skill/scripts/aidd_progress.py tests/test_progress_resolution.py` → expected M.
 
 ## Per-task detail
 
@@ -331,6 +343,277 @@ FR-205 and FR-206 have no installed effect until the owner installs the new scri
 - Done when: exact non-SQL historical code scopes are classified without global reset, all affected/unknown cases fail conservatively, no row is returned from cache without independently verifiable environment identity, and an independent audit verifies migration and the explicit temporary runtime cost.
 - Open questions: none.
 
+### T-22 — failing tests first
+**Classify**
+- Nature: `REQUIREMENT`
+- Priority: 3
+- Kind: LOGIC
+- Size: S
+
+**Estimate**
+- Effort: Medium
+- Agent min: 15
+- Human ref hours: 0.75
+- Tokens (est): 70k
+- Agent role: tests
+- Model tier: medium
+- Wave: 8
+
+**Detail**
+- Goal: encode AC-251..AC-258 as unit tests that fail on the current code.
+- Cites: FR-220, FR-221, FR-222, FR-223, AC-251, AC-252, AC-253, AC-254, AC-255, AC-256, AC-257, AC-258.
+- Depends on: none.
+- Read first: `tests/test_verify_git_contract.py` lines 1-116 (header and class `ContractReuse`); `skill/scripts/aidd_status.py` lines 1663-1753 and 2184-2263.
+- Files to change: `tests/test_contract_store.py` (new) and `tests/test_verify_git_contract.py` (exactly two existing tests, see the next bullet).
+- Existing tests to update (owner accepted this on 2026-11-03: their old assertions encode the behaviour that FR-221 replaces; line numbers are those before your insertion): in `ContractReuse.test_round_shares_only_identical_inputs_and_environment` insert `self.assertEqual(len(calls), 1)` right after the `status.cmd_verify('one', wave_cache=cache)` assertion (the second invocation now takes the stored PASS from the contract store instead of executing) and change the three later expectations: line 68 `3` to `2`, line 71 `4` to `3`, line 73 `6` to `5`; in `ContractReuse.test_contract_reuses_only_matching_environment_and_full_reruns` change `side_effect=['env1', 'env2', 'env2']` (line 107) to `side_effect=['env1', 'env2', 'env2', 'env2']` because the recheck of T-23 makes a fourth call. No other line of that file changes; the intent of both tests (any change of identity or `--full` forces execution) stays.
+- Naming contract: class `CrossSpecContractReuse(unittest.TestCase)` with methods `test_second_invocation_other_spec_reuses`, `test_any_identity_change_executes`, `test_damaged_store_executes`, `test_failure_is_never_stored`, `test_db_runner_has_no_environment_id`, `test_full_and_round_off_disable`, `test_non_contract_rows_unchanged`, `test_store_write_failure_is_a_note`. Store paths asserted: `<tmp>/.aidd/evidence/contract-reuse-v1.json` and `<tmp>/.aidd/evidence/contract-reuse-v1/<sha256>.txt`. Patched production name: `status._contract_store_put`. Production entry points exercised (existing, unchanged signatures): `status.cmd_verify(spec_arg, full=False, bail=False, wave=None, result_sink=None, wave_cache=None, task_ids=None)` called as `cmd_verify('one')`, `cmd_verify('two')`, `cmd_verify('one', full=True)`, with `result_sink` a `dict` that `cmd_verify` fills via `result_sink.update(ok=..., stable=..., results=[...], ...)` (current lines 2512-2562); `wave_cache` is never passed.
+- Behaviour:
+  1. File header identical to `tests/test_verify_git_contract.py` lines 1-11 (`sys.path.insert(0, <repo>/skill/scripts)`, `import aidd_status as status`).
+  2. Each test builds a temporary root with specs `one` and `two` whose `spec.md` holds the row `| V1 | python test.py | exit 0 | test.py | hermetic | contract:offline;vars=none;packages=none |` under `| # | Command | Expected | Inputs | Reuse | Environment |`, and patches exactly the set used in `ContractReuse.test_round_shares_only_identical_inputs_and_environment` (lines 50-61), except `ev.latest_verify_run` returns `None` always, so the existing same-spec path cannot satisfy the test, and NO `wave_cache` is passed (each spec is a separate `status.cmd_verify(name)` call = separate invocation).
+  3. `test_second_invocation_other_spec_reuses`: verify `one`, then `two` → `len(calls) == 1`; `sink = {}` passed as `result_sink` for `two` has `sink['results']` with one row with `reused is True`, `cross_spec is True`, `source_spec == 'one'`; `specs/two/evidence/verify-V1.txt` bytes equal the stored object bytes.
+  4. `test_any_identity_change_executes`: after a stored PASS from `one`, change in turn (a) the patched input fingerprint, (b) the patched environment id, (c) Expected in `two`'s spec to `contains: passed`, (d) the command to `python test.py -v`; each `cmd_verify('two')` adds exactly one call.
+  5. `test_damaged_store_executes`: (a) delete the object file, (b) overwrite it with `b'garbage'`, (c) write `{not json` to the index; each time `cmd_verify('two')` returns 0 and adds one call; no exception escapes.
+  6. `test_failure_is_never_stored`: `_run_row` returns `(1, '')` for `one`; the index file is absent or has no entry; `cmd_verify('two')` executes.
+  7. `test_db_runner_has_no_environment_id`: call the REAL `status._contract_environment_id` (not patched) with `python eDoc/tools/db_verify.py --psql "docker exec -i x psql -U postgres" --tap` and with `python tools/run.py --tap`, declaration `contract:offline;vars=none;packages=none` → both `assertIsNone`.
+  8. `test_full_and_round_off_disable`: `cmd_verify('one', full=True)` and, separately, under `patch.dict(os.environ, {'AIDD_VERIFY_ROUND': 'off'})`, each executes and the index file does not exist afterwards.
+  9. `test_non_contract_rows_unchanged`: table `| # | Command | Expected |` with `| V1 | python test.py | exit 0 |`; two invocations → two calls; the index file does not exist.
+  10. `test_store_write_failure_is_a_note`: patch `status._contract_store_put` with `side_effect=OSError`; `cmd_verify('one')` returns 0 and captured stdout contains `note: contract store not written`.
+- Tests first: this task IS the tests; run `python -m unittest tests.test_contract_store -v` and keep the red output (every test except `test_non_contract_rows_unchanged` fails or errors on the current code).
+- Verify: `python -m unittest tests.test_contract_store tests.test_verify_git_contract -v` → red before T-23 (the two updated existing tests fail on the old code); exit 0 after T-23.
+- Do NOT: touch production code; use a real database, Docker, `db_verify.py` or the network; weaken an assertion later (the only allowed edits to existing assertions are the ones listed in "Existing tests to update"); pass a shared `wave_cache` dict in the NEW tests (that tests the existing in-round path, not this one).
+- Done when: the 8 tests exist with exactly these names, the two existing tests carry exactly the listed edits, and the red run is recorded by the verifier.
+- Open questions: none.
+
+### T-23 — store and cross-spec lookup in `aidd_status.py`
+**Classify**
+- Nature: `REQUIREMENT`
+- Priority: 3
+- Kind: LOGIC
+- Size: L (gate/CLI area)
+
+**Estimate**
+- Effort: Medium
+- Agent min: 25
+- Human ref hours: 1.25
+- Tokens (est): 120k
+- Agent role: builder
+- Model tier: high
+- Wave: 9
+
+**Detail**
+- Goal: implement FR-220..FR-223 with the smallest change to `cmd_verify`.
+- Cites: FR-220, FR-221, FR-222, FR-223, AC-251, AC-252, AC-253, AC-254, AC-255, AC-256, AC-257, AC-258.
+- Depends on: T-22 (tests red first).
+- Read first: `skill/scripts/aidd_status.py` lines 1612-1625 (`_cached_pass_valid`), 1663-1753 (`_contract_environment_id`), 1756-1792 (`_reusable_input_rows`, `ROUND_TTL_DEFAULT`, `_round_enabled`, `_round_paths`), 2184-2263 (`cmd_verify` row loop), 2457-2482 (wave_cache store).
+- Files to change: `skill/scripts/aidd_status.py`.
+- Naming contract: constants `CONTRACT_STORE_VERSION = 'contract-reuse-v1'`, `CONTRACT_STORE_MAX_ENTRIES = 300`, `_DB_RUNNER_RE = re.compile(r'db_verify|psql|pg_prove|docker|supabase|--tap', re.I)`; functions `_contract_store_paths(root) -> tuple[Path, Path]`, `_contract_store_key(cmd, expected, inputs, input_fp, declaration, environment_id) -> str`, `_contract_store_get(root, key, expected) -> tuple[bytes, dict] | None`, `_contract_store_put(root, key, data, result, spec_name) -> None`; result fields `cross_spec`, `source_spec`, `source_sha256`; stdout prefix `CROSS-REUSED row`; note text `note: contract store not written (<ExceptionType>)`; index JSON `{"version": "contract-reuse-v1", "entries": [{"key", "sha256", "sha1", "cmd", "expected", "exit", "ok", "spec", "ts"}]}`.
+- Behaviour:
+  1. Add the three constants right after `ROUND_MAX_ENTRIES`.
+  2. In `_contract_environment_id`, immediately after the shell-metacharacter check (`if any(c in cmd for c in '|&;<>\n\r`$'): return None`), add `if _DB_RUNNER_RE.search(cmd): return None`. Nothing else in that function changes.
+  3. `_contract_store_paths(root)` returns `(Path(root) / '.aidd' / 'evidence' / f'{CONTRACT_STORE_VERSION}.json', Path(root) / '.aidd' / 'evidence' / CONTRACT_STORE_VERSION)`.
+  4. `_contract_store_key(...)` returns the sha256 hex of `json.dumps([_verification_key(cmd), _verification_key(expected), sorted(inputs), input_fp, declaration.strip(), environment_id], ensure_ascii=True, separators=(',', ':'))`.
+  5. `_contract_store_get(root, key, expected)`: read the index; if `version` differs → `None`; take the LAST entry with that `key`; read `<dir>/<entry['sha256']>.txt`; return `(data, entry)` only if `hashlib.sha256(data).hexdigest() == entry['sha256']` and `_cached_pass_valid(data, entry, expected)`; wrap everything in `try/except Exception: return None`.
+  6. `_contract_store_put(root, key, data, result, spec_name)`: create the directory; write the object with mode `'xb'` (ignore `FileExistsError`, never overwrite); load the index (missing or invalid → empty list); remove entries with the same `key`; append the new entry (`exit` 0, `ok` True, `spec` = spec_name, `ts` = `time.time()`, `sha1` = `result['sha1']`); keep the last `CONTRACT_STORE_MAX_ENTRIES`; write `<json>.<os.getpid()>.tmp` then `os.replace` onto the index. Exceptions propagate to the caller.
+  7. In `cmd_verify._one`, directly after the existing `hit = ... input_reuse ...` block and before the `rhit = ...` line: when `wave is None and task_ids is None and _round_enabled(full) and inputs and input_fp and env_id and r.get('reuse') == 'hermetic'`, compute the key, call `_contract_store_get`; on a hit re-check `rules.row_input_fingerprint(root, inputs) == input_fp` and `_contract_environment_id(cmd, env_decl) == env_id`; write the bytes to `final`; build `res` exactly like the existing REUSED branch (current lines 2253-2258) plus `cross_spec=True, source_spec=entry['spec'], source_sha256=entry['sha256'], secs=0.0`; print `CROSS-REUSED row {n} (PASS): {one_line[:100]} (passed in {entry['spec']} on the same Inputs and environment) → {rel}`; return `res`. Any exception in this block → fall through to execution.
+  8. After the existing `if wave_cache is not None and stable and not full:` block, add a block guarded by `wave is None and task_ids is None and _round_enabled(full) and stable`, iterating `results` with the SAME eligibility checks as that block (original row `reuse == 'hermetic'`, inputs, `ok is True`, `environment_id`, `input_fp` unchanged now, `_contract_environment_id` unchanged now, evidence sha1 intact) plus `not result.get('reused')`; call `_contract_store_put(root, key, data, result, d.name)` inside `try/except (OSError, ValueError, TypeError, KeyError) as e:` that prints `note: contract store not written ({type(e).__name__})`.
+- Tests first: T-22 red output must exist before the first edit.
+- Verify: `python -m unittest tests.test_contract_store tests.test_verify_git_contract tests.test_wave_verification tests.test_verify_regressions -v` → exit 0 (orchestrator's verifier, once, after the wave).
+- Do NOT: change `round_on`, `_round_lookup`, `_round_store`, `_reusable_input_rows` or the `wave_cache` semantics; change any path for rows without the contract; store FAIL, timeout (exit -1) or reused rows; look up or store under `--full`, `--tasks`, `--wave` or `AIDD_VERIFY_ROUND=off`; delete or overwrite an existing object file; write any evidence file other than the current row's own `final` path; add a TTL; import non-standard-library modules; touch `aidd_rules.py`.
+- Done when: the Verify command exits 0 and `git diff --stat` lists only `skill/scripts/aidd_status.py` for this task.
+- Open questions: none.
+
+### T-24 — adapter mirror
+**Classify**
+- Nature: `REQUIREMENT`
+- Priority: 3
+- Kind: LOGIC
+- Size: XS
+
+**Estimate**
+- Effort: Low
+- Agent min: 3
+- Human ref hours: 0.15
+- Tokens (est): 20k
+- Agent role: builder
+- Model tier: medium
+- Wave: 10
+
+**Detail**
+- Goal: keep `adapters/dot-aidd/scripts/aidd_status.py` byte-identical to `skill/scripts/aidd_status.py`.
+- Cites: FR-220, FR-221, FR-222, FR-223.
+- Depends on: T-23.
+- Read first: `tests/test_dot_aidd_mirror.py` lines 70-120 (mirrored file list; `skill/scripts/aidd_status.py` is listed at line 76).
+- Files to change: `adapters/dot-aidd/scripts/aidd_status.py`.
+- Naming contract: no new names; the file is a byte copy.
+- Behaviour:
+  1. `cp skill/scripts/aidd_status.py adapters/dot-aidd/scripts/aidd_status.py`.
+  2. Run the Verify command.
+- Tests first: existing `tests/test_dot_aidd_mirror.py` fails after T-23 and before this copy.
+- Verify: `python -m unittest tests.test_dot_aidd_mirror -v` → exit 0.
+- Do NOT: edit the mirror by hand; touch any other adapter file.
+- Done when: the Verify command exits 0.
+- Open questions: none.
+
+### T-25 — document the rule in SKILL.md
+**Classify**
+- Nature: `REQUIREMENT`
+- Priority: 4
+- Kind: LOGIC
+- Size: XS
+
+**Estimate**
+- Effort: Low
+- Agent min: 5
+- Human ref hours: 0.25
+- Tokens (est): 20k
+- Agent role: docs
+- Model tier: medium
+- Wave: 9
+
+**Detail**
+- Goal: state the cross-spec rule and the database refusal where the offline contract is documented.
+- Cites: FR-221, FR-222.
+- Depends on: none (text only; ships with T-23).
+- Read first: `skill/SKILL.md` line 455 (paragraph starting `**Incremental verification and reusable checks.**`); `tests/test_dot_aidd_mirror.py` lines 115 and 426-436.
+- Files to change: `skill/SKILL.md`.
+- Naming contract: the appended sentence uses the literal token `CROSS-REUSED` and the runner list `db_verify`, `psql`, `pg_prove`, `docker`, `supabase`, `--tap`.
+- Behaviour:
+  1. Append to the end of that paragraph, exactly: "A passing contract row is stored once per project; a later `aidd verify` of any spec with the same command, expected result, Inputs and environment takes that stored result instead of running it (`CROSS-REUSED`); database and container runners (`db_verify`, `psql`, `pg_prove`, `docker`, `supabase`, `--tap`) can never use the contract."
+- Tests first: none (documentation); the mirror suite is the regression guard.
+- Verify: `python -m unittest tests.test_dot_aidd_mirror -v` → exit 0.
+- Do NOT: rewrite other sentences; claim savings; touch b1SycLink `AGENTS.md` or any installed skill.
+- Done when: the Verify command exits 0 and the sentence appears once.
+- Open questions: none.
+
+### T-26 — failing tests first
+**Classify**
+- Nature: `REQUIREMENT`
+- Priority: 3
+- Kind: LOGIC
+- Size: S
+
+**Estimate**
+- Effort: Medium
+- Agent min: 15
+- Human ref hours: 0.75
+- Tokens (est): 70k
+- Agent role: tests
+- Model tier: medium
+- Wave: 8
+
+**Detail**
+- Goal: encode AC-261..AC-268 as unit tests that fail on the current code.
+- Cites: FR-230..FR-235, AC-261..AC-268.
+- Depends on: none.
+- Read first: `skill/scripts/aidd_progress.py` lines 31-61 and 69-107 (`parse_tasks`) and 159-187 (`_resolve`, `task_state`); the import header of `tests/test_aidd_progress.py` lines 1-30.
+- Files to change: `tests/test_progress_resolution.py` (new).
+- Naming contract: class `TaskStateResolution(unittest.TestCase)` with methods `test_delete_target_gone_is_present`, `test_delete_target_still_there_is_missing`, `test_renumbered_migration_is_renamed`, `test_ambiguous_renumber_is_missing`, `test_alias_file_resolves_rename`, `test_bad_alias_is_missing_without_error`, `test_prose_task_id_is_not_a_task`, `test_project_without_cases_is_unchanged`. Production names exercised (signatures unchanged): `progress.parse_tasks(text)`, `progress.task_state(task, root)` where `task` is a dict from `parse_tasks`; new key `task['delete']` (list of str).
+- Behaviour:
+  1. Header: `sys.path.insert(0, <repo>/skill/scripts)`, `import aidd_progress as progress`, temp project root via `tempfile.TemporaryDirectory`.
+  2. Each test writes a `tasks.md` text with the table `| Task | Codes satisfied | Target file | Status |` and calls `parse_tasks` then `task_state(task, root)`.
+  3. Expected states: delete gone -> `'present'`; delete still there -> `'missing'`; `migrations/0120_x.sql` cited with only `migrations/3277_x.sql` existing (content > 40 bytes) -> `'renamed'`; with both `3277_x.sql` and `3300_x.sql` -> `'missing'`; alias graph `.aidd/graphs/path-aliases.toon` with the text `version: 1\ngenerated: 2026-11-03T00:00:00+00:00\naliases[1]{old,new,scope,reason}:\n  ordr_table.dart,oped_table.dart,mobile,F30\n` and the new file present -> `'renamed'`; alias to an absent file, or file bytes `b'\xff\x00{'` -> `'missing'` and no exception; a line `| T-42 | prose |` placed after a paragraph, outside any table with a Target column -> not in `parse_tasks` output; a plain existing target -> `'present'` exactly as today.
+- Tests first: this task IS the tests; run `python -m unittest tests.test_progress_resolution -v` and keep the red output (all except the last test fail on current code).
+- Verify: `python -m unittest tests.test_progress_resolution -v` → red before T-27, exit 0 after.
+- Do NOT: touch production code; use a database, Docker or the network; weaken an assertion later.
+- Done when: the 8 tests exist with exactly these names and the red run is recorded by the verifier.
+- Open questions: none.
+
+### T-27 — resolution logic in `aidd_progress.py`
+**Classify**
+- Nature: `REQUIREMENT`
+- Priority: 3
+- Kind: LOGIC
+- Size: M
+
+**Estimate**
+- Effort: Medium
+- Agent min: 25
+- Human ref hours: 1.25
+- Tokens (est): 100k
+- Agent role: builder
+- Model tier: high
+- Wave: 9
+
+**Detail**
+- Goal: implement FR-230..FR-235 so T-26 passes with no change to behaviour when none of the cases occurs.
+- Cites: FR-230..FR-235.
+- Depends on: T-26.
+- Read first: `skill/scripts/aidd_progress.py` lines 31-61, 69-107, 134-187; the tests created by T-26 in the file named in T-26's Files to change.
+- Files to change: `skill/scripts/aidd_progress.py`.
+- Naming contract: new module constants `DELETE_RE = re.compile(r'([\w.\-/]+)\s*\(delete[^)]*\)', re.I)`, `ALIAS_FILE = '.aidd/graphs/path-aliases.toon'`; new helpers `_delete_paths(raw_cell, short)` -> list[str], `_renumbered(root, p)` -> Path | None, `_alias_target(root, p)` -> Path | None, `_load_aliases(root)` -> dict[str, str] (cached per root like `_INDEX`). `parse_tasks` adds key `delete`. `task_state` may return `'renamed'` in addition to its current values. `_resolve` signature and return type unchanged.
+- Behaviour:
+  1. `parse_tasks`: compute `delete` from the raw Target cell before backticks are stripped; the path tokens themselves are still returned in `paths` as today.
+  2. `task_state`: for each path in `task['delete']` -> missing if `_resolve` finds it, else skipped; if every path is in `delete` and none exists, return `'present'`.
+  3. `_renumbered`: only when `'/migrations/'` is in `p` or `p` starts with `migrations/`, and the base name matches `^(\d+)_(.+)$`; list files in the same directory name pattern anywhere under root via the existing `_index(root)`; exactly one candidate with the same `(.+)` and a different prefix -> that Path; else None.
+  4. `_load_aliases(root)`: read `ALIAS_FILE` as UTF-8 text; ignore every line that does not start with two spaces; split each such line on `,`; keep rows with at least 2 fields as `{old: new}` (base names only). `_alias_target`: if `base` has an alias, return the file with the new base name in the same directory when it exists and is larger than `STUB_BYTES`; any exception (OSError, UnicodeDecodeError, ValueError) -> None. Never raise.
+  5. `task_state`: when `_resolve` is None, try `_renumbered` then `_alias_target`; mark the task `renamed` if any path was resolved this way and none is missing/stub.
+  6. FR-235: in `parse_tasks`, ignore a row whose cells do not align with a header column set found directly above it in the same table block (the existing `cols` is reset by any non-`|` line; keep that, and additionally require `cols` to have been set by a header that has `target` or `status`).
+- Tests first: T-26 must be red before this task; keep it unmodified.
+- Verify: `python -m unittest tests.test_progress_resolution tests.test_aidd_progress -v` → exit 0.
+- Do NOT: change `aidd_pending.py`; change the `progress.json` graph schema except adding the `renamed` state to the existing state vocabulary; read files larger than `MAX_READ`; guess when there is more than one candidate.
+- Done when: all T-26 tests pass and the pre-existing progress and pending tests still pass.
+- Open questions: none.
+
+### T-28 — mirror
+**Classify**
+- Nature: `REQUIREMENT`
+- Priority: 3
+- Kind: LOGIC
+- Size: XS
+
+**Estimate**
+- Effort: Low
+- Agent min: 5
+- Human ref hours: 0.25
+- Tokens (est): 25k
+- Agent role: builder
+- Model tier: medium
+- Wave: 10
+
+**Detail**
+- Goal: keep the project bundle identical to the skill source.
+- Cites: FR-230..FR-235 (mirror).
+- Depends on: T-27.
+- Read first: `tests/test_dot_aidd_mirror.py`.
+- Files to change: `adapters/dot-aidd/scripts/aidd_progress.py`.
+- Naming contract: none new; the target is a byte copy of `skill/scripts/aidd_progress.py`, so every name is the one fixed in T-27.
+- Behaviour: byte copy of `skill/scripts/aidd_progress.py` by `cp`; no hand edits.
+- Tests first: `tests/test_dot_aidd_mirror.py` already asserts equality; run it before (red after T-27 changes the source) and after (exit 0).
+- Verify: `python -m unittest tests.test_dot_aidd_mirror -v` → exit 0.
+- Do NOT: edit the file by hand; touch any other mirror.
+- Done when: mirror test passes.
+- Open questions: none.
+
+### T-29 — document
+**Classify**
+- Nature: `REQUIREMENT`
+- Priority: 4
+- Kind: LOGIC
+- Size: XS
+
+**Estimate**
+- Effort: Low
+- Agent min: 5
+- Human ref hours: 0.25
+- Tokens (est): 25k
+- Agent role: docs
+- Model tier: medium
+- Wave: 10
+
+**Detail**
+- Goal: document delete/rename/renumber resolution and the optional alias file.
+- Cites: FR-231, FR-233.
+- Depends on: T-27.
+- Read first: `skill/SKILL.md` section "Commands" paragraph that describes `aidd progress`.
+- Files to change: `skill/SKILL.md`.
+- Naming contract: documents exactly these names and no others: target marker `(delete)`, state `renamed`, graph file `.aidd/graphs/path-aliases.toon` (section `aliases[N]{old,new,scope,reason}:`), key `delete` in `parse_tasks`.
+- Behaviour: add 4 lines after the `aidd progress` description: `(delete)` targets, the migration renumber rule, `.aidd/graphs/path-aliases.toon` format, the `renamed` state.
+- Tests first: no code; the check below exits 1 before this task and 0 after.
+- Verify: `python -c "import sys; sys.exit(0 if 'path-aliases.toon' in open('skill/SKILL.md', encoding='utf-8').read() else 1)"` -> exit 0.
+- Do NOT: change any other section; mention b1SycLink.
+- Done when: the 4 lines exist and the verify command passes.
+- Open questions: none.
+
 ## Waves
 
 | Wave | Tasks | Roles | Agent time (min) | Tokens (k) | Human ref (h) |
@@ -342,20 +625,25 @@ FR-205 and FR-206 have no installed effect until the owner installs the new scri
 | 5 | T-14 | builder | 20 | 120 | 1.0 |
 | 6 | T-15 | builder | 15 | 95 | 0.75 |
 | 7 | T-16 | builder | 20 | 130 | 1.0 |
+| 8 | T-22, T-26 | tests | 15 | 140 | 0.75 |
+| 9 | T-23, T-25, T-27 | builder, docs | 25 | 240 | 1.25 |
+| 10 | T-24, T-28, T-29 | builder, docs | 5 | 70 | 0.25 |
 
 Dependency edges: T-05 and T-06 need T-01, T-02, T-03; T-07 needs T-01, T-02; T-08 needs T-02; T-12 needs T-01; T-10 needs T-01..T-09 and T-12; T-11 needs T-03, T-04, T-05, T-06. T-01..T-04 have no incoming edge: T-03 never reads `templates/review.html` (it tests against a minimal inline `template_text`), T-02 tests against a `FakeEv`, and the real template is first rendered by T-11. T-09 has no code edge; it is in wave 2 only so its prose reads the finished code. Wave 3 audits and executes only what exists; the fix batch (CONFIRMED medium+ findings only, back to each file's original owner via SendMessage, about 15 min) is not counted below.
 
-Total agent time (critical path): 142 min
-Total tokens (k): 1700
+Total agent time (critical path): 187 min
+Total tokens (k): 2150
 
 Amendment 01 dependency chain: T-13 → T-14 → T-15 → T-16; the same owner handles all four shared files. The focalized unittest commands in those tasks are wave checks; V-1 full discovery covers them at final verification and does not add duplicate V-7/V-8 rows.
+
+Amendment 03/04 dependency edges: T-23 needs T-22; T-24 needs T-23; T-27 needs T-26; T-28 and T-29 need T-27; T-25 has no code edge (text only; ships with T-23). Amendments 03 and 04 touch disjoint production files; the two `skill/SKILL.md` edits (T-25 wave 9, T-29 wave 10) are in different waves. After wave 10 one verifier runs V-7..V-11 of spec.md once, then an independent read-only security auditor reviews the diff (domains: security, functional).
 
 ## Approval gate
 
 **Present the table above as a dry-run and wait for explicit approval before Step 5 starts on any row.**
 The approval is the user's and is tamper-evident: ask them (AskUserQuestion) to approve the tasks, then run `aidd rules approve <spec_dir>`, which replaces the line below with `Approved: <YYYY-MM-DD> hash:<12 hex>`. Any later edit to this file voids it. Do not write that line by hand.
 
-Approved: 2026-10-31 hash:c865f422582a
+Approved: 2026-11-03 hash:efd316c9241f
 
 ## Definition of Done (applies to every task above)
 1. Code implements exactly the FR cited, in exactly the target file, following plan.md's Naming & File Contract, SOLID and the antifragile standard.

@@ -8,8 +8,10 @@ on disk and in the sources, and adds the stages AIDD already records in its own 
                stub      it exists but is (almost) empty
                present   it exists and has content, but carries no `aidd:<code>` marker of the codes the task satisfies
                marked    it exists and carries an `aidd:<code>` (or `aidd:T-nn`) marker  <- strongest signal
+               renamed   found only through a renumbered migration or `.aidd/graphs/path-aliases.toon` (counts as present)
                n/a       the cell holds no file path (waves like `W0.a`, prose): not measurable, counted apart
-  spec         Impl% = (present+marked)/measurable, Marked% = marked/measurable, plus approved / verify / audit / closed
+               A `<path> (delete)` target is satisfied when the file is gone and missing while it still exists.
+  spec         Impl% = (present+marked+renamed)/measurable, Marked% = marked/measurable, plus approved / verify / audit / closed
   graph        .aidd/graphs/progress.json (nodes: spec and T; edges: contains, targets) for `aidd graphs show progress`
 
 Usage:
@@ -35,6 +37,9 @@ TASK_ID_RE = re.compile(r'^[`*\s]*([A-Za-z]+-\d+)\b')
 WAVE_RE = re.compile(r'^W\d+(\.\w+)?$', re.I)
 PATH_TOKEN_RE = re.compile(r'[\w.\-]+(?:/[\w.\-]+)+/?|[\w\-]+\.[A-Za-z0-9]{1,6}\b')
 DONE_RE =re.compile(r'\b(done|closed|hecho|complet\w*)\b|[✅✔]', re.I)
+DELETE_RE = re.compile(r'([\w.\-/]+)\s*\(delete[^)]*\)', re.I)     # aidd:FR-230 `<path> (delete)` in a Target cell
+ALIAS_FILE = '.aidd/graphs/path-aliases.toon'                        # aidd:FR-233 optional rename graph (project-generated)
+MIGRATION_NAME_RE = re.compile(r'^(\d+)_(.+)$')
 
 
 def _cells(line):
@@ -66,9 +71,28 @@ def _expand(p, short):
     return short[head] + rest if rest and head in short else p
 
 
+def _norm_path(p, short):
+    return _expand(p.lstrip('(,;:').rstrip('.,;:)'), short)   # keep a leading dot: `.github/...`
+
+
+def _delete_paths(raw_cell, short):
+    """aidd:FR-230 expanded paths written as `<path> (delete)` in the raw Target cell (before backticks are stripped)."""
+    out = []
+    try:
+        for p in DELETE_RE.findall((raw_cell or '').replace('\\', '/')):
+            p = _norm_path(p, short)
+            if _looks_like_path(p) and p not in out:
+                out.append(p)
+    except Exception:
+        return out
+    return out
+
+
 def parse_tasks(text):
-    """[{id, paths, codes, status}] for every row of a table with a 'Target file' column. Never raises.
-    Paths written with the spec's declared shorthand (`ENG/x.py`) are expanded to the real project path."""
+    """[{id, paths, codes, status, delete}] for every row of a table with a 'Target file' column. Never raises.
+    Paths written with the spec's declared shorthand (`ENG/x.py`) are expanded to the real project path.
+    `delete` lists the paths marked `(delete)` (FR-230); a row that does not align with its table header is
+    not a task (FR-235)."""
     out, cols = [], None
     short = shorthand_map(text)
     try:
@@ -83,25 +107,31 @@ def parse_tasks(text):
             if tcol is not None or (low and low[0] in ('task', 'id', '#') and 'status' in low):
                 cols = {'target': tcol,
                         'codes': next((i for i, c in enumerate(low) if 'codes' in c), None),
-                        'status': next((i for i, c in enumerate(low) if c == 'status'), None)}
+                        'status': next((i for i, c in enumerate(low) if c == 'status'), None),
+                        'n': len(cells)}
                 continue
             if cols is None or set(''.join(cells)) <= set('-: '):
+                continue
+            # aidd:FR-235 a task row belongs to a header with a target or status column and aligns with it
+            if (cols['target'] is None and cols['status'] is None) or len(cells) != cols['n']:
                 continue
             m = TASK_ID_RE.match(cells[0]) if cells else None
             if not m:
                 continue
             tgt = cols['target']
-            raw = (cells[tgt] if tgt is not None and tgt < len(cells) else '').replace('`', ' ').replace('\\', '/')
+            cell = cells[tgt] if tgt is not None and tgt < len(cells) else ''
+            raw = cell.replace('`', ' ').replace('\\', '/')
             paths = []
             for p in PATH_TOKEN_RE.findall(raw):
-                p = _expand(p.lstrip('(,;:').rstrip('.,;:)'), short)   # keep a leading dot: `.github/...`
+                p = _norm_path(p, short)
                 if _looks_like_path(p) and p not in paths:
                     paths.append(p)
             codes = []
             if cols['codes'] is not None and cols['codes'] < len(cells):
                 codes = sorted({c.upper() for c in CODE_RE.findall(cells[cols['codes']])})
             status = cells[cols['status']] if cols['status'] is not None and cols['status'] < len(cells) else ''
-            out.append({'id': m.group(1).upper(), 'paths': paths, 'codes': codes, 'status': status})
+            out.append({'id': m.group(1).upper(), 'paths': paths, 'codes': codes, 'status': status,
+                        'delete': _delete_paths(cell, short)})
     except Exception:
         return out
     return out
@@ -169,19 +199,108 @@ def _resolve(root, p):
     return None
 
 
+def _renumbered(root, p):
+    """aidd:FR-232 the single project file `<other digits>_<name>` for a cited `migrations/<digits>_<name>`
+    (same directory, matched by suffix like `_resolve`). Zero or several candidates -> None. Never raises."""
+    try:
+        p = p.strip('/')
+        if '/migrations/' not in '/' + p:
+            return None
+        d, _, base = p.rpartition('/')
+        m = MIGRATION_NAME_RE.match(base)
+        if not m:
+            return None
+        prefix, name = m.group(1), m.group(2)
+        found = []
+        for rel in _index(root):
+            rd, _, rb = rel.rpartition('/')
+            if not ('/' + rd).endswith('/' + d):
+                continue
+            rm = MIGRATION_NAME_RE.match(rb)
+            if rm and rm.group(2) == name and rm.group(1) != prefix:
+                found.append(rel)
+                if len(found) > 1:
+                    return None
+        return Path(root) / found[0] if len(found) == 1 else None
+    except Exception:
+        return None
+
+
+_ALIASES = {}
+
+
+def _load_aliases(root):
+    """aidd:FR-233 {old base name: new base name} from the optional `ALIAS_FILE` graph (rows indented two
+    spaces, comma-separated, at least 2 fields). Cached per root like `_INDEX`. Unreadable/binary -> {}."""
+    key = str(root)
+    if key not in _ALIASES:
+        out = {}
+        try:
+            fp = Path(root) / ALIAS_FILE
+            if fp.is_file() and fp.stat().st_size <= MAX_READ:
+                for line in fp.read_bytes().decode('utf-8').splitlines():
+                    if not line.startswith('  '):
+                        continue
+                    fields = [f.strip() for f in line.split(',')]
+                    if len(fields) < 2:
+                        continue
+                    old, new = fields[0], fields[1]
+                    if not old or not new or new in ('.', '..') or any(c in old + new for c in '/\\\x00'):
+                        continue       # base names only: never a path that could leave the directory
+                    out[old] = new
+        except (OSError, UnicodeDecodeError, ValueError):
+            out = {}
+        except Exception:
+            out = {}
+        _ALIASES[key] = out
+    return _ALIASES[key]
+
+
+def _alias_target(root, p):
+    """aidd:FR-233 the file with the aliased base name in the same directory as `p`, when it exists and is larger
+    than `STUB_BYTES`; else None. Never raises."""
+    try:
+        d, _, base = p.strip('/').rpartition('/')
+        new = _load_aliases(root).get(base)
+        if not new:
+            return None
+        fp = _resolve(root, (d + '/' + new) if d else new)
+        if fp is not None and fp.is_file() and fp.stat().st_size > STUB_BYTES:
+            return fp
+        return None
+    except (OSError, UnicodeDecodeError, ValueError):
+        return None
+    except Exception:
+        return None
+
+
 def task_state(task, root):
-    """missing | stub | present | marked | n/a for one parsed task."""
+    """missing | stub | present | marked | renamed | n/a for one parsed task.
+    `(delete)` paths are satisfied when gone (FR-231); a target found only through a renumbered migration or the
+    alias graph makes the task `renamed` (FR-232..FR-234)."""
     paths = task['paths']
     if not paths:
         return 'n/a'
-    files = []
+    delete = set(task.get('delete') or [])
+    files, renamed = [], False
     for p in paths:
+        if p in delete:
+            if _resolve(root, p) is not None:
+                return 'missing'
+            continue
         fp = _resolve(root, p)
         if fp is None:
-            return 'missing'
+            fp = _renumbered(root, p) or _alias_target(root, p)
+            if fp is None:
+                return 'missing'
+            renamed = True
         files.append(fp)
+    if not files:
+        return 'present'
     if any(f.is_file() and f.stat().st_size < STUB_BYTES for f in files):
         return 'stub'
+    if renamed:
+        return 'renamed'
     if any(f.is_file() and _has_marker(f, task['codes'], task['id']) for f in files):
         return 'marked'
     return 'present'
@@ -229,13 +348,17 @@ def measure(root, spec_dir):
     for t in parse_tasks(text):
         rows.append({**t, 'state': task_state(t, root), 'declared_done': bool(DONE_RE.search(t['status']))})
     n = {k: sum(1 for r in rows if r['state'] == k) for k in ('missing', 'stub', 'present', 'marked', 'n/a')}
+    renamed = sum(1 for r in rows if r['state'] == 'renamed')     # aidd:FR-234 counts as present in Impl%
     stages = _stages(root, d, text)
     if stages['closed'] == 'yes':
         stages['audit'] = 'closed'      # the closing audit already happened; a later edit is not a pending audit
     measurable = len(rows) - n['n/a']
-    impl = n['present'] + n['marked']
+    impl = n['present'] + n['marked'] + renamed
     pct = lambda x: round(100.0 * x / measurable, 1) if measurable else None
-    return {'spec': d.name, 'tasks': len(rows), 'measurable': measurable, **{k.replace('/', ''): v for k, v in n.items()},
+    out = {'spec': d.name, 'tasks': len(rows), 'measurable': measurable, **{k.replace('/', ''): v for k, v in n.items()}}
+    if renamed:                         # only when it occurs, so a project without renames reports exactly as before
+        out['renamed'] = renamed
+    return {**out,
             'impl_pct': pct(impl), 'marked_pct': pct(n['marked']),
             'declared_done': sum(1 for r in rows if r['declared_done']),
             'declared_pct': round(100.0 * sum(1 for r in rows if r['declared_done']) / len(rows), 1) if rows else None,
@@ -275,7 +398,7 @@ def render(results, detail=False):
             r['na'], s['approved'], s['verify'], s['audit'], s['closed']))
         tot['tasks'] += r['tasks']
         tot['measurable'] += r['measurable']
-        tot['impl'] += r['present'] + r['marked']
+        tot['impl'] += r['present'] + r['marked'] + r.get('renamed', 0)
         tot['marked'] += r['marked']
     if tot['measurable']:
         lines.append('-' * len(head))
@@ -289,6 +412,13 @@ def render(results, detail=False):
                 lines.append('')
                 lines.append('%s: %d task(s) not implemented or not measurable' % (r['spec'], len(todo)))
                 for t in todo:
+                    lines.append('  %-7s %-8s %s' % (t['id'], t['state'], ', '.join(t['paths'])[:90]))
+            moved = [t for t in r['rows'] if t['state'] == 'renamed']   # aidd:FR-234
+            if moved:
+                lines.append('')
+                lines.append('%s: %d task(s) whose target was renamed (renumbered migration or %s)'
+                             % (r['spec'], len(moved), ALIAS_FILE))
+                for t in moved:
                     lines.append('  %-7s %-8s %s' % (t['id'], t['state'], ', '.join(t['paths'])[:90]))
     lines.append('')
     lines.append('Decl% = tasks whose Status cell says done (hand-written, not measured). Impl% = target files present; '

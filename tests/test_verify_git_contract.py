@@ -63,14 +63,15 @@ class ContractReuse(unittest.TestCase):
                 self.assertEqual(len(calls), 1)
                 cache = {}
                 self.assertEqual(status.cmd_verify('one', wave_cache=cache), 0)
+                self.assertEqual(len(calls), 1)
                 env[0] = 'env2'
                 self.assertEqual(status.cmd_verify('two', wave_cache=cache), 0)
-                self.assertEqual(len(calls), 3)
+                self.assertEqual(len(calls), 2)
                 inputs[0] = 'input2'
                 self.assertEqual(status.cmd_verify('two', wave_cache=cache), 0)
-                self.assertEqual(len(calls), 4)
+                self.assertEqual(len(calls), 3)
                 self.assertEqual(status.cmd_verify_many(['one', 'two'], full=True), 0)
-                self.assertEqual(len(calls), 6)
+                self.assertEqual(len(calls), 5)
 
     def test_contract_reuses_only_matching_environment_and_full_reruns(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -104,7 +105,7 @@ class ContractReuse(unittest.TestCase):
                 self.assertEqual(status.cmd_verify(str(spec)), 0)
                 self.assertEqual(status.cmd_verify(str(spec)), 0)
                 self.assertEqual(len(calls), 1)
-                with patch.object(status, '_contract_environment_id', side_effect=['env1', 'env2', 'env2']):
+                with patch.object(status, '_contract_environment_id', side_effect=['env1', 'env2', 'env2', 'env2']):
                     self.assertEqual(status.cmd_verify(str(spec)), 0)
                 self.assertEqual(len(calls), 2)
                 self.assertNotIn('environment_id', prior[0]['results'][0])

@@ -189,6 +189,11 @@ Commands the tool will run at close (`aidd verify`); output goes to `specs/007-a
 | V-4 | `python -m unittest tests.test_aidd_status tests.test_cli_rules tests.test_aidd_rules tests.test_r14 tests.test_check_spec` | exit 0 | FR-204, FR-205, FR-206, FR-208, AC-205, AC-206, AC-208..AC-214, AC-216, AC-218 |
 | V-5 | `python -m unittest tests.test_dot_aidd_mirror` | exit 0 | mirrors and docs identity |
 | V-6 | `python tests/e2e_review_roundtrip.py` | contains: ROUNDTRIP OK | FR-202..FR-204 end to end (generate, JS serializer under node when available, parse, consent, approve in a scratch project) |
+| V-7 | `python -m unittest discover -s tests -p "test_contract_store.py" -v` | exit 0 | T-22, T-23, AC-251..AC-258 |
+| V-8 | `python -m unittest tests.test_verify_git_contract tests.test_wave_verification tests.test_verify_regressions -v` | exit 0 | T-23, AC-257 (no regression) |
+| V-9 | `python -m unittest discover -s tests -p "test_progress_resolution.py" -v` | exit 0 | T-26, T-27, AC-261..AC-268 |
+| V-10 | `python -m unittest tests.test_aidd_progress -v` | exit 0 | T-27, AC-268 (no regression) |
+| V-11 | `python -m unittest tests.test_dot_aidd_mirror -v` | exit 0 | T-24, T-28 |
 
 Owner-run (not executable by the agent): open a generated `review.html` in a real browser and send a `review.md` (T-11 does it once with the browser tool; the owner repeats it on `F23-eDoc-POS`). Device-only checks cannot be expressed as rows in this version (Open decision O-5).
 
@@ -233,3 +238,78 @@ This amendment supersedes earlier general claims only where the new requirements
 ### Migration and review
 
 The precise raw-byte and fail-closed behavior is in the plan draft. Preserve all historical results and avoid a global reset based solely on a missing version marker; compute code-fingerprint impact per affected scope. Legacy rows without pre-existing verifiable environment proof cannot be automatically reused even when files match, and running a row again does not itself create a trustworthy environment attestation. The current runner has no such verifier: caching remains blocked where the required identity is not provable; a separate future amendment must design the verifier and measure the performance effect. SQL edits consisting only of comments or whitespace also invalidate checks in scope until a later, explicit-dialect optimization is specified and proven. No user consent is inferred from a draft.
+
+## Amendment 03/04 (2026-11-03)
+
+Integrated from `batch-staging/reuse-front1/amendment-03-reuse-first-increment.draft.md` (03: cross-spec reuse of offline-contract rows, first increment) and `specs/007-aidd-review-html-close-gate/amendment-04-task-state-resolution.draft.md` (04: `aidd pending` / `aidd progress` stop over-reporting missing work). Neither edits or replaces the `amendment-01-*` / `amendment-02-*` drafts, which stay drafts. Owner requirement for 03 (verbatim): "si una prueba es compartida no se repita". Owner direction for 04 (verbatim, 2026-11-03): "este tipo de mejoras con script que propones son las mejoras que debemos implementar en aidd". Measurements for 03: `batch-staging/reuse-front1/` (`measure_shared_rows.py`, `measure_paid_waste.py` and their outputs). Their Verification rows are V-7..V-11 of `## Verification` above (03 V-1 -> V-7, 03 V-2 -> V-8, 04 V-1 -> V-9, 04 V-2 -> V-10; the identical 03 V-3 and 04 V-3 mirror rows -> one row V-11). Synthetic temporary directories only; no database, Docker, `db_verify.py` or network.
+
+### Executive summary
+
+- **Objective (03):** extend the already-accepted same-spec historical reuse (`_reusable_input_rows`) and the in-invocation `wave_cache` to a cross-spec, cross-invocation lookup, with the same identity checks, PASS only, and a hard refusal for database runners.
+- **Not in scope (03):** generic (non-contract) sharing, the disabled whole-tree round cache, DB/network rows, node/npm/`python -m` runners, Inputs cap, amendment-02 receipts/manifest/journal.
+- **Measured value (03, b1SycLink, 2026-11-03):** 0 of 77 shared rows eligible today; after the owner opts `Payroll/tools/charter_gate.py` in and its 28 991-file input set fits the fingerprint cap, ≈25 min per full Payroll round (≈27 % of the 120.8 min strict repeated runtime measured since 2026-10-28). Without those two owner actions the saving is 0.
+- **Risk (03):** an incomplete owner `Inputs` declaration now affects every consuming spec, not one.
+- **Objective (04):** make `task_state` understand three situations that today read as `missing`: a `(delete)` target that is gone, a target renamed through an optional alias file, and a migration whose numeric prefix changed.
+- **Measured (04, b1SycLink, 2026-11-03, `tools/spec_registry.py`):** 224 tasks were flagged pending; after resolving these cases F28 went from 11 false pending to 0 (24 deleted files and 9 renamed tables recognised), and F36/F37 recognised 9 renumbered migrations. The remaining 65 "pending" were task IDs matched inside prose tables (`TASK_ID_RE` accepts any `Letters-digits` cell 0 of a table with a `Status` header).
+- **Not in scope (04):** deciding that work is done (still `aidd verify` + audit), Status-cell edits, any b1SycLink file.
+- **Risk (04):** an alias file maps the wrong names; mitigated because an alias only turns `missing` into `present` when the new file exists and has content, and it is reported as `renamed`, never hidden.
+
+### Functional requirements (amendment 03)
+
+| Code | Requirement | Source |
+|---|---|---|
+| FR-220 | After a stable `cmd_verify` run (not `--full`, not `--tasks`, not `--wave`), every PASS row that is `Reuse: hermetic`, has `Inputs`, an unchanged `input_fp`, and a non-None `_contract_environment_id` equal to the one recorded, is stored once in a project store `.aidd/evidence/contract-reuse-v1/` as a content-addressed object `<sha256>.txt` plus one entry in `.aidd/evidence/contract-reuse-v1.json`. Existing files are never overwritten; FAIL, timeout (exit -1) and reused rows are never stored. | owner brief 2026-11-03; `aidd_status.py:2457-2482` |
+| FR-221 | Before executing such a row, `cmd_verify` looks up the key (cmd, expected, ordered Inputs, input_fp, environment declaration, environment_id) in the store; it reuses the entry only if the object's sha256 matches, `_cached_pass_valid` accepts it, `row_input_fingerprint` and `_contract_environment_id` recomputed now still equal the key, and the entry's source spec differs from the current spec or is the same spec (both allowed). The reused result carries `reused: true`, `cross_spec: true`, `source_spec`, `source_sha256`, and the line printed is `CROSS-REUSED row <n> (PASS): <cmd> (passed in <source_spec> on the same Inputs and environment) → <rel>`. | owner brief 2026-11-03 |
+| FR-222 | A command is a database/external runner when, case-insensitively, it contains any of `db_verify`, `psql`, `pg_prove`, `docker`, `supabase`, `--tap`; `_contract_environment_id` returns `None` for such a command, so no reuse path (same-spec, wave, cross-spec) can ever accept it. | owner brief 2026-11-03 ("database rows are never reused across runs") |
+| FR-223 | `--full` and `AIDD_VERIFY_ROUND=off` disable FR-220 storage and FR-221 lookup; any error reading, parsing or validating the store falls back to executing the row (never a PASS without execution or valid entry), and never raises. | `aidd_status.py:1785-1787` |
+
+### Acceptance criteria (amendment 03)
+
+| Code | Scenario | Expected |
+|---|---|---|
+| AC-251 | Spec `one` verified in invocation 1; spec `two` (same contract row) verified in invocation 2 with identical Inputs and environment | `_run_row` called once in total; spec `two`'s result has `reused`, `cross_spec`, `source_spec == 'one'`; its evidence file bytes equal the stored object |
+| AC-252 | Same as AC-251 but Inputs bytes, environment id, expected or command differ in invocation 2 | Row executes in invocation 2 |
+| AC-253 | Stored object deleted, truncated or its bytes altered; index JSON corrupted | Row executes; no exception; exit code reflects the real run |
+| AC-254 | Invocation 1 row FAILS (or times out) | Nothing stored; invocation 2 executes |
+| AC-255 | Row is `python eDoc/tools/db_verify.py --psql "docker exec -i x psql"` declared hermetic with contract | `_contract_environment_id` returns `None`; never stored, never reused, executes every time |
+| AC-256 | `--full`, or `AIDD_VERIFY_ROUND=off` | No lookup, no store write; row executes |
+| AC-257 | Row without `Reuse: hermetic` / `Inputs` / `Environment` (all b1SycLink rows today) | Behaviour byte-for-byte unchanged versus current code: executes, nothing stored |
+| AC-258 | Store write fails (read-only dir) | Verification result unchanged; a `note: contract store not written (<Type>)` line printed |
+
+### Functional requirements (amendment 04)
+
+| Code | Requirement | Source |
+|---|---|---|
+| FR-230 | `parse_tasks` keeps, per task, `delete`: the list of expanded paths written as `<path> (delete)` in the Target cell. Rows without that marker have `delete == []`. | measured on b1SycLink F28 T-35..T-41 |
+| FR-231 | `task_state` treats a `delete` path as satisfied when `_resolve` finds nothing, and as `missing` while the file still exists. A task whose paths are all `delete` and all gone is `present`. | owner brief 2026-11-03 |
+| FR-232 | `_resolve` falls back, for a path with a `migrations/` directory and a `<digits>_<name>.<ext>` file name, to the single project file named `<digits>_<name>.<ext>` with a different numeric prefix. Zero or several candidates keep the path unresolved. | measured: F36 1120-1126 -> 3277-3283 |
+| FR-233 | Optional graph file `<root>/.aidd/graphs/path-aliases.toon`, same structure as the other `.toon` graphs: lines `version: 1` and `generated: <iso>`, then `aliases[N]{old,new,scope,reason}:` followed by N rows indented two spaces (base names; fields separated by commas; a row with fewer than 2 fields is ignored). When `_resolve` fails and the base name has an alias whose file exists in the same directory, that file is the target. | user — "estamos utilizando los grafos con formato toon, sigue la misma estructura"; measured: F30 `ordr_table.dart` -> `oped_table.dart` |
+| FR-234 | `task_state` returns the new value `renamed` (counts as present in `Impl%`) when FR-232/FR-233 resolved the file, so reports can show how many targets moved; `aidd progress --detail` lists them. | owner brief 2026-11-03 |
+| FR-235 | `TASK_ID_RE` rows are tasks only when the table header names a `Target file` or has `Task\|ID\|#` plus `Status`; a row whose first cell is not the first column of such a table is ignored. (Fixes prose IDs counted as tasks.) | measured: 65 prose IDs |
+
+### Acceptance criteria (amendment 04)
+
+| Code | Scenario | Expected |
+|---|---|---|
+| AC-261 | Task `(delete)` target absent | `task_state == 'present'`; counted done |
+| AC-262 | Task `(delete)` target still present | `task_state == 'missing'` |
+| AC-263 | `migrations/0120_x.sql` cited, only `migrations/3277_x.sql` exists | `renamed` |
+| AC-264 | Two files `3277_x.sql` and `3300_x.sql` exist | `missing` (ambiguous, never guessed) |
+| AC-265 | `path-aliases.toon` has the row `  ordr_table.dart,oped_table.dart,mobile,F30` and the new file exists | `renamed` |
+| AC-266 | Alias target absent, or the `.toon` file malformed/unreadable/binary | `missing`; no exception |
+| AC-267 | A prose line `\| T-42 \| ... \|` outside a task table | not returned by `parse_tasks` |
+| AC-268 | Project with none of these cases | output identical to current behaviour |
+
+### Out of scope
+
+- 03: re-enabling `round_on`; sharing rows without the offline contract; DB/network/Docker rows; node, npm, PowerShell or `python -m` runners; raising the 20 000-file Inputs cap; amendment-02 receipts, canonical manifest and journal; editing any b1SycLink spec; changing installed skills.
+- 04: deciding "done" without verification; editing any tasks.md Status; changing `aidd verify`; b1SycLink files; changing installed skills; the evidence-table generator and cross-spec reuse (own amendments).
+
+### Owner decisions required before approval (amendment 03)
+
+1. Accept that an owner `Inputs` mistake now propagates to every spec reusing that row.
+2. Whether `charter_gate.py` is opted in (b1SycLink edit of 9 Payroll `## Verification` tables) and how the 28 991-file input set is handled (narrower charter globs in b1SycLink, or a separate AIDD change to the 20 000-file cap). Without this the increment saves 0 minutes in b1SycLink.
+3. Whether the DB rows shared by F27/F36/F37/F38 (373 s each) and F28/F30/F33/F55 (305 s) are de-duplicated in the specs themselves (one full row per round, `--only-tests <prefix>` in the others) — the only measured lever for DB repetition that respects "DB rows are never reused".
+4. Whether the contract surface is later widened to `python -m pytest|unittest` (separate amendment).
+
+Amendment 04 open questions: none. Q-1 (alias file location) was answered by the owner on 2026-11-03: use the `.toon` graph format with the same structure (user — "estamos utilizando los grafos con formato toon, sigue la misma estructura"). A project generates `.aidd/graphs/path-aliases.toon` from its own rename map; AIDD only reads it.
