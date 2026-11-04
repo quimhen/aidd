@@ -669,6 +669,65 @@ def _visual_binding_unchecked(spec_dir, audit_text):
     return actual
 
 
+def _extract_mockups(spec_dir, audit_text):
+    """Extract screen inventory, snapshot paths, and component mappings from mockup-audit.md.
+    Safe: stdlib-only, resilient to missing files or headers."""
+    out = {'screens': [], 'components': []}
+    if not audit_text:
+        return out
+    spec_p = Path(spec_dir)
+    prov_snapshot = ''
+    m_prov = re.search(r'(?ims)^##\s+Provenance\s*$([\s\S]*?)(?=^##\s|\Z)', audit_text)
+    if m_prov:
+        for line in m_prov.group(1).splitlines():
+            cells = [x.strip() for x in line.strip().strip('|').split('|')]
+            if len(cells) >= 2 and cells[0].lower() == 'visual snapshot':
+                prov_snapshot = cells[1].strip('` ')
+
+    m_screens = re.search(r'(?ims)^##\s+Screen inventory\s*$([\s\S]*?)(?=^##\s|\Z)', audit_text)
+    if m_screens:
+        for line in m_screens.group(1).splitlines():
+            cells = [x.strip() for x in line.strip().strip('|').split('|')]
+            if len(cells) >= 6 and re.match(r'^SCREEN-\d+', cells[0], re.I):
+                sid = cells[0].strip()
+                name = cells[2] if len(cells) > 2 else ''
+                stype = cells[3] if len(cells) > 3 else 'view'
+                uses = [u.strip() for u in cells[4].split(',') if u.strip()] if len(cells) > 4 else []
+                purpose = cells[6] if len(cells) > 6 else ''
+                snap_path = ''
+                for cand in (spec_p / 'prototype').glob(f'*{sid}*.*') if (spec_p / 'prototype').is_dir() else []:
+                    if cand.suffix.lower() in ('.png', '.jpg', '.jpeg', '.svg', '.webp'):
+                        snap_path = f'prototype/{cand.name}'
+                        break
+                if not snap_path and prov_snapshot:
+                    snap_path = prov_snapshot
+                out['screens'].append({
+                    'id': sid,
+                    'name': name,
+                    'type': stype,
+                    'uses': uses,
+                    'purpose': purpose,
+                    'snapshot': snap_path
+                })
+
+    m_comps = re.search(r'(?ims)^##\s+Component inventory\s*$([\s\S]*?)(?=^##\s|\Z)', audit_text)
+    if m_comps:
+        for line in m_comps.group(1).splitlines():
+            cells = [x.strip() for x in line.strip().strip('|').split('|')]
+            if len(cells) >= 5 and re.match(r'^COMP-\d+', cells[0], re.I):
+                cid = cells[0].strip()
+                cname = cells[1] if len(cells) > 1 else ''
+                screens = [s.strip() for s in cells[2].split(',') if s.strip()] if len(cells) > 2 else []
+                pattern = cells[5] if len(cells) > 5 else ''
+                out['components'].append({
+                    'id': cid,
+                    'name': cname,
+                    'screens': screens,
+                    'pattern': pattern
+                })
+    return out
+
+
 def _visual_binding(spec_dir, audit_text):
     try:
         if audit_text is None and (Path(spec_dir) / 'mockup-audit.md').exists():
@@ -821,6 +880,7 @@ def _full_page(d, sources, prior, problems):
         'prior': pr.get('sections') if isinstance(pr.get('sections'), dict) else {},
         'prior_approved': bool(pr.get('approved')),
         'verification_problems': problems,
+        'mockups': _extract_mockups(d, dict(sources).get('mockup-audit.md')),
     }
     return '\n'.join(body), data
 
@@ -983,6 +1043,7 @@ def _compact_page(d, texts, prior, problems):
         'carry': carry,
         'summary': summary if isinstance(summary, dict) else {},
         'verification_problems': problems,
+        'mockups': _extract_mockups(d, texts.get('mockup-audit.md')),
     }
     return _compact_body(tabs, items, warnings, texts, problems), data
 
