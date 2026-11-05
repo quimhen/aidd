@@ -1,0 +1,101 @@
+diff --git a/eDoc/tools/db_verify.py b/eDoc/tools/db_verify.py
+index 3dc98e1..bd7ebcf 100644
+--- a/eDoc/tools/db_verify.py
++++ b/eDoc/tools/db_verify.py
+@@ -278,7 +278,22 @@ def touch_template(psql: "Psql", admin_db: str, tpl: str, failed: list | None =
+     psql.run(admin_db, f"COMMENT ON DATABASE \"{tpl}\" IS '{note}';")
+ 
+ 
+-def apply_batched(psql: "Psql", db: str, plan: list, with_dirs: bool) -> list[tuple[str, str]]:
++def snapshot_plan(plan: list) -> dict[Path, bytes]:
++    """Capture each input once; hashing and application use these exact bytes."""
++    contents = {}
++    for _kind, path in plan:
++        if path not in contents:
++            contents[path] = path.read_bytes()
++    return contents
++
++
++def snapshot_sql(data: bytes) -> str:
++    """Match Path.read_text(encoding='utf-8')'s universal-newline semantics."""
++    return data.decode('utf-8').replace('\r\n', '\n').replace('\r', '\n')
++
++
++def apply_batched(psql: "Psql", db: str, plan: list, with_dirs: bool,
++                  snapshot: dict[Path, bytes] | None = None) -> list[tuple[str, str]]:
+     """Apply every migration/seed in ONE psql session (a `docker exec psql` process costs ~0.4 s to start, which for
+     ~1000 files dwarfs the SQL itself on an empty database). Each file is preceded by ROLLBACK + DISCARD ALL so a
+     session-level SET / SET ROLE / open transaction of one file cannot leak into the next, like separate sessions.
+@@ -286,7 +301,7 @@ def apply_batched(psql: "Psql", db: str, plan: list, with_dirs: bool) -> list[tu
+     continues; unlike the per-file mode (--exact-apply) the rest of a failing file is still executed."""
+     parts, ranges, line = [], [], 1
+     for kind, path in plan:
+-        sql = path.read_text(encoding="utf-8")
++        sql = snapshot_sql(snapshot[path]) if snapshot is not None else path.read_text(encoding="utf-8")
+         if not sql.endswith("\n"):
+             sql += "\n"
+         block = "ROLLBACK;\nDISCARD ALL;\n" + sql
+@@ -787,11 +802,16 @@ def main() -> int:
+     # Template cache: applying ~1000 migrations dominates the run time, and `aidd verify` runs db_verify once
+     # per Verification row. The built (pre-pgTAP) database is kept as a template named by a content hash.
+     extra_plan = build_plan(extra_dirs_list)
++    try:
++        apply_snapshot = snapshot_plan(extra_plan)
++    except OSError as exc:
++        print(f'ERROR: cannot snapshot database inputs: {exc}', file=sys.stderr)
++        return 2
+     use_tpl = not args.no_template_cache and not args.apply_only and args.bootstrap != "never"
+-    h = hashlib.sha1(f"{args.bootstrap}|{args.single_tx}|{BOOTSTRAP_SQL}".encode("utf-8"))
++    h = hashlib.sha1(f"snapshot-v1|{args.bootstrap}|{args.single_tx}|{BOOTSTRAP_SQL}".encode("utf-8"))
+     for kind, path in extra_plan:
+         h.update(f"|{kind}|{path.name}|".encode("utf-8"))
+-        h.update(path.read_bytes())
++        h.update(apply_snapshot[path])
+     tpl = f"{DB_PREFIX}tpl_{h.hexdigest()[:16]}"
+     cached = False
+     if use_tpl:
+@@ -804,7 +824,7 @@ def main() -> int:
+     if lock is None:
+         print(f"ERROR: another db_verify run kept the test database busy for {args.lock_wait} s.", file=sys.stderr)
+         return 2
+-    current = hashlib.sha1(f"{args.bootstrap}|{args.single_tx}|{BOOTSTRAP_SQL}".encode("utf-8"))
++    current = hashlib.sha1(f"snapshot-v1|{args.bootstrap}|{args.single_tx}|{BOOTSTRAP_SQL}".encode("utf-8"))
+     for kind, path in build_plan(extra_dirs_list):
+         current.update(f"|{kind}|{path.name}|".encode("utf-8"))
+         current.update(path.read_bytes())
+@@ -866,7 +886,7 @@ def main() -> int:
+         batched = bool(plan) and not (args.exact_apply or args.single_tx or args.fail_fast)
+         if batched:
+             t_apply = time.time()
+-            failed_files = apply_batched(psql, db, plan, bool(extra_dirs_list))
++            failed_files = apply_batched(psql, db, plan, bool(extra_dirs_list), apply_snapshot)
+             failures += len(failed_files)
+             for n, e in failed_files:
+                 print(f"[FAIL] {n}  -> {e}")
+@@ -874,7 +894,7 @@ def main() -> int:
+                                         round(time.time() - t_apply, 2), ""))
+             print(f"[ok]   applied {len(plan)} files in one session ({round(time.time() - t_apply, 1)}s)")
+         for kind, path in ([] if batched else plan):
+-            sql = path.read_text(encoding="utf-8")
++            sql = snapshot_sql(apply_snapshot[path])
+             display_name = str(path) if extra_dirs_list else path.name
+             r, res = step(f"{kind} {display_name}",
+                           lambda sql=sql: psql.run(db, sql, single_tx=args.single_tx))
+@@ -892,7 +912,7 @@ def main() -> int:
+             for n, e in failed_files:
+                 print(f"  - {n}: {e}")
+ 
+-        current = hashlib.sha1(f"{args.bootstrap}|{args.single_tx}|{BOOTSTRAP_SQL}".encode("utf-8"))
++        current = hashlib.sha1(f"snapshot-v1|{args.bootstrap}|{args.single_tx}|{BOOTSTRAP_SQL}".encode("utf-8"))
+         for kind, path in build_plan(extra_dirs_list):
+             current.update(f"|{kind}|{path.name}|".encode("utf-8"))
+             current.update(path.read_bytes())
+@@ -1084,7 +1104,7 @@ def main() -> int:
+                 if tap_manifest(current_tests, args.tap_batch_allowlist) != tap_inputs:
+                     print('ERROR: pgTAP tests or allowlist changed during verification.', file=sys.stderr)
+                     failures += 1
+-            current = hashlib.sha1(f"{args.bootstrap}|{args.single_tx}|{BOOTSTRAP_SQL}".encode("utf-8"))
++            current = hashlib.sha1(f"snapshot-v1|{args.bootstrap}|{args.single_tx}|{BOOTSTRAP_SQL}".encode("utf-8"))
+             for kind, path in build_plan(extra_dirs_list):
+                 current.update(f"|{kind}|{path.name}|".encode("utf-8"))
+                 current.update(path.read_bytes())

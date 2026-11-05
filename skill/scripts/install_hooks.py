@@ -6,7 +6,7 @@ Run this ONCE after copying the aidd skill into ~/.claude/skills/ on any device:
     python ~/.claude/skills/aidd/scripts/install_hooks.py
 
 What it installs (global scope, per the user's own choice — every Claude Code
-session on this machine, not just projects that already use aidd). 12 hooks:
+session on this machine, not just projects that already use aidd). 14 hooks:
   - SessionStart   -> hooks/session_start.py    resets the per-session marker
   - PostToolUse    -> hooks/mark_invoked.py      (matcher: Skill) marks aidd invoked
   - PreToolUse     -> hooks/rule_gate.py (matcher: Write|Edit|MultiEdit|NotebookEdit|Bash|PowerShell) THE single gate
@@ -35,6 +35,7 @@ session on this machine, not just projects that already use aidd). 12 hooks:
   - PostToolUse    -> hooks/graph_refresh.py (matcher: Write|Edit|MultiEdit|NotebookEdit)
                        refreshes, in the background and silently, any registered project
                        graph that watches the edited file (AIDD_GRAPHS=off disables)
+  - PostToolUse    -> hooks/tool_first_hint.py (matcher: Write|Edit|MultiEdit|NotebookEdit|Bash|PowerShell) spec 004 FR-049: advises a script after 4 repeated edits or shell commands; never blocks
 
 MIGRATION: the three old aidd PreToolUse entries (require_aidd.py,
 require_independent_audit.py, require_graph_coherence_audit.py) are REMOVED from
@@ -82,6 +83,7 @@ HOOK_DEFS = [
     ('PreToolUse', 'Read|Grep|Glob|Bash|PowerShell', SKILL_DIR / 'hooks' / 'read_hint.py'),
     ('PreToolUse', 'Task|Agent', SKILL_DIR / 'hooks' / 'record_dispatch_pre.py'),
     ('PostToolUse', 'Write|Edit|MultiEdit|NotebookEdit', SKILL_DIR / 'hooks' / 'graph_refresh.py'),
+    ('PostToolUse', 'Write|Edit|MultiEdit|NotebookEdit|Bash|PowerShell', SKILL_DIR / 'hooks' / 'tool_first_hint.py'),
 ]
 
 # Seconds a hook may run before Claude Code kills it (a killed gate is a skipped gate, so every

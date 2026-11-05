@@ -1,0 +1,3951 @@
+diff --git a/adapters/dot-aidd/scripts/aidd_close_ledger.py b/adapters/dot-aidd/scripts/aidd_close_ledger.py
+new file mode 100644
+--- /dev/null
++++ b/adapters/dot-aidd/scripts/aidd_close_ledger.py
+@@ -0,0 +1,340 @@
++#!/usr/bin/env python3
++"""aidd_close_ledger.py - draft of a spec's closing audit (READ ONLY, stdlib, no network).  aidd: amendment 09 B12 / FR-300 (h)
++
++Usage: aidd close-ledger <spec_dir> [--check-fresh] [--json] [--domains a,b,c] [--verify-hash <hex>]
++
++Prints to stdout (never writes under specs/):
++  1. the heading `CLOSING AUDIT [domains: ...] [tasks:<h8>] [verify:<v8>]`
++  2. the `## Verification summary` table built from `## Verification` of spec.md and the
++     evidence/verify-<V-n>.txt files
++  3. with --check-fresh: the evidence files (verify-*.txt and those cited under `## Execution evidence`
++     of qa-audit.md) marked STALE when older than the newest code file of the scope; `LISTO PARA AUDITAR`
++     only when nothing is STALE or missing.
++
++Sources of the heading: domains = --domains, else the `CLOSING AUDIT [domains: ...]` of an existing
++closing-audit.md, else `aidd_rules.required_domains(spec)` (the same rule `aidd rules close` applies);
++tasks hash = the `Approved: <date> hash:<hex>` line of tasks.md; verify hash = --verify-hash, else the newest
++`verify_run` of the spec in the evidence log. An agent copies the output with its Write tool.
++Exit: 0 printed, 2 usage error (no spec.md).
++"""
++import argparse
++import datetime
++import glob
++import json
++import os
++import re
++import sys
++from pathlib import Path
++
++sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
++try:
++    import aidd_rules as rules
++except Exception:  # pragma: no cover - the script still works with its own parsers
++    rules = None
++try:
++    import aidd_evidence as ev
++except Exception:  # pragma: no cover
++    ev = None
++
++ANSI = re.compile(r"\x1b\[[0-9;]*m")
++IGNORED_DIRS = {"node_modules", "__pycache__", ".git", "dist", "build", ".venv", ".pytest_cache"}
++ROW = re.compile(r"^\|\s*(V-\d+)\s*\|\s*`(.+?)`\s*\|\s*(.*?)\s*\|")
++
++
++def read_text(path):
++    try:
++        return Path(path).read_bytes().decode("utf-8", errors="replace").replace("\r\n", "\n").replace("\r", "\n")
++    except OSError:
++        return None
++
++
++def section(text, title):
++    """Body of a `## title` section up to the next `## `."""
++    m = re.search(r"^##\s+" + re.escape(title) + r"[^\n]*\n", text, re.M)
++    if not m:
++        return ""
++    rest = text[m.end():]
++    n = re.search(r"^##\s", rest, re.M)
++    return rest[: n.start()] if n else rest
++
++
++def parse_verification(spec_text, tasks_text=""):
++    """-> (rows [{id, cmd, expected}], scope globs). Uses aidd_rules when present, else a small own parser."""
++    rows = []
++    if rules is not None:
++        for r in rules.parse_verification(spec_text):
++            rows.append({"id": r["n"], "cmd": r["cmd"], "expected": r.get("expected", "")})
++        return rows, [s for s in rules.verification_scope(spec_text, tasks_text) if s.lower() != "auto"]
++    body = section(spec_text, "Verification")
++    for line in body.split("\n"):
++        m = ROW.match(line)
++        if m:
++            rows.append({"id": m.group(1), "cmd": m.group(2), "expected": m.group(3)})
++    sm = re.search(r"^Scope:\s*(.+)$", body, re.M)
++    scope = []
++    if sm:
++        scope = [s.strip().strip("`") for s in re.split(r",\s+|,(?=[A-Za-z.\w]+/)", sm.group(1)) if s.strip()]
++        scope = [s for s in scope if s.lower() != "auto"]
++    return rows, scope
++
++
++def row_file_id(n, i):
++    """Same naming as `aidd verify` (aidd_status._row_file_id): evidence/verify-<id>.txt."""
++    s = re.sub(r"[^A-Za-z0-9_-]+", "", str(n or ""))[:20]
++    return s or str(i)
++
++
++def summarize_evidence(text):
++    """-> (exit, short result). Patterns: pgTAP, pytest, vitest, Playwright, tsc/npm."""
++    clean = ANSI.sub("", text)
++    first = clean.split("\n", 1)[0]
++    ex = ""
++    if first.startswith("#"):
++        parts = first.rsplit("|", 2)
++        if len(parts) == 3:
++            m = re.search(r"exit\s+(-?\d+)", parts[1])
++            ex = m.group(1) if m else ""
++    bits = []
++    pg = re.findall(r"RESULT:\s*OK \((\d+) failing item\(s\)\)", clean)
++    if pg:
++        oks = [(int(a), int(b)) for a, b in re.findall(r"\[ok\]\s+\S+:\s*ok=(\d+)\s+not_ok=(\d+)", clean)]
++        s = f"pgTAP RESULT: OK ({pg[-1]} failing)"
++        if oks:
++            s += f"; {len(oks)} files, ok={sum(a for a, _ in oks)} not_ok={sum(b for _, b in oks)}"
++        bits.append(s)
++    else:
++        bad = re.findall(r"RESULT:\s*(?!OK)(.+)", clean)
++        if bad:
++            bits.append("pgTAP " + bad[-1].strip())
++    passed = re.findall(r"(\d+) passed", clean)
++    failed = re.findall(r"(\d+) failed", clean)
++    if passed or failed:
++        bits.append(f"{passed[-1] if passed else 0} passed" + (f", {failed[-1]} failed" if failed else ""))
++    if not bits:
++        bits.append("no recognised pattern (tsc/npm: see exit)" if ex == "0" else "no recognised pattern")
++    return ex, "; ".join(bits)
++
++
++def find_root(spec_dir):
++    p = Path(spec_dir).resolve()
++    for cand in [p] + list(p.parents):
++        if (cand / ".aidd").is_dir() or (cand / "AGENTS.md").is_file():
++            return cand
++    for cand in [p] + list(p.parents):       # a repo without .aidd/: the folder that holds specs/
++        if cand.name == "specs":
++            return cand.parent
++    return p.parent.parent
++
++
++def tasks_hash8(spec_dir):
++    t = read_text(Path(spec_dir) / "tasks.md") or ""
++    m = re.search(r"^Approved:\s*\S+\s+hash:([0-9a-fA-F]+)", t, re.M)
++    return (m.group(1)[:8], None) if m else ("????????", "tasks.md has no `Approved: <date> hash:<hex>` line")
++
++
++def verify_hash_from_log(root, spec_name):
++    if ev is None:
++        return None
++    try:
++        run = ev.latest_verify_run(root, spec_name)
++    except Exception:
++        return None
++    return (run or {}).get("verify_hash") or None
++
++
++def domains_from_audit(spec_dir):
++    t = read_text(Path(spec_dir) / "closing-audit.md")
++    if t:
++        m = re.search(r"CLOSING AUDIT \[domains:\s*([^\]]*)\]", t)
++        if m:
++            return [d.strip() for d in m.group(1).split(",") if d.strip()]
++    return None
++
++
++def task_targets(spec_dir):
++    """Backticked paths of the 3rd column of every `| T-nn |` row (works with or without a header)."""
++    t = read_text(Path(spec_dir) / "tasks.md") or ""
++    out = []
++    for line in t.split("\n"):
++        if re.match(r"^\|\s*T-\d+", line):
++            cols = [c.strip() for c in line.split("|")]
++            if len(cols) > 3:
++                out += [m.group(1) for m in re.finditer(r"`([^`]+)`", cols[3])]
++    if rules is not None:
++        out += [x for x in rules.task_targets(t) if x not in out]
++    return out
++
++
++def newest_code(root, patterns):
++    """(mtime, path) of the newest code file the patterns cover; (None, None) when none."""
++    best = (None, None)
++    for pat in patterns:
++        pat = pat.replace("\\", "/")
++        for f in glob.glob(str(Path(root) / pat), recursive=True):
++            fp = Path(f)
++            cands = [fp] if fp.is_file() else [q for q in fp.rglob("*") if q.is_file()]
++            for q in cands:
++                if IGNORED_DIRS & set(q.parts):
++                    continue
++                try:
++                    mt = q.stat().st_mtime
++                except OSError:
++                    continue
++                if best[0] is None or mt > best[0]:
++                    best = (mt, str(q.relative_to(root)).replace("\\", "/") if Path(root) in q.parents else str(q))
++    return best
++
++
++def cited_evidence(spec_dir, root):
++    t = read_text(Path(spec_dir) / "qa-audit.md") or ""
++    body = section(t, "Execution evidence")
++    paths = []
++    for line in body.split("\n"):
++        if not line.startswith("|") or re.match(r"^\|\s*(Code|-)", line):
++            continue
++        for m in re.finditer(r"[\w.\-]+(?:[/\\][\w.\- ]+)+", line):
++            tok = m.group(0).strip().replace("\\", "/")
++            if tok not in paths:
++                paths.append(tok)
++    out = []
++    for tok in paths:
++        for base in (Path(root), Path(spec_dir)):
++            if (base / tok).exists():
++                out.append((tok, base / tok))
++                break
++        else:
++            out.append((tok, None))
++    return out
++
++
++def mtime_of(p):
++    if p.is_dir():
++        files = [q.stat().st_mtime for q in p.rglob("*") if q.is_file()]
++        return min(files) if files else p.stat().st_mtime
++    return p.stat().st_mtime
++
++
++def build(spec_dir, domains=None, verify_hash=None, check_fresh=False):
++    spec_dir = Path(spec_dir)
++    root = find_root(spec_dir)
++    name = spec_dir.resolve().name
++    warnings = []
++    spec_text = read_text(spec_dir / "spec.md") or ""
++    tasks_text = read_text(spec_dir / "tasks.md") or ""
++    vrows, scope = parse_verification(spec_text, tasks_text)
++
++    if not domains:
++        domains = domains_from_audit(spec_dir)
++    if not domains and rules is not None:
++        domains = sorted(rules.required_domains(spec_dir))
++    if not domains:
++        domains = []
++        warnings.append("unknown domains: pass --domains a,b,c")
++    h8, w = tasks_hash8(spec_dir)
++    if w:
++        warnings.append(w)
++    vh = verify_hash or verify_hash_from_log(root, name)
++    if not vh:
++        v8 = "????????"
++        warnings.append("verify hash not found in the evidence log: pass --verify-hash <hex>")
++    else:
++        v8 = vh[:8]
++    header = f"CLOSING AUDIT [domains: {', '.join(domains)}] [tasks:{h8}] [verify:{v8}]"
++
++    rows = []
++    ev_dir = spec_dir / "evidence"
++    for i, r in enumerate(vrows, 1):
++        f = ev_dir / f"verify-{row_file_id(r['id'], i)}.txt"
++        t = read_text(f)
++        if t is None:
++            rows.append({**r, "exit": "?", "result": "FALTA evidencia", "evidence": f"evidence/{f.name}",
++                         "_path": None})
++        else:
++            ex, res = summarize_evidence(t)
++            rows.append({**r, "exit": ex or "?", "result": res, "evidence": f"evidence/{f.name}", "_path": f})
++
++    data = {"spec": name, "header": header, "warnings": warnings, "rows": [], "check_fresh": check_fresh,
++            "stale": [], "missing": [], "scope": scope, "newest_code": None, "ready": False}
++
++    if check_fresh:
++        patterns = scope or task_targets(spec_dir)
++        data["scope_source"] = "Scope:" if scope else "Target file of tasks.md"
++        mt, who = newest_code(root, patterns)
++        if mt is None:
++            warnings.append("scope has no code files: freshness cannot be checked")
++        else:
++            data["newest_code"] = {"path": who, "mtime": mt}
++        files = [(f"evidence/{r['evidence'].split('/')[-1]}", r["_path"]) for r in rows]
++        files += cited_evidence(spec_dir, root)
++        seen, checked = set(), []
++        for label, p in files:
++            if label in seen:
++                continue
++            seen.add(label)
++            if p is None:
++                data["missing"].append(label)
++                checked.append({"file": label, "status": "FALTA"})
++                continue
++            m = mtime_of(p)
++            stale = mt is not None and m < mt
++            checked.append({"file": label, "status": "STALE" if stale else "OK", "mtime": m})
++            if stale:
++                data["stale"].append(label)
++        data["checked"] = checked
++        data["ready"] = bool(mt is not None and not data["stale"] and not data["missing"] and rows)
++    for r in rows:
++        r.pop("_path", None)
++        data["rows"].append(r)
++    return data
++
++
++def render_text(d):
++    out = [d["header"], ""]
++    for w in d["warnings"]:
++        out.append(f"> AVISO: {w}")
++    if d["warnings"]:
++        out.append("")
++    out += ["## Verification summary", "", "| # | Command | Exit | Result | Evidence |", "|---|---|---|---|---|"]
++    for r in d["rows"]:
++        cmd = r["cmd"].replace("|", "\\|")
++        out.append(f"| {r['id']} | `{cmd}` | {r['exit']} | {r['result']} | {r['evidence']} |")
++    if d["check_fresh"]:
++        out += ["", "## Frescura de la evidencia", ""]
++        nc = d.get("newest_code")
++        if nc:
++            ts = datetime.datetime.fromtimestamp(nc["mtime"]).isoformat(timespec="seconds")
++            out.append(f"Codigo mas reciente del alcance ({d.get('scope_source')}): {nc['path']} ({ts})")
++        else:
++            out.append("Codigo mas reciente del alcance: no determinado")
++        out.append("")
++        for c in d.get("checked", []):
++            out.append(f"- {c['status']}: {c['file']}")
++        out.append("")
++        out.append("LISTO PARA AUDITAR" if d["ready"] else
++                   "NO LISTO: hay evidencia STALE o faltante, o el alcance no se pudo comprobar. "
++                   "Re-ejecutar `aidd verify` antes de auditar.")
++    return "\n".join(out) + "\n"
++
++
++def main(argv=None):
++    ap = argparse.ArgumentParser(prog="aidd close-ledger", description="Closing-audit draft of a spec (read only).")
++    ap.add_argument("spec")
++    ap.add_argument("--check-fresh", action="store_true")
++    ap.add_argument("--json", action="store_true")
++    ap.add_argument("--domains")
++    ap.add_argument("--verify-hash")
++    a = ap.parse_args(argv)
++    spec = Path(a.spec)
++    if not (spec / "spec.md").is_file():
++        print(f"ERROR: {spec / 'spec.md'} does not exist", file=sys.stderr)
++        return 2
++    doms = [x.strip() for x in a.domains.split(",") if x.strip()] if a.domains else None
++    d = build(spec, doms, a.verify_hash, a.check_fresh)
++    if hasattr(sys.stdout, "reconfigure"):
++        sys.stdout.reconfigure(encoding="utf-8")
++    print(json.dumps(d, ensure_ascii=False, indent=2) if a.json else render_text(d), end="" if not a.json else "\n")
++    return 0
++
++
++if __name__ == "__main__":
++    sys.exit(main())
+diff --git a/adapters/dot-aidd/scripts/aidd_red.py b/adapters/dot-aidd/scripts/aidd_red.py
+new file mode 100644
+--- /dev/null
++++ b/adapters/dot-aidd/scripts/aidd_red.py
+@@ -0,0 +1,279 @@
++#!/usr/bin/env python3
++"""aidd_red.py - RED receipt for a test task (stdlib).  aidd: amendment 09 B5 / FR-297 (E10 (d))
++
++Usage:
++  aidd red <test-cmd...> --task T-nn [--spec <id|dir>] [--timeout S]
++      Runs the test command from the project root. It MUST fail (exit != 0): then it writes the receipt
++      `specs/<id>/evidence/red-T-nn.txt` (command, exit code, first failing line, timestamp, sha1 of the
++      test file) and exits 0. If the command passes it prints `NO-RED: el test pasó, no hay RED`, writes
++      nothing and exits 1. `--task`/`--spec`/`--timeout` may stand anywhere; use `--` to pass the
++      command verbatim (`aidd red --task T-01 -- python -m pytest -x tests/t.py`).
++  aidd red --check <id|dir>
++      Lists the receipts present (and whether the test file changed since) and every task with
++      `Agent role: tests` that has no receipt (`MISSING: T-nn`; exit 1). A task block with a line
++      `RED: exempt (<reason>)` (pure refactor with an existing test) is listed as EXEMPT.
++
++The receipt is written by this CLI process, the only writer of evidence/ under rule R9 (the same way
++`aidd verify` writes evidence/verify-*.txt). Exit: 0 ok, 1 no RED / missing receipts, 2 usage error.
++"""
++import datetime
++import hashlib
++import os
++import re
++import subprocess
++import sys
++from pathlib import Path
++
++sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
++try:
++    import aidd_evidence as ev
++except Exception:  # pragma: no cover
++    ev = None
++
++FAIL_RE = re.compile(r"(AssertionError|FAILED|FAIL\b|Error\b|Exception|not ok|✗|✘|Cannot find|panicked|expected)", re.I)
++TASK_RE = re.compile(r"^T-\d+$")
++
++
++def _root():
++    if ev is not None:
++        return ev.find_root()
++    cur = Path.cwd().resolve()
++    for d in [cur] + list(cur.parents):
++        if (d / "specs").is_dir() or (d / ".aidd").is_dir():
++            return d
++    return cur
++
++
++def resolve_spec(root, spec_arg):
++    """-> spec dir Path or None. `spec_arg` is an id, a path, or None (active spec, else the only spec)."""
++    if spec_arg:
++        for cand in (Path(spec_arg), root / spec_arg, root / "specs" / spec_arg):
++            if (cand / "spec.md").is_file():
++                return cand.resolve()
++        return None
++    active = ev.get_active_spec(root) if ev is not None else None
++    if active and (root / "specs" / active / "spec.md").is_file():
++        return (root / "specs" / active).resolve()
++    dirs = [p.parent for p in (root / "specs").glob("*/spec.md")] if (root / "specs").is_dir() else []
++    return dirs[0].resolve() if len(dirs) == 1 else None
++
++
++def split_args(argv):
++    """-> (cmd list, task, spec, timeout, error). Flags may stand anywhere unless a `--` fixes the command."""
++    task = spec = timeout = None
++    cmd = []
++    rest = list(argv)
++    tail = []
++    if "--" in rest:
++        i = rest.index("--")
++        rest, tail = rest[:i], rest[i + 1:]
++    i = 0
++    while i < len(rest):
++        a = rest[i]
++        if a in ("--task", "--spec", "--timeout") and i + 1 < len(rest):
++            v = rest[i + 1]
++            if a == "--task":
++                task = v
++            elif a == "--spec":
++                spec = v
++            else:
++                timeout = v
++            i += 2
++            continue
++        m = re.match(r"^(--task|--spec|--timeout)=(.*)$", a)
++        if m and not tail:
++            k, v = m.groups()
++            if k == "--task":
++                task = v
++            elif k == "--spec":
++                spec = v
++            else:
++                timeout = v
++            i += 1
++            continue
++        cmd.append(a)
++        i += 1
++    cmd += tail
++    return cmd, task, spec, timeout
++
++
++def find_test_file(root, cmd, spec_dir, task):
++    """Relative path of the test file: first command argument naming an existing file (pytest `::node`
++    stripped), else the Target file of the task in tasks.md, else ''."""
++    for a in cmd[1:] if len(cmd) > 1 else cmd:
++        base = a.split("::", 1)[0]
++        if not base or base.startswith("-"):
++            continue
++        p = (root / base)
++        if p.is_file() and not base.endswith(".exe"):
++            return base.replace("\\", "/")
++    tgt = task_targets(spec_dir).get(task) if spec_dir else None
++    return tgt or ""
++
++
++def task_targets(spec_dir):
++    """{T-nn: first backticked path of its table row (3rd column)}."""
++    try:
++        t = (Path(spec_dir) / "tasks.md").read_text(encoding="utf-8", errors="replace")
++    except OSError:
++        return {}
++    out = {}
++    for line in t.splitlines():
++        m = re.match(r"^\|\s*(T-\d+)\s*\|", line)
++        if m:
++            cols = [c.strip() for c in line.split("|")]
++            if len(cols) > 3:
++                p = re.search(r"`([^`]+)`", cols[3])
++                if p:
++                    out[m.group(1)] = p.group(1)
++    return out
++
++
++def task_roles(spec_dir):
++    """{T-nn: {'role': str, 'exempt': bool}} from the `### T-nn` blocks of tasks.md."""
++    try:
++        t = (Path(spec_dir) / "tasks.md").read_text(encoding="utf-8", errors="replace")
++    except OSError:
++        return {}
++    out = {}
++    blocks = re.split(r"^#{2,4}\s+(?=T-\d+)", t, flags=re.M)[1:]
++    for b in blocks:
++        m = re.match(r"(T-\d+)", b)
++        if not m:
++            continue
++        r = re.search(r"Agent role:\s*([A-Za-z]+)", b)
++        out[m.group(1)] = {"role": (r.group(1).lower() if r else ""),
++                           "exempt": bool(re.search(r"^[ \t>*-]*RED:\s*exempt\b", b, re.I | re.M))}
++    return out
++
++
++def first_failure(output):
++    lines = [ln.strip() for ln in output.splitlines() if ln.strip()]
++    for ln in lines:
++        if FAIL_RE.search(ln) and not ln.startswith("Traceback"):
++            return ln[:300]
++    return lines[0][:300] if lines else "(no output)"
++
++
++def sha1_of(path):
++    try:
++        return hashlib.sha1(Path(path).read_bytes()).hexdigest()
++    except OSError:
++        return ""
++
++
++def cmd_run(argv):
++    cmd, task, spec_arg, timeout = split_args(argv)
++    if not cmd or not task or not TASK_RE.match(task):
++        print("Usage: aidd red <test-cmd...> --task T-nn [--spec <id>]   |   aidd red --check <spec>", file=sys.stderr)
++        return 2
++    root = _root()
++    spec_dir = resolve_spec(root, spec_arg)
++    if spec_dir is None:
++        print("ERROR: spec not found or ambiguous: pass --spec <id>", file=sys.stderr)
++        return 2
++    try:
++        tmo = float(timeout or os.environ.get("AIDD_RED_TIMEOUT") or 600)
++    except ValueError:
++        print("ERROR: invalid --timeout", file=sys.stderr)
++        return 2
++    started = datetime.datetime.now().isoformat(timespec="seconds")
++    try:
++        if len(cmd) == 1:
++            res = subprocess.run(cmd[0], shell=True, cwd=str(root), capture_output=True, timeout=tmo)
++        else:
++            res = subprocess.run(cmd, cwd=str(root), capture_output=True, timeout=tmo)
++    except subprocess.TimeoutExpired:
++        print(f"ERROR: the test command exceeded {tmo:g}s; no receipt written", file=sys.stderr)
++        return 2
++    except OSError as e:
++        print(f"ERROR: cannot run the command ({type(e).__name__}: {e}); no receipt written", file=sys.stderr)
++        return 2
++    code = res.returncode
++    output = (res.stdout + b"\n" + res.stderr).decode("utf-8", errors="replace").replace("\r\n", "\n")
++    if code == 0:
++        print("NO-RED: el test pasó, no hay RED")
++        return 1
++    test_file = find_test_file(root, cmd, spec_dir, task)
++    sha = sha1_of(root / test_file) if test_file else ""
++    command = " ".join(f'"{c}"' if " " in c else c for c in cmd)
++    body = [f"# RED {task} | exit {code} | {started}",
++            f"command: {command}",
++            f"exit: {code}",
++            f"first_failure: {first_failure(output)}",
++            f"timestamp: {started}",
++            f"test_file: {test_file or '(unknown)'}",
++            f"test_file_sha1: {sha or '(none)'}",
++            "--- output (first 60 lines) ---"]
++    body += output.strip("\n").split("\n")[:60]
++    evid = spec_dir / "evidence"
++    try:
++        evid.mkdir(parents=True, exist_ok=True)
++        (evid / f"red-{task}.txt").write_text("\n".join(body) + "\n", encoding="utf-8")
++    except OSError as e:
++        print(f"ERROR: cannot write the receipt ({type(e).__name__})", file=sys.stderr)
++        return 2
++    print(f"RED receipt: {spec_dir.name}/evidence/red-{task}.txt (exit {code}; {first_failure(output)})")
++    return 0
++
++
++def parse_receipt(path):
++    out = {}
++    try:
++        for ln in Path(path).read_text(encoding="utf-8", errors="replace").splitlines()[1:12]:
++            m = re.match(r"^(\w+):\s*(.*)$", ln)
++            if m:
++                out[m.group(1)] = m.group(2)
++    except OSError:
++        pass
++    return out
++
++
++def cmd_check(argv):
++    if len(argv) != 1:
++        print("Usage: aidd red --check <spec>", file=sys.stderr)
++        return 2
++    root = _root()
++    spec_dir = resolve_spec(root, argv[0])
++    if spec_dir is None:
++        print(f"ERROR: spec not found: {argv[0]}", file=sys.stderr)
++        return 2
++    roles = task_roles(spec_dir)
++    targets = task_targets(spec_dir)
++    evid = spec_dir / "evidence"
++    receipts = {p.stem[4:]: p for p in sorted(evid.glob("red-T-*.txt"))} if evid.is_dir() else {}
++    missing = 0
++    for tid in sorted(set(roles) | set(receipts)):
++        info = roles.get(tid, {})
++        if tid in receipts:
++            r = parse_receipt(receipts[tid])
++            line = f"OK: {tid} evidence/{receipts[tid].name} (exit {r.get('exit', '?')})"
++            tf = r.get("test_file", "")
++            if tf and tf != "(unknown)" and r.get("test_file_sha1") not in (None, "(none)"):
++                if sha1_of(root / tf) != r["test_file_sha1"]:
++                    line += " - test file changed since the receipt"
++            print(line)
++        elif info.get("role") == "tests":
++            if info.get("exempt"):
++                print(f"EXEMPT: {tid} (declared RED: exempt)")
++            else:
++                missing += 1
++                print(f"MISSING: {tid} role=tests target={targets.get(tid, '?')} has no evidence/red-{tid}.txt")
++    print(f"RED check: {len(receipts)} receipt(s), {missing} test task(s) without receipt")
++    return 1 if missing else 0
++
++
++def main(argv=None):
++    argv = list(sys.argv[1:] if argv is None else argv)
++    if hasattr(sys.stdout, "reconfigure"):
++        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
++    if argv and argv[0] == "--check":
++        return cmd_check(argv[1:])
++    if not argv or argv[0] in ("-h", "--help"):
++        print(__doc__)
++        return 0 if argv else 2
++    return cmd_run(argv)
++
++
++if __name__ == "__main__":
++    sys.exit(main())
+diff --git a/aidd/cli.py b/aidd/cli.py
+--- a/aidd/cli.py
++++ b/aidd/cli.py
+@@ -1,660 +1,673 @@
+-"""aidd — command-line entry point.
+-
+-A thin dispatcher, not a reimplementation: every subcommand shells out to the
+-matching stdlib-only script under skill/scripts/, the same scripts the
+-Claude Code skill's hooks call. One implementation, two distribution
+-channels (this CLI for a human at a terminal or CI; the skill's hooks for an
+-AI agent) — never two copies of the logic to keep in sync.
+-"""
+-import argparse
+-import json
+-import os
+-import subprocess
+-import sys
+-from pathlib import Path
+-
+-
+-def _find_scripts_dir() -> Path:
+-    """Locate the aidd scripts. Order (the INSTALLED skill is the single source of truth, never a source repo):
+-    1. $AIDD_HOME/scripts, 2. ~/.claude/skills/aidd/scripts (the skill installed for the current user),
+-    3. the copy bundled in the wheel, 4. the repo checkout (only when running straight from a clone, e.g. while
+-    developing aidd itself). A global install therefore never points at a source checkout, and updating the skill
+-    folder is enough to update the command."""
+-    here = Path(__file__).resolve()
+-    candidates = []
+-    if os.environ.get("AIDD_HOME"):
+-        candidates.append(Path(os.environ["AIDD_HOME"]).expanduser() / "scripts")
+-    candidates += [Path.home() / ".claude" / "skills" / "aidd" / "scripts",
+-                   here.parent / "_data" / "skill" / "scripts",       # bundled in the wheel
+-                   here.parent.parent / "skill" / "scripts"]          # repo checkout (development only)
+-    for candidate in candidates:
+-        if (candidate / "find_spec.py").is_file():
+-            return candidate
+-    raise SystemExit(
+-        "Could not locate the aidd scripts. Looked at:\n  "
+-        + "\n  ".join(str(c) for c in candidates)
+-        + "\nInstall the skill (copy it to ~/.claude/skills/aidd) or set AIDD_HOME to its folder."
+-    )
+-
+-
+-def _run(script_name: str, args: list, cwd: Path = None) -> int:
+-    scripts_dir = _find_scripts_dir()
+-    result = subprocess.run(
+-        [sys.executable, str(scripts_dir / script_name), *args],
+-        cwd=str(cwd) if cwd else None,
+-    )
+-    return result.returncode
+-
+-
+-def cmd_search(args):
+-    return _run("find_spec.py", args.query)
+-
+-
+-def cmd_tree(args):
+-    return _run("find_spec.py", ["--tree", args.spec_id])
+-
+-
+-def cmd_list(args):
+-    return _run("find_spec.py", ["--list"])
+-
+-
+-def cmd_reindex(args):
+-    return _run("find_spec.py", ["--reindex"])
+-
+-
+-def cmd_check(args):
+-    return _run("check_spec.py", [args.spec_dir])
+-
+-
+-def cmd_readiness(args):
+-    extra = [args.spec_dir]
+-    if args.output:
+-        extra.extend(["--output", args.output])
+-    return _run("aidd_readiness.py", extra)
+-
+-
+-def cmd_navigator(args):
+-    return _run("aidd_navigator.py", [args.project, "--output", args.output])
+-
+-
+-def cmd_runtime(args):
+-    print(json.dumps({'python': sys.executable, 'cli': str(Path(__file__).resolve()),
+-                      'scripts': str(_find_scripts_dir().resolve()),
+-                      'pycache_prefix': sys.pycache_prefix}))
+-    return 0
+-
+-
+-def cmd_flow(args):
+-    extra = [args.flow_file]
+-    for flag, on in (("--check", args.check), ("--pseudo", args.pseudo), ("--mermaid", args.mermaid), ("--open", args.open)):
+-        if on:
+-            extra.append(flag)
+-    if args.output:
+-        extra += ["-o", args.output]
+-    if args.spec_dir:
+-        extra += ["--spec-dir", args.spec_dir]
+-    return _run("flowmap.py", extra)
+-
+-
+-def cmd_mem(args):
+-    # Everything after `aidd mem` is forwarded verbatim to aidd_memory.py
+-    # (add / search / show / timeline / file / inject / compact / stats /
+-    # import-claude-mem), so the CLI and the skill share one implementation.
+-    return _run("aidd_memory.py", args.mem_args)
+-
+-
+-def cmd_status(args):
+-    # Pure passthrough to aidd_status.py (`status [spec_dir] [--json]`).
+-    return _run("aidd_status.py", ["status", *args.status_args])
+-
+-
+-def cmd_progress(args):
+-    out = list(args.spec_dirs)
+-    if args.root:
+-        out += ["--root", args.root]
+-    out += [f for f, on in (("--json", args.json), ("--detail", args.detail), ("--no-write", args.no_write),
+-                            ("--quiet", args.quiet)) if on]
+-    return _run("aidd_progress.py", out)
+-
+-
+-def cmd_pending(args):
+-    # Passthrough to aidd_pending.py (`<spec_dir|tasks.md> [--root DIR] [--json]`).
+-    return _run("aidd_pending.py", args.pending_args)
+-
+-
+-def cmd_install(args):
+-    # Passthrough to install_host.py (`install <host> <root> [--force] [--json]`).
+-    # Deliberately not cmd_init: that one rmtree's .aidd/; install_host never deletes.
+-    # `--host` may be omitted only together with --githooks (git hooks alone).
+-    if not args.host and not args.githooks:
+-        print("aidd install: error: --host is required unless --githooks is given", file=sys.stderr)
+-        return 2
+-    out = ["install"]
+-    if args.host:
+-        out.append(args.host)
+-    out.append(args.project_root)
+-    if args.githooks:
+-        out.append("--githooks")
+-    if args.force:
+-        out.append("--force")
+-    if args.json:
+-        out.append("--json")
+-    return _run("install_host.py", out)
+-
+-
+-def cmd_next(args):
+-    # Passthrough to aidd_next.py (`[spec_dir] [--write] [--json]`); exit code propagated.
+-    out = [args.spec_dir] if args.spec_dir else []
+-    out += [f for f, on in (("--write", args.write), ("--json", args.json)) if on]
+-    return _run("aidd_next.py", out)
+-
+-
+-def cmd_guard(args):
+-    # Passthrough to aidd_guard.py (`commit|push [--root DIR]`); exit code propagated.
+-    out = [args.action]
+-    if args.root:
+-        out += ["--root", args.root]
+-    return _run("aidd_guard.py", out)
+-
+-
+-def cmd_doctor(args):
+-    # Passthrough to aidd_doctor.py (`[--host H] [--root DIR] [--json]`).
+-    out = ["--root", args.root]
+-    if args.host:
+-        out += ["--host", args.host]
+-    if args.json:
+-        out.append("--json")
+-    return _run("aidd_doctor.py", out)
+-
+-
+-def cmd_calibrate(args):
+-    # Passthrough to aidd_calibrate.py (`record <spec_dir>`).
+-    return _run("aidd_calibrate.py", [args.action, args.spec_dir])
+-
+-
+-def cmd_rules(args):
+-    # Pure passthrough to aidd_status.py (`rules check|approve|close|abandon <spec>`).
+-    return _run("aidd_status.py", ["rules", *args.rules_args])
+-
+-
+-def cmd_review(args):
+-    # aidd:FR-202 aidd:FR-203 aidd:FR-303 aidd:FR-309 aidd:FR-313 — passthrough to aidd_review.py
+-    # (`<spec_dir> [--open] [--check] [--wait] [--comments] [--summary] [--full] [--timeout S]
+-    # [--interval S]`); aidd_review.py owns the parsing.
+-    return _run("aidd_review.py", [args.spec_dir, *args.review_flags])
+-
+-
+-def cmd_verify(args):
+-    # aidd:FR-205 — passthrough to aidd_status.py (`verify <spec>`); main() short-circuits it.
+-    return _run("aidd_status.py", ["verify", *args.verify_args])
+-
+-
+-def cmd_check_charter(args):
+-    return _run("check_charter.py", [args.root] if args.root else [])
+-
+-
+-def cmd_tasks_to_issues(args):
+-    # Every provider-specific flag (--provider, --repo, --org, --project,
+-    # --work-item-type, --workspace, --repo-slug) is forwarded verbatim via
+-    # `provider_args` (argparse.REMAINDER below) instead of re-declared here
+-    # one by one — tasks_to_issues.py's own argparse is the single source of
+-    # truth for what a provider accepts; this CLI never re-lists it and so
+-    # can't drift out of sync with it the way the old --repo-only version did.
+-    return _run("tasks_to_issues.py", [args.tasks_md, *args.provider_args])
+-
+-
+-def cmd_marketplace_list(args):
+-    return _run("marketplace.py", ["list"])
+-
+-
+-def cmd_marketplace_search(args):
+-    return _run("marketplace.py", ["search", args.query])
+-
+-
+-def cmd_marketplace_install(args):
+-    mp_args = ["install", args.package_id, args.project_root]
+-    if args.force:
+-        mp_args.append("--force")
+-    return _run("marketplace.py", mp_args)
+-
+-
+-def cmd_marketplace_remove(args):
+-    mp_args = ["remove", args.package_id, args.project_root]
+-    if args.force:
+-        mp_args.append("--force")
+-    return _run("marketplace.py", mp_args)
+-
+-
+-def cmd_adapters_list(args):
+-    return _run("generate_adapters.py", ["--list"])
+-
+-
+-def cmd_adapters_generate(args):
+-    generate_args = [args.target, args.project_root]
+-    if args.force:
+-        generate_args.append("--force")
+-    return _run("generate_adapters.py", generate_args)
+-
+-
+-def cmd_extensions_list(args):
+-    return _run("extension_registry.py", ["list"])
+-
+-
+-def cmd_extensions_info(args):
+-    return _run("extension_registry.py", ["info", args.id])
+-
+-
+-def cmd_extensions_enable(args):
+-    return _run("extension_registry.py", ["enable", args.id])
+-
+-
+-def cmd_extensions_disable(args):
+-    return _run("extension_registry.py", ["disable", args.id])
+-
+-
+-def cmd_tracker_sync(args):
+-    # Same forwarding discipline as cmd_tasks_to_issues: only the positional
+-    # tasks_md is declared here, every provider-specific flag (--provider,
+-    # --repo, --org, --project, --work-item-type, --workspace, --repo-slug,
+-    # --apply) is forwarded verbatim via provider_args (argparse.REMAINDER).
+-    return _run("sync_issues.py", [args.tasks_md, *args.provider_args])
+-
+-
+-def cmd_tracker_link_pr(args):
+-    # tasks_md is a positional here (unlike link_pr_to_task.py's own
+-    # --tasks-md flag) so it anchors argparse.REMAINDER the same way
+-    # cmd_tasks_to_issues/cmd_tracker_sync's leading positional does.
+-    # argparse.REMAINDER only swallows a trailing run of flag-looking
+-    # tokens (--pr-url, --branch, --task-id, --provider, --apply, ...)
+-    # when a bare positional value precedes them; a REMAINDER-only
+-    # subparser with --tasks-md declared as its own leading flag breaks
+-    # (the first "--task-id"-shaped token after --tasks-md's value gets
+-    # eaten as an unrecognized optional instead of forwarded — verified
+-    # empirically). Translating back to --tasks-md here keeps
+-    # link_pr_to_task.py's own CLI untouched.
+-    return _run("link_pr_to_task.py", ["--tasks-md", args.tasks_md, *args.link_args])
+-
+-
+-def cmd_ci_install(args):
+-    ci_args = [args.target, args.project_root]
+-    if args.force:
+-        ci_args.append("--force")
+-    return _run("install_ci.py", ci_args)
+-
+-
+-def cmd_init(args):
+-    """Copy the tool-agnostic .aidd/ bundle (methodology + templates +
+-    scripts, no Claude-specific pieces) into a target project. This is
+-    exactly what adapters/README.md's manual `cp -r dot-aidd <project>/.aidd`
+-    step does — automated, so it's one command instead of a copy-paste."""
+-    import shutil
+-
+-    here = Path(__file__).resolve()
+-    source = next((r / "adapters" / "dot-aidd" for r in (here.parent.parent, here.parent / "_data")
+-                   if (r / "adapters" / "dot-aidd").is_dir()),
+-                  here.parent.parent / "adapters" / "dot-aidd")
+-    if not source.is_dir():
+-        print(f"Could not find the .aidd bundle to install (looked at {source}).", file=sys.stderr)
+-        return 2
+-
+-    target = Path(args.target).resolve() / ".aidd"
+-    if target.exists() and not args.force:
+-        print(f"{target} already exists — pass --force to overwrite, or remove it first.", file=sys.stderr)
+-        return 1
+-
+-    if target.exists():
+-        shutil.rmtree(target)
+-    shutil.copytree(source, target, ignore=shutil.ignore_patterns("__pycache__"))
+-    print(f"Installed AIDD's methodology + scripts to {target}")
+-    print("Next: add AGENTS.md's AIDD section (see adapters/AGENTS.md.snippet) so your")
+-    print("agent tool actually reads it — `aidd init` alone doesn't wire that up.")
+-    print("For Gemini CLI, Cursor, Windsurf, Cline, or GitHub Copilot, also run:")
+-    print(f"  aidd adapters generate all {args.target}")
+-    print("For Gemini CLI, OpenCode or Antigravity with enforced gates, run: aidd install --host <gemini|opencode|antigravity>")
+-    return 0
+-
+-
+-def build_parser():
+-    parser = argparse.ArgumentParser(
+-        prog="aidd",
+-        description="AIDD — a methodology for working with AI coding agents.",
+-    )
+-    sub = parser.add_subparsers(dest="command", required=True)
+-
+-    p_init = sub.add_parser("init", help="Install the .aidd/ bundle into a project")
+-    p_init.add_argument("target", nargs="?", default=".", help="Target project directory (default: cwd)")
+-    p_init.add_argument("--force", action="store_true", help="Overwrite an existing .aidd/")
+-    p_init.set_defaults(func=cmd_init)
+-
+-    p_search = sub.add_parser("search", help="Search the spec graph before creating something new")
+-    p_search.add_argument("query", nargs="+", help="Keywords or a SCREEN-XX/CTL-nnn/COMP-nnn/API-nnn code")
+-    p_search.set_defaults(func=cmd_search)
+-
+-    p_tree = sub.add_parser("tree", help="Print one spec's use-case -> screen -> component -> control -> API graph")
+-    p_tree.add_argument("spec_id")
+-    p_tree.set_defaults(func=cmd_tree)
+-
+-    p_list = sub.add_parser("list", help="List every spec from the index")
+-    p_list.set_defaults(func=cmd_list)
+-
+-    p_reindex = sub.add_parser("reindex", help="Force a full rebuild of specs/index.toon")
+-    p_reindex.set_defaults(func=cmd_reindex)
+-
+-    p_check = sub.add_parser("check", help="Run the mechanical gap-checker on one spec folder")
+-    p_check.add_argument("spec_dir")
+-    p_check.set_defaults(func=cmd_check)
+-
+-    p_readiness = sub.add_parser("readiness", help="Produce a structural preparation report for an independent auditor")
+-    p_readiness.add_argument("spec_dir")
+-    p_readiness.add_argument("--output", help="write JSON to a new file")
+-    p_readiness.set_defaults(func=cmd_readiness)
+-
+-    p_runtime = sub.add_parser('runtime', help='Show the effective Python interpreter, CLI and scripts directory')
+-    p_runtime.set_defaults(func=cmd_runtime)
+-
+-    p_navigator = sub.add_parser('navigator', help='Generate a read-only local spec navigator (does not record approval)')
+-    p_navigator.add_argument('project', nargs='?', default='.', help='project root')
+-    p_navigator.add_argument('--output', required=True, help='HTML output file')
+-    p_navigator.set_defaults(func=cmd_navigator)
+-
+-    p_flow = sub.add_parser("flow", help="Flowmap: render a visual-flow.toon to an interactive actors x processes flow + pseudocode")
+-    p_flow.add_argument("flow_file")
+-    p_flow.add_argument("-o", "--output")
+-    p_flow.add_argument("--check", action="store_true", help="validate only")
+-    p_flow.add_argument("--pseudo", action="store_true", help="print generated pseudocode (markdown)")
+-    p_flow.add_argument("--mermaid", action="store_true", help="print Mermaid (markdown-embed fallback)")
+-    p_flow.add_argument("--spec-dir", help="cross-check node codes against this spec folder")
+-    p_flow.add_argument("--open", action="store_true")
+-    p_flow.set_defaults(func=cmd_flow)
+-
+-    p_mem = sub.add_parser(
+-        "mem", help="AIDD Memory: curated, code-anchored decisions/bugfixes/constraints (add, search, show, compact, import-claude-mem)",
+-        add_help=False)
+-    p_mem.add_argument("mem_args", nargs=argparse.REMAINDER, help="forwarded to aidd_memory.py (try: aidd mem search <words>)")
+-    p_mem.set_defaults(func=cmd_mem)
+-
+-    p_status = sub.add_parser(
+-        "status", help="Hard-rules ledger of ALL open specs from the evidence log (route, alignment, approval, waves, auditors); --json; --refresh adds git/review/verification facts",
+-        add_help=False)
+-    p_status.add_argument("status_args", nargs=argparse.REMAINDER, help="forwarded to aidd_status.py (try: aidd status [spec_dir] --json)")
+-    p_status.set_defaults(func=cmd_status)
+-
+-    p_pending = sub.add_parser(
+-        "pending", help="Script prefilter: which tasks.md tasks still lack their Target file, grouped into lanes (no agents, no tokens)",
+-        add_help=False)
+-    p_pending.add_argument("pending_args", nargs=argparse.REMAINDER, help="forwarded to aidd_pending.py (try: aidd pending specs/001-x --json)")
+-    p_pending.set_defaults(func=cmd_pending)
+-
+-    p_install = sub.add_parser(
+-        "install", help="Install AIDD for one host (gemini|opencode|antigravity) into a project: methodology + enforced gate hooks; never deletes existing files",
+-    )
+-    p_install.add_argument("--host", choices=["gemini", "opencode", "antigravity"], help="host to install for (optional with --githooks)")
+-    p_install.add_argument("project_root", nargs="?", default=".", help="project root (default: current directory)")
+-    p_install.add_argument("--githooks", action="store_true", help="write git pre-commit/pre-push hooks that run `aidd guard` (alone or with --host)")
+-    p_install.add_argument("--force", action="store_true", help="overwrite locally modified shipped files")
+-    p_install.add_argument("--json", action="store_true", help="print a JSON list of {path,status,reason}")
+-    p_install.set_defaults(func=cmd_install)
+-
+-    p_next = sub.add_parser(
+-        "next", help="Print the single next action for a spec (derived from tasks/evidence); --write saves .aidd/NEXT.md, --json for machines")
+-    p_next.add_argument("spec_dir", nargs="?", default="", help="spec folder (default: the gate spec)")
+-    p_next.add_argument("--write", action="store_true", help="write the result to .aidd/NEXT.md")
+-    p_next.add_argument("--json", action="store_true", help="print the result as JSON")
+-    p_next.set_defaults(func=cmd_next)
+-
+-    p_guard = sub.add_parser(
+-        "guard", help="Git-hook gate: check the plan-adherence rules before a commit or push (exit code from aidd_guard.py)")
+-    p_guard.add_argument("action", choices=["commit", "push"], help="which git event to guard")
+-    p_guard.add_argument("--root", default="", help="project root (default: current directory)")
+-    p_guard.set_defaults(func=cmd_guard)
+-
+-    p_doctor = sub.add_parser(
+-        "doctor", help="Check that a host install is complete and its gates are wired (exit code from aidd_doctor.py)",
+-    )
+-    p_doctor.add_argument("--host", choices=["gemini", "opencode", "antigravity"], help="check one host (default: every detected host)")
+-    p_doctor.add_argument("--root", default=".", help="project root (default: current directory)")
+-    p_doctor.add_argument("--json", action="store_true", help="print the report as JSON")
+-    p_doctor.set_defaults(func=cmd_doctor)
+-
+-    p_progress = sub.add_parser(
+-        "progress", help="Implementation %% per spec (target files present / marked aidd:<code>) plus approved/verify/audit/closed stages; no LLM, no third-party graph; writes .aidd/graphs/progress.json",
+-        add_help=False)
+-    p_progress.add_help = True
+-    p_progress.add_argument("spec_dirs", nargs="*", help="spec folders (default: every specs/*/tasks.md)")
+-    p_progress.add_argument("--root", help="project root (default: current directory)")
+-    for flag, text in (("--json", "machine-readable summary"), ("--detail", "list missing/stub/not-measurable tasks"),
+-                       ("--no-write", "do not write .aidd/graphs/progress.json"), ("--quiet", "write the graph, print nothing")):
+-        p_progress.add_argument(flag, action="store_true", help=text)
+-    p_progress.set_defaults(func=cmd_progress)
+-
+-    p_rules = sub.add_parser(
+-        "rules", help="Hard rules: check <spec_dir> | approve <spec_dir> | close <spec_id> | abandon <spec_id> [--reason TEXT]",
+-        add_help=False)
+-    p_rules.add_argument("rules_args", nargs=argparse.REMAINDER, help="forwarded to aidd_status.py (try: aidd rules check specs/001-x)")
+-    p_rules.set_defaults(func=cmd_rules)
+-
+-    p_graphs = sub.add_parser(
+-        "graphs", help="Project graphs registry: list | status | refresh <name|all> | show <name> <query> | explorer <name>",
+-        add_help=False)
+-    p_graphs.add_argument("graphs_args", nargs=argparse.REMAINDER, help="forwarded to aidd_graphs.py")
+-    p_graphs.set_defaults(func=lambda a: _run("aidd_graphs.py", a.graphs_args))
+-
+-    p_component = sub.add_parser(
+-        "component", help="Shared component operations: search | show <COMP-nnn> | inject <COMP-nnn|SCREEN-XX>",
+-        add_help=False)
+-    p_component.add_argument("component_args", nargs=argparse.REMAINDER, help="forwarded to component_graph.py")
+-    p_component.set_defaults(func=lambda a: _run("component_graph.py", a.component_args))
+-    for _name, _script, _pre, _help in (
+-            ("job", "aidd_job.py", [], "Run a tool once per set of inputs: run [--bg] | wait | last | list; same command on same file contents = CACHED (aidd_job.py)"),
+-            ("triage", "aidd_triage.py", [], "Group the failures of `aidd verify` evidence across specs: shared vs specific (aidd_triage.py)"),
+-            ("impact", "aidd_unit_audit.py", [], "Inspect affected units and audit domains without executing checks"),
+-            ("units", "aidd_units.py", [], "Plan, apply or safely revert an explicit unit migration"),
+-            ("provider", "aidd_provider_attestation.py", [], "Run a unit-approved verification provider"),
+-            ("tools", "aidd_tools.py", [], "Catalog of AIDD and project tools by task: tools [keywords] (aidd_tools.py)"),
+-            ("size", "aidd_tools.py", ["size"], "Size the work XS/S/M/L and print the analysis parameters: size --spec <id> | --files <f...> (aidd_tools.py size)")):
+-        _p = sub.add_parser(_name, help=_help, add_help=False)
+-        _p.add_argument("fwd_args", nargs=argparse.REMAINDER, help=f"forwarded to {_script}")
+-        _p.set_defaults(func=lambda a, _s=_script, _x=_pre: _run(_s, _x + a.fwd_args))
+-    p_sqlcheck = sub.add_parser(
+-        "sqlcheck", help="Static compile of SQL migrations before any DB pass (engine-specific: --engine postgres | --cmd \"<checker {file}>\"); several specs in one batch, unchanged files cached",
+-        add_help=False)
+-    p_sqlcheck.add_argument("sqlcheck_args", nargs=argparse.REMAINDER, help="forwarded to aidd_sqlcheck.py")
+-    p_sqlcheck.set_defaults(func=lambda a: _run("aidd_sqlcheck.py", a.sqlcheck_args))
+-
+-    p_review = sub.add_parser(
+-        "review", help="aidd review <spec> [--open] [--check] [--wait] [--comments] [--summary] [--full] [--timeout S] [--interval S]: generate specs/<id>/review.html (compact page) or read the approval state")
+-    p_review.add_argument("spec_dir", help="spec folder, e.g. specs/008-x (first, then the flags)")
+-    p_review.add_argument("review_flags", nargs=argparse.REMAINDER,
+-                          help="forwarded to aidd_review.py: --open, --check (ONE status line; exit 0 complete / 2 pending / 3 stale, legacy, too many items), --wait (poll, then ONE status line; exit 0 complete / 2 timeout / 3 cannot help), --comments (<CODE>: <comment> lines), --summary (mechanical summary, writes nothing), --full (long page with heading keys), --timeout S, --interval S")
+-    p_review.set_defaults(func=cmd_review)
+-
+-    p_verify = sub.add_parser(
+-        "verify", help="Run the spec's ## Verification commands and record the evidence (verify <spec>)",
+-        add_help=False)
+-    p_verify.add_argument("verify_args", nargs=argparse.REMAINDER, help="forwarded to aidd_status.py verify")
+-    p_verify.set_defaults(func=cmd_verify)
+-
+-    p_cal = sub.add_parser(
+-        "calibrate", help="Record measured minutes/tokens of a closed spec into .aidd/calibration.toon")
+-    p_cal.add_argument("action", choices=["record"], help="record")
+-    p_cal.add_argument("spec_dir", help="spec folder, e.g. specs/005-x")
+-    p_cal.set_defaults(func=cmd_calibrate)
+-
+-    p_cc = sub.add_parser("check-charter", help="Run charter.md's checkable rules")
+-    p_cc.add_argument("root", nargs="?", default=None, help="Project root (default: cwd)")
+-    p_cc.set_defaults(func=cmd_check_charter)
+-
+-    p_t2i = sub.add_parser(
+-        "tasks-to-issues",
+-        help="Turn an approved tasks.md into real issues (GitHub, Azure DevOps, or Bitbucket)",
+-        description="Provider-specific flags (--provider, --repo, --org, --project, "
+-                    "--work-item-type, --workspace, --repo-slug, --apply) are forwarded as-is — "
+-                    "run 'python skill/scripts/tasks_to_issues.py --help' for the full list.",
+-    )
+-    p_t2i.add_argument("tasks_md")
+-    p_t2i.add_argument("provider_args", nargs=argparse.REMAINDER,
+-                        help="Forwarded verbatim to tasks_to_issues.py, e.g. --provider azure_devops --org ... --apply")
+-    p_t2i.set_defaults(func=cmd_tasks_to_issues)
+-
+-    p_adapters = sub.add_parser(
+-        "adapters",
+-        help="Generate native command files for other agent tools (Gemini CLI, Cursor, Windsurf, Cline, Copilot)",
+-        description="Renders commands/aidd-*.md into each agent tool's own native command "
+-                    "format and directory. Claude Code, OpenCode, and Codex are not covered here — "
+-                    "see adapters/README.md, they already have a richer native mechanism.",
+-    )
+-    adapters_sub = p_adapters.add_subparsers(dest="adapters_command", required=True)
+-
+-    p_adapters_list = adapters_sub.add_parser("list", help="List available adapter targets")
+-    p_adapters_list.set_defaults(func=cmd_adapters_list)
+-
+-    p_adapters_generate = adapters_sub.add_parser(
+-        "generate", help="Write native command files for one target (or 'all') into a project"
+-    )
+-    p_adapters_generate.add_argument("target", help="gemini | cursor | windsurf | cline | copilot | all")
+-    p_adapters_generate.add_argument("project_root", nargs="?", default=".", help="Target project directory (default: cwd)")
+-    p_adapters_generate.add_argument("--force", action="store_true", help="Overwrite files that already exist")
+-    p_adapters_generate.set_defaults(func=cmd_adapters_generate)
+-
+-    p_marketplace = sub.add_parser(
+-        "marketplace",
+-        help="Browse and install third-party packages from catalog/ (providers/adapters/templates/hooks)",
+-        description="See catalog/README.md for what a package is and how to submit one. All 4 "
+-                    "kinds (adapter/template/provider/hook) can be listed, searched, and installed — "
+-                    "an installed provider/hook is auto-discovered from .aidd/extensions/, see "
+-                    "skill/scripts/extension_registry.py.",
+-    )
+-    marketplace_sub = p_marketplace.add_subparsers(dest="marketplace_command", required=True)
+-
+-    p_mp_list = marketplace_sub.add_parser("list", help="List every package in the catalog")
+-    p_mp_list.set_defaults(func=cmd_marketplace_list)
+-
+-    p_mp_search = marketplace_sub.add_parser("search", help="Search the catalog by id/name/description")
+-    p_mp_search.add_argument("query")
+-    p_mp_search.set_defaults(func=cmd_marketplace_search)
+-
+-    p_mp_install = marketplace_sub.add_parser("install", help="Install a package into a project")
+-    p_mp_install.add_argument("package_id")
+-    p_mp_install.add_argument("project_root", nargs="?", default=".")
+-    p_mp_install.add_argument("--force", action="store_true", help="Override a file-conflict refusal")
+-    p_mp_install.set_defaults(func=cmd_marketplace_install)
+-
+-    p_mp_remove = marketplace_sub.add_parser("remove", help="Remove an installed package from a project")
+-    p_mp_remove.add_argument("package_id")
+-    p_mp_remove.add_argument("project_root", nargs="?", default=".")
+-    p_mp_remove.add_argument("--force", action="store_true", help="Remove even files modified since install")
+-    p_mp_remove.set_defaults(func=cmd_marketplace_remove)
+-
+-    p_extensions = sub.add_parser(
+-        "extensions",
+-        help="List, inspect, enable, or disable auto-discovered provider/adapter/hook extensions",
+-        description="Extensions are discovered from skill/extensions/**/manifest.json (first-party) "
+-                    "and <project>/.aidd/extensions/**/manifest.json (project-local, including anything "
+-                    "'aidd marketplace install' put there) — see skill/scripts/extension_registry.py.",
+-    )
+-    extensions_sub = p_extensions.add_subparsers(dest="extensions_command", required=True)
+-
+-    p_ext_list = extensions_sub.add_parser("list", help="List every discovered extension")
+-    p_ext_list.set_defaults(func=cmd_extensions_list)
+-
+-    p_ext_info = extensions_sub.add_parser("info", help="Show one extension's manifest")
+-    p_ext_info.add_argument("id")
+-    p_ext_info.set_defaults(func=cmd_extensions_info)
+-
+-    p_ext_enable = extensions_sub.add_parser("enable", help="Enable an extension")
+-    p_ext_enable.add_argument("id")
+-    p_ext_enable.set_defaults(func=cmd_extensions_enable)
+-
+-    p_ext_disable = extensions_sub.add_parser("disable", help="Disable an extension")
+-    p_ext_disable.add_argument("id")
+-    p_ext_disable.set_defaults(func=cmd_extensions_disable)
+-
+-    p_tracker = sub.add_parser(
+-        "tracker",
+-        help="Sync tasks.md status from the tracker and link opened PRs to their task's issue",
+-        description="See skill/scripts/sync_issues.py and skill/scripts/link_pr_to_task.py.",
+-    )
+-    tracker_sub = p_tracker.add_subparsers(dest="tracker_command", required=True)
+-
+-    p_tracker_sync = tracker_sub.add_parser(
+-        "sync",
+-        help="Diff (or write, with --apply) tasks.md's Status column against live tracker status",
+-        description="Provider-specific flags (--provider, --repo, --org, --project, "
+-                    "--work-item-type, --workspace, --repo-slug, --apply) are forwarded as-is — "
+-                    "run 'python skill/scripts/sync_issues.py --help' for the full list.",
+-    )
+-    p_tracker_sync.add_argument("tasks_md")
+-    p_tracker_sync.add_argument("provider_args", nargs=argparse.REMAINDER,
+-                                 help="Forwarded verbatim to sync_issues.py, e.g. --provider azure_devops --org ... --apply")
+-    p_tracker_sync.set_defaults(func=cmd_tracker_sync)
+-
+-    p_tracker_link = tracker_sub.add_parser(
+-        "link-pr",
+-        help="Attach an opened PR's URL to its task's tracker issue and tasks.md row",
+-        description="tasks_md is positional here (translated back to link_pr_to_task.py's own "
+-                    "--tasks-md flag). Every other flag (--pr-url, --branch, --task-id, --provider, "
+-                    "--apply, and provider-specific flags) is forwarded as-is — run "
+-                    "'python skill/scripts/link_pr_to_task.py --help' for the full list.",
+-    )
+-    p_tracker_link.add_argument("tasks_md", help="Path to a spec's tasks.md")
+-    p_tracker_link.add_argument("link_args", nargs=argparse.REMAINDER,
+-                                 help="Forwarded verbatim to link_pr_to_task.py, e.g. --pr-url ... --branch ... --apply")
+-    p_tracker_link.set_defaults(func=cmd_tracker_link_pr)
+-
+-    p_ci = sub.add_parser(
+-        "ci",
+-        help="Install a CI workflow file (GitHub Actions or Azure Pipelines) for this project",
+-        description="See skill/scripts/install_ci.py and skill/templates/ci/*.yml. Opt-in and "
+-                    "explicit, on purpose — nothing else in AIDD writes this file for you.",
+-    )
+-    ci_sub = p_ci.add_subparsers(dest="ci_command", required=True)
+-
+-    p_ci_install = ci_sub.add_parser("install", help="Copy a CI template into this project's conventional CI path")
+-    p_ci_install.add_argument("target", help="github | azure-devops")
+-    p_ci_install.add_argument("project_root", nargs="?", default=".", help="Target project directory (default: cwd)")
+-    p_ci_install.add_argument("--force", action="store_true", help="Overwrite an existing CI file")
+-    p_ci_install.set_defaults(func=cmd_ci_install)
+-
+-    return parser
+-
+-
+-def main(argv=None):
+-    argv = list(sys.argv[1:] if argv is None else argv)
+-    if argv and argv[0] == "mem":
+-        # `aidd mem ...` is a pure passthrough to aidd_memory.py, so options that
+-        # come before the subcommand (--root X, --help) work too — argparse's
+-        # REMAINDER would otherwise choke on a leading option.
+-        sys.exit(_run("aidd_memory.py", argv[1:]))
+-    if argv and argv[0] in ("status", "rules", "verify"):
+-        # Same passthrough for the hard-rules commands (aidd_status.py owns the parsing);
+-        # `aidd verify <spec>` -> `aidd_status.py verify <spec>` (aidd:FR-205).
+-        sys.exit(_run("aidd_status.py", argv))
+-    if argv and argv[0] == "graphs":
+-        sys.exit(_run("aidd_graphs.py", argv[1:]))
+-    if argv and argv[0] == "component":
+-        sys.exit(_run("component_graph.py", argv[1:]))
+-    if argv and argv[0] == "impact":
+-        sys.exit(_run("aidd_unit_audit.py", argv[1:]))
+-    if argv and argv[0] == "units":
+-        sys.exit(_run("aidd_units.py", argv[1:]))
+-    if argv and argv[0] == "provider":
+-        sys.exit(_run("aidd_provider_attestation.py", argv[1:]))
+-    if argv and argv[0] in ("job", "triage", "tools", "size"):
+-        # aidd:FR-038 / FR-041 — same passthrough as `graphs`; each script owns its parsing.
+-        _script = {"job": "aidd_job.py", "triage": "aidd_triage.py",
+-                   "tools": "aidd_tools.py", "size": "aidd_tools.py"}[argv[0]]
+-        sys.exit(_run(_script, (["size"] if argv[0] == "size" else []) + argv[1:]))
+-    if argv and argv[0] == "sqlcheck":
+-        sys.exit(_run("aidd_sqlcheck.py", argv[1:]))
+-    if argv and argv[0] == "review":
+-        # aidd:FR-313 — aidd_review.py owns the parsing, so the flags work in any order
+-        # (`aidd review --summary <spec>` as well as `aidd review <spec> --summary`); the
+-        # REMAINDER subparser below rejected a leading flag with exit 2 (= --check `pending`).
+-        sys.exit(_run("aidd_review.py", argv[1:]))
+-    parser = build_parser()
+-    args = parser.parse_args(argv)
+-    sys.exit(args.func(args))
+-
+-
+-if __name__ == "__main__":
+-    main()
++"""aidd — command-line entry point.
++
++A thin dispatcher, not a reimplementation: every subcommand shells out to the
++matching stdlib-only script under skill/scripts/, the same scripts the
++Claude Code skill's hooks call. One implementation, two distribution
++channels (this CLI for a human at a terminal or CI; the skill's hooks for an
++AI agent) — never two copies of the logic to keep in sync.
++"""
++import argparse
++import json
++import os
++import subprocess
++import sys
++from pathlib import Path
++
++
++def _find_scripts_dir() -> Path:
++    """Locate the aidd scripts. Order (the INSTALLED skill is the single source of truth, never a source repo):
++    1. $AIDD_HOME/scripts, 2. ~/.claude/skills/aidd/scripts (the skill installed for the current user),
++    3. the copy bundled in the wheel, 4. the repo checkout (only when running straight from a clone, e.g. while
++    developing aidd itself). A global install therefore never points at a source checkout, and updating the skill
++    folder is enough to update the command."""
++    here = Path(__file__).resolve()
++    candidates = []
++    if os.environ.get("AIDD_HOME"):
++        candidates.append(Path(os.environ["AIDD_HOME"]).expanduser() / "scripts")
++    candidates += [Path.home() / ".claude" / "skills" / "aidd" / "scripts",
++                   here.parent / "_data" / "skill" / "scripts",       # bundled in the wheel
++                   here.parent.parent / "skill" / "scripts"]          # repo checkout (development only)
++    for candidate in candidates:
++        if (candidate / "find_spec.py").is_file():
++            return candidate
++    raise SystemExit(
++        "Could not locate the aidd scripts. Looked at:\n  "
++        + "\n  ".join(str(c) for c in candidates)
++        + "\nInstall the skill (copy it to ~/.claude/skills/aidd) or set AIDD_HOME to its folder."
++    )
++
++
++def _run(script_name: str, args: list, cwd: Path = None) -> int:
++    scripts_dir = _find_scripts_dir()
++    result = subprocess.run(
++        [sys.executable, str(scripts_dir / script_name), *args],
++        cwd=str(cwd) if cwd else None,
++    )
++    return result.returncode
++
++
++def cmd_search(args):
++    return _run("find_spec.py", args.query)
++
++
++def cmd_tree(args):
++    return _run("find_spec.py", ["--tree", args.spec_id])
++
++
++def cmd_list(args):
++    return _run("find_spec.py", ["--list"])
++
++
++def cmd_reindex(args):
++    return _run("find_spec.py", ["--reindex"])
++
++
++def cmd_check(args):
++    return _run("check_spec.py", [args.spec_dir])
++
++
++def cmd_readiness(args):
++    extra = [args.spec_dir]
++    if args.output:
++        extra.extend(["--output", args.output])
++    return _run("aidd_readiness.py", extra)
++
++
++def cmd_navigator(args):
++    return _run("aidd_navigator.py", [args.project, "--output", args.output])
++
++
++def cmd_runtime(args):
++    print(json.dumps({'python': sys.executable, 'cli': str(Path(__file__).resolve()),
++                      'scripts': str(_find_scripts_dir().resolve()),
++                      'pycache_prefix': sys.pycache_prefix}))
++    return 0
++
++
++def cmd_flow(args):
++    extra = [args.flow_file]
++    for flag, on in (("--check", args.check), ("--pseudo", args.pseudo), ("--mermaid", args.mermaid), ("--open", args.open)):
++        if on:
++            extra.append(flag)
++    if args.output:
++        extra += ["-o", args.output]
++    if args.spec_dir:
++        extra += ["--spec-dir", args.spec_dir]
++    return _run("flowmap.py", extra)
++
++
++def cmd_mem(args):
++    # Everything after `aidd mem` is forwarded verbatim to aidd_memory.py
++    # (add / search / show / timeline / file / inject / compact / stats /
++    # import-claude-mem), so the CLI and the skill share one implementation.
++    return _run("aidd_memory.py", args.mem_args)
++
++
++def cmd_status(args):
++    # Pure passthrough to aidd_status.py (`status [spec_dir] [--json]`).
++    return _run("aidd_status.py", ["status", *args.status_args])
++
++
++def cmd_progress(args):
++    out = list(args.spec_dirs)
++    if args.root:
++        out += ["--root", args.root]
++    out += [f for f, on in (("--json", args.json), ("--detail", args.detail), ("--no-write", args.no_write),
++                            ("--quiet", args.quiet)) if on]
++    return _run("aidd_progress.py", out)
++
++
++def cmd_pending(args):
++    # Passthrough to aidd_pending.py (`<spec_dir|tasks.md> [--root DIR] [--json]`).
++    return _run("aidd_pending.py", args.pending_args)
++
++
++def cmd_install(args):
++    # Passthrough to install_host.py (`install <host> <root> [--force] [--json]`).
++    # Deliberately not cmd_init: that one rmtree's .aidd/; install_host never deletes.
++    # `--host` may be omitted only together with --githooks (git hooks alone).
++    if not args.host and not args.githooks:
++        print("aidd install: error: --host is required unless --githooks is given", file=sys.stderr)
++        return 2
++    out = ["install"]
++    if args.host:
++        out.append(args.host)
++    out.append(args.project_root)
++    if args.githooks:
++        out.append("--githooks")
++    if args.force:
++        out.append("--force")
++    if args.json:
++        out.append("--json")
++    return _run("install_host.py", out)
++
++
++def cmd_next(args):
++    # Passthrough to aidd_next.py (`[spec_dir] [--write] [--json]`); exit code propagated.
++    out = [args.spec_dir] if args.spec_dir else []
++    out += [f for f, on in (("--write", args.write), ("--json", args.json)) if on]
++    return _run("aidd_next.py", out)
++
++
++def cmd_guard(args):
++    # Passthrough to aidd_guard.py (`commit|push [--root DIR]`); exit code propagated.
++    out = [args.action]
++    if args.root:
++        out += ["--root", args.root]
++    return _run("aidd_guard.py", out)
++
++
++def cmd_doctor(args):
++    # Passthrough to aidd_doctor.py (`[--host H] [--root DIR] [--json]`).
++    out = ["--root", args.root]
++    if args.host:
++        out += ["--host", args.host]
++    if args.json:
++        out.append("--json")
++    return _run("aidd_doctor.py", out)
++
++
++def cmd_calibrate(args):
++    # Passthrough to aidd_calibrate.py (`record <spec_dir>`).
++    return _run("aidd_calibrate.py", [args.action, args.spec_dir])
++
++
++def cmd_rules(args):
++    # Pure passthrough to aidd_status.py (`rules check|approve|close|abandon <spec>`).
++    return _run("aidd_status.py", ["rules", *args.rules_args])
++
++
++def cmd_review(args):
++    # aidd:FR-202 aidd:FR-203 aidd:FR-303 aidd:FR-309 aidd:FR-313 — passthrough to aidd_review.py
++    # (`<spec_dir> [--open] [--check] [--wait] [--comments] [--summary] [--full] [--timeout S]
++    # [--interval S]`); aidd_review.py owns the parsing.
++    return _run("aidd_review.py", [args.spec_dir, *args.review_flags])
++
++
++def cmd_verify(args):
++    # aidd:FR-205 — passthrough to aidd_status.py (`verify <spec>`); main() short-circuits it.
++    return _run("aidd_status.py", ["verify", *args.verify_args])
++
++
++def cmd_check_charter(args):
++    return _run("check_charter.py", [args.root] if args.root else [])
++
++
++def cmd_tasks_to_issues(args):
++    # Every provider-specific flag (--provider, --repo, --org, --project,
++    # --work-item-type, --workspace, --repo-slug) is forwarded verbatim via
++    # `provider_args` (argparse.REMAINDER below) instead of re-declared here
++    # one by one — tasks_to_issues.py's own argparse is the single source of
++    # truth for what a provider accepts; this CLI never re-lists it and so
++    # can't drift out of sync with it the way the old --repo-only version did.
++    return _run("tasks_to_issues.py", [args.tasks_md, *args.provider_args])
++
++
++def cmd_marketplace_list(args):
++    return _run("marketplace.py", ["list"])
++
++
++def cmd_marketplace_search(args):
++    return _run("marketplace.py", ["search", args.query])
++
++
++def cmd_marketplace_install(args):
++    mp_args = ["install", args.package_id, args.project_root]
++    if args.force:
++        mp_args.append("--force")
++    return _run("marketplace.py", mp_args)
++
++
++def cmd_marketplace_remove(args):
++    mp_args = ["remove", args.package_id, args.project_root]
++    if args.force:
++        mp_args.append("--force")
++    return _run("marketplace.py", mp_args)
++
++
++def cmd_adapters_list(args):
++    return _run("generate_adapters.py", ["--list"])
++
++
++def cmd_adapters_generate(args):
++    generate_args = [args.target, args.project_root]
++    if args.force:
++        generate_args.append("--force")
++    return _run("generate_adapters.py", generate_args)
++
++
++def cmd_extensions_list(args):
++    return _run("extension_registry.py", ["list"])
++
++
++def cmd_extensions_info(args):
++    return _run("extension_registry.py", ["info", args.id])
++
++
++def cmd_extensions_enable(args):
++    return _run("extension_registry.py", ["enable", args.id])
++
++
++def cmd_extensions_disable(args):
++    return _run("extension_registry.py", ["disable", args.id])
++
++
++def cmd_tracker_sync(args):
++    # Same forwarding discipline as cmd_tasks_to_issues: only the positional
++    # tasks_md is declared here, every provider-specific flag (--provider,
++    # --repo, --org, --project, --work-item-type, --workspace, --repo-slug,
++    # --apply) is forwarded verbatim via provider_args (argparse.REMAINDER).
++    return _run("sync_issues.py", [args.tasks_md, *args.provider_args])
++
++
++def cmd_tracker_link_pr(args):
++    # tasks_md is a positional here (unlike link_pr_to_task.py's own
++    # --tasks-md flag) so it anchors argparse.REMAINDER the same way
++    # cmd_tasks_to_issues/cmd_tracker_sync's leading positional does.
++    # argparse.REMAINDER only swallows a trailing run of flag-looking
++    # tokens (--pr-url, --branch, --task-id, --provider, --apply, ...)
++    # when a bare positional value precedes them; a REMAINDER-only
++    # subparser with --tasks-md declared as its own leading flag breaks
++    # (the first "--task-id"-shaped token after --tasks-md's value gets
++    # eaten as an unrecognized optional instead of forwarded — verified
++    # empirically). Translating back to --tasks-md here keeps
++    # link_pr_to_task.py's own CLI untouched.
++    return _run("link_pr_to_task.py", ["--tasks-md", args.tasks_md, *args.link_args])
++
++
++def cmd_ci_install(args):
++    ci_args = [args.target, args.project_root]
++    if args.force:
++        ci_args.append("--force")
++    return _run("install_ci.py", ci_args)
++
++
++def cmd_init(args):
++    """Copy the tool-agnostic .aidd/ bundle (methodology + templates +
++    scripts, no Claude-specific pieces) into a target project. This is
++    exactly what adapters/README.md's manual `cp -r dot-aidd <project>/.aidd`
++    step does — automated, so it's one command instead of a copy-paste."""
++    import shutil
++
++    here = Path(__file__).resolve()
++    source = next((r / "adapters" / "dot-aidd" for r in (here.parent.parent, here.parent / "_data")
++                   if (r / "adapters" / "dot-aidd").is_dir()),
++                  here.parent.parent / "adapters" / "dot-aidd")
++    if not source.is_dir():
++        print(f"Could not find the .aidd bundle to install (looked at {source}).", file=sys.stderr)
++        return 2
++
++    target = Path(args.target).resolve() / ".aidd"
++    if target.exists() and not args.force:
++        print(f"{target} already exists — pass --force to overwrite, or remove it first.", file=sys.stderr)
++        return 1
++
++    if target.exists():
++        shutil.rmtree(target)
++    shutil.copytree(source, target, ignore=shutil.ignore_patterns("__pycache__"))
++    print(f"Installed AIDD's methodology + scripts to {target}")
++    print("Next: add AGENTS.md's AIDD section (see adapters/AGENTS.md.snippet) so your")
++    print("agent tool actually reads it — `aidd init` alone doesn't wire that up.")
++    print("For Gemini CLI, Cursor, Windsurf, Cline, or GitHub Copilot, also run:")
++    print(f"  aidd adapters generate all {args.target}")
++    print("For Gemini CLI, OpenCode or Antigravity with enforced gates, run: aidd install --host <gemini|opencode|antigravity>")
++    return 0
++
++
++def build_parser():
++    parser = argparse.ArgumentParser(
++        prog="aidd",
++        description="AIDD — a methodology for working with AI coding agents.",
++    )
++    sub = parser.add_subparsers(dest="command", required=True)
++
++    p_init = sub.add_parser("init", help="Install the .aidd/ bundle into a project")
++    p_init.add_argument("target", nargs="?", default=".", help="Target project directory (default: cwd)")
++    p_init.add_argument("--force", action="store_true", help="Overwrite an existing .aidd/")
++    p_init.set_defaults(func=cmd_init)
++
++    p_search = sub.add_parser("search", help="Search the spec graph before creating something new")
++    p_search.add_argument("query", nargs="+", help="Keywords or a SCREEN-XX/CTL-nnn/COMP-nnn/API-nnn code")
++    p_search.set_defaults(func=cmd_search)
++
++    p_tree = sub.add_parser("tree", help="Print one spec's use-case -> screen -> component -> control -> API graph")
++    p_tree.add_argument("spec_id")
++    p_tree.set_defaults(func=cmd_tree)
++
++    p_list = sub.add_parser("list", help="List every spec from the index")
++    p_list.set_defaults(func=cmd_list)
++
++    p_reindex = sub.add_parser("reindex", help="Force a full rebuild of specs/index.toon")
++    p_reindex.set_defaults(func=cmd_reindex)
++
++    p_check = sub.add_parser("check", help="Run the mechanical gap-checker on one spec folder")
++    p_check.add_argument("spec_dir")
++    p_check.set_defaults(func=cmd_check)
++
++    p_readiness = sub.add_parser("readiness", help="Produce a structural preparation report for an independent auditor")
++    p_readiness.add_argument("spec_dir")
++    p_readiness.add_argument("--output", help="write JSON to a new file")
++    p_readiness.set_defaults(func=cmd_readiness)
++
++    p_runtime = sub.add_parser('runtime', help='Show the effective Python interpreter, CLI and scripts directory')
++    p_runtime.set_defaults(func=cmd_runtime)
++
++    p_navigator = sub.add_parser('navigator', help='Generate a read-only local spec navigator (does not record approval)')
++    p_navigator.add_argument('project', nargs='?', default='.', help='project root')
++    p_navigator.add_argument('--output', required=True, help='HTML output file')
++    p_navigator.set_defaults(func=cmd_navigator)
++
++    p_flow = sub.add_parser("flow", help="Flowmap: render a visual-flow.toon to an interactive actors x processes flow + pseudocode")
++    p_flow.add_argument("flow_file")
++    p_flow.add_argument("-o", "--output")
++    p_flow.add_argument("--check", action="store_true", help="validate only")
++    p_flow.add_argument("--pseudo", action="store_true", help="print generated pseudocode (markdown)")
++    p_flow.add_argument("--mermaid", action="store_true", help="print Mermaid (markdown-embed fallback)")
++    p_flow.add_argument("--spec-dir", help="cross-check node codes against this spec folder")
++    p_flow.add_argument("--open", action="store_true")
++    p_flow.set_defaults(func=cmd_flow)
++
++    p_mem = sub.add_parser(
++        "mem", help="AIDD Memory: curated, code-anchored decisions/bugfixes/constraints (add, search, show, compact, import-claude-mem)",
++        add_help=False)
++    p_mem.add_argument("mem_args", nargs=argparse.REMAINDER, help="forwarded to aidd_memory.py (try: aidd mem search <words>)")
++    p_mem.set_defaults(func=cmd_mem)
++
++    p_status = sub.add_parser(
++        "status", help="Hard-rules ledger of ALL open specs from the evidence log (route, alignment, approval, waves, auditors); --json; --refresh adds git/review/verification facts",
++        add_help=False)
++    p_status.add_argument("status_args", nargs=argparse.REMAINDER, help="forwarded to aidd_status.py (try: aidd status [spec_dir] --json)")
++    p_status.set_defaults(func=cmd_status)
++
++    p_pending = sub.add_parser(
++        "pending", help="Script prefilter: which tasks.md tasks still lack their Target file, grouped into lanes (no agents, no tokens)",
++        add_help=False)
++    p_pending.add_argument("pending_args", nargs=argparse.REMAINDER, help="forwarded to aidd_pending.py (try: aidd pending specs/001-x --json)")
++    p_pending.set_defaults(func=cmd_pending)
++
++    p_install = sub.add_parser(
++        "install", help="Install AIDD for one host (gemini|opencode|antigravity) into a project: methodology + enforced gate hooks; never deletes existing files",
++    )
++    p_install.add_argument("--host", choices=["gemini", "opencode", "antigravity"], help="host to install for (optional with --githooks)")
++    p_install.add_argument("project_root", nargs="?", default=".", help="project root (default: current directory)")
++    p_install.add_argument("--githooks", action="store_true", help="write git pre-commit/pre-push hooks that run `aidd guard` (alone or with --host)")
++    p_install.add_argument("--force", action="store_true", help="overwrite locally modified shipped files")
++    p_install.add_argument("--json", action="store_true", help="print a JSON list of {path,status,reason}")
++    p_install.set_defaults(func=cmd_install)
++
++    p_next = sub.add_parser(
++        "next", help="Print the single next action for a spec (derived from tasks/evidence); --write saves .aidd/NEXT.md, --json for machines")
++    p_next.add_argument("spec_dir", nargs="?", default="", help="spec folder (default: the gate spec)")
++    p_next.add_argument("--write", action="store_true", help="write the result to .aidd/NEXT.md")
++    p_next.add_argument("--json", action="store_true", help="print the result as JSON")
++    p_next.set_defaults(func=cmd_next)
++
++    p_guard = sub.add_parser(
++        "guard", help="Git-hook gate: check the plan-adherence rules before a commit or push (exit code from aidd_guard.py)")
++    p_guard.add_argument("action", choices=["commit", "push"], help="which git event to guard")
++    p_guard.add_argument("--root", default="", help="project root (default: current directory)")
++    p_guard.set_defaults(func=cmd_guard)
++
++    p_doctor = sub.add_parser(
++        "doctor", help="Check that a host install is complete and its gates are wired (exit code from aidd_doctor.py)",
++    )
++    p_doctor.add_argument("--host", choices=["gemini", "opencode", "antigravity"], help="check one host (default: every detected host)")
++    p_doctor.add_argument("--root", default=".", help="project root (default: current directory)")
++    p_doctor.add_argument("--json", action="store_true", help="print the report as JSON")
++    p_doctor.set_defaults(func=cmd_doctor)
++
++    p_progress = sub.add_parser(
++        "progress", help="Implementation %% per spec (target files present / marked aidd:<code>) plus approved/verify/audit/closed stages; no LLM, no third-party graph; writes .aidd/graphs/progress.json",
++        add_help=False)
++    p_progress.add_help = True
++    p_progress.add_argument("spec_dirs", nargs="*", help="spec folders (default: every specs/*/tasks.md)")
++    p_progress.add_argument("--root", help="project root (default: current directory)")
++    for flag, text in (("--json", "machine-readable summary"), ("--detail", "list missing/stub/not-measurable tasks"),
++                       ("--no-write", "do not write .aidd/graphs/progress.json"), ("--quiet", "write the graph, print nothing")):
++        p_progress.add_argument(flag, action="store_true", help=text)
++    p_progress.set_defaults(func=cmd_progress)
++
++    p_rules = sub.add_parser(
++        "rules", help="Hard rules: check <spec_dir> | approve <spec_dir> | close <spec_id> | abandon <spec_id> [--reason TEXT]",
++        add_help=False)
++    p_rules.add_argument("rules_args", nargs=argparse.REMAINDER, help="forwarded to aidd_status.py (try: aidd rules check specs/001-x)")
++    p_rules.set_defaults(func=cmd_rules)
++
++    p_graphs = sub.add_parser(
++        "graphs", help="Project graphs registry: list | status | refresh <name|all> | show <name> <query> | explorer <name>",
++        add_help=False)
++    p_graphs.add_argument("graphs_args", nargs=argparse.REMAINDER, help="forwarded to aidd_graphs.py")
++    p_graphs.set_defaults(func=lambda a: _run("aidd_graphs.py", a.graphs_args))
++
++    p_component = sub.add_parser(
++        "component", help="Shared component operations: search | show <COMP-nnn> | inject <COMP-nnn|SCREEN-XX>",
++        add_help=False)
++    p_component.add_argument("component_args", nargs=argparse.REMAINDER, help="forwarded to component_graph.py")
++    p_component.set_defaults(func=lambda a: _run("component_graph.py", a.component_args))
++    for _name, _script, _pre, _help in (
++            ("job", "aidd_job.py", [], "Run a tool once per set of inputs: run [--bg] | wait | last | list; same command on same file contents = CACHED (aidd_job.py)"),
++            ("triage", "aidd_triage.py", [], "Group the failures of `aidd verify` evidence across specs: shared vs specific (aidd_triage.py)"),
++            ("impact", "aidd_unit_audit.py", [], "Inspect affected units and audit domains without executing checks"),
++            ("units", "aidd_units.py", [], "Plan, apply or safely revert an explicit unit migration"),
++            ("provider", "aidd_provider_attestation.py", [], "Run a unit-approved verification provider"),
++            ("tools", "aidd_tools.py", [], "Catalog of AIDD and project tools by task: tools [keywords] (aidd_tools.py)"),
++            ("size", "aidd_tools.py", ["size"], "Size the work XS/S/M/L and print the analysis parameters: size --spec <id> | --files <f...> (aidd_tools.py size)")):
++        _p = sub.add_parser(_name, help=_help, add_help=False)
++        _p.add_argument("fwd_args", nargs=argparse.REMAINDER, help=f"forwarded to {_script}")
++        _p.set_defaults(func=lambda a, _s=_script, _x=_pre: _run(_s, _x + a.fwd_args))
++    p_sqlcheck = sub.add_parser(
++        "sqlcheck", help="Static compile of SQL migrations before any DB pass (engine-specific: --engine postgres | --cmd \"<checker {file}>\"); several specs in one batch, unchanged files cached",
++        add_help=False)
++    p_sqlcheck.add_argument("sqlcheck_args", nargs=argparse.REMAINDER, help="forwarded to aidd_sqlcheck.py")
++    p_sqlcheck.set_defaults(func=lambda a: _run("aidd_sqlcheck.py", a.sqlcheck_args))
++
++    p_review = sub.add_parser(
++        "review", help="aidd review <spec> [--open] [--check] [--wait] [--comments] [--summary] [--full] [--timeout S] [--interval S]: generate specs/<id>/review.html (compact page) or read the approval state")
++    p_review.add_argument("spec_dir", help="spec folder, e.g. specs/008-x (first, then the flags)")
++    p_review.add_argument("review_flags", nargs=argparse.REMAINDER,
++                          help="forwarded to aidd_review.py: --open, --check (ONE status line; exit 0 complete / 2 pending / 3 stale, legacy, too many items), --wait (poll, then ONE status line; exit 0 complete / 2 timeout / 3 cannot help), --comments (<CODE>: <comment> lines), --summary (mechanical summary, writes nothing), --full (long page with heading keys), --timeout S, --interval S")
++    p_review.set_defaults(func=cmd_review)
++
++    p_cl = sub.add_parser(
++        "close-ledger", help="aidd close-ledger <spec> [--check-fresh] [--json] [--domains a,b] [--verify-hash hex]: read-only draft of the closing audit (heading, verification table from evidence/verify-*.txt, R10 freshness)")
++    p_cl.add_argument("cl_args", nargs=argparse.REMAINDER)
++    p_cl.set_defaults(func=lambda a: _run("aidd_close_ledger.py", a.cl_args))
++
++    p_red = sub.add_parser(
++        "red", help="aidd red <test-cmd...> --task T-nn [--spec id] | aidd red --check <spec>: run a test that must FAIL and store the RED receipt in specs/<id>/evidence/red-T-nn.txt")
++    p_red.add_argument("red_args", nargs=argparse.REMAINDER)
++    p_red.set_defaults(func=lambda a: _run("aidd_red.py", a.red_args))
++
++    p_verify = sub.add_parser(
++        "verify", help="Run the spec's ## Verification commands and record the evidence (verify <spec>)",
++        add_help=False)
++    p_verify.add_argument("verify_args", nargs=argparse.REMAINDER, help="forwarded to aidd_status.py verify")
++    p_verify.set_defaults(func=cmd_verify)
++
++    p_cal = sub.add_parser(
++        "calibrate", help="Record measured minutes/tokens of a closed spec into .aidd/calibration.toon")
++    p_cal.add_argument("action", choices=["record"], help="record")
++    p_cal.add_argument("spec_dir", help="spec folder, e.g. specs/005-x")
++    p_cal.set_defaults(func=cmd_calibrate)
++
++    p_cc = sub.add_parser("check-charter", help="Run charter.md's checkable rules")
++    p_cc.add_argument("root", nargs="?", default=None, help="Project root (default: cwd)")
++    p_cc.set_defaults(func=cmd_check_charter)
++
++    p_t2i = sub.add_parser(
++        "tasks-to-issues",
++        help="Turn an approved tasks.md into real issues (GitHub, Azure DevOps, or Bitbucket)",
++        description="Provider-specific flags (--provider, --repo, --org, --project, "
++                    "--work-item-type, --workspace, --repo-slug, --apply) are forwarded as-is — "
++                    "run 'python skill/scripts/tasks_to_issues.py --help' for the full list.",
++    )
++    p_t2i.add_argument("tasks_md")
++    p_t2i.add_argument("provider_args", nargs=argparse.REMAINDER,
++                        help="Forwarded verbatim to tasks_to_issues.py, e.g. --provider azure_devops --org ... --apply")
++    p_t2i.set_defaults(func=cmd_tasks_to_issues)
++
++    p_adapters = sub.add_parser(
++        "adapters",
++        help="Generate native command files for other agent tools (Gemini CLI, Cursor, Windsurf, Cline, Copilot)",
++        description="Renders commands/aidd-*.md into each agent tool's own native command "
++                    "format and directory. Claude Code, OpenCode, and Codex are not covered here — "
++                    "see adapters/README.md, they already have a richer native mechanism.",
++    )
++    adapters_sub = p_adapters.add_subparsers(dest="adapters_command", required=True)
++
++    p_adapters_list = adapters_sub.add_parser("list", help="List available adapter targets")
++    p_adapters_list.set_defaults(func=cmd_adapters_list)
++
++    p_adapters_generate = adapters_sub.add_parser(
++        "generate", help="Write native command files for one target (or 'all') into a project"
++    )
++    p_adapters_generate.add_argument("target", help="gemini | cursor | windsurf | cline | copilot | all")
++    p_adapters_generate.add_argument("project_root", nargs="?", default=".", help="Target project directory (default: cwd)")
++    p_adapters_generate.add_argument("--force", action="store_true", help="Overwrite files that already exist")
++    p_adapters_generate.set_defaults(func=cmd_adapters_generate)
++
++    p_marketplace = sub.add_parser(
++        "marketplace",
++        help="Browse and install third-party packages from catalog/ (providers/adapters/templates/hooks)",
++        description="See catalog/README.md for what a package is and how to submit one. All 4 "
++                    "kinds (adapter/template/provider/hook) can be listed, searched, and installed — "
++                    "an installed provider/hook is auto-discovered from .aidd/extensions/, see "
++                    "skill/scripts/extension_registry.py.",
++    )
++    marketplace_sub = p_marketplace.add_subparsers(dest="marketplace_command", required=True)
++
++    p_mp_list = marketplace_sub.add_parser("list", help="List every package in the catalog")
++    p_mp_list.set_defaults(func=cmd_marketplace_list)
++
++    p_mp_search = marketplace_sub.add_parser("search", help="Search the catalog by id/name/description")
++    p_mp_search.add_argument("query")
++    p_mp_search.set_defaults(func=cmd_marketplace_search)
++
++    p_mp_install = marketplace_sub.add_parser("install", help="Install a package into a project")
++    p_mp_install.add_argument("package_id")
++    p_mp_install.add_argument("project_root", nargs="?", default=".")
++    p_mp_install.add_argument("--force", action="store_true", help="Override a file-conflict refusal")
++    p_mp_install.set_defaults(func=cmd_marketplace_install)
++
++    p_mp_remove = marketplace_sub.add_parser("remove", help="Remove an installed package from a project")
++    p_mp_remove.add_argument("package_id")
++    p_mp_remove.add_argument("project_root", nargs="?", default=".")
++    p_mp_remove.add_argument("--force", action="store_true", help="Remove even files modified since install")
++    p_mp_remove.set_defaults(func=cmd_marketplace_remove)
++
++    p_extensions = sub.add_parser(
++        "extensions",
++        help="List, inspect, enable, or disable auto-discovered provider/adapter/hook extensions",
++        description="Extensions are discovered from skill/extensions/**/manifest.json (first-party) "
++                    "and <project>/.aidd/extensions/**/manifest.json (project-local, including anything "
++                    "'aidd marketplace install' put there) — see skill/scripts/extension_registry.py.",
++    )
++    extensions_sub = p_extensions.add_subparsers(dest="extensions_command", required=True)
++
++    p_ext_list = extensions_sub.add_parser("list", help="List every discovered extension")
++    p_ext_list.set_defaults(func=cmd_extensions_list)
++
++    p_ext_info = extensions_sub.add_parser("info", help="Show one extension's manifest")
++    p_ext_info.add_argument("id")
++    p_ext_info.set_defaults(func=cmd_extensions_info)
++
++    p_ext_enable = extensions_sub.add_parser("enable", help="Enable an extension")
++    p_ext_enable.add_argument("id")
++    p_ext_enable.set_defaults(func=cmd_extensions_enable)
++
++    p_ext_disable = extensions_sub.add_parser("disable", help="Disable an extension")
++    p_ext_disable.add_argument("id")
++    p_ext_disable.set_defaults(func=cmd_extensions_disable)
++
++    p_tracker = sub.add_parser(
++        "tracker",
++        help="Sync tasks.md status from the tracker and link opened PRs to their task's issue",
++        description="See skill/scripts/sync_issues.py and skill/scripts/link_pr_to_task.py.",
++    )
++    tracker_sub = p_tracker.add_subparsers(dest="tracker_command", required=True)
++
++    p_tracker_sync = tracker_sub.add_parser(
++        "sync",
++        help="Diff (or write, with --apply) tasks.md's Status column against live tracker status",
++        description="Provider-specific flags (--provider, --repo, --org, --project, "
++                    "--work-item-type, --workspace, --repo-slug, --apply) are forwarded as-is — "
++                    "run 'python skill/scripts/sync_issues.py --help' for the full list.",
++    )
++    p_tracker_sync.add_argument("tasks_md")
++    p_tracker_sync.add_argument("provider_args", nargs=argparse.REMAINDER,
++                                 help="Forwarded verbatim to sync_issues.py, e.g. --provider azure_devops --org ... --apply")
++    p_tracker_sync.set_defaults(func=cmd_tracker_sync)
++
++    p_tracker_link = tracker_sub.add_parser(
++        "link-pr",
++        help="Attach an opened PR's URL to its task's tracker issue and tasks.md row",
++        description="tasks_md is positional here (translated back to link_pr_to_task.py's own "
++                    "--tasks-md flag). Every other flag (--pr-url, --branch, --task-id, --provider, "
++                    "--apply, and provider-specific flags) is forwarded as-is — run "
++                    "'python skill/scripts/link_pr_to_task.py --help' for the full list.",
++    )
++    p_tracker_link.add_argument("tasks_md", help="Path to a spec's tasks.md")
++    p_tracker_link.add_argument("link_args", nargs=argparse.REMAINDER,
++                                 help="Forwarded verbatim to link_pr_to_task.py, e.g. --pr-url ... --branch ... --apply")
++    p_tracker_link.set_defaults(func=cmd_tracker_link_pr)
++
++    p_ci = sub.add_parser(
++        "ci",
++        help="Install a CI workflow file (GitHub Actions or Azure Pipelines) for this project",
++        description="See skill/scripts/install_ci.py and skill/templates/ci/*.yml. Opt-in and "
++                    "explicit, on purpose — nothing else in AIDD writes this file for you.",
++    )
++    ci_sub = p_ci.add_subparsers(dest="ci_command", required=True)
++
++    p_ci_install = ci_sub.add_parser("install", help="Copy a CI template into this project's conventional CI path")
++    p_ci_install.add_argument("target", help="github | azure-devops")
++    p_ci_install.add_argument("project_root", nargs="?", default=".", help="Target project directory (default: cwd)")
++    p_ci_install.add_argument("--force", action="store_true", help="Overwrite an existing CI file")
++    p_ci_install.set_defaults(func=cmd_ci_install)
++
++    return parser
++
++
++def main(argv=None):
++    argv = list(sys.argv[1:] if argv is None else argv)
++    if argv and argv[0] == "mem":
++        # `aidd mem ...` is a pure passthrough to aidd_memory.py, so options that
++        # come before the subcommand (--root X, --help) work too — argparse's
++        # REMAINDER would otherwise choke on a leading option.
++        sys.exit(_run("aidd_memory.py", argv[1:]))
++    if argv and argv[0] in ("status", "rules", "verify"):
++        # Same passthrough for the hard-rules commands (aidd_status.py owns the parsing);
++        # `aidd verify <spec>` -> `aidd_status.py verify <spec>` (aidd:FR-205).
++        sys.exit(_run("aidd_status.py", argv))
++    if argv and argv[0] == "graphs":
++        sys.exit(_run("aidd_graphs.py", argv[1:]))
++    if argv and argv[0] == "component":
++        sys.exit(_run("component_graph.py", argv[1:]))
++    if argv and argv[0] == "impact":
++        sys.exit(_run("aidd_unit_audit.py", argv[1:]))
++    if argv and argv[0] == "units":
++        sys.exit(_run("aidd_units.py", argv[1:]))
++    if argv and argv[0] == "provider":
++        sys.exit(_run("aidd_provider_attestation.py", argv[1:]))
++    if argv and argv[0] in ("job", "triage", "tools", "size"):
++        # aidd:FR-038 / FR-041 — same passthrough as `graphs`; each script owns its parsing.
++        _script = {"job": "aidd_job.py", "triage": "aidd_triage.py",
++                   "tools": "aidd_tools.py", "size": "aidd_tools.py"}[argv[0]]
++        sys.exit(_run(_script, (["size"] if argv[0] == "size" else []) + argv[1:]))
++    if argv and argv[0] == "sqlcheck":
++        sys.exit(_run("aidd_sqlcheck.py", argv[1:]))
++    if argv and argv[0] in ("close-ledger", "red"):
++        # amendment 09 B12 / B5 - each script owns its parsing (`aidd red` forwards the test command verbatim).
++        sys.exit(_run({"close-ledger": "aidd_close_ledger.py", "red": "aidd_red.py"}[argv[0]], argv[1:]))
++    if argv and argv[0] == "review":
++        # aidd:FR-313 — aidd_review.py owns the parsing, so the flags work in any order
++        # (`aidd review --summary <spec>` as well as `aidd review <spec> --summary`); the
++        # REMAINDER subparser below rejected a leading flag with exit 2 (= --check `pending`).
++        sys.exit(_run("aidd_review.py", argv[1:]))
++    parser = build_parser()
++    args = parser.parse_args(argv)
++    sys.exit(args.func(args))
++
++
++if __name__ == "__main__":
++    main()
+diff --git a/skill/scripts/aidd_close_ledger.py b/skill/scripts/aidd_close_ledger.py
+new file mode 100644
+--- /dev/null
++++ b/skill/scripts/aidd_close_ledger.py
+@@ -0,0 +1,340 @@
++#!/usr/bin/env python3
++"""aidd_close_ledger.py - draft of a spec's closing audit (READ ONLY, stdlib, no network).  aidd: amendment 09 B12 / FR-300 (h)
++
++Usage: aidd close-ledger <spec_dir> [--check-fresh] [--json] [--domains a,b,c] [--verify-hash <hex>]
++
++Prints to stdout (never writes under specs/):
++  1. the heading `CLOSING AUDIT [domains: ...] [tasks:<h8>] [verify:<v8>]`
++  2. the `## Verification summary` table built from `## Verification` of spec.md and the
++     evidence/verify-<V-n>.txt files
++  3. with --check-fresh: the evidence files (verify-*.txt and those cited under `## Execution evidence`
++     of qa-audit.md) marked STALE when older than the newest code file of the scope; `LISTO PARA AUDITAR`
++     only when nothing is STALE or missing.
++
++Sources of the heading: domains = --domains, else the `CLOSING AUDIT [domains: ...]` of an existing
++closing-audit.md, else `aidd_rules.required_domains(spec)` (the same rule `aidd rules close` applies);
++tasks hash = the `Approved: <date> hash:<hex>` line of tasks.md; verify hash = --verify-hash, else the newest
++`verify_run` of the spec in the evidence log. An agent copies the output with its Write tool.
++Exit: 0 printed, 2 usage error (no spec.md).
++"""
++import argparse
++import datetime
++import glob
++import json
++import os
++import re
++import sys
++from pathlib import Path
++
++sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
++try:
++    import aidd_rules as rules
++except Exception:  # pragma: no cover - the script still works with its own parsers
++    rules = None
++try:
++    import aidd_evidence as ev
++except Exception:  # pragma: no cover
++    ev = None
++
++ANSI = re.compile(r"\x1b\[[0-9;]*m")
++IGNORED_DIRS = {"node_modules", "__pycache__", ".git", "dist", "build", ".venv", ".pytest_cache"}
++ROW = re.compile(r"^\|\s*(V-\d+)\s*\|\s*`(.+?)`\s*\|\s*(.*?)\s*\|")
++
++
++def read_text(path):
++    try:
++        return Path(path).read_bytes().decode("utf-8", errors="replace").replace("\r\n", "\n").replace("\r", "\n")
++    except OSError:
++        return None
++
++
++def section(text, title):
++    """Body of a `## title` section up to the next `## `."""
++    m = re.search(r"^##\s+" + re.escape(title) + r"[^\n]*\n", text, re.M)
++    if not m:
++        return ""
++    rest = text[m.end():]
++    n = re.search(r"^##\s", rest, re.M)
++    return rest[: n.start()] if n else rest
++
++
++def parse_verification(spec_text, tasks_text=""):
++    """-> (rows [{id, cmd, expected}], scope globs). Uses aidd_rules when present, else a small own parser."""
++    rows = []
++    if rules is not None:
++        for r in rules.parse_verification(spec_text):
++            rows.append({"id": r["n"], "cmd": r["cmd"], "expected": r.get("expected", "")})
++        return rows, [s for s in rules.verification_scope(spec_text, tasks_text) if s.lower() != "auto"]
++    body = section(spec_text, "Verification")
++    for line in body.split("\n"):
++        m = ROW.match(line)
++        if m:
++            rows.append({"id": m.group(1), "cmd": m.group(2), "expected": m.group(3)})
++    sm = re.search(r"^Scope:\s*(.+)$", body, re.M)
++    scope = []
++    if sm:
++        scope = [s.strip().strip("`") for s in re.split(r",\s+|,(?=[A-Za-z.\w]+/)", sm.group(1)) if s.strip()]
++        scope = [s for s in scope if s.lower() != "auto"]
++    return rows, scope
++
++
++def row_file_id(n, i):
++    """Same naming as `aidd verify` (aidd_status._row_file_id): evidence/verify-<id>.txt."""
++    s = re.sub(r"[^A-Za-z0-9_-]+", "", str(n or ""))[:20]
++    return s or str(i)
++
++
++def summarize_evidence(text):
++    """-> (exit, short result). Patterns: pgTAP, pytest, vitest, Playwright, tsc/npm."""
++    clean = ANSI.sub("", text)
++    first = clean.split("\n", 1)[0]
++    ex = ""
++    if first.startswith("#"):
++        parts = first.rsplit("|", 2)
++        if len(parts) == 3:
++            m = re.search(r"exit\s+(-?\d+)", parts[1])
++            ex = m.group(1) if m else ""
++    bits = []
++    pg = re.findall(r"RESULT:\s*OK \((\d+) failing item\(s\)\)", clean)
++    if pg:
++        oks = [(int(a), int(b)) for a, b in re.findall(r"\[ok\]\s+\S+:\s*ok=(\d+)\s+not_ok=(\d+)", clean)]
++        s = f"pgTAP RESULT: OK ({pg[-1]} failing)"
++        if oks:
++            s += f"; {len(oks)} files, ok={sum(a for a, _ in oks)} not_ok={sum(b for _, b in oks)}"
++        bits.append(s)
++    else:
++        bad = re.findall(r"RESULT:\s*(?!OK)(.+)", clean)
++        if bad:
++            bits.append("pgTAP " + bad[-1].strip())
++    passed = re.findall(r"(\d+) passed", clean)
++    failed = re.findall(r"(\d+) failed", clean)
++    if passed or failed:
++        bits.append(f"{passed[-1] if passed else 0} passed" + (f", {failed[-1]} failed" if failed else ""))
++    if not bits:
++        bits.append("no recognised pattern (tsc/npm: see exit)" if ex == "0" else "no recognised pattern")
++    return ex, "; ".join(bits)
++
++
++def find_root(spec_dir):
++    p = Path(spec_dir).resolve()
++    for cand in [p] + list(p.parents):
++        if (cand / ".aidd").is_dir() or (cand / "AGENTS.md").is_file():
++            return cand
++    for cand in [p] + list(p.parents):       # a repo without .aidd/: the folder that holds specs/
++        if cand.name == "specs":
++            return cand.parent
++    return p.parent.parent
++
++
++def tasks_hash8(spec_dir):
++    t = read_text(Path(spec_dir) / "tasks.md") or ""
++    m = re.search(r"^Approved:\s*\S+\s+hash:([0-9a-fA-F]+)", t, re.M)
++    return (m.group(1)[:8], None) if m else ("????????", "tasks.md has no `Approved: <date> hash:<hex>` line")
++
++
++def verify_hash_from_log(root, spec_name):
++    if ev is None:
++        return None
++    try:
++        run = ev.latest_verify_run(root, spec_name)
++    except Exception:
++        return None
++    return (run or {}).get("verify_hash") or None
++
++
++def domains_from_audit(spec_dir):
++    t = read_text(Path(spec_dir) / "closing-audit.md")
++    if t:
++        m = re.search(r"CLOSING AUDIT \[domains:\s*([^\]]*)\]", t)
++        if m:
++            return [d.strip() for d in m.group(1).split(",") if d.strip()]
++    return None
++
++
++def task_targets(spec_dir):
++    """Backticked paths of the 3rd column of every `| T-nn |` row (works with or without a header)."""
++    t = read_text(Path(spec_dir) / "tasks.md") or ""
++    out = []
++    for line in t.split("\n"):
++        if re.match(r"^\|\s*T-\d+", line):
++            cols = [c.strip() for c in line.split("|")]
++            if len(cols) > 3:
++                out += [m.group(1) for m in re.finditer(r"`([^`]+)`", cols[3])]
++    if rules is not None:
++        out += [x for x in rules.task_targets(t) if x not in out]
++    return out
++
++
++def newest_code(root, patterns):
++    """(mtime, path) of the newest code file the patterns cover; (None, None) when none."""
++    best = (None, None)
++    for pat in patterns:
++        pat = pat.replace("\\", "/")
++        for f in glob.glob(str(Path(root) / pat), recursive=True):
++            fp = Path(f)
++            cands = [fp] if fp.is_file() else [q for q in fp.rglob("*") if q.is_file()]
++            for q in cands:
++                if IGNORED_DIRS & set(q.parts):
++                    continue
++                try:
++                    mt = q.stat().st_mtime
++                except OSError:
++                    continue
++                if best[0] is None or mt > best[0]:
++                    best = (mt, str(q.relative_to(root)).replace("\\", "/") if Path(root) in q.parents else str(q))
++    return best
++
++
++def cited_evidence(spec_dir, root):
++    t = read_text(Path(spec_dir) / "qa-audit.md") or ""
++    body = section(t, "Execution evidence")
++    paths = []
++    for line in body.split("\n"):
++        if not line.startswith("|") or re.match(r"^\|\s*(Code|-)", line):
++            continue
++        for m in re.finditer(r"[\w.\-]+(?:[/\\][\w.\- ]+)+", line):
++            tok = m.group(0).strip().replace("\\", "/")
++            if tok not in paths:
++                paths.append(tok)
++    out = []
++    for tok in paths:
++        for base in (Path(root), Path(spec_dir)):
++            if (base / tok).exists():
++                out.append((tok, base / tok))
++                break
++        else:
++            out.append((tok, None))
++    return out
++
++
++def mtime_of(p):
++    if p.is_dir():
++        files = [q.stat().st_mtime for q in p.rglob("*") if q.is_file()]
++        return min(files) if files else p.stat().st_mtime
++    return p.stat().st_mtime
++
++
++def build(spec_dir, domains=None, verify_hash=None, check_fresh=False):
++    spec_dir = Path(spec_dir)
++    root = find_root(spec_dir)
++    name = spec_dir.resolve().name
++    warnings = []
++    spec_text = read_text(spec_dir / "spec.md") or ""
++    tasks_text = read_text(spec_dir / "tasks.md") or ""
++    vrows, scope = parse_verification(spec_text, tasks_text)
++
++    if not domains:
++        domains = domains_from_audit(spec_dir)
++    if not domains and rules is not None:
++        domains = sorted(rules.required_domains(spec_dir))
++    if not domains:
++        domains = []
++        warnings.append("unknown domains: pass --domains a,b,c")
++    h8, w = tasks_hash8(spec_dir)
++    if w:
++        warnings.append(w)
++    vh = verify_hash or verify_hash_from_log(root, name)
++    if not vh:
++        v8 = "????????"
++        warnings.append("verify hash not found in the evidence log: pass --verify-hash <hex>")
++    else:
++        v8 = vh[:8]
++    header = f"CLOSING AUDIT [domains: {', '.join(domains)}] [tasks:{h8}] [verify:{v8}]"
++
++    rows = []
++    ev_dir = spec_dir / "evidence"
++    for i, r in enumerate(vrows, 1):
++        f = ev_dir / f"verify-{row_file_id(r['id'], i)}.txt"
++        t = read_text(f)
++        if t is None:
++            rows.append({**r, "exit": "?", "result": "FALTA evidencia", "evidence": f"evidence/{f.name}",
++                         "_path": None})
++        else:
++            ex, res = summarize_evidence(t)
++            rows.append({**r, "exit": ex or "?", "result": res, "evidence": f"evidence/{f.name}", "_path": f})
++
++    data = {"spec": name, "header": header, "warnings": warnings, "rows": [], "check_fresh": check_fresh,
++            "stale": [], "missing": [], "scope": scope, "newest_code": None, "ready": False}
++
++    if check_fresh:
++        patterns = scope or task_targets(spec_dir)
++        data["scope_source"] = "Scope:" if scope else "Target file of tasks.md"
++        mt, who = newest_code(root, patterns)
++        if mt is None:
++            warnings.append("scope has no code files: freshness cannot be checked")
++        else:
++            data["newest_code"] = {"path": who, "mtime": mt}
++        files = [(f"evidence/{r['evidence'].split('/')[-1]}", r["_path"]) for r in rows]
++        files += cited_evidence(spec_dir, root)
++        seen, checked = set(), []
++        for label, p in files:
++            if label in seen:
++                continue
++            seen.add(label)
++            if p is None:
++                data["missing"].append(label)
++                checked.append({"file": label, "status": "FALTA"})
++                continue
++            m = mtime_of(p)
++            stale = mt is not None and m < mt
++            checked.append({"file": label, "status": "STALE" if stale else "OK", "mtime": m})
++            if stale:
++                data["stale"].append(label)
++        data["checked"] = checked
++        data["ready"] = bool(mt is not None and not data["stale"] and not data["missing"] and rows)
++    for r in rows:
++        r.pop("_path", None)
++        data["rows"].append(r)
++    return data
++
++
++def render_text(d):
++    out = [d["header"], ""]
++    for w in d["warnings"]:
++        out.append(f"> AVISO: {w}")
++    if d["warnings"]:
++        out.append("")
++    out += ["## Verification summary", "", "| # | Command | Exit | Result | Evidence |", "|---|---|---|---|---|"]
++    for r in d["rows"]:
++        cmd = r["cmd"].replace("|", "\\|")
++        out.append(f"| {r['id']} | `{cmd}` | {r['exit']} | {r['result']} | {r['evidence']} |")
++    if d["check_fresh"]:
++        out += ["", "## Frescura de la evidencia", ""]
++        nc = d.get("newest_code")
++        if nc:
++            ts = datetime.datetime.fromtimestamp(nc["mtime"]).isoformat(timespec="seconds")
++            out.append(f"Codigo mas reciente del alcance ({d.get('scope_source')}): {nc['path']} ({ts})")
++        else:
++            out.append("Codigo mas reciente del alcance: no determinado")
++        out.append("")
++        for c in d.get("checked", []):
++            out.append(f"- {c['status']}: {c['file']}")
++        out.append("")
++        out.append("LISTO PARA AUDITAR" if d["ready"] else
++                   "NO LISTO: hay evidencia STALE o faltante, o el alcance no se pudo comprobar. "
++                   "Re-ejecutar `aidd verify` antes de auditar.")
++    return "\n".join(out) + "\n"
++
++
++def main(argv=None):
++    ap = argparse.ArgumentParser(prog="aidd close-ledger", description="Closing-audit draft of a spec (read only).")
++    ap.add_argument("spec")
++    ap.add_argument("--check-fresh", action="store_true")
++    ap.add_argument("--json", action="store_true")
++    ap.add_argument("--domains")
++    ap.add_argument("--verify-hash")
++    a = ap.parse_args(argv)
++    spec = Path(a.spec)
++    if not (spec / "spec.md").is_file():
++        print(f"ERROR: {spec / 'spec.md'} does not exist", file=sys.stderr)
++        return 2
++    doms = [x.strip() for x in a.domains.split(",") if x.strip()] if a.domains else None
++    d = build(spec, doms, a.verify_hash, a.check_fresh)
++    if hasattr(sys.stdout, "reconfigure"):
++        sys.stdout.reconfigure(encoding="utf-8")
++    print(json.dumps(d, ensure_ascii=False, indent=2) if a.json else render_text(d), end="" if not a.json else "\n")
++    return 0
++
++
++if __name__ == "__main__":
++    sys.exit(main())
+diff --git a/skill/scripts/aidd_red.py b/skill/scripts/aidd_red.py
+new file mode 100644
+--- /dev/null
++++ b/skill/scripts/aidd_red.py
+@@ -0,0 +1,279 @@
++#!/usr/bin/env python3
++"""aidd_red.py - RED receipt for a test task (stdlib).  aidd: amendment 09 B5 / FR-297 (E10 (d))
++
++Usage:
++  aidd red <test-cmd...> --task T-nn [--spec <id|dir>] [--timeout S]
++      Runs the test command from the project root. It MUST fail (exit != 0): then it writes the receipt
++      `specs/<id>/evidence/red-T-nn.txt` (command, exit code, first failing line, timestamp, sha1 of the
++      test file) and exits 0. If the command passes it prints `NO-RED: el test pasó, no hay RED`, writes
++      nothing and exits 1. `--task`/`--spec`/`--timeout` may stand anywhere; use `--` to pass the
++      command verbatim (`aidd red --task T-01 -- python -m pytest -x tests/t.py`).
++  aidd red --check <id|dir>
++      Lists the receipts present (and whether the test file changed since) and every task with
++      `Agent role: tests` that has no receipt (`MISSING: T-nn`; exit 1). A task block with a line
++      `RED: exempt (<reason>)` (pure refactor with an existing test) is listed as EXEMPT.
++
++The receipt is written by this CLI process, the only writer of evidence/ under rule R9 (the same way
++`aidd verify` writes evidence/verify-*.txt). Exit: 0 ok, 1 no RED / missing receipts, 2 usage error.
++"""
++import datetime
++import hashlib
++import os
++import re
++import subprocess
++import sys
++from pathlib import Path
++
++sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
++try:
++    import aidd_evidence as ev
++except Exception:  # pragma: no cover
++    ev = None
++
++FAIL_RE = re.compile(r"(AssertionError|FAILED|FAIL\b|Error\b|Exception|not ok|✗|✘|Cannot find|panicked|expected)", re.I)
++TASK_RE = re.compile(r"^T-\d+$")
++
++
++def _root():
++    if ev is not None:
++        return ev.find_root()
++    cur = Path.cwd().resolve()
++    for d in [cur] + list(cur.parents):
++        if (d / "specs").is_dir() or (d / ".aidd").is_dir():
++            return d
++    return cur
++
++
++def resolve_spec(root, spec_arg):
++    """-> spec dir Path or None. `spec_arg` is an id, a path, or None (active spec, else the only spec)."""
++    if spec_arg:
++        for cand in (Path(spec_arg), root / spec_arg, root / "specs" / spec_arg):
++            if (cand / "spec.md").is_file():
++                return cand.resolve()
++        return None
++    active = ev.get_active_spec(root) if ev is not None else None
++    if active and (root / "specs" / active / "spec.md").is_file():
++        return (root / "specs" / active).resolve()
++    dirs = [p.parent for p in (root / "specs").glob("*/spec.md")] if (root / "specs").is_dir() else []
++    return dirs[0].resolve() if len(dirs) == 1 else None
++
++
++def split_args(argv):
++    """-> (cmd list, task, spec, timeout, error). Flags may stand anywhere unless a `--` fixes the command."""
++    task = spec = timeout = None
++    cmd = []
++    rest = list(argv)
++    tail = []
++    if "--" in rest:
++        i = rest.index("--")
++        rest, tail = rest[:i], rest[i + 1:]
++    i = 0
++    while i < len(rest):
++        a = rest[i]
++        if a in ("--task", "--spec", "--timeout") and i + 1 < len(rest):
++            v = rest[i + 1]
++            if a == "--task":
++                task = v
++            elif a == "--spec":
++                spec = v
++            else:
++                timeout = v
++            i += 2
++            continue
++        m = re.match(r"^(--task|--spec|--timeout)=(.*)$", a)
++        if m and not tail:
++            k, v = m.groups()
++            if k == "--task":
++                task = v
++            elif k == "--spec":
++                spec = v
++            else:
++                timeout = v
++            i += 1
++            continue
++        cmd.append(a)
++        i += 1
++    cmd += tail
++    return cmd, task, spec, timeout
++
++
++def find_test_file(root, cmd, spec_dir, task):
++    """Relative path of the test file: first command argument naming an existing file (pytest `::node`
++    stripped), else the Target file of the task in tasks.md, else ''."""
++    for a in cmd[1:] if len(cmd) > 1 else cmd:
++        base = a.split("::", 1)[0]
++        if not base or base.startswith("-"):
++            continue
++        p = (root / base)
++        if p.is_file() and not base.endswith(".exe"):
++            return base.replace("\\", "/")
++    tgt = task_targets(spec_dir).get(task) if spec_dir else None
++    return tgt or ""
++
++
++def task_targets(spec_dir):
++    """{T-nn: first backticked path of its table row (3rd column)}."""
++    try:
++        t = (Path(spec_dir) / "tasks.md").read_text(encoding="utf-8", errors="replace")
++    except OSError:
++        return {}
++    out = {}
++    for line in t.splitlines():
++        m = re.match(r"^\|\s*(T-\d+)\s*\|", line)
++        if m:
++            cols = [c.strip() for c in line.split("|")]
++            if len(cols) > 3:
++                p = re.search(r"`([^`]+)`", cols[3])
++                if p:
++                    out[m.group(1)] = p.group(1)
++    return out
++
++
++def task_roles(spec_dir):
++    """{T-nn: {'role': str, 'exempt': bool}} from the `### T-nn` blocks of tasks.md."""
++    try:
++        t = (Path(spec_dir) / "tasks.md").read_text(encoding="utf-8", errors="replace")
++    except OSError:
++        return {}
++    out = {}
++    blocks = re.split(r"^#{2,4}\s+(?=T-\d+)", t, flags=re.M)[1:]
++    for b in blocks:
++        m = re.match(r"(T-\d+)", b)
++        if not m:
++            continue
++        r = re.search(r"Agent role:\s*([A-Za-z]+)", b)
++        out[m.group(1)] = {"role": (r.group(1).lower() if r else ""),
++                           "exempt": bool(re.search(r"^[ \t>*-]*RED:\s*exempt\b", b, re.I | re.M))}
++    return out
++
++
++def first_failure(output):
++    lines = [ln.strip() for ln in output.splitlines() if ln.strip()]
++    for ln in lines:
++        if FAIL_RE.search(ln) and not ln.startswith("Traceback"):
++            return ln[:300]
++    return lines[0][:300] if lines else "(no output)"
++
++
++def sha1_of(path):
++    try:
++        return hashlib.sha1(Path(path).read_bytes()).hexdigest()
++    except OSError:
++        return ""
++
++
++def cmd_run(argv):
++    cmd, task, spec_arg, timeout = split_args(argv)
++    if not cmd or not task or not TASK_RE.match(task):
++        print("Usage: aidd red <test-cmd...> --task T-nn [--spec <id>]   |   aidd red --check <spec>", file=sys.stderr)
++        return 2
++    root = _root()
++    spec_dir = resolve_spec(root, spec_arg)
++    if spec_dir is None:
++        print("ERROR: spec not found or ambiguous: pass --spec <id>", file=sys.stderr)
++        return 2
++    try:
++        tmo = float(timeout or os.environ.get("AIDD_RED_TIMEOUT") or 600)
++    except ValueError:
++        print("ERROR: invalid --timeout", file=sys.stderr)
++        return 2
++    started = datetime.datetime.now().isoformat(timespec="seconds")
++    try:
++        if len(cmd) == 1:
++            res = subprocess.run(cmd[0], shell=True, cwd=str(root), capture_output=True, timeout=tmo)
++        else:
++            res = subprocess.run(cmd, cwd=str(root), capture_output=True, timeout=tmo)
++    except subprocess.TimeoutExpired:
++        print(f"ERROR: the test command exceeded {tmo:g}s; no receipt written", file=sys.stderr)
++        return 2
++    except OSError as e:
++        print(f"ERROR: cannot run the command ({type(e).__name__}: {e}); no receipt written", file=sys.stderr)
++        return 2
++    code = res.returncode
++    output = (res.stdout + b"\n" + res.stderr).decode("utf-8", errors="replace").replace("\r\n", "\n")
++    if code == 0:
++        print("NO-RED: el test pasó, no hay RED")
++        return 1
++    test_file = find_test_file(root, cmd, spec_dir, task)
++    sha = sha1_of(root / test_file) if test_file else ""
++    command = " ".join(f'"{c}"' if " " in c else c for c in cmd)
++    body = [f"# RED {task} | exit {code} | {started}",
++            f"command: {command}",
++            f"exit: {code}",
++            f"first_failure: {first_failure(output)}",
++            f"timestamp: {started}",
++            f"test_file: {test_file or '(unknown)'}",
++            f"test_file_sha1: {sha or '(none)'}",
++            "--- output (first 60 lines) ---"]
++    body += output.strip("\n").split("\n")[:60]
++    evid = spec_dir / "evidence"
++    try:
++        evid.mkdir(parents=True, exist_ok=True)
++        (evid / f"red-{task}.txt").write_text("\n".join(body) + "\n", encoding="utf-8")
++    except OSError as e:
++        print(f"ERROR: cannot write the receipt ({type(e).__name__})", file=sys.stderr)
++        return 2
++    print(f"RED receipt: {spec_dir.name}/evidence/red-{task}.txt (exit {code}; {first_failure(output)})")
++    return 0
++
++
++def parse_receipt(path):
++    out = {}
++    try:
++        for ln in Path(path).read_text(encoding="utf-8", errors="replace").splitlines()[1:12]:
++            m = re.match(r"^(\w+):\s*(.*)$", ln)
++            if m:
++                out[m.group(1)] = m.group(2)
++    except OSError:
++        pass
++    return out
++
++
++def cmd_check(argv):
++    if len(argv) != 1:
++        print("Usage: aidd red --check <spec>", file=sys.stderr)
++        return 2
++    root = _root()
++    spec_dir = resolve_spec(root, argv[0])
++    if spec_dir is None:
++        print(f"ERROR: spec not found: {argv[0]}", file=sys.stderr)
++        return 2
++    roles = task_roles(spec_dir)
++    targets = task_targets(spec_dir)
++    evid = spec_dir / "evidence"
++    receipts = {p.stem[4:]: p for p in sorted(evid.glob("red-T-*.txt"))} if evid.is_dir() else {}
++    missing = 0
++    for tid in sorted(set(roles) | set(receipts)):
++        info = roles.get(tid, {})
++        if tid in receipts:
++            r = parse_receipt(receipts[tid])
++            line = f"OK: {tid} evidence/{receipts[tid].name} (exit {r.get('exit', '?')})"
++            tf = r.get("test_file", "")
++            if tf and tf != "(unknown)" and r.get("test_file_sha1") not in (None, "(none)"):
++                if sha1_of(root / tf) != r["test_file_sha1"]:
++                    line += " - test file changed since the receipt"
++            print(line)
++        elif info.get("role") == "tests":
++            if info.get("exempt"):
++                print(f"EXEMPT: {tid} (declared RED: exempt)")
++            else:
++                missing += 1
++                print(f"MISSING: {tid} role=tests target={targets.get(tid, '?')} has no evidence/red-{tid}.txt")
++    print(f"RED check: {len(receipts)} receipt(s), {missing} test task(s) without receipt")
++    return 1 if missing else 0
++
++
++def main(argv=None):
++    argv = list(sys.argv[1:] if argv is None else argv)
++    if hasattr(sys.stdout, "reconfigure"):
++        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
++    if argv and argv[0] == "--check":
++        return cmd_check(argv[1:])
++    if not argv or argv[0] in ("-h", "--help"):
++        print(__doc__)
++        return 0 if argv else 2
++    return cmd_run(argv)
++
++
++if __name__ == "__main__":
++    sys.exit(main())
+diff --git a/tests/test_b12_b5.py b/tests/test_b12_b5.py
+new file mode 100644
+--- /dev/null
++++ b/tests/test_b12_b5.py
+@@ -0,0 +1,287 @@
++"""Amendment 09 backlog B12 (`aidd close-ledger`) and B5 (`aidd red`) - stdlib unittest, fixtures in temp dirs.
++
++B12: read-only draft of the closing audit (heading, verification table from evidence/verify-*.txt, R10 freshness).
++B5 : RED receipt `evidence/red-T-nn.txt` written by the CLI (the only writer of evidence/ under R9), plus `--check`.
++"""
++import io
++import json
++import os
++import subprocess
++import sys
++import tempfile
++import time
++import unittest
++from pathlib import Path
++
++REPO_ROOT = Path(__file__).resolve().parent.parent
++SCRIPTS = REPO_ROOT / "skill" / "scripts"
++sys.path.insert(0, str(SCRIPTS))
++
++SPEC_MD = """# Spec
++
++## Verification
++
++Scope: auto, code/src/**, code/lib/*.py
++
++| # | Command | Expected | Covers |
++|---|---|---|---|
++| V-1 | `python db_verify.py --tap` | exit 0 | FR-1 |
++| V-2 | `python -m pytest tests -q` | exit 0 | FR-2 |
++| V-3 | `npm test` | exit 0 | FR-3 |
++| V-4 | `npx playwright test` | exit 0 | FR-4 |
++
++## Other
++"""
++
++QA = """# QA
++
++## Execution evidence
++| Code | Kind | Evidence | Verified by |
++|---|---|---|---|
++| SCREEN-1 | command-output | specs/S1/evidence/e2e.txt | agent |
++
++## Open exceptions
++"""
++
++EVID = {
++    "verify-V-1.txt": "# python db_verify.py --tap | exit 0 | 2026-11-04T10:00:00\n[ok] a.test.sql: ok=5 not_ok=0\n[ok] b.test.sql: ok=3 not_ok=0\n== RESULT: OK (0 failing item(s))\n",
++    "verify-V-2.txt": "# python -m pytest tests -q | exit 0 | 2026-11-04T10:01:00\n.....\n12 passed, 1 warning in 1s\n",
++    "verify-V-3.txt": "# npm test | exit 0 | 2026-11-04T10:02:00\n\x1b[2m      Tests \x1b[22m \x1b[32m254 passed\x1b[39m (254)\n",
++    "verify-V-4.txt": "# npx playwright test | exit 0 | 2026-11-04T10:03:00\n  7 passed (3.1s)\n",
++}
++
++
++def make_spec(tmp, code_newer=False, crlf=False):
++    root = Path(tmp) / "repo"
++    spec = root / "specs" / "S1"
++    ev = spec / "evidence"
++    ev.mkdir(parents=True)
++    (root / "code" / "src").mkdir(parents=True)
++    (root / "code" / "lib").mkdir(parents=True)
++    code = root / "code" / "src" / "a.ts"
++    code.write_text("x")
++    (root / "code" / "lib" / "b.py").write_text("y")
++    spec_text = SPEC_MD.replace("\n", "\r\n") if crlf else SPEC_MD
++    (spec / "spec.md").write_bytes(spec_text.encode())
++    (spec / "qa-audit.md").write_text(QA)
++    (spec / "tasks.md").write_text("Approved: 2026-11-04 hash:c1b501a5c7a9\n")
++    for n, t in EVID.items():
++        (ev / n).write_text(t)
++    (ev / "e2e.txt").write_text("ok")
++    now = time.time()
++    for p in list(ev.iterdir()):
++        os.utime(p, (now - 100, now - 100))
++    os.utime(code, (now + 500, now + 500) if code_newer else (now - 1000, now - 1000))
++    os.utime(root / "code" / "lib" / "b.py", (now - 1000, now - 1000))
++    return spec
++
++
++def run_script(name, *args, cwd=None):
++    env = dict(os.environ, PYTHONIOENCODING="utf-8")
++    return subprocess.run([sys.executable, str(SCRIPTS / name), *args], cwd=str(cwd) if cwd else None, env=env,
++                          capture_output=True, text=True, encoding="utf-8")
++
++
++def run_cli(*args, cwd=None):
++    env = dict(os.environ, PYTHONPATH=str(REPO_ROOT), PYTHONIOENCODING="utf-8", AIDD_HOME=str(REPO_ROOT / "skill"))
++    return subprocess.run([sys.executable, "-m", "aidd.cli", *args], cwd=str(cwd) if cwd else None, env=env,
++                          capture_output=True, text=True, encoding="utf-8")
++
++
++class TestCloseLedger(unittest.TestCase):
++    def setUp(self):
++        self._t = tempfile.TemporaryDirectory()
++        self.addCleanup(self._t.cleanup)
++        import aidd_close_ledger as cl
++        self.cl = cl
++
++    def build(self, spec, **kw):
++        kw.setdefault("domains", ["x"])
++        kw.setdefault("verify_hash", "abcdef012345")
++        return self.cl.build(spec, **kw)
++
++    def test_rows_and_summaries(self):
++        spec = make_spec(self._t.name, crlf=True)
++        data = self.build(spec, domains=["backend", "ui"], verify_hash="5414dd747407")
++        self.assertEqual([r["id"] for r in data["rows"]], ["V-1", "V-2", "V-3", "V-4"])
++        res = {r["id"]: r["result"] for r in data["rows"]}
++        self.assertIn("0 failing", res["V-1"])
++        self.assertIn("ok=8", res["V-1"])
++        self.assertIn("12 passed", res["V-2"])
++        self.assertIn("254 passed", res["V-3"])
++        self.assertIn("7 passed", res["V-4"])
++        self.assertTrue(all(r["exit"] == "0" for r in data["rows"]))
++
++    def test_header(self):
++        spec = make_spec(self._t.name)
++        data = self.build(spec, domains=["backend", "ui"], verify_hash="5414dd747407")
++        self.assertEqual(data["header"], "CLOSING AUDIT [domains: backend, ui] [tasks:c1b501a5] [verify:5414dd74]")
++
++    def test_domains_default_to_rules_required_domains(self):
++        spec = make_spec(self._t.name)
++        import aidd_rules
++        data = self.cl.build(spec, domains=None, verify_hash="abcdef012345")
++        want = ", ".join(sorted(aidd_rules.required_domains(spec)))
++        self.assertIn(f"[domains: {want}]", data["header"])
++
++    def test_text_table(self):
++        spec = make_spec(self._t.name)
++        out = self.cl.render_text(self.build(spec))
++        self.assertIn("## Verification summary", out)
++        self.assertIn("| # | Command | Exit | Result | Evidence |", out)
++        self.assertIn("| V-2 |", out)
++        self.assertIn("evidence/verify-V-2.txt", out)
++
++    def test_fresh_ready(self):
++        spec = make_spec(self._t.name, code_newer=False)
++        data = self.build(spec, check_fresh=True)
++        self.assertEqual(data["stale"], [])
++        self.assertTrue(data["ready"])
++        self.assertIn("LISTO PARA AUDITAR", self.cl.render_text(data))
++
++    def test_stale(self):
++        spec = make_spec(self._t.name, code_newer=True)
++        data = self.build(spec, check_fresh=True)
++        self.assertGreaterEqual(len(data["stale"]), 5)   # 4 verify files + e2e.txt
++        self.assertFalse(data["ready"])
++        out = self.cl.render_text(data)
++        self.assertIn("STALE", out)
++        self.assertNotIn("LISTO PARA AUDITAR", out)
++
++    def test_scope_falls_back_to_task_targets(self):
++        spec = make_spec(self._t.name)
++        text = (spec / "spec.md").read_text().replace("Scope: auto, code/src/**, code/lib/*.py\n", "")
++        (spec / "spec.md").write_text(text)
++        (spec / "tasks.md").write_text(
++            "Approved: 2026-11-04 hash:c1b501a5c7a9\n| T-1 | FR-1 | `code/src/a.ts` | LOGIC | | | |\n")
++        now = time.time()
++        os.utime(spec.parent.parent / "code" / "src" / "a.ts", (now + 500, now + 500))
++        self.assertTrue(self.build(spec, check_fresh=True)["stale"])
++
++    def test_missing_evidence_marked(self):
++        spec = make_spec(self._t.name)
++        (spec / "evidence" / "verify-V-3.txt").unlink()
++        data = self.build(spec, check_fresh=True)
++        row = [r for r in data["rows"] if r["id"] == "V-3"][0]
++        self.assertIn("FALTA", row["result"])
++        self.assertFalse(data["ready"])
++
++    def test_script_json_and_no_writes(self):
++        spec = make_spec(self._t.name)
++        before = sorted(p.name for p in spec.rglob("*"))
++        r = run_script("aidd_close_ledger.py", str(spec), "--check-fresh", "--json", "--domains", "a,b",
++                       "--verify-hash", "5414dd747407")
++        self.assertEqual(r.returncode, 0, r.stderr)
++        self.assertTrue(json.loads(r.stdout)["header"].startswith("CLOSING AUDIT [domains: a, b]"))
++        self.assertEqual(sorted(p.name for p in spec.rglob("*")), before)
++
++    def test_cli_registered(self):
++        spec = make_spec(self._t.name)
++        r = run_cli("close-ledger", str(spec), "--domains", "a", "--verify-hash", "5414dd747407")
++        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
++        self.assertIn("CLOSING AUDIT [domains: a] [tasks:c1b501a5] [verify:5414dd74]", r.stdout)
++
++    def test_missing_spec_exit_two(self):
++        r = run_cli("close-ledger", str(Path(self._t.name) / "nope"))
++        self.assertEqual(r.returncode, 2)
++
++
++TASKS = """Approved: 2026-11-04 hash:c1b501a5c7a9
++
++| Task | Codes | Target file | View / logic |
++|---|---|---|---|
++| T-01 | API-001 | `tests/test_new.py` | LOGIC |
++| T-02 | API-002 | `src/impl.py` | LOGIC |
++| T-03 | API-003 | `tests/test_old.py` | LOGIC |
++
++### T-01
++- Agent role: tests
++
++### T-02
++- Agent role: builder
++
++### T-03
++- Agent role: tests
++- RED: exempt (pure refactor with an existing test)
++"""
++
++
++def make_red_project(tmp):
++    root = Path(tmp) / "proj"
++    spec = root / "specs" / "001-x"
++    spec.mkdir(parents=True)
++    (spec / "spec.md").write_text("# spec\n")
++    (spec / "tasks.md").write_text(TASKS)
++    (root / "tests").mkdir()
++    (root / "tests" / "test_new.py").write_text("import unittest\nclass T(unittest.TestCase):\n"
++                                                "    def test_a(self):\n        self.assertEqual(1, 2)\n")
++    (root / "tests" / "test_green.py").write_text("import unittest\nclass T(unittest.TestCase):\n"
++                                                  "    def test_a(self):\n        self.assertEqual(1, 1)\n")
++    return root, spec
++
++
++class TestRed(unittest.TestCase):
++    def setUp(self):
++        self._t = tempfile.TemporaryDirectory()
++        self.addCleanup(self._t.cleanup)
++        self.root, self.spec = make_red_project(self._t.name)
++
++    def test_failing_test_writes_receipt(self):
++        r = run_cli("red", sys.executable, "-m", "unittest", "tests/test_new.py", "--task", "T-01",
++                    "--spec", "001-x", cwd=self.root)
++        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
++        rec = self.spec / "evidence" / "red-T-01.txt"
++        self.assertTrue(rec.is_file())
++        text = rec.read_text(encoding="utf-8")
++        self.assertTrue(text.startswith("# RED T-01 | exit 1 | "), text[:80])
++        for key in ("command:", "exit: 1", "first_failure:", "timestamp:", "test_file: tests/test_new.py",
++                    "test_file_sha1:"):
++            self.assertIn(key, text)
++        self.assertIn("test_a", text.split("first_failure:", 1)[1].split("\n", 1)[0])
++
++    def test_passing_test_is_no_red(self):
++        r = run_cli("red", sys.executable, "-m", "unittest", "tests/test_green.py", "--task", "T-01",
++                    "--spec", "001-x", cwd=self.root)
++        self.assertEqual(r.returncode, 1)
++        self.assertIn("NO-RED: el test pas", r.stdout)
++        self.assertIn("no hay RED", r.stdout)
++        self.assertFalse((self.spec / "evidence" / "red-T-01.txt").exists())
++
++    def test_task_is_required_and_validated(self):
++        r = run_cli("red", sys.executable, "-c", "raise SystemExit(1)", "--spec", "001-x", cwd=self.root)
++        self.assertEqual(r.returncode, 2)
++        r = run_cli("red", sys.executable, "-c", "raise SystemExit(1)", "--task", "bogus", "--spec", "001-x",
++                    cwd=self.root)
++        self.assertEqual(r.returncode, 2)
++
++    def test_single_spec_is_inferred(self):
++        r = run_cli("red", sys.executable, "-c", "raise SystemExit(3)", "--task", "T-02", cwd=self.root)
++        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
++        self.assertTrue((self.spec / "evidence" / "red-T-02.txt").is_file())
++
++    def test_check_lists_missing_and_present(self):
++        r = run_cli("red", "--check", "001-x", cwd=self.root)
++        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
++        self.assertIn("MISSING: T-01", r.stdout)
++        self.assertNotIn("MISSING: T-02", r.stdout)           # builder task
++        self.assertIn("EXEMPT: T-03", r.stdout)
++        run_cli("red", sys.executable, "-m", "unittest", "tests/test_new.py", "--task", "T-01", "--spec", "001-x",
++                cwd=self.root)
++        r = run_cli("red", "--check", "001-x", cwd=self.root)
++        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
++        self.assertIn("OK: T-01", r.stdout)
++        self.assertIn("red-T-01.txt", r.stdout)
++
++    def test_check_flags_changed_test_file(self):
++        run_cli("red", sys.executable, "-m", "unittest", "tests/test_new.py", "--task", "T-01", "--spec", "001-x",
++                cwd=self.root)
++        (self.root / "tests" / "test_new.py").write_text("changed\n")
++        r = run_cli("red", "--check", "001-x", cwd=self.root)
++        self.assertIn("test file changed since the receipt", r.stdout)
++
++    def test_check_unknown_spec_exit_two(self):
++        self.assertEqual(run_cli("red", "--check", "999-none", cwd=self.root).returncode, 2)
++
++
++if __name__ == "__main__":
++    unittest.main()
+diff --git a/tests/test_dot_aidd_mirror.py b/tests/test_dot_aidd_mirror.py
+--- a/tests/test_dot_aidd_mirror.py
++++ b/tests/test_dot_aidd_mirror.py
+@@ -1,529 +1,531 @@
+-"""Guard test: adapters/dot-aidd/ vs skill/ mirror drift — stdlib unittest,
+-no dependencies.
+-
+-adapters/dot-aidd/scripts/ (and adapters/dot-aidd/extensions/) is a
+-hand-maintained mirror of skill/scripts/ (and skill/extensions/) — copy-paste,
+-not automated by anything. Two real drift bugs between these copies were
+-found and fixed by hand in this same session (a stale check_charter.py with a
+-broken table parser, and an incomplete mirror PENDING-SYNC.md had documented).
+-This test exists so that drift is caught by `python -m unittest discover -s
+-tests` (already run in CI, see .github/workflows/test.yml) instead of by
+-someone manually exercising the CLI in a real project.
+-
+-Two layers:
+-
+-  Layer 1 (textual): every script/extension file that is supposed to be a
+-  verbatim hand-copy must be byte-identical on both sides. This alone would
+-  have caught today's check_charter.py bug with nothing more than running the
+-  test suite.
+-
+-  Layer 1 also covers extension_registry.py, which has ONE deliberate,
+-  documented difference (BUNDLED_EXTENSIONS_DIR vs SKILL_EXTENSIONS_DIR path
+-  resolution — see that file's own docstring on both sides): instead of a
+-  text diff, it checks structural/functional equivalence (same public
+-  functions/signatures via ast+inspect, same discover()/set_enabled()
+-  behavior over a throwaway fixture directory).
+-
+-  Layer 2 (end-to-end smoke test): actually run `aidd init` (via
+-  aidd.cli.cmd_init, the real mechanism) to generate a project from
+-  adapters/dot-aidd/ the way a brand-new user would get it, then run each
+-  mirrored script against that generated project with minimal real
+-  arguments (not just --help) and confirm none of them raise an
+-  ImportError/traceback.
+-
+-Run: python -m unittest discover -s tests -v
+-"""
+-import argparse
+-import ast
+-import importlib.util
+-import inspect
+-import json
+-import subprocess
+-import sys
+-import tempfile
+-import unittest
+-from pathlib import Path
+-from unittest.mock import patch
+-
+-REPO_ROOT = Path(__file__).resolve().parent.parent
+-SKILL_SCRIPTS = REPO_ROOT / "skill" / "scripts"
+-DOTAIDD_SCRIPTS = REPO_ROOT / "adapters" / "dot-aidd" / "scripts"
+-SKILL_EXTENSIONS = REPO_ROOT / "skill" / "extensions"
+-DOTAIDD_EXTENSIONS = REPO_ROOT / "adapters" / "dot-aidd" / "extensions"
+-
+-sys.path.insert(0, str(REPO_ROOT))
+-import aidd.cli as aidd_cli  # noqa: E402
+-
+-# Scripts expected to be BYTE-IDENTICAL hand-copies between skill/scripts/ and
+-# adapters/dot-aidd/scripts/ — everything the mirror is supposed to carry
+-# verbatim except extension_registry.py (deliberate adaptation, checked
+-# separately below).
+-VERBATIM_SCRIPTS = [
+-    "check_spec.py",
+-    "check_charter.py",
+-    "flowmap.py",
+-    "aidd_memory.py",
+-    "aidd_memory_import.py",
+-    "aidd_rules.py",
+-    "aidd_units.py",
+-    "aidd_reuse.py",
+-    "aidd_unit_audit.py",
+-    "aidd_provider_attestation.py",
+-    "aidd_unit_consent.py",
+-    "aidd_navigator.py",
+-    "aidd_evidence.py",
+-    "aidd_pending.py",
+-    "aidd_status.py",
+-    "aidd_next.py",
+-    "aidd_guard.py",
+-    "aidd_sqlcheck.py",
+-    "aidd_review.py",
+-    "aidd_review_items.py",
+-    "aidd_review_state.py",
+-    "find_spec.py",
+-    "aidd_graphs.py",
+-    "sql_graph.py",
+-    "graph_explorer.py",
+-    "aidd_calibrate.py",
+-    "tasks_to_issues.py",
+-    "link_pr_to_task.py",
+-    "sync_issues.py",
+-    "code_graph.py",
+-    "method_graph.py",
+-    "graph_trace.py",
+-    "graph_snapshot.py",
+-    "aidd_job.py",
+-    "aidd_triage.py",
+-    "aidd_tools.py",
+-    "component_graph.py",
+-]
+-
+-# Graph-first scripts (spec 004) that must import with stdlib only.
+-GRAPH_FIRST_SCRIPTS = [
+-    "code_graph.py",
+-    "method_graph.py",
+-    "graph_trace.py",
+-    "graph_snapshot.py",
+-    "aidd_job.py",
+-    "aidd_triage.py",
+-    "aidd_tools.py",
+-    "component_graph.py",
+-]
+-
+-# Docs that must name the graph-first vocabulary (spec 004, FR-022 / AC-015).
+-GRAPH_FIRST_DOCS = [
+-    REPO_ROOT / "skill" / "SKILL.md",
+-    REPO_ROOT / "skill" / "AIDD.md",
+-    REPO_ROOT / "commands" / "aidd-converge.md",
+-]
+-GRAPH_FIRST_WORDS = ["builtin:code", "repeats", "trace", "snapshot", "diff"]
+-
+-SKILL_HOOKS = REPO_ROOT / "skill" / "hooks"
+-DOTAIDD_HOOKS = REPO_ROOT / "adapters" / "dot-aidd" / "hooks"
+-
+-# Hooks carried BYTE-IDENTICAL into adapters/dot-aidd/hooks/ (host-parity
+-# closure: the gate, its host adapter and the helpers they import).
+-VERBATIM_HOOKS = [
+-    "host_adapter.py",
+-    "codex_patch.py",
+-    "codex_subagent.py",
+-    "rule_gate.py",
+-    "_common.py",
+-    "require_aidd.py",
+-    "require_independent_audit.py",
+-    "require_graph_coherence_audit.py",
+-    "mark_code_edit.py",
+-]
+-
+-# Bundled provider extensions mirrored on both sides.
+-PROVIDER_IDS = ["github", "azure_devops", "bitbucket"]
+-
+-
+-def _load_module(path: Path, name: str):
+-    spec = importlib.util.spec_from_file_location(name, path)
+-    module = importlib.util.module_from_spec(spec)
+-    spec.loader.exec_module(module)
+-    return module
+-
+-
+-# ---------------------------------------------------------------------------
+-# Layer 1a — verbatim scripts must be byte-identical.
+-# ---------------------------------------------------------------------------
+-
+-
+-class TestScriptMirrorTextual(unittest.TestCase):
+-    def test_verbatim_scripts_match(self):
+-        mismatches = []
+-        for name in VERBATIM_SCRIPTS:
+-            skill_path = SKILL_SCRIPTS / name
+-            dot_path = DOTAIDD_SCRIPTS / name
+-            self.assertTrue(skill_path.is_file(), f"missing {skill_path}")
+-            self.assertTrue(dot_path.is_file(), f"missing {dot_path}")
+-            skill_text = skill_path.read_text(encoding="utf-8")
+-            dot_text = dot_path.read_text(encoding="utf-8")
+-            if skill_text != dot_text:
+-                mismatches.append(name)
+-        self.assertEqual(
+-            mismatches, [],
+-            "adapters/dot-aidd/scripts/ has drifted from skill/scripts/ for: "
+-            f"{mismatches}. These files must stay byte-identical hand-copies — "
+-            "re-copy skill/scripts/<name> over adapters/dot-aidd/scripts/<name>."
+-        )
+-
+-
+-class TestHookMirrorTextual(unittest.TestCase):
+-    def test_verbatim_hooks_match(self):
+-        mismatches = []
+-        for name in VERBATIM_HOOKS:
+-            skill_path = SKILL_HOOKS / name
+-            dot_path = DOTAIDD_HOOKS / name
+-            self.assertTrue(skill_path.is_file(), f"missing {skill_path}")
+-            self.assertTrue(dot_path.is_file(), f"missing {dot_path}")
+-            if skill_path.read_bytes() != dot_path.read_bytes():
+-                mismatches.append(name)
+-        self.assertEqual(
+-            mismatches, [],
+-            "adapters/dot-aidd/hooks/ has drifted from skill/hooks/ for: "
+-            f"{mismatches}. These files must stay byte-identical hand-copies — "
+-            "re-copy skill/hooks/<name> over adapters/dot-aidd/hooks/<name>."
+-        )
+-
+-
+-# ---------------------------------------------------------------------------
+-# Layer 1b — bundled provider extensions must be byte-identical too.
+-# ---------------------------------------------------------------------------
+-
+-
+-class TestDocsAndTemplatesMirrorTextual(unittest.TestCase):
+-    """AIDD.md and the spec/qa-audit/review templates are byte-identical copies
+-    (adapters/dot-aidd/templates/tasks.md is a REDUCED variant: not checked)."""
+-
+-    PAIRS = [
+-        ("AIDD.md",),
+-        ("templates", "spec.md"),
+-        ("templates", "qa-audit.md"),
+-        ("templates", "review.html"),
+-        ("templates", "review-full.html"),
+-    ]
+-
+-    def test_docs_and_templates_match(self):
+-        for parts in self.PAIRS:
+-            with self.subTest(file="/".join(parts)):
+-                a = REPO_ROOT.joinpath("skill", *parts)
+-                b = REPO_ROOT.joinpath("adapters", "dot-aidd", *parts)
+-                self.assertTrue(a.is_file(), "missing in skill/: %s" % a)
+-                self.assertTrue(b.is_file(), "missing in adapters/dot-aidd/: %s" % b)
+-                self.assertEqual(a.read_bytes(), b.read_bytes(),
+-                                 "%s drifted between skill/ and adapters/dot-aidd/" % "/".join(parts))
+-
+-
+-class TestExtensionsMirrorTextual(unittest.TestCase):
+-    def test_provider_extension_files_match(self):
+-        mismatches = []
+-        for pid in PROVIDER_IDS:
+-            skill_dir = SKILL_EXTENSIONS / pid
+-            dot_dir = DOTAIDD_EXTENSIONS / pid
+-            self.assertTrue(skill_dir.is_dir(), f"missing {skill_dir}")
+-            self.assertTrue(dot_dir.is_dir(), f"missing {dot_dir}")
+-            skill_files = sorted(
+-                p.relative_to(skill_dir) for p in skill_dir.rglob("*")
+-                if p.is_file() and "__pycache__" not in p.parts
+-            )
+-            dot_files = sorted(
+-                p.relative_to(dot_dir) for p in dot_dir.rglob("*")
+-                if p.is_file() and "__pycache__" not in p.parts
+-            )
+-            self.assertEqual(skill_files, dot_files, f"{pid}: mirrored file lists differ")
+-            for rel in skill_files:
+-                a = (skill_dir / rel).read_text(encoding="utf-8")
+-                b = (dot_dir / rel).read_text(encoding="utf-8")
+-                if a != b:
+-                    mismatches.append(f"{pid}/{rel}")
+-        self.assertEqual(mismatches, [], f"extension files drifted: {mismatches}")
+-
+-
+-# ---------------------------------------------------------------------------
+-# Layer 1c — extension_registry.py: deliberate adaptation, checked for
+-# functional/structural equivalence instead of a byte diff.
+-# ---------------------------------------------------------------------------
+-
+-
+-class TestExtensionRegistryFunctionalEquivalence(unittest.TestCase):
+-    """extension_registry.py has exactly one deliberate, documented
+-    difference between the skill/ and adapters/dot-aidd/ copies: the
+-    BUNDLED_EXTENSIONS_DIR (dot-aidd) vs SKILL_EXTENSIONS_DIR (skill) module
+-    constant, because in the deployed .aidd/ copy "bundled with AIDD itself"
+-    and "this project" collapse into the same directory (see the module's own
+-    docstring on both sides). Everything else must be equivalent. This is
+-    checked three ways: (1) same public function names + signatures, (2) an
+-    AST diff of both files with the docstring and that one constant's
+-    assignment stripped out, (3) the same discover()/set_enabled() behavior
+-    exercised end-to-end over an identical throwaway fixture tree.
+-    """
+-
+-    @classmethod
+-    def setUpClass(cls):
+-        cls.skill_mod = _load_module(
+-            SKILL_SCRIPTS / "extension_registry.py", "mirror_test_skill_ext_registry"
+-        )
+-        cls.dot_mod = _load_module(
+-            DOTAIDD_SCRIPTS / "extension_registry.py", "mirror_test_dot_ext_registry"
+-        )
+-
+-    def test_public_functions_match_name_and_signature(self):
+-        # Return-type annotations that reference the locally-defined
+-        # Extension class stringify with each throwaway module's own name
+-        # (e.g. "mirror_test_skill_ext_registry.Extension") — strip those
+-        # two prefixes before comparing so the check isn't tripped up by an
+-        # artifact of how this test loads the two copies, not a real diff.
+-        def public_functions(mod, own_module_name):
+-            result = {}
+-            for n in dir(mod):
+-                obj = getattr(mod, n)
+-                if n.startswith("_") or not inspect.isfunction(obj):
+-                    continue
+-                sig = str(inspect.signature(obj)).replace(f"{own_module_name}.", "")
+-                result[n] = sig
+-            return result
+-
+-        skill_funcs = public_functions(self.skill_mod, "mirror_test_skill_ext_registry")
+-        dot_funcs = public_functions(self.dot_mod, "mirror_test_dot_ext_registry")
+-        self.assertEqual(set(skill_funcs), set(dot_funcs), "public function set differs")
+-        for name in skill_funcs:
+-            self.assertEqual(
+-                skill_funcs[name], dot_funcs[name], f"signature differs for {name}()"
+-            )
+-
+-    def test_public_class_shape_matches(self):
+-        def public_members(cls_obj):
+-            return sorted(n for n in dir(cls_obj) if not n.startswith("_"))
+-
+-        self.assertEqual(
+-            public_members(self.skill_mod.Extension),
+-            public_members(self.dot_mod.Extension),
+-        )
+-
+-    def test_function_bodies_match_ignoring_docstrings_and_dir_constant_name(self):
+-        """A deeper structural check than signatures alone: parse both files'
+-        actual function bodies (module-level and Extension's methods) with
+-        ast, drop each function's own docstring (prose legitimately differs
+-        between the two copies — see both files' module docstrings), rename
+-        the one deliberately-different constant (BUNDLED_EXTENSIONS_DIR vs
+-        SKILL_EXTENSIONS_DIR) and its matching Extension.source string label
+-        ("bundled" vs "first-party" -- the same deliberate distinction, see
+-        the Extension class's own docstring on both sides) to common
+-        placeholders, and compare the resulting AST dumps. Anything that
+-        still differs is real logic drift, not documentation or the
+-        documented path/label adaptation."""
+-        skill_src = (SKILL_SCRIPTS / "extension_registry.py").read_text(encoding="utf-8")
+-        dot_src = (DOTAIDD_SCRIPTS / "extension_registry.py").read_text(encoding="utf-8")
+-
+-        def parse_normalized(source):
+-            source = source.replace("BUNDLED_EXTENSIONS_DIR", "EXTENSIONS_DIR_CONST")
+-            source = source.replace("SKILL_EXTENSIONS_DIR", "EXTENSIONS_DIR_CONST")
+-            source = source.replace('"bundled"', '"SRC_LABEL"')
+-            source = source.replace('"first-party"', '"SRC_LABEL"')
+-            return ast.parse(source)
+-
+-        def function_defs(tree):
+-            return {node.name: node for node in ast.walk(tree) if isinstance(node, ast.FunctionDef)}
+-
+-        def body_dump(node):
+-            body = node.body
+-            if (
+-                body
+-                and isinstance(body[0], ast.Expr)
+-                and isinstance(body[0].value, ast.Constant)
+-                and isinstance(body[0].value.value, str)
+-            ):
+-                body = body[1:]  # drop this function's own docstring
+-            return "\n".join(ast.dump(stmt, annotate_fields=True) for stmt in body)
+-
+-        skill_defs = function_defs(parse_normalized(skill_src))
+-        dot_defs = function_defs(parse_normalized(dot_src))
+-        self.assertEqual(set(skill_defs), set(dot_defs), "function definitions differ")
+-
+-        mismatches = [
+-            name for name in skill_defs
+-            if body_dump(skill_defs[name]) != body_dump(dot_defs[name])
+-        ]
+-        self.assertEqual(
+-            mismatches, [],
+-            f"extension_registry.py function bodies differ beyond the deliberate "
+-            f"dir-constant rename, for: {mismatches} — real logic drift, fix by hand."
+-        )
+-
+-    def test_discover_and_set_enabled_behave_the_same(self):
+-        with tempfile.TemporaryDirectory() as d:
+-            ext_dir = Path(d) / "extensions"
+-            (ext_dir / "demo").mkdir(parents=True)
+-            manifest = {
+-                "id": "demo",
+-                "name": "Demo",
+-                "description": "d",
+-                "version": "1.0.0",
+-                "kind": "provider",
+-                "entry": "provider.py",
+-            }
+-            (ext_dir / "demo" / "manifest.json").write_text(
+-                json.dumps(manifest), encoding="utf-8"
+-            )
+-            (ext_dir / "demo" / "provider.py").write_text("X = 1\n", encoding="utf-8")
+-
+-            with patch.object(self.skill_mod, "SKILL_EXTENSIONS_DIR", ext_dir), patch.object(
+-                self.dot_mod, "BUNDLED_EXTENSIONS_DIR", ext_dir
+-            ):
+-                skill_found = self.skill_mod.discover()
+-                dot_found = self.dot_mod.discover()
+-                self.assertEqual(len(skill_found), 1)
+-                self.assertEqual(len(dot_found), 1)
+-                self.assertEqual(skill_found[0].id, dot_found[0].id)
+-                self.assertEqual(skill_found[0].kind, dot_found[0].kind)
+-                self.assertTrue(skill_found[0].enabled)
+-                self.assertTrue(dot_found[0].enabled)
+-
+-                self.assertTrue(self.skill_mod.set_enabled("demo", False))
+-                self.assertTrue(self.dot_mod.set_enabled("demo", False))
+-
+-                skill_after = self.skill_mod.discover(include_disabled=True)
+-                dot_after = self.dot_mod.discover(include_disabled=True)
+-                self.assertFalse(skill_after[0].enabled)
+-                self.assertFalse(dot_after[0].enabled)
+-
+-
+-class TestGraphFirstScripts(unittest.TestCase):
+-    def test_new_scripts_answer_help_with_stdlib_only(self):
+-        for name in GRAPH_FIRST_SCRIPTS:
+-            with self.subTest(script=name):
+-                r = subprocess.run(
+-                    [sys.executable, str(SKILL_SCRIPTS / name), "--help"],
+-                    capture_output=True,
+-                    text=True,
+-                    timeout=30,
+-                )
+-                self.assertEqual(
+-                    r.returncode, 0,
+-                    f"{name} --help rc={r.returncode} stdout={r.stdout!r} stderr={r.stderr!r}",
+-                )
+-
+-    def test_docs_name_graph_first_vocabulary(self):
+-        for path in GRAPH_FIRST_DOCS:
+-            text = path.read_text(encoding="utf-8")
+-            for word in GRAPH_FIRST_WORDS:
+-                self.assertIn(
+-                    word, text,
+-                    f"{path.relative_to(REPO_ROOT).as_posix()} does not mention '{word}'",
+-                )
+-
+-
+-    def _assert_words(self, rel, words):
+-        path = REPO_ROOT / rel
+-        text = path.read_text(encoding="utf-8")
+-        for word in words:
+-            self.assertIn(word, text, f"{rel} does not mention '{word}'")
+-
+-    def test_docs_name_new_rules_and_commands(self):
+-        for rel in ("skill/SKILL.md", "skill/AIDD.md"):
+-            self._assert_words(
+-                rel,
+-                ["E9", "T1", "P1", "run_parallel", "aidd size", "aidd job", "aidd triage"],
+-            )
+-        self._assert_words("commands/aidd-converge.md", ["E9", "aidd size"])
+-        self._assert_words("skill/templates/tasks.md", ["aidd tools", "Analysis parameters"])
+-
+-    def test_docs_drop_mandatory_first_run_phrases(self):
+-        checks = [
+-            ("skill/SKILL.md", "Run this first, every time"),
+-            ("commands/aidd-converge.md", "before any manual audit pass"),
+-        ]
+-        for rel, phrase in checks:
+-            text = (REPO_ROOT / rel).read_text(encoding="utf-8").lower()
+-            self.assertNotIn(phrase.lower(), text, f"{rel} still contains '{phrase}' (FR-033)")
+-
+-
+-# ---------------------------------------------------------------------------
+-# Layer 2 — end-to-end smoke test via a real `aidd init`.
+-# ---------------------------------------------------------------------------
+-
+-
+-class TestDotAiddInitSmoke(unittest.TestCase):
+-    """Generate a real project from adapters/dot-aidd/ via aidd.cli.cmd_init
+-    (the actual `aidd init` mechanism), the way a brand-new user would get
+-    it, then run each mirrored script against it with minimal real arguments
+-    and confirm none of them raise an ImportError/traceback."""
+-
+-    def test_generated_scripts_run_without_import_errors(self):
+-        with tempfile.TemporaryDirectory() as d:
+-            project_root = Path(d) / "myproject"
+-            project_root.mkdir()
+-
+-            rc = aidd_cli.cmd_init(argparse.Namespace(target=str(project_root), force=False))
+-            self.assertEqual(rc, 0)
+-
+-            scripts_dir = project_root / ".aidd" / "scripts"
+-            self.assertTrue(scripts_dir.is_dir())
+-            self.assertTrue((project_root / ".aidd" / "extensions").is_dir())
+-
+-            def run(script, script_args):
+-                return subprocess.run(
+-                    [sys.executable, str(scripts_dir / script), *script_args],
+-                    cwd=str(project_root),
+-                    capture_output=True,
+-                    text=True,
+-                )
+-
+-            # tasks_to_issues.py with no args: this imports the 3 bundled
+-            # providers on startup (extension_registry.get_providers()) before
+-            # argparse even runs — a real exercise of every provider.py import
+-            # path, not just --help. Usage error, exit 2, no traceback.
+-            r = run("tasks_to_issues.py", [])
+-            self.assertEqual(r.returncode, 2, f"stdout={r.stdout!r} stderr={r.stderr!r}")
+-            self.assertNotIn("Traceback", r.stderr)
+-            self.assertNotIn("ImportError", r.stderr)
+-
+-            # extension_registry.py list: the 3 bundled providers must show up.
+-            r = run("extension_registry.py", ["list"])
+-            self.assertEqual(r.returncode, 0, f"stdout={r.stdout!r} stderr={r.stderr!r}")
+-            self.assertNotIn("Traceback", r.stderr)
+-            for pid in PROVIDER_IDS:
+-                self.assertIn(pid, r.stdout, f"{pid} missing from `extension_registry.py list` output")
+-
+-            # A minimal real spec fixture for check_spec.py / find_spec.py /
+-            # check_charter.py to run against instead of an empty folder.
+-            spec_dir = project_root / "specs" / "001-demo"
+-            spec_dir.mkdir(parents=True)
+-            (spec_dir / "spec.md").write_text("# Demo spec\n", encoding="utf-8")
+-            (spec_dir / "mockup-audit.md").write_text(
+-                "## Use cases -> screens\n"
+-                "| Use case | Screen |\n"
+-                "|---|---|\n"
+-                "| US-001 | SCREEN-01 |\n",
+-                encoding="utf-8",
+-            )
+-            (spec_dir / "plan.md").write_text("# Plan\n", encoding="utf-8")
+-            (spec_dir / "tasks.md").write_text(
+-                "| Task | Codes satisfied |\n|---|---|\n| T-001 | SCREEN-01 |\n",
+-                encoding="utf-8",
+-            )
+-
+-            r = run("check_spec.py", [str(spec_dir)])
+-            self.assertIn(r.returncode, (0, 1), f"stdout={r.stdout!r} stderr={r.stderr!r}")
+-            self.assertNotIn("Traceback", r.stderr)
+-
+-            r = run("find_spec.py", ["--list"])
+-            self.assertIn(r.returncode, (0, 1), f"stdout={r.stdout!r} stderr={r.stderr!r}")
+-            self.assertNotIn("Traceback", r.stderr)
+-
+-            (project_root / "charter.md").write_text(
+-                "## Checkable rules\n"
+-                "| Rule | Type | Pattern | Applies to (glob) |\n"
+-                "|---|---|---|---|\n",
+-                encoding="utf-8",
+-            )
+-            r = run("check_charter.py", [str(project_root)])
+-            self.assertEqual(r.returncode, 0, f"stdout={r.stdout!r} stderr={r.stderr!r}")
+-            self.assertNotIn("Traceback", r.stderr)
+-
+-
+-if __name__ == "__main__":
+-    unittest.main()
++"""Guard test: adapters/dot-aidd/ vs skill/ mirror drift — stdlib unittest,
++no dependencies.
++
++adapters/dot-aidd/scripts/ (and adapters/dot-aidd/extensions/) is a
++hand-maintained mirror of skill/scripts/ (and skill/extensions/) — copy-paste,
++not automated by anything. Two real drift bugs between these copies were
++found and fixed by hand in this same session (a stale check_charter.py with a
++broken table parser, and an incomplete mirror PENDING-SYNC.md had documented).
++This test exists so that drift is caught by `python -m unittest discover -s
++tests` (already run in CI, see .github/workflows/test.yml) instead of by
++someone manually exercising the CLI in a real project.
++
++Two layers:
++
++  Layer 1 (textual): every script/extension file that is supposed to be a
++  verbatim hand-copy must be byte-identical on both sides. This alone would
++  have caught today's check_charter.py bug with nothing more than running the
++  test suite.
++
++  Layer 1 also covers extension_registry.py, which has ONE deliberate,
++  documented difference (BUNDLED_EXTENSIONS_DIR vs SKILL_EXTENSIONS_DIR path
++  resolution — see that file's own docstring on both sides): instead of a
++  text diff, it checks structural/functional equivalence (same public
++  functions/signatures via ast+inspect, same discover()/set_enabled()
++  behavior over a throwaway fixture directory).
++
++  Layer 2 (end-to-end smoke test): actually run `aidd init` (via
++  aidd.cli.cmd_init, the real mechanism) to generate a project from
++  adapters/dot-aidd/ the way a brand-new user would get it, then run each
++  mirrored script against that generated project with minimal real
++  arguments (not just --help) and confirm none of them raise an
++  ImportError/traceback.
++
++Run: python -m unittest discover -s tests -v
++"""
++import argparse
++import ast
++import importlib.util
++import inspect
++import json
++import subprocess
++import sys
++import tempfile
++import unittest
++from pathlib import Path
++from unittest.mock import patch
++
++REPO_ROOT = Path(__file__).resolve().parent.parent
++SKILL_SCRIPTS = REPO_ROOT / "skill" / "scripts"
++DOTAIDD_SCRIPTS = REPO_ROOT / "adapters" / "dot-aidd" / "scripts"
++SKILL_EXTENSIONS = REPO_ROOT / "skill" / "extensions"
++DOTAIDD_EXTENSIONS = REPO_ROOT / "adapters" / "dot-aidd" / "extensions"
++
++sys.path.insert(0, str(REPO_ROOT))
++import aidd.cli as aidd_cli  # noqa: E402
++
++# Scripts expected to be BYTE-IDENTICAL hand-copies between skill/scripts/ and
++# adapters/dot-aidd/scripts/ — everything the mirror is supposed to carry
++# verbatim except extension_registry.py (deliberate adaptation, checked
++# separately below).
++VERBATIM_SCRIPTS = [
++    "aidd_close_ledger.py",
++    "aidd_red.py",
++    "check_spec.py",
++    "check_charter.py",
++    "flowmap.py",
++    "aidd_memory.py",
++    "aidd_memory_import.py",
++    "aidd_rules.py",
++    "aidd_units.py",
++    "aidd_reuse.py",
++    "aidd_unit_audit.py",
++    "aidd_provider_attestation.py",
++    "aidd_unit_consent.py",
++    "aidd_navigator.py",
++    "aidd_evidence.py",
++    "aidd_pending.py",
++    "aidd_status.py",
++    "aidd_next.py",
++    "aidd_guard.py",
++    "aidd_sqlcheck.py",
++    "aidd_review.py",
++    "aidd_review_items.py",
++    "aidd_review_state.py",
++    "find_spec.py",
++    "aidd_graphs.py",
++    "sql_graph.py",
++    "graph_explorer.py",
++    "aidd_calibrate.py",
++    "tasks_to_issues.py",
++    "link_pr_to_task.py",
++    "sync_issues.py",
++    "code_graph.py",
++    "method_graph.py",
++    "graph_trace.py",
++    "graph_snapshot.py",
++    "aidd_job.py",
++    "aidd_triage.py",
++    "aidd_tools.py",
++    "component_graph.py",
++]
++
++# Graph-first scripts (spec 004) that must import with stdlib only.
++GRAPH_FIRST_SCRIPTS = [
++    "code_graph.py",
++    "method_graph.py",
++    "graph_trace.py",
++    "graph_snapshot.py",
++    "aidd_job.py",
++    "aidd_triage.py",
++    "aidd_tools.py",
++    "component_graph.py",
++]
++
++# Docs that must name the graph-first vocabulary (spec 004, FR-022 / AC-015).
++GRAPH_FIRST_DOCS = [
++    REPO_ROOT / "skill" / "SKILL.md",
++    REPO_ROOT / "skill" / "AIDD.md",
++    REPO_ROOT / "commands" / "aidd-converge.md",
++]
++GRAPH_FIRST_WORDS = ["builtin:code", "repeats", "trace", "snapshot", "diff"]
++
++SKILL_HOOKS = REPO_ROOT / "skill" / "hooks"
++DOTAIDD_HOOKS = REPO_ROOT / "adapters" / "dot-aidd" / "hooks"
++
++# Hooks carried BYTE-IDENTICAL into adapters/dot-aidd/hooks/ (host-parity
++# closure: the gate, its host adapter and the helpers they import).
++VERBATIM_HOOKS = [
++    "host_adapter.py",
++    "codex_patch.py",
++    "codex_subagent.py",
++    "rule_gate.py",
++    "_common.py",
++    "require_aidd.py",
++    "require_independent_audit.py",
++    "require_graph_coherence_audit.py",
++    "mark_code_edit.py",
++]
++
++# Bundled provider extensions mirrored on both sides.
++PROVIDER_IDS = ["github", "azure_devops", "bitbucket"]
++
++
++def _load_module(path: Path, name: str):
++    spec = importlib.util.spec_from_file_location(name, path)
++    module = importlib.util.module_from_spec(spec)
++    spec.loader.exec_module(module)
++    return module
++
++
++# ---------------------------------------------------------------------------
++# Layer 1a — verbatim scripts must be byte-identical.
++# ---------------------------------------------------------------------------
++
++
++class TestScriptMirrorTextual(unittest.TestCase):
++    def test_verbatim_scripts_match(self):
++        mismatches = []
++        for name in VERBATIM_SCRIPTS:
++            skill_path = SKILL_SCRIPTS / name
++            dot_path = DOTAIDD_SCRIPTS / name
++            self.assertTrue(skill_path.is_file(), f"missing {skill_path}")
++            self.assertTrue(dot_path.is_file(), f"missing {dot_path}")
++            skill_text = skill_path.read_text(encoding="utf-8")
++            dot_text = dot_path.read_text(encoding="utf-8")
++            if skill_text != dot_text:
++                mismatches.append(name)
++        self.assertEqual(
++            mismatches, [],
++            "adapters/dot-aidd/scripts/ has drifted from skill/scripts/ for: "
++            f"{mismatches}. These files must stay byte-identical hand-copies — "
++            "re-copy skill/scripts/<name> over adapters/dot-aidd/scripts/<name>."
++        )
++
++
++class TestHookMirrorTextual(unittest.TestCase):
++    def test_verbatim_hooks_match(self):
++        mismatches = []
++        for name in VERBATIM_HOOKS:
++            skill_path = SKILL_HOOKS / name
++            dot_path = DOTAIDD_HOOKS / name
++            self.assertTrue(skill_path.is_file(), f"missing {skill_path}")
++            self.assertTrue(dot_path.is_file(), f"missing {dot_path}")
++            if skill_path.read_bytes() != dot_path.read_bytes():
++                mismatches.append(name)
++        self.assertEqual(
++            mismatches, [],
++            "adapters/dot-aidd/hooks/ has drifted from skill/hooks/ for: "
++            f"{mismatches}. These files must stay byte-identical hand-copies — "
++            "re-copy skill/hooks/<name> over adapters/dot-aidd/hooks/<name>."
++        )
++
++
++# ---------------------------------------------------------------------------
++# Layer 1b — bundled provider extensions must be byte-identical too.
++# ---------------------------------------------------------------------------
++
++
++class TestDocsAndTemplatesMirrorTextual(unittest.TestCase):
++    """AIDD.md and the spec/qa-audit/review templates are byte-identical copies
++    (adapters/dot-aidd/templates/tasks.md is a REDUCED variant: not checked)."""
++
++    PAIRS = [
++        ("AIDD.md",),
++        ("templates", "spec.md"),
++        ("templates", "qa-audit.md"),
++        ("templates", "review.html"),
++        ("templates", "review-full.html"),
++    ]
++
++    def test_docs_and_templates_match(self):
++        for parts in self.PAIRS:
++            with self.subTest(file="/".join(parts)):
++                a = REPO_ROOT.joinpath("skill", *parts)
++                b = REPO_ROOT.joinpath("adapters", "dot-aidd", *parts)
++                self.assertTrue(a.is_file(), "missing in skill/: %s" % a)
++                self.assertTrue(b.is_file(), "missing in adapters/dot-aidd/: %s" % b)
++                self.assertEqual(a.read_bytes(), b.read_bytes(),
++                                 "%s drifted between skill/ and adapters/dot-aidd/" % "/".join(parts))
++
++
++class TestExtensionsMirrorTextual(unittest.TestCase):
++    def test_provider_extension_files_match(self):
++        mismatches = []
++        for pid in PROVIDER_IDS:
++            skill_dir = SKILL_EXTENSIONS / pid
++            dot_dir = DOTAIDD_EXTENSIONS / pid
++            self.assertTrue(skill_dir.is_dir(), f"missing {skill_dir}")
++            self.assertTrue(dot_dir.is_dir(), f"missing {dot_dir}")
++            skill_files = sorted(
++                p.relative_to(skill_dir) for p in skill_dir.rglob("*")
++                if p.is_file() and "__pycache__" not in p.parts
++            )
++            dot_files = sorted(
++                p.relative_to(dot_dir) for p in dot_dir.rglob("*")
++                if p.is_file() and "__pycache__" not in p.parts
++            )
++            self.assertEqual(skill_files, dot_files, f"{pid}: mirrored file lists differ")
++            for rel in skill_files:
++                a = (skill_dir / rel).read_text(encoding="utf-8")
++                b = (dot_dir / rel).read_text(encoding="utf-8")
++                if a != b:
++                    mismatches.append(f"{pid}/{rel}")
++        self.assertEqual(mismatches, [], f"extension files drifted: {mismatches}")
++
++
++# ---------------------------------------------------------------------------
++# Layer 1c — extension_registry.py: deliberate adaptation, checked for
++# functional/structural equivalence instead of a byte diff.
++# ---------------------------------------------------------------------------
++
++
++class TestExtensionRegistryFunctionalEquivalence(unittest.TestCase):
++    """extension_registry.py has exactly one deliberate, documented
++    difference between the skill/ and adapters/dot-aidd/ copies: the
++    BUNDLED_EXTENSIONS_DIR (dot-aidd) vs SKILL_EXTENSIONS_DIR (skill) module
++    constant, because in the deployed .aidd/ copy "bundled with AIDD itself"
++    and "this project" collapse into the same directory (see the module's own
++    docstring on both sides). Everything else must be equivalent. This is
++    checked three ways: (1) same public function names + signatures, (2) an
++    AST diff of both files with the docstring and that one constant's
++    assignment stripped out, (3) the same discover()/set_enabled() behavior
++    exercised end-to-end over an identical throwaway fixture tree.
++    """
++
++    @classmethod
++    def setUpClass(cls):
++        cls.skill_mod = _load_module(
++            SKILL_SCRIPTS / "extension_registry.py", "mirror_test_skill_ext_registry"
++        )
++        cls.dot_mod = _load_module(
++            DOTAIDD_SCRIPTS / "extension_registry.py", "mirror_test_dot_ext_registry"
++        )
++
++    def test_public_functions_match_name_and_signature(self):
++        # Return-type annotations that reference the locally-defined
++        # Extension class stringify with each throwaway module's own name
++        # (e.g. "mirror_test_skill_ext_registry.Extension") — strip those
++        # two prefixes before comparing so the check isn't tripped up by an
++        # artifact of how this test loads the two copies, not a real diff.
++        def public_functions(mod, own_module_name):
++            result = {}
++            for n in dir(mod):
++                obj = getattr(mod, n)
++                if n.startswith("_") or not inspect.isfunction(obj):
++                    continue
++                sig = str(inspect.signature(obj)).replace(f"{own_module_name}.", "")
++                result[n] = sig
++            return result
++
++        skill_funcs = public_functions(self.skill_mod, "mirror_test_skill_ext_registry")
++        dot_funcs = public_functions(self.dot_mod, "mirror_test_dot_ext_registry")
++        self.assertEqual(set(skill_funcs), set(dot_funcs), "public function set differs")
++        for name in skill_funcs:
++            self.assertEqual(
++                skill_funcs[name], dot_funcs[name], f"signature differs for {name}()"
++            )
++
++    def test_public_class_shape_matches(self):
++        def public_members(cls_obj):
++            return sorted(n for n in dir(cls_obj) if not n.startswith("_"))
++
++        self.assertEqual(
++            public_members(self.skill_mod.Extension),
++            public_members(self.dot_mod.Extension),
++        )
++
++    def test_function_bodies_match_ignoring_docstrings_and_dir_constant_name(self):
++        """A deeper structural check than signatures alone: parse both files'
++        actual function bodies (module-level and Extension's methods) with
++        ast, drop each function's own docstring (prose legitimately differs
++        between the two copies — see both files' module docstrings), rename
++        the one deliberately-different constant (BUNDLED_EXTENSIONS_DIR vs
++        SKILL_EXTENSIONS_DIR) and its matching Extension.source string label
++        ("bundled" vs "first-party" -- the same deliberate distinction, see
++        the Extension class's own docstring on both sides) to common
++        placeholders, and compare the resulting AST dumps. Anything that
++        still differs is real logic drift, not documentation or the
++        documented path/label adaptation."""
++        skill_src = (SKILL_SCRIPTS / "extension_registry.py").read_text(encoding="utf-8")
++        dot_src = (DOTAIDD_SCRIPTS / "extension_registry.py").read_text(encoding="utf-8")
++
++        def parse_normalized(source):
++            source = source.replace("BUNDLED_EXTENSIONS_DIR", "EXTENSIONS_DIR_CONST")
++            source = source.replace("SKILL_EXTENSIONS_DIR", "EXTENSIONS_DIR_CONST")
++            source = source.replace('"bundled"', '"SRC_LABEL"')
++            source = source.replace('"first-party"', '"SRC_LABEL"')
++            return ast.parse(source)
++
++        def function_defs(tree):
++            return {node.name: node for node in ast.walk(tree) if isinstance(node, ast.FunctionDef)}
++
++        def body_dump(node):
++            body = node.body
++            if (
++                body
++                and isinstance(body[0], ast.Expr)
++                and isinstance(body[0].value, ast.Constant)
++                and isinstance(body[0].value.value, str)
++            ):
++                body = body[1:]  # drop this function's own docstring
++            return "\n".join(ast.dump(stmt, annotate_fields=True) for stmt in body)
++
++        skill_defs = function_defs(parse_normalized(skill_src))
++        dot_defs = function_defs(parse_normalized(dot_src))
++        self.assertEqual(set(skill_defs), set(dot_defs), "function definitions differ")
++
++        mismatches = [
++            name for name in skill_defs
++            if body_dump(skill_defs[name]) != body_dump(dot_defs[name])
++        ]
++        self.assertEqual(
++            mismatches, [],
++            f"extension_registry.py function bodies differ beyond the deliberate "
++            f"dir-constant rename, for: {mismatches} — real logic drift, fix by hand."
++        )
++
++    def test_discover_and_set_enabled_behave_the_same(self):
++        with tempfile.TemporaryDirectory() as d:
++            ext_dir = Path(d) / "extensions"
++            (ext_dir / "demo").mkdir(parents=True)
++            manifest = {
++                "id": "demo",
++                "name": "Demo",
++                "description": "d",
++                "version": "1.0.0",
++                "kind": "provider",
++                "entry": "provider.py",
++            }
++            (ext_dir / "demo" / "manifest.json").write_text(
++                json.dumps(manifest), encoding="utf-8"
++            )
++            (ext_dir / "demo" / "provider.py").write_text("X = 1\n", encoding="utf-8")
++
++            with patch.object(self.skill_mod, "SKILL_EXTENSIONS_DIR", ext_dir), patch.object(
++                self.dot_mod, "BUNDLED_EXTENSIONS_DIR", ext_dir
++            ):
++                skill_found = self.skill_mod.discover()
++                dot_found = self.dot_mod.discover()
++                self.assertEqual(len(skill_found), 1)
++                self.assertEqual(len(dot_found), 1)
++                self.assertEqual(skill_found[0].id, dot_found[0].id)
++                self.assertEqual(skill_found[0].kind, dot_found[0].kind)
++                self.assertTrue(skill_found[0].enabled)
++                self.assertTrue(dot_found[0].enabled)
++
++                self.assertTrue(self.skill_mod.set_enabled("demo", False))
++                self.assertTrue(self.dot_mod.set_enabled("demo", False))
++
++                skill_after = self.skill_mod.discover(include_disabled=True)
++                dot_after = self.dot_mod.discover(include_disabled=True)
++                self.assertFalse(skill_after[0].enabled)
++                self.assertFalse(dot_after[0].enabled)
++
++
++class TestGraphFirstScripts(unittest.TestCase):
++    def test_new_scripts_answer_help_with_stdlib_only(self):
++        for name in GRAPH_FIRST_SCRIPTS:
++            with self.subTest(script=name):
++                r = subprocess.run(
++                    [sys.executable, str(SKILL_SCRIPTS / name), "--help"],
++                    capture_output=True,
++                    text=True,
++                    timeout=30,
++                )
++                self.assertEqual(
++                    r.returncode, 0,
++                    f"{name} --help rc={r.returncode} stdout={r.stdout!r} stderr={r.stderr!r}",
++                )
++
++    def test_docs_name_graph_first_vocabulary(self):
++        for path in GRAPH_FIRST_DOCS:
++            text = path.read_text(encoding="utf-8")
++            for word in GRAPH_FIRST_WORDS:
++                self.assertIn(
++                    word, text,
++                    f"{path.relative_to(REPO_ROOT).as_posix()} does not mention '{word}'",
++                )
++
++
++    def _assert_words(self, rel, words):
++        path = REPO_ROOT / rel
++        text = path.read_text(encoding="utf-8")
++        for word in words:
++            self.assertIn(word, text, f"{rel} does not mention '{word}'")
++
++    def test_docs_name_new_rules_and_commands(self):
++        for rel in ("skill/SKILL.md", "skill/AIDD.md"):
++            self._assert_words(
++                rel,
++                ["E9", "T1", "P1", "run_parallel", "aidd size", "aidd job", "aidd triage"],
++            )
++        self._assert_words("commands/aidd-converge.md", ["E9", "aidd size"])
++        self._assert_words("skill/templates/tasks.md", ["aidd tools", "Analysis parameters"])
++
++    def test_docs_drop_mandatory_first_run_phrases(self):
++        checks = [
++            ("skill/SKILL.md", "Run this first, every time"),
++            ("commands/aidd-converge.md", "before any manual audit pass"),
++        ]
++        for rel, phrase in checks:
++            text = (REPO_ROOT / rel).read_text(encoding="utf-8").lower()
++            self.assertNotIn(phrase.lower(), text, f"{rel} still contains '{phrase}' (FR-033)")
++
++
++# ---------------------------------------------------------------------------
++# Layer 2 — end-to-end smoke test via a real `aidd init`.
++# ---------------------------------------------------------------------------
++
++
++class TestDotAiddInitSmoke(unittest.TestCase):
++    """Generate a real project from adapters/dot-aidd/ via aidd.cli.cmd_init
++    (the actual `aidd init` mechanism), the way a brand-new user would get
++    it, then run each mirrored script against it with minimal real arguments
++    and confirm none of them raise an ImportError/traceback."""
++
++    def test_generated_scripts_run_without_import_errors(self):
++        with tempfile.TemporaryDirectory() as d:
++            project_root = Path(d) / "myproject"
++            project_root.mkdir()
++
++            rc = aidd_cli.cmd_init(argparse.Namespace(target=str(project_root), force=False))
++            self.assertEqual(rc, 0)
++
++            scripts_dir = project_root / ".aidd" / "scripts"
++            self.assertTrue(scripts_dir.is_dir())
++            self.assertTrue((project_root / ".aidd" / "extensions").is_dir())
++
++            def run(script, script_args):
++                return subprocess.run(
++                    [sys.executable, str(scripts_dir / script), *script_args],
++                    cwd=str(project_root),
++                    capture_output=True,
++                    text=True,
++                )
++
++            # tasks_to_issues.py with no args: this imports the 3 bundled
++            # providers on startup (extension_registry.get_providers()) before
++            # argparse even runs — a real exercise of every provider.py import
++            # path, not just --help. Usage error, exit 2, no traceback.
++            r = run("tasks_to_issues.py", [])
++            self.assertEqual(r.returncode, 2, f"stdout={r.stdout!r} stderr={r.stderr!r}")
++            self.assertNotIn("Traceback", r.stderr)
++            self.assertNotIn("ImportError", r.stderr)
++
++            # extension_registry.py list: the 3 bundled providers must show up.
++            r = run("extension_registry.py", ["list"])
++            self.assertEqual(r.returncode, 0, f"stdout={r.stdout!r} stderr={r.stderr!r}")
++            self.assertNotIn("Traceback", r.stderr)
++            for pid in PROVIDER_IDS:
++                self.assertIn(pid, r.stdout, f"{pid} missing from `extension_registry.py list` output")
++
++            # A minimal real spec fixture for check_spec.py / find_spec.py /
++            # check_charter.py to run against instead of an empty folder.
++            spec_dir = project_root / "specs" / "001-demo"
++            spec_dir.mkdir(parents=True)
++            (spec_dir / "spec.md").write_text("# Demo spec\n", encoding="utf-8")
++            (spec_dir / "mockup-audit.md").write_text(
++                "## Use cases -> screens\n"
++                "| Use case | Screen |\n"
++                "|---|---|\n"
++                "| US-001 | SCREEN-01 |\n",
++                encoding="utf-8",
++            )
++            (spec_dir / "plan.md").write_text("# Plan\n", encoding="utf-8")
++            (spec_dir / "tasks.md").write_text(
++                "| Task | Codes satisfied |\n|---|---|\n| T-001 | SCREEN-01 |\n",
++                encoding="utf-8",
++            )
++
++            r = run("check_spec.py", [str(spec_dir)])
++            self.assertIn(r.returncode, (0, 1), f"stdout={r.stdout!r} stderr={r.stderr!r}")
++            self.assertNotIn("Traceback", r.stderr)
++
++            r = run("find_spec.py", ["--list"])
++            self.assertIn(r.returncode, (0, 1), f"stdout={r.stdout!r} stderr={r.stderr!r}")
++            self.assertNotIn("Traceback", r.stderr)
++
++            (project_root / "charter.md").write_text(
++                "## Checkable rules\n"
++                "| Rule | Type | Pattern | Applies to (glob) |\n"
++                "|---|---|---|---|\n",
++                encoding="utf-8",
++            )
++            r = run("check_charter.py", [str(project_root)])
++            self.assertEqual(r.returncode, 0, f"stdout={r.stdout!r} stderr={r.stderr!r}")
++            self.assertNotIn("Traceback", r.stderr)
++
++
++if __name__ == "__main__":
++    unittest.main()

@@ -1,0 +1,88 @@
+---
+spec: 009-aidd-host-parity
+tasks_hash: ab1dc5affab7
+sources_digest: bb85aef49dd7
+format: codes-v2
+approved: true
+generated: 2026-10-31
+reviewed: 2026-10-31T23:23:43
+---
+- [x] SUMMARY @83939c81
+- [x] Q1 @3ebfc578
+- [x] Q2 @e06d023b
+- [x] Q3 @cfd10997
+- [x] Q4 @51444a73
+- [x] Q5 @003d163e
+- [x] Q6 @02b80ba4
+- [x] Q7 @6027fdbd
+- [x] Q8 @0dacd573
+- [x] Q9 @5e303c75
+- [x] Q10 @3079dddd
+- [x] Q11 @92c649a6
+- [x] Q12 @9eb9c49b
+- [x] FR-901 @70521a73
+- [x] FR-902 @07f597ae
+- [x] FR-903 @2c91e882
+- [x] FR-904 @2ff1f7f6
+- [x] FR-905 @53f3df37
+- [x] FR-906 @c9001a69
+- [x] FR-907 @a730a66e
+- [x] FR-908 @d1aea295
+- [x] FR-909 @754a75a9
+- [x] FR-910 @8b6d1c5e
+- [x] FR-911 @c161a9dd
+- [x] FR-912 @dc7ff8a2
+- [x] FR-913 @574717f0
+- [x] FR-914 @47b3f3c2
+- [x] FR-915 @e57bc3b3
+- [x] FR-916 @ccc66ae2
+- [x] FR-917 @9222406e
+- [x] FR-918 @ddbc55e0
+- [x] FR-919 @42f80d6a
+- [x] FR-920 @9c967e28
+- [x] FR-921 @f485224d
+- [x] AC-001 @3c7eb603
+- [x] AC-002 @53fc88b7
+- [x] AC-003 @f6a79004
+- [x] AC-004 @7e0d1d04
+- [x] AC-005 @3839ee28
+- [x] AC-006 @55e5f5d1
+- [x] AC-907 @afa25869
+- [x] AC-908 @e5e8cf75
+- [x] AC-909 @a22e5b9e
+- [x] AC-910 @3b6fa308
+- [x] AC-911 @9ffc2945
+- [x] AC-912 @9c4d8fd1
+- [x] AC-913 @9359d403
+- [x] AC-914 @faf27642
+- [x] T-01 @4f2eb4ed
+- [x] T-02 @ad507f11
+- [x] T-03 @2f6da228
+- [x] T-04 @f5ff5bb2
+- [x] T-05 @fdfdf732
+- [x] T-06 @6180028c
+- [x] T-07 @e4a73744
+- [x] T-08 @e048bacd
+- [x] T-09 @f6738fa5
+- [x] T-10 @cfc4762f
+- [x] T-11 @43a9378b
+- [x] T-12 @f0a85c42
+- [x] T-13 @94ffe13e
+- [x] T-14 @44129791
+- [x] T-15 @881854e2
+- [x] T-16 @7cc78b38
+- [x] T-17 @679bdb0a
+- [x] T-18 @e034e9a7
+- [x] T-19 @1c84f561
+- [x] T-20 @ad5b939d
+- [x] T-21 @2e25b173
+- [x] T-22 @07a296c3
+- [x] T-23 @928f598b
+- [x] T-24 @f4c9fc33
+- [x] T-25 @e62cfbd6
+- [x] T-26 @20ddbd72
+- [x] V-1 @f9e5487b
+- [x] V-2 @6048d75a
+- [x] V-3 @942aeac4
+- [x] V-4 @c72362b1
+- [x] V-5 @b66a8f5b

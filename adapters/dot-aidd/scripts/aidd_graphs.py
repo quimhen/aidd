@@ -28,7 +28,7 @@ Usage:
                                                                           generator's summary line)
     aidd_graphs.py show <name> <query> [--limit N]      (code: FUNC/FILE by qualified-name suffix or path;
                                                          method: R10, STEP:6, a command or template)
-    aidd_graphs.py explorer <name> [--out FILE]
+    aidd_graphs.py explorer [name] [--out FILE] [--skip A,B] [--max-mb N]   (no name: unified explorer of every registered graph, docs/graphs/explorer.html)
     aidd_graphs.py repeats [--cmd C] [--label L] [--include-ambiguous]      (graph_snapshot.py)
     aidd_graphs.py snapshot [name] --label L [--rev REV] [--replace]        (graph_snapshot.py)
     aidd_graphs.py diff <labelA> <labelB> [--name N] [--full]               (graph_snapshot.py)
@@ -178,6 +178,9 @@ def _autodetect(root):  # aidd:FR-014 aidd:FR-021 aidd:FR-029 aidd:FR-030
         out.append({"name": "ui", "kind": "ui", "output": ".aidd/graphs/ui.toon",
                     "refresh": "builtin:ui",
                     "watch": ["src/**", "components/**", "lib/**", "specs/**", "design-system/**"]})
+    if (root / ".aidd" / "graphs" / "path-aliases.toon").is_file():
+        out.append({"name": "aliases", "kind": "aliases", "output": ".aidd/graphs/path-aliases.toon",
+                    "refresh": "", "watch": [".aidd/graphs/path-aliases.toon"]})
     return out
 
 
@@ -890,10 +893,20 @@ def show(root, name, query, limit=25):
     try:
         e = _get(root, name)
         if e is None:
+            if name == "aliases":
+                ag = _module("alias_graph")
+                if ag is not None and hasattr(ag, "show_aliases"):
+                    return ag.show_aliases(root, query, limit=limit)
+                return "alias_graph module not found"
             return "No graph named '%s' (see: aidd graphs list)." % name
         if e["kind"] == "spec":
             return "Spec graph is a TOON index; query it with: python %s --code %s" % (HERE / "find_spec.py", query)
         if not e["output"] or not Path(e["output"]).is_file():
+            if e["kind"] == "aliases":
+                ag = _module("alias_graph")
+                if ag is not None and hasattr(ag, "show_aliases"):
+                    return ag.show_aliases(root, query, limit=limit)
+                return "alias_graph module not found"
             return "Graph '%s' is missing; build it with: aidd graphs refresh %s --background" % (name, name)
         stale = ""
         for s in status(root, names=[e["name"]]):
@@ -905,6 +918,11 @@ def show(root, name, query, limit=25):
             if cg is not None and hasattr(cg, "show_ui"):
                 return cg.show_ui(root, query, limit=limit, graph_path=Path(e["output"]), stale=stale)
             return "component_graph module not found or missing show_ui"
+        if e["kind"] == "aliases":
+            ag = _module("alias_graph")
+            if ag is not None and hasattr(ag, "show_aliases"):
+                return ag.show_aliases(root, query, limit=limit)
+            return "alias_graph module not found"
         nodes, edges = _load_graph(e["output"])
         if rl == "builtin:code":
             res = _show_code(root, e, nodes, edges, query, limit, stale)
@@ -1115,19 +1133,30 @@ def main(argv):
                 rest = rest[:i] + rest[i + 2:]
             print(show(root, rest[0], " ".join(rest[1:]), limit))
             return 0
-        if cmd == "explorer" and rest:
-            e = _get(root, rest[0])
-            if e is None or not e["output"]:
-                print("No graph named '%s'." % rest[0])
-                return 1
-            out = str(Path(e["output"]).with_suffix(".html"))
+        if cmd == "explorer":                  # aidd:FR-068 no name = unified explorer of every registered graph
+            name = rest[0] if rest and not rest[0].startswith("--") else None
+            script = HERE / "graph_explorer.py"
+            if name is not None:
+                e = _get(root, name)
+                if e is None or not e["output"]:
+                    print("No graph named '%s'." % name)
+                    return 1
+                out = str(Path(e["output"]).with_suffix(".html"))
+            else:
+                out = str(Path(root) / "docs" / "graphs" / "explorer.html")
             if "--out" in rest:
                 out = rest[rest.index("--out") + 1]
-            script = HERE / "graph_explorer.py"
             if not script.is_file():
                 print("graph_explorer.py is not installed next to aidd_graphs.py; cannot build the explorer.")
                 return 1
-            rc = subprocess.run([sys.executable, str(script), "--graph", e["output"], "--out", out], cwd=str(root)).returncode
+            if name is not None:
+                args = ["--graph", e["output"], "--out", out, "--kind", e.get("kind") or "graph", "--layer", e["name"]]
+            else:
+                args = ["--root", str(root), "--out", out]
+                for flag in ("--max-mb", "--skip"):
+                    if flag in rest and rest.index(flag) + 1 < len(rest):
+                        args += [flag, rest[rest.index(flag) + 1]]
+            rc = subprocess.run([sys.executable, str(script)] + args, cwd=str(root)).returncode
             if rc == 0:
                 print(out)
             return rc

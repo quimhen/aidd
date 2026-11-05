@@ -144,8 +144,9 @@ def known_root(start=None):
 
 
 # aidd:FR-027 graph_miss: a search the graph-first hook nudged (per-session evidence)
+# aidd:FR-051 aidd:FR-052 tool_query / tool_miss: the tool-first hook (per-session evidence)
 SESSION_KINDS = frozenset({'prompt', 'subagent', 'question', 'answer', 'find_spec', 'session_start', 'hook_error',
-                           'graph_miss'})
+                           'graph_miss', 'tool_miss', 'tool_query'})
 # aidd:FR-201 aidd:FR-205 aidd:FR-206 aidd:FR-208 gate_pointer / verify_run / stop_reminder / rules_override
 # aidd:FR-019 graph_snapshot: a canonical graph snapshot's hash (exempt from rotation, see _rotate_if_needed)
 PROJECT_KINDS = frozenset({'spec_edit', 'code_edit', 'approved', 'spec_closed', 'stop_block',
@@ -177,6 +178,20 @@ def _safe_sid(session):
 
 def _session_path(session):
     return _sessions_dir() / (_safe_sid(session) + '.toon')
+
+
+def tool_first_state_path(session):
+    """aidd:FR-053 per-session state file of the tool-first hook (beside the session log, never in a project)."""
+    return _sessions_dir() / (_safe_sid(session) + '.tool-first.json')
+
+
+def read_tool_first_state(session):
+    """aidd:FR-052 the tool-first hook's per-session state as a dict, or {} when missing/corrupt. Never raises."""
+    try:
+        data = json.loads(tool_first_state_path(session).read_text(encoding='utf-8'))
+    except (OSError, UnicodeDecodeError, ValueError):
+        return {}
+    return data if isinstance(data, dict) else {}
 
 
 def _project_dir(root):
@@ -707,7 +722,7 @@ def _append(root, session, kind, detail, report):
     return bool(spilled)
 
 
-def append(root, session, kind, **detail):
+def append(root, session, kind, /, **detail):
     """aidd:FR-004 Append one event, routed by kind (SESSION_KINDS -> per-session log in the temp dir;
     everything else -> the project log, only if a project root is known). Retries the lock with a short
     backoff, then spills the row (_spill_row) and records a `hook_error`. Returns True when the row is

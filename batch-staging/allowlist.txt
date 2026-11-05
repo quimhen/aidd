@@ -1,0 +1,2 @@
+Payroll/supabase/tests/employees_catalogs.test.sql
+Payroll/supabase/tests/employees_facts.test.sql

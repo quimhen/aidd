@@ -1,0 +1,649 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; script-src 'sha256-z3/jGhebujiQvtf3VetdJnOk9lVwKVEK/bcgNdpjSns='; base-uri 'none'; form-action 'none'">
+<title>Review - Review 009-aidd-host-parity</title>
+<!-- aidd:FR-303 aidd:FR-305 aidd:FR-310 aidd:FR-311 aidd:FR-312 compact tabbed review page (spec 008) -->
+<style>
+:root{--bg:#F6FAFC;--fg:#1F2A30;--muted:#567D89;--line:#D5E2E8;--card:#FFFFFF;--card-hover:#F8FCFD;--accent:#00677C;--accent-hover:#005061;--accent-light:#E0F4F8;--ok:#0F766E;--ok-bg:#ECFDF5;--ok-line:#A7F3D0;--warn-bg:#FFFBEB;--warn-line:#F59E0B;--warn-text:#92400E;--mand-bg:#FEF2F2;--mand-line:#EF4444;--mand-text:#991B1B;--code:#EDF3F6;--sel:#E0F4F8;--shadow-sm:0 1px 2px rgba(15,23,42,0.04);--shadow-md:0 4px 6px -1px rgba(15,23,42,0.06);--radius-sm:6px;--radius-md:10px;--radius-pill:9999px}
+@media (prefers-color-scheme:dark){:root{--bg:#0D1317;--fg:#E6ECEF;--muted:#8BA3AD;--line:#243138;--card:#141C21;--card-hover:#192329;--accent:#4CD6EE;--accent-hover:#67E8F9;--accent-light:#162C35;--ok:#34D399;--ok-bg:#064E3B;--ok-line:#059669;--warn-bg:#382405;--warn-line:#D97706;--warn-text:#FDE68A;--mand-bg:#450A0A;--mand-line:#DC2626;--mand-text:#FECACA;--code:#1B262D;--sel:#182C36;--shadow-sm:0 1px 2px rgba(0,0,0,0.25);--shadow-md:0 4px 6px rgba(0,0,0,0.3)}}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.55 system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;min-width:360px}
+header.top{position:sticky;top:0;z-index:50;background:rgba(255,255,255,0.94);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-bottom:1px solid var(--line);padding:12px 20px 8px;box-shadow:var(--shadow-sm)}
+@media (prefers-color-scheme:dark){header.top{background:rgba(20,28,33,0.94)}}
+header.top h1{font-size:1.25rem;font-weight:700;letter-spacing:-0.02em;margin:0 0 6px;color:var(--fg);display:flex;align-items:center;gap:10px}
+header.top h1::before{content:"AIDD";display:inline-block;font-size:0.68rem;font-weight:800;letter-spacing:0.08em;padding:2px 7px;border-radius:var(--radius-pill);background:var(--accent);color:#fff}
+@media (prefers-color-scheme:dark){header.top h1::before{color:#0D1317}}
+.meta{color:var(--muted);font-size:0.82rem;display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center}
+.meta span{display:inline-flex;align-items:center;padding:2px 8px;border-radius:var(--radius-pill);background:var(--code);border:1px solid var(--line);font-family:ui-monospace,Consolas,monospace}
+#aidd-progress{font-weight:700;background:var(--accent-light);color:var(--accent);border-color:var(--accent)}
+.bar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-top:10px}
+button{font:inherit;font-size:0.88rem;min-height:44px;padding:6px 14px;border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--card);color:var(--fg);cursor:pointer;transition:all 0.15s ease-in-out;font-weight:500;display:inline-flex;align-items:center;justify-content:center;gap:6px}
+button:hover:not([disabled]){background:var(--code);border-color:var(--muted)}
+button[disabled]{opacity:0.5;cursor:not-allowed}
+button.primary{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600;box-shadow:0 1px 3px rgba(0,103,124,0.25)}
+@media (prefers-color-scheme:dark){button.primary{color:#0D1317;font-weight:700}}
+button.primary:hover:not([disabled]){background:var(--accent-hover);border-color:var(--accent-hover);transform:translateY(-1px);box-shadow:0 3px 6px rgba(0,103,124,0.3)}
+button:focus-visible,input:focus-visible,textarea:focus-visible,summary:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+#aidd-alert:empty,#aidd-status:empty{display:none}
+#aidd-alert{background:var(--mand-bg);border:1px solid var(--mand-line);border-left:4px solid var(--mand-line);color:var(--mand-text);border-radius:var(--radius-sm);padding:10px 14px;margin-top:10px;font-weight:600;font-size:0.88rem;box-shadow:var(--shadow-sm);overflow-wrap:anywhere}
+#aidd-status{background:var(--warn-bg);border:1px solid var(--warn-line);border-left:4px solid var(--warn-line);color:var(--warn-text);border-radius:var(--radius-sm);padding:10px 14px;margin-top:10px;font-size:0.88rem;box-shadow:var(--shadow-sm);overflow-wrap:anywhere}
+#aidd-status p{margin:4px 0}
+#aidd-status textarea{width:100%;min-height:8em;font:12.5px/1.45 ui-monospace,Consolas,monospace;background:var(--card);color:var(--fg);border:1px solid var(--line);border-radius:var(--radius-sm);padding:8px}
+.tabs{display:flex;gap:4px;overflow-x:auto;white-space:nowrap;margin-top:10px;padding-bottom:2px;-webkit-overflow-scrolling:touch;border-bottom:1px solid var(--line)}
+[role="tab"]{flex:0 0 auto;border-radius:var(--radius-sm) var(--radius-sm) 0 0;border:1px solid transparent;border-bottom:3px solid transparent;background:transparent;color:var(--muted);font-weight:500;padding:8px 14px;min-height:44px}
+[role="tab"]:hover{color:var(--fg);background:var(--card-hover)}
+[role="tab"][aria-selected="true"]{background:var(--card);color:var(--accent);border-color:var(--line) var(--line) transparent var(--line);border-bottom:3px solid var(--accent);font-weight:700}
+[role="tab"] .badge{display:inline-block;margin-left:6px;padding:1px 7px;border-radius:var(--radius-pill);background:var(--code);color:var(--muted);font-size:0.78rem;font-weight:600;font-family:ui-monospace,Consolas,monospace}
+[role="tab"] .badge.done{background:var(--ok);color:#fff}
+main{padding:20px 16px 40px;max-width:980px;margin:0 auto}
+[role="tabpanel"]{padding:4px 0}
+[role="tabpanel"] > h2{font-size:1.15rem;font-weight:700;letter-spacing:-0.01em;margin:0 0 10px;color:var(--fg)}
+.tabbar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:0 0 16px;padding:8px 12px;background:var(--card);border:1px solid var(--line);border-radius:var(--radius-sm)}
+.tabbar .why{color:var(--muted);font-size:0.85rem}
+.carry{color:var(--muted);font-size:0.88rem;margin:0 0 14px;padding:8px 12px;background:var(--card);border-left:3px solid var(--accent);border-radius:0 var(--radius-sm) var(--radius-sm) 0;overflow-wrap:anywhere}
+.aidd-warn{background:var(--warn-bg);border:1px solid var(--warn-line);border-left:4px solid var(--warn-line);color:var(--warn-text);border-radius:var(--radius-sm);padding:10px 14px;margin:0 0 14px;font-size:0.88rem}
+.aidd-item{display:grid;grid-template-columns:44px 1fr;gap:0 12px;align-items:start;background:var(--card);border:1px solid var(--line);border-radius:var(--radius-md);padding:12px 14px;margin-bottom:8px;box-shadow:var(--shadow-sm);transition:border-color 0.15s,box-shadow 0.15s}
+.aidd-item:hover{border-color:var(--accent);box-shadow:var(--shadow-md)}
+.aidd-item > .ck{grid-row:1 / span 6;display:flex;align-items:center;justify-content:center;min-width:44px;min-height:44px;cursor:pointer}
+.aidd-item > .ck input{width:22px;height:22px;margin:0;cursor:pointer;accent-color:var(--accent)}
+.aidd-item > *:not(.ck){grid-column:2}
+.aidd-item .code{font-weight:700;font-family:ui-monospace,Consolas,monospace;font-size:0.88rem;display:inline-block;padding:1px 6px;border-radius:var(--radius-sm);background:var(--code);color:var(--fg);margin-bottom:2px;overflow-wrap:anywhere}
+.aidd-item .txt,.aidd-item .ans,.aidd-item .src{overflow-wrap:anywhere}
+.aidd-item .txt{font-weight:500;color:var(--fg)}
+.aidd-item .src{color:var(--muted);font-size:0.8rem;margin-top:2px;font-family:ui-monospace,Consolas,monospace}
+.aidd-item.checked{border-color:var(--ok-line);background:var(--card-hover)}
+.aidd-item.checked .code{background:var(--ok-bg);color:var(--ok)}
+.aidd-item[data-mandatory]{background:var(--mand-bg);border-left:4px solid var(--mand-line)}
+.aidd-item[data-unanswered] .ans,.aidd-item[data-edge] .code{color:var(--mand-line);font-weight:700}
+.aidd-item .aidd-c{width:100%;min-height:44px;margin-top:8px;font:inherit;font-size:0.88rem;background:var(--bg);color:var(--fg);border:1px solid var(--line);border-radius:var(--radius-sm);padding:6px 10px;transition:border-color 0.15s}
+.aidd-item .aidd-c:focus{border-color:var(--accent);background:var(--card)}
+.aidd-item.focus{outline:2px solid var(--accent);outline-offset:2px}
+details.fallback{margin:20px 0 0;padding:12px 16px;background:var(--card);border:1px solid var(--line);border-radius:var(--radius-md);box-shadow:var(--shadow-sm)}
+details.fallback summary{cursor:pointer;min-height:44px;display:flex;align-items:center;font-weight:600;color:var(--muted)}
+details.fallback summary:hover{color:var(--fg)}
+.warn{background:var(--warn-bg);border:1px solid var(--warn-line);border-left:4px solid var(--warn-line);border-radius:var(--radius-sm);padding:10px 14px;margin:10px 16px;color:var(--warn-text);font-size:0.88rem}
+code{background:var(--code);padding:2px 6px;border-radius:4px;font-size:0.88em;font-family:ui-monospace,Consolas,monospace;overflow-wrap:anywhere}
+a{color:var(--accent);text-decoration:none;overflow-wrap:anywhere}
+a:hover{text-decoration:underline}
+h1,h2,h3,p,li{overflow-wrap:anywhere}
+@media print{header.top{position:static;box-shadow:none}.tabs,.tabbar,#aidd-approve{display:none}[role="tabpanel"],[role="tabpanel"][hidden]{display:block!important;margin-bottom:20px}.aidd-item{break-inside:avoid;border:1px solid #ccc;box-shadow:none}.aidd-item .aidd-c{border:1px solid #000}}
+</style>
+</head>
+<body>
+<header class="top" id="aidd-root" data-spec="009-aidd-host-parity" data-tasks-hash="ab1dc5affab7" data-tasks-hash8="ab1dc5af" data-sources-digest="bb85aef49dd7" data-generated="2026-10-31">
+<h1>Review 009-aidd-host-parity</h1>
+<div class="meta"><span>spec 009-aidd-host-parity</span><span>tasks hash ab1dc5af</span><span>generated 2026-10-31</span><span id="aidd-progress" aria-live="polite"></span></div>
+<div class="bar"><button type="button" id="aidd-approve" class="primary">Guardar progreso</button></div>
+<div id="aidd-alert" role="alert"></div>
+<div id="aidd-status" role="status" aria-live="polite"></div>
+<div class="tabs" id="aidd-tablist" role="tablist" aria-label="Secciones"></div>
+</header>
+<noscript><div class="warn">This page needs JavaScript to record your review. Without it: read the items below, then create <code>review.md</code> by hand in specs/009-aidd-host-parity/ with a front matter (<code>spec</code>, <code>tasks_hash</code>, <code>sources_digest</code>, <code>format: codes-v2</code>, <code>approved</code>) between two <code>---</code> lines, then one line per code: <code>- [x] FR-301</code> when approved or <code>- [ ] FR-301</code> when not, each optionally followed by one comment line starting with <code>&gt; </code>; then answer with <code>approve [tasks:ab1dc5af]</code>.</div></noscript>
+<main id="aidd-main">
+<section role="tabpanel" id="tab-summary" data-tab="summary" aria-label="Resumen">
+<ul class="aidd-warn" role="status"><li>1 warning(s) in total</li></ul>
+<p class="aidd-srclink"><a href="spec.md" rel="noopener noreferrer" target="_blank">spec.md</a></p>
+<div class="aidd-item" data-code="SUMMARY" data-mandatory="1"><span class="code">SUMMARY</span><span class="txt">Make AIDD enforce its rules on Gemini CLI and OpenCode (install, verify, block) instead of relying on the model reading instructions.</span><span class="fld" data-field="Scope">Scope: aidd install --host gemini|opencode, aidd doctor, a Gemini BeforeTool/AfterTool hook set, an OpenCode plugin gate, a host adapter that spawns the existing rule_gate.py; two small fixes found while doing it (quote word-count wording, date...</span><span class="fld" data-field="Cost">Cost: 14 tasks, 3 waves, about 42 min and 845k tokens.</span><span class="fld" data-field="Risks">Risks: hooks from public docs behave differently on a real install (mitigated by aidd doctor and a real smoke run per host); a gate that blocks the wrong spec (reused per-spec gate target and aidd rules activate); approval on these hosts has no...</span><span class="fld" data-field="Open decisions">Open decisions: none.</span><span class="src">spec.md</span></div>
+</section>
+<section role="tabpanel" id="tab-questions" data-tab="questions" aria-label="Preguntas">
+<p class="aidd-srclink"><a href="spec.md" rel="noopener noreferrer" target="_blank">spec.md</a></p>
+<div class="aidd-item" data-code="Q1"><span class="code">Q1</span><span class="txt">Which module/area of the system?</span><span class="ans">AIDD cross-host layer: adapters/, aidd/cli.py, new install/doctor scripts and per-host write gates for Gemini CLI and OpenCode</span><span class="fld" data-field="Source">Source: user — &quot;Confirmo filas propuestas&quot;</span><span class="src">spec.md</span></div>
+<div class="aidd-item" data-code="Q2"><span class="code">Q2</span><span class="txt">New development or modification of something existing?</span><span class="ans">New development: a new spec (009), built on the existing adapters/ tiers and the aidd rules CLI; the short core CORE.md is already delivered</span><span class="fld" data-field="Source">Source: user — &quot;Confirmo filas propuestas&quot;</span><span class="src">spec.md</span></div>
+<div class="aidd-item" data-code="Q3"><span class="code">Q3</span><span class="txt">Does it involve an external service, API, or integration?</span><span class="ans">Yes, two host integrations: Gemini CLI BeforeTool hooks (settings.json, exit 2 blocks) and OpenCode tool.execute.before (a thrown error blocks). Both from public docs, not yet run here</span><span class="fld" data-field="Source">Source: repo — adapters/README.md:1</span><span class="src">spec.md</span></div>
+<div class="aidd-item" data-code="Q4"><span class="code">Q4</span><span class="txt">Who is requesting it? (role/profile, not necessarily the name)</span><span class="ans">The project owner (Jefe de Sistemas) who worked a week in b1SycLink with Gemini and OpenCode</span><span class="fld" data-field="Source">Source: user — &quot;Confirmo filas propuestas&quot;</span><span class="src">spec.md</span></div>
+<div class="aidd-item" data-code="Q5"><span class="code">Q5</span><span class="txt">Dependencies on other modules or active developments?</span><span class="ans">Specs 002 (hard rules R1-R14), 006 (session attribution), 008 (review/approval); aidd rules CLI; evidence log format</span><span class="fld" data-field="Source">Source: repo — specs/002-aidd-hard-rules/spec.md:1</span><span class="src">spec.md</span></div>
+<div class="aidd-item" data-code="Q6"><span class="code">Q6</span><span class="txt">Business objective (1 sentence — what it achieves and why)</span><span class="ans">An agent on Gemini or OpenCode must be unable to write code without an approved spec and must not call a task done without executed proof, as Claude Code already enforces, so the Payroll outcome (no task status, no Verify, screens that d...</span><span class="fld" data-field="Source">Source: user — &quot;Confirmo filas propuestas&quot;</span><span class="src">spec.md</span></div>
+<div class="aidd-item" data-code="Q7"><span class="code">Q7</span><span class="txt">Expected visual fidelity level (if there&#x27;s a mockup): exact | functional behavior only</span><span class="ans">Not applicable: no screens or mockup in this change</span><span class="fld" data-field="Source">Source: user — &quot;Confirmo filas propuestas&quot;</span><span class="src">spec.md</span></div>
+<div class="aidd-item" data-code="Q8"><span class="code">Q8</span><span class="txt">Which states must each screen/flow handle (empty, loading, error, offline)?</span><span class="ans">Not applicable: no screens</span><span class="fld" data-field="Source">Source: user — &quot;Confirmo filas propuestas&quot;</span><span class="src">spec.md</span></div>
+<div class="aidd-item" data-code="Q9"><span class="code">Q9</span><span class="txt">Who may see or do this (permissions/roles)?</span><span class="ans">The owner installs; agents only trigger the gate</span><span class="fld" data-field="Source">Source: user — &quot;Confirmo filas propuestas&quot;</span><span class="src">spec.md</span></div>
+<div class="aidd-item" data-code="Q10"><span class="code">Q10</span><span class="txt">Entry route: how does the user reach this from the app&#x27;s start?</span><span class="ans">aidd install --host &lt;h&gt; and aidd doctor</span><span class="fld" data-field="Source">Source: user — &quot;Confirmo filas propuestas&quot;</span><span class="src">spec.md</span></div>
+<div class="aidd-item" data-code="Q11"><span class="code">Q11</span><span class="txt">Target devices (phone, tablet, desktop, orientation)?</span><span class="ans">Windows 11 first (the owner&#x27;s machine), Linux/macOS best effort</span><span class="fld" data-field="Source">Source: user — &quot;Confirmo filas propuestas&quot;</span><span class="src">spec.md</span></div>
+<div class="aidd-item" data-code="Q12"><span class="code">Q12</span><span class="txt">Contract owner and status (who defines the backend contract, is it final or still moving)?</span><span class="ans">The Gemini hook JSON contract and OpenCode plugin API come from vendors and may move: pin versions in aidd doctor</span><span class="fld" data-field="Source">Source: user — &quot;Confirmo filas propuestas&quot;</span><span class="src">spec.md</span></div>
+</section>
+<section role="tabpanel" id="tab-fr" data-tab="fr" aria-label="Requisitos">
+<p class="aidd-srclink"><a href="spec.md" rel="noopener noreferrer" target="_blank">spec.md</a></p>
+<div class="aidd-item" data-code="FR-901"><span class="code">FR-901</span><span class="txt">aidd install --host gemini installs .aidd/ (including CORE.md and hooks/), a GEMINI.md that imports @.aidd/CORE.md, and the hook entries in the project .gemini/settings.json; re-running changes nothing, never deletes anything under .aidd...</span><span class="src">spec.md</span></div>
+<div class="aidd-item" data-code="FR-902"><span class="code">FR-902</span><span class="txt">aidd install --host opencode installs .aidd/, .opencode/skills/aidd/SKILL.md and .opencode/plugins/aidd.js, and adds the plugin to the plugin array of .opencode/opencode.json without duplicating it</span><span class="src">spec.md</span></div>
+<div class="aidd-item" data-code="FR-903"><span class="code">FR-903</span><span class="txt">Both installs compare each file and report written, unchanged or skipped (modified, kept unless --force); they print what they did</span><span class="src">spec.md</span></div>
+<div class="aidd-item" data-code="FR-904"><span class="code">FR-904</span><span class="txt">The Gemini hook blocks (exit 2 with the fix text on stderr) a write-type tool call on a code file while the gate target spec has no valid approval; the code gate does not apply under specs/, docs and .aidd/memory/, while the spec-artifac...</span><span class="src">spec.md</span></div>
+<div class="aidd-item" data-code="FR-905"><span class="code">FR-905</span><span class="txt">The OpenCode plugin does the same by throwing from tool.execute.before for edit/write/patch-type tools; shell commands are checked only for protected paths (R9), as on Claude, and shell edits of code files stay a documented, ungated limit</span><span class="src">spec.md</span></div>
+<div class="aidd-item" data-code="FR-906"><span class="code">FR-906</span><span class="txt">Both gates append code_edit and spec_edit events to the project evidence log, so aidd rules check, aidd status and the close gate see real activity on these hosts; owner approval on these hosts goes through aidd review --wait then aidd r...</span><span class="src">spec.md</span></div>
+<div class="aidd-item" data-code="FR-907"><span class="code">FR-907</span><span class="txt">Both gates protect .aidd/ (R9) and read approval only from recorded owner consent, never from anything the agent wrote</span><span class="src">spec.md</span></div>
+<div class="aidd-item" data-code="FR-908"><span class="code">FR-908</span><span class="txt">AIDD_RULES=warn</span><span class="src">spec.md</span></div>
+<div class="aidd-item" data-code="FR-909"><span class="code">FR-909</span><span class="txt">aidd doctor [--host H] checks: .aidd/ complete and equal to the shipped version, CORE.md under 12 KB, pointer files present and importing the core, hook or plugin registered and unaltered, a dry-run of the gate that must return &quot;blocked&quot;...</span><span class="src">spec.md</span></div>
+<div class="aidd-item" data-code="FR-910"><span class="code">FR-910</span><span class="txt">A guard test fails when CORE.md exceeds 12 KB or when any adapter pointer says to read AIDD.md in full</span><span class="src">spec.md</span></div>
+<div class="aidd-item" data-code="FR-911"><span class="code">FR-911</span><span class="txt">The files that carry the gate on each host (.gemini/settings.json, .opencode/opencode.json, .opencode/plugins/aidd.js) are protected from agent writes like .aidd/ (R9); aidd doctor reports a missing or altered registration</span><span class="src">spec.md</span></div>
+<div class="aidd-item" data-code="FR-912"><span class="code">FR-912</span><span class="txt">The host adapter creates the session &quot;AIDD invoked&quot; marker itself on the first event of an AIDD project (.aidd/AIDD.md exists), so the legacy require_aidd check does not block with a Claude-only instruction; outside an AIDD project the a...</span><span class="src">spec.md</span></div>
+<div class="aidd-item" data-code="FR-913"><span class="code">FR-913</span><span class="txt">The quote rules read the same everywhere: the spec template, AIDD.md and SKILL.md state that a typed quote needs 5+ words and must postdate the first spec.md draft, and an answer to a question needs 2+ words</span><span class="src">spec.md</span></div>
+<div class="aidd-item" data-code="FR-914"><span class="code">FR-914</span><span class="txt">aidd status shows the date of the last hook error and counts rules_override events only since a stated date, so an old record does not read as a current alarm</span><span class="src">spec.md</span></div>
+<div class="aidd-item" data-code="FR-915"><span class="code">FR-915</span><span class="txt">CI matrix executes stdlib discovery and actually collects all cases previously defined in the two pytest-only modules without requiring pytest.</span><span class="src">spec.md</span></div>
+<div class="aidd-item" data-code="FR-916"><span class="code">FR-916</span><span class="txt">flowmap parses and renders on Python 3.10–3.12 without changing JSON escaping or script boundary behavior.</span><span class="src">spec.md</span></div>
+<div class="aidd-item" data-code="FR-917"><span class="code">FR-917</span><span class="txt">R6/R9 correctly classify native POSIX and Windows paths, drive, UNC and extended UNC spellings; ambiguous foreign-platform spellings fail closed for protected artifacts without treating an unrelated native path as inside the project.</span><span class="src">spec.md</span></div>
+<div class="aidd-item" data-code="FR-918"><span class="code">FR-918</span><span class="txt">Memory import keeps absolute in-project files as relative paths, keeps valid relative paths and rejects outside, traversal and sensitive paths on Windows and POSIX.</span><span class="src">spec.md</span></div>
+<div class="aidd-item" data-code="FR-919"><span class="code">FR-919</span><span class="txt">CI loads the pinned old guard and confirms required equivalence cases actually ran; absent history, loader errors, missing cases or skips fail the check.</span><span class="src">spec.md</span></div>
+<div class="aidd-item" data-code="FR-920"><span class="code">FR-920</span><span class="txt">On each OS, record the old/current/desired decision for each path probe before implementing any owner-reviewed, enumerated security correction; all other FR-1003 cases retain exact decision and message equivalence.</span><span class="src">spec.md</span></div>
+<div class="aidd-item" data-code="FR-921"><span class="code">FR-921</span><span class="txt">Existing python -m pytest verification rows use pinned test-only pytest without a runtime dependency; changing those rows requires separate approval.</span><span class="src">spec.md</span></div>
+</section>
+<section role="tabpanel" id="tab-ac" data-tab="ac" aria-label="Casos">
+<p class="aidd-srclink"><a href="spec.md" rel="noopener noreferrer" target="_blank">spec.md</a></p>
+<div class="aidd-item" data-code="AC-001"><span class="code">AC-001</span><span class="txt">project D:\Fuentes\b1SycLink, spec P10-Payrol-Outputs (Impl 33%, Verify: none, no approval)</span><span class="fld" data-field="Expected">Expected: with the Gemini hook installed, a write to Payroll/web/src/App.tsx is blocked with the R6 message</span><span class="src">spec.md</span></div>
+<div class="aidd-item" data-code="AC-002"><span class="code">AC-002</span><span class="txt">same project, after the owner approves P10-Payrol-Outputs</span><span class="fld" data-field="Expected">Expected: the same write is allowed and a code_edit event is appended, with no Claude-only &quot;invoke the skill&quot; message</span><span class="src">spec.md</span></div>
+<div class="aidd-item" data-code="AC-003" data-edge="1"><span class="code">AC-003</span><span class="txt">b1SycLink has 14+ open specs (memory: R6 blocked on ANY open spec)</span><span class="fld" data-field="Expected">Expected: the gate checks only the gate target; aidd rules activate &lt;id&gt; switches it; other specs do not block</span><span class="src">spec.md</span></div>
+<div class="aidd-item" data-code="AC-004" data-edge="1"><span class="code">AC-004</span><span class="txt">a fixture project with no .aidd/</span><span class="fld" data-field="Expected">Expected: aidd doctor exits 1 and says to run aidd install --host &lt;h&gt;; the adapter exits 0 without gating</span><span class="src">spec.md</span></div>
+<div class="aidd-item" data-code="AC-005" data-edge="1"><span class="code">AC-005</span><span class="txt">.opencode/opencode.json of b1SycLink already lists graphify.js and aidd.js; its .aidd/memory/ has entries</span><span class="fld" data-field="Expected">Expected: install adds nothing twice, keeps graphify.js and deletes nothing in .aidd/memory/</span><span class="src">spec.md</span></div>
+<div class="aidd-item" data-code="AC-006"><span class="code">AC-006</span><span class="txt">b1SycLink on a Gemini host, tasks of P10-Payrol-Outputs reviewed with aidd review --wait and approved by the owner</span><span class="fld" data-field="Expected">Expected: aidd rules approve records the approval and the next code write is allowed</span><span class="src">spec.md</span></div>
+<div class="aidd-item" data-code="AC-907"><span class="code">AC-907</span><span class="txt">CI discovery, test_aidd_readiness.py</span><span class="fld" data-field="Expected">Expected: At least nine unittest cases run, including both parameter values, no missing pytest.</span><span class="src">spec.md</span></div>
+<div class="aidd-item" data-code="AC-908"><span class="code">AC-908</span><span class="txt">CI discovery, test_visual_review_binding.py</span><span class="fld" data-field="Expected">Expected: At least six unittest cases run, including snapshot approval binding.</span><span class="src">spec.md</span></div>
+<div class="aidd-item" data-code="AC-909" data-edge="1"><span class="code">AC-909</span><span class="txt">D:/proj/specs/F23-eDoc-POS/tasks.md, \\\\server\\share\\specs\\F23-eDoc-POS\\tasks.md, extended UNC, native POSIX and ..</span><span class="fld" data-field="Expected">Expected: Protected tokens cannot bypass R6/R9; legitimate unrelated paths are allowed.</span><span class="src">spec.md</span></div>
+<div class="aidd-item" data-code="AC-910" data-edge="1"><span class="code">AC-910</span><span class="txt">An absolute existing file inside temp project and C:/Users/someone/.claude/plans/x.md outside</span><span class="fld" data-field="Expected">Expected: Import records only the inside path in relative POSIX form.</span><span class="src">spec.md</span></div>
+<div class="aidd-item" data-code="AC-911"><span class="code">AC-911</span><span class="txt">CI 3.10/3.11/3.12 on Ubuntu and Windows</span><span class="fld" data-field="Expected">Expected: Syntax/import and full discovery pass; old-guard comparison is executed, not skipped because of a shallow clone.</span><span class="src">spec.md</span></div>
+<div class="aidd-item" data-code="AC-912" data-edge="1"><span class="code">AC-912</span><span class="txt">Old/current/desired comparison for every reported guard regression and foreign drive/UNC spelling</span><span class="fld" data-field="Expected">Expected: Any intentional old-to-new difference is enumerated, security-justified and owner-reviewed; all other results and messages remain equivalent.</span><span class="src">spec.md</span></div>
+<div class="aidd-item" data-code="AC-913" data-edge="1"><span class="code">AC-913</span><span class="txt">Runner fixture: missing, skipped, failing, crashing or timed-out required case</span><span class="fld" data-field="Expected">Expected: CI exits nonzero with a useful diagnostic; zero-case or skipped coverage is never success.</span><span class="src">spec.md</span></div>
+<div class="aidd-item" data-code="AC-914" data-edge="1"><span class="code">AC-914</span><span class="txt">Missing relative file, in-root path whose parent symlink points outside, foreign absolute and sibling-prefix path</span><span class="fld" data-field="Expected">Expected: A missing relative file remains allowed only after existing-parent containment is established; outside or unprovable absolute paths are rejected.</span><span class="src">spec.md</span></div>
+</section>
+<section role="tabpanel" id="tab-tasks" data-tab="tasks" aria-label="Tareas">
+<p class="aidd-srclink"><a href="tasks.md" rel="noopener noreferrer" target="_blank">tasks.md</a></p>
+<div class="aidd-item" data-code="T-01"><span class="code">T-01</span><span class="txt">FR-904, FR-905, FR-906, FR-907, FR-908, FR-912</span><span class="fld" data-field="Target file">Target file: skill/hooks/host_adapter.py</span><span class="fld" data-field="Minutes">Minutes: 12</span><span class="fld" data-field="Tokens">Tokens: 75k</span><span class="src">tasks.md</span></div>
+<div class="aidd-item" data-code="T-02"><span class="code">T-02</span><span class="txt">FR-911</span><span class="fld" data-field="Target file">Target file: skill/hooks/rule_gate.py</span><span class="fld" data-field="Minutes">Minutes: 10</span><span class="fld" data-field="Tokens">Tokens: 60k</span><span class="src">tasks.md</span></div>
+<div class="aidd-item" data-code="T-03"><span class="code">T-03</span><span class="txt">FR-905</span><span class="fld" data-field="Target file">Target file: adapters/opencode/plugins/aidd.js</span><span class="fld" data-field="Minutes">Minutes: 8</span><span class="fld" data-field="Tokens">Tokens: 45k</span><span class="src">tasks.md</span></div>
+<div class="aidd-item" data-code="T-04"><span class="code">T-04</span><span class="txt">FR-901, FR-902, FR-903</span><span class="fld" data-field="Target file">Target file: skill/scripts/install_host.py</span><span class="fld" data-field="Minutes">Minutes: 12</span><span class="fld" data-field="Tokens">Tokens: 80k</span><span class="src">tasks.md</span></div>
+<div class="aidd-item" data-code="T-05"><span class="code">T-05</span><span class="txt">FR-909, FR-911</span><span class="fld" data-field="Target file">Target file: skill/scripts/aidd_doctor.py</span><span class="fld" data-field="Minutes">Minutes: 10</span><span class="fld" data-field="Tokens">Tokens: 65k</span><span class="src">tasks.md</span></div>
+<div class="aidd-item" data-code="T-06"><span class="code">T-06</span><span class="txt">FR-904, FR-905, FR-906, FR-907, FR-908, FR-911, FR-912</span><span class="fld" data-field="Target file">Target file: tests/test_host_gates.py</span><span class="fld" data-field="Minutes">Minutes: 12</span><span class="fld" data-field="Tokens">Tokens: 70k</span><span class="src">tasks.md</span></div>
+<div class="aidd-item" data-code="T-07"><span class="code">T-07</span><span class="txt">FR-901, FR-902, FR-903</span><span class="fld" data-field="Target file">Target file: tests/test_host_install.py</span><span class="fld" data-field="Minutes">Minutes: 8</span><span class="fld" data-field="Tokens">Tokens: 55k</span><span class="src">tasks.md</span></div>
+<div class="aidd-item" data-code="T-08"><span class="code">T-08</span><span class="txt">FR-909, FR-910, FR-911</span><span class="fld" data-field="Target file">Target file: tests/test_host_doctor.py</span><span class="fld" data-field="Minutes">Minutes: 8</span><span class="fld" data-field="Tokens">Tokens: 55k</span><span class="src">tasks.md</span></div>
+<div class="aidd-item" data-code="T-09"><span class="code">T-09</span><span class="txt">FR-901, FR-909</span><span class="fld" data-field="Target file">Target file: aidd/cli.py</span><span class="fld" data-field="Minutes">Minutes: 8</span><span class="fld" data-field="Tokens">Tokens: 50k</span><span class="src">tasks.md</span></div>
+<div class="aidd-item" data-code="T-10"><span class="code">T-10</span><span class="txt">FR-901, FR-912</span><span class="fld" data-field="Target file">Target file: tests/test_dot_aidd_mirror.py</span><span class="fld" data-field="Minutes">Minutes: 8</span><span class="fld" data-field="Tokens">Tokens: 45k</span><span class="src">tasks.md</span></div>
+<div class="aidd-item" data-code="T-11"><span class="code">T-11</span><span class="txt">FR-906, FR-910, FR-913</span><span class="fld" data-field="Target file">Target file: adapters/README.md</span><span class="fld" data-field="Minutes">Minutes: 10</span><span class="fld" data-field="Tokens">Tokens: 55k</span><span class="src">tasks.md</span></div>
+<div class="aidd-item" data-code="T-12"><span class="code">T-12</span><span class="txt">FR-901, FR-902, FR-903, FR-904, FR-905, FR-906, FR-907, FR-908, FR-909, FR-910, FR-911, FR-912, FR-913, FR-914</span><span class="fld" data-field="Target file">Target file: specs/009-aidd-host-parity/evidence/verify-summary.md</span><span class="fld" data-field="Minutes">Minutes: 20</span><span class="fld" data-field="Tokens">Tokens: 90k</span><span class="src">tasks.md</span></div>
+<div class="aidd-item" data-code="T-13"><span class="code">T-13</span><span class="txt">FR-913</span><span class="fld" data-field="Target file">Target file: skill/templates/spec.md</span><span class="fld" data-field="Minutes">Minutes: 6</span><span class="fld" data-field="Tokens">Tokens: 40k</span><span class="src">tasks.md</span></div>
+<div class="aidd-item" data-code="T-14"><span class="code">T-14</span><span class="txt">FR-914</span><span class="fld" data-field="Target file">Target file: skill/scripts/aidd_status.py</span><span class="fld" data-field="Minutes">Minutes: 8</span><span class="fld" data-field="Tokens">Tokens: 60k</span><span class="src">tasks.md</span></div>
+<div class="aidd-item" data-code="T-15"><span class="code">T-15</span><span class="txt">FR-915, AC-907</span><span class="fld" data-field="Target file">Target file: tests/test_aidd_readiness.py</span><span class="fld" data-field="Minutes">Minutes: 12</span><span class="fld" data-field="Tokens">Tokens: 100k</span><span class="src">tasks.md</span></div>
+<div class="aidd-item" data-code="T-16"><span class="code">T-16</span><span class="txt">FR-915, AC-908</span><span class="fld" data-field="Target file">Target file: tests/test_visual_review_binding.py</span><span class="fld" data-field="Minutes">Minutes: 10</span><span class="fld" data-field="Tokens">Tokens: 100k</span><span class="src">tasks.md</span></div>
+<div class="aidd-item" data-code="T-17"><span class="code">T-17</span><span class="txt">FR-916, AC-911</span><span class="fld" data-field="Target file">Target file: skill/scripts/flowmap.py</span><span class="fld" data-field="Minutes">Minutes: 8</span><span class="fld" data-field="Tokens">Tokens: 65k</span><span class="src">tasks.md</span></div>
+<div class="aidd-item" data-code="T-18"><span class="code">T-18</span><span class="txt">FR-917, AC-909</span><span class="fld" data-field="Target file">Target file: tests/test_cross_platform_paths.py</span><span class="fld" data-field="Minutes">Minutes: 12</span><span class="fld" data-field="Tokens">Tokens: 110k</span><span class="src">tasks.md</span></div>
+<div class="aidd-item" data-code="T-19"><span class="code">T-19</span><span class="txt">FR-917, AC-909</span><span class="fld" data-field="Target file">Target file: skill/hooks/rule_gate.py (same owner as T-02)</span><span class="fld" data-field="Minutes">Minutes: 15</span><span class="fld" data-field="Tokens">Tokens: 130k</span><span class="src">tasks.md</span></div>
+<div class="aidd-item" data-code="T-20"><span class="code">T-20</span><span class="txt">FR-918, AC-910</span><span class="fld" data-field="Target file">Target file: skill/scripts/aidd_memory_import.py</span><span class="fld" data-field="Minutes">Minutes: 10</span><span class="fld" data-field="Tokens">Tokens: 80k</span><span class="src">tasks.md</span></div>
+<div class="aidd-item" data-code="T-21"><span class="code">T-21</span><span class="txt">FR-915, FR-919, AC-911</span><span class="fld" data-field="Target file">Target file: .github/workflows/test.yml</span><span class="fld" data-field="Minutes">Minutes: 8</span><span class="fld" data-field="Tokens">Tokens: 60k</span><span class="src">tasks.md</span></div>
+<div class="aidd-item" data-code="T-22"><span class="code">T-22</span><span class="txt">FR-915..FR-919, AC-907..AC-911</span><span class="fld" data-field="Target file">Target file: specs/009-aidd-host-parity/evidence/amendment-01-ci.txt</span><span class="fld" data-field="Minutes">Minutes: 20</span><span class="fld" data-field="Tokens">Tokens: 60k</span><span class="src">tasks.md</span></div>
+<div class="aidd-item" data-code="T-23"><span class="code">T-23</span><span class="txt">FR-920, AC-912</span><span class="fld" data-field="Target file">Target file: tests/report_guard_portability.py</span><span class="fld" data-field="Minutes">Minutes: 12</span><span class="fld" data-field="Tokens">Tokens: 120k</span><span class="src">tasks.md</span></div>
+<div class="aidd-item" data-code="T-24"><span class="code">T-24</span><span class="txt">FR-915, FR-919, AC-913</span><span class="fld" data-field="Target file">Target file: tests/test_ci_runner.py</span><span class="fld" data-field="Minutes">Minutes: 12</span><span class="fld" data-field="Tokens">Tokens: 100k</span><span class="src">tasks.md</span></div>
+<div class="aidd-item" data-code="T-25"><span class="code">T-25</span><span class="txt">FR-915, FR-919, AC-913</span><span class="fld" data-field="Target file">Target file: tests/run_parallel.py</span><span class="fld" data-field="Minutes">Minutes: 15</span><span class="fld" data-field="Tokens">Tokens: 90k</span><span class="src">tasks.md</span></div>
+<div class="aidd-item" data-code="T-26"><span class="code">T-26</span><span class="txt">FR-921</span><span class="fld" data-field="Target file">Target file: tests/requirements-test.txt</span><span class="fld" data-field="Minutes">Minutes: 5</span><span class="fld" data-field="Tokens">Tokens: 35k</span><span class="src">tasks.md</span></div>
+</section>
+<section role="tabpanel" id="tab-verification" data-tab="verification" aria-label="Verificación">
+<ul class="aidd-warn" role="status"><li>1 repeated code skipped (first row wins): V-5</li></ul>
+<p class="aidd-srclink"><a href="spec.md" rel="noopener noreferrer" target="_blank">spec.md</a></p>
+<div class="aidd-item" data-code="V-1" data-mandatory="1"><span class="code">V-1</span><span class="txt">python -m pytest tests/test_host_install.py -q</span><span class="fld" data-field="Expected">Expected: exit 0</span><span class="fld" data-field="Covers">Covers: FR-901, FR-902, FR-903</span><span class="src">spec.md</span></div>
+<div class="aidd-item" data-code="V-2" data-mandatory="1"><span class="code">V-2</span><span class="txt">python -m pytest tests/test_host_gates.py -q</span><span class="fld" data-field="Expected">Expected: exit 0</span><span class="fld" data-field="Covers">Covers: FR-904, FR-905, FR-906, FR-907, FR-908, FR-911, FR-912</span><span class="src">spec.md</span></div>
+<div class="aidd-item" data-code="V-3" data-mandatory="1"><span class="code">V-3</span><span class="txt">python -m pytest tests/test_host_doctor.py -q</span><span class="fld" data-field="Expected">Expected: exit 0</span><span class="fld" data-field="Covers">Covers: FR-909, FR-910</span><span class="src">spec.md</span></div>
+<div class="aidd-item" data-code="V-4" data-mandatory="1"><span class="code">V-4</span><span class="txt">python -m pytest tests/test_aidd_status.py tests/test_dot_aidd_mirror.py -q</span><span class="fld" data-field="Expected">Expected: exit 0</span><span class="fld" data-field="Covers">Covers: FR-913, FR-914</span><span class="src">spec.md</span></div>
+<div class="aidd-item" data-code="V-5" data-mandatory="1"><span class="code">V-5</span><span class="txt">python tests/run_parallel.py</span><span class="fld" data-field="Expected">Expected: exit 0</span><span class="fld" data-field="Covers">Covers: FR-901</span><span class="src">spec.md</span></div>
+</section>
+<details class="fallback"><summary>Fallback: typed consent</summary><p>Only if the direct save and the download both fail: put review.md in the spec folder by hand, then paste this line to the agent:</p><p><code>approve [tasks:ab1dc5af]</code></p></details>
+</main>
+<script type="application/json" id="aidd-data">{"spec": "009-aidd-host-parity", "tasks_hash": "ab1dc5affab7", "sources_digest": "bb85aef49dd7", "tasks_hash8": "ab1dc5af", "generated": "2026-10-31", "picker_id": "aidd-b5ce2823", "format": "codes-v2", "warnings": [{"tab": "verification", "text": "1 repeated code skipped (first row wins): V-5"}], "tabs": [{"id": "summary", "label": "Resumen", "items": [{"code": "SUMMARY", "kind": "summary", "text": "Make AIDD enforce its rules on Gemini CLI and OpenCode (install, verify, block) instead of relying on the model reading instructions.", "fields": {"Scope": "aidd install --host gemini|opencode, aidd doctor, a Gemini BeforeTool/AfterTool hook set, an OpenCode plugin gate, a host adapter that spawns the existing rule_gate.py; two small fixes found while doing it (quote word-count wording, date...", "Cost": "14 tasks, 3 waves, about 42 min and 845k tokens.", "Risks": "hooks from public docs behave differently on a real install (mitigated by aidd doctor and a real smoke run per host); a gate that blocks the wrong spec (reused per-spec gate target and aidd rules activate); approval on these hosts has no...", "Open decisions": "none."}, "edge": false, "unanswered": false, "mandatory": true, "source": "spec.md"}]}, {"id": "questions", "label": "Preguntas", "items": [{"code": "Q1", "kind": "question", "text": "Which module/area of the system?", "fields": {"Answer": "AIDD cross-host layer: adapters/, aidd/cli.py, new install/doctor scripts and per-host write gates for Gemini CLI and OpenCode", "Source": "user \u2014 \"Confirmo filas propuestas\""}, "edge": false, "unanswered": false, "mandatory": false, "source": "spec.md"}, {"code": "Q2", "kind": "question", "text": "New development or modification of something existing?", "fields": {"Answer": "New development: a new spec (009), built on the existing adapters/ tiers and the aidd rules CLI; the short core CORE.md is already delivered", "Source": "user \u2014 \"Confirmo filas propuestas\""}, "edge": false, "unanswered": false, "mandatory": false, "source": "spec.md"}, {"code": "Q3", "kind": "question", "text": "Does it involve an external service, API, or integration?", "fields": {"Answer": "Yes, two host integrations: Gemini CLI BeforeTool hooks (settings.json, exit 2 blocks) and OpenCode tool.execute.before (a thrown error blocks). Both from public docs, not yet run here", "Source": "repo \u2014 adapters/README.md:1"}, "edge": false, "unanswered": false, "mandatory": false, "source": "spec.md"}, {"code": "Q4", "kind": "question", "text": "Who is requesting it? (role/profile, not necessarily the name)", "fields": {"Answer": "The project owner (Jefe de Sistemas) who worked a week in b1SycLink with Gemini and OpenCode", "Source": "user \u2014 \"Confirmo filas propuestas\""}, "edge": false, "unanswered": false, "mandatory": false, "source": "spec.md"}, {"code": "Q5", "kind": "question", "text": "Dependencies on other modules or active developments?", "fields": {"Answer": "Specs 002 (hard rules R1-R14), 006 (session attribution), 008 (review/approval); aidd rules CLI; evidence log format", "Source": "repo \u2014 specs/002-aidd-hard-rules/spec.md:1"}, "edge": false, "unanswered": false, "mandatory": false, "source": "spec.md"}, {"code": "Q6", "kind": "question", "text": "Business objective (1 sentence \u2014 what it achieves and why)", "fields": {"Answer": "An agent on Gemini or OpenCode must be unable to write code without an approved spec and must not call a task done without executed proof, as Claude Code already enforces, so the Payroll outcome (no task status, no Verify, screens that d...", "Source": "user \u2014 \"Confirmo filas propuestas\""}, "edge": false, "unanswered": false, "mandatory": false, "source": "spec.md"}, {"code": "Q7", "kind": "question", "text": "Expected visual fidelity level (if there's a mockup): exact | functional behavior only", "fields": {"Answer": "Not applicable: no screens or mockup in this change", "Source": "user \u2014 \"Confirmo filas propuestas\""}, "edge": false, "unanswered": false, "mandatory": false, "source": "spec.md"}, {"code": "Q8", "kind": "question", "text": "Which states must each screen/flow handle (empty, loading, error, offline)?", "fields": {"Answer": "Not applicable: no screens", "Source": "user \u2014 \"Confirmo filas propuestas\""}, "edge": false, "unanswered": false, "mandatory": false, "source": "spec.md"}, {"code": "Q9", "kind": "question", "text": "Who may see or do this (permissions/roles)?", "fields": {"Answer": "The owner installs; agents only trigger the gate", "Source": "user \u2014 \"Confirmo filas propuestas\""}, "edge": false, "unanswered": false, "mandatory": false, "source": "spec.md"}, {"code": "Q10", "kind": "question", "text": "Entry route: how does the user reach this from the app's start?", "fields": {"Answer": "aidd install --host \u003ch\u003e and aidd doctor", "Source": "user \u2014 \"Confirmo filas propuestas\""}, "edge": false, "unanswered": false, "mandatory": false, "source": "spec.md"}, {"code": "Q11", "kind": "question", "text": "Target devices (phone, tablet, desktop, orientation)?", "fields": {"Answer": "Windows 11 first (the owner's machine), Linux/macOS best effort", "Source": "user \u2014 \"Confirmo filas propuestas\""}, "edge": false, "unanswered": false, "mandatory": false, "source": "spec.md"}, {"code": "Q12", "kind": "question", "text": "Contract owner and status (who defines the backend contract, is it final or still moving)?", "fields": {"Answer": "The Gemini hook JSON contract and OpenCode plugin API come from vendors and may move: pin versions in aidd doctor", "Source": "user \u2014 \"Confirmo filas propuestas\""}, "edge": false, "unanswered": false, "mandatory": false, "source": "spec.md"}]}, {"id": "fr", "label": "Requisitos", "items": [{"code": "FR-901", "kind": "fr", "text": "aidd install --host gemini installs .aidd/ (including CORE.md and hooks/), a GEMINI.md that imports @.aidd/CORE.md, and the hook entries in the project .gemini/settings.json; re-running changes nothing, never deletes anything under .aidd...", "fields": {}, "edge": false, "unanswered": false, "mandatory": false, "source": "spec.md"}, {"code": "FR-902", "kind": "fr", "text": "aidd install --host opencode installs .aidd/, .opencode/skills/aidd/SKILL.md and .opencode/plugins/aidd.js, and adds the plugin to the plugin array of .opencode/opencode.json without duplicating it", "fields": {}, "edge": false, "unanswered": false, "mandatory": false, "source": "spec.md"}, {"code": "FR-903", "kind": "fr", "text": "Both installs compare each file and report written, unchanged or skipped (modified, kept unless --force); they print what they did", "fields": {}, "edge": false, "unanswered": false, "mandatory": false, "source": "spec.md"}, {"code": "FR-904", "kind": "fr", "text": "The Gemini hook blocks (exit 2 with the fix text on stderr) a write-type tool call on a code file while the gate target spec has no valid approval; the code gate does not apply under specs/, docs and .aidd/memory/, while the spec-artifac...", "fields": {}, "edge": false, "unanswered": false, "mandatory": false, "source": "spec.md"}, {"code": "FR-905", "kind": "fr", "text": "The OpenCode plugin does the same by throwing from tool.execute.before for edit/write/patch-type tools; shell commands are checked only for protected paths (R9), as on Claude, and shell edits of code files stay a documented, ungated limit", "fields": {}, "edge": false, "unanswered": false, "mandatory": false, "source": "spec.md"}, {"code": "FR-906", "kind": "fr", "text": "Both gates append code_edit and spec_edit events to the project evidence log, so aidd rules check, aidd status and the close gate see real activity on these hosts; owner approval on these hosts goes through aidd review --wait then aidd r...", "fields": {}, "edge": false, "unanswered": false, "mandatory": false, "source": "spec.md"}, {"code": "FR-907", "kind": "fr", "text": "Both gates protect .aidd/ (R9) and read approval only from recorded owner consent, never from anything the agent wrote", "fields": {}, "edge": false, "unanswered": false, "mandatory": false, "source": "spec.md"}, {"code": "FR-908", "kind": "fr", "text": "AIDD_RULES=warn", "fields": {}, "edge": false, "unanswered": false, "mandatory": false, "source": "spec.md"}, {"code": "FR-909", "kind": "fr", "text": "aidd doctor [--host H] checks: .aidd/ complete and equal to the shipped version, CORE.md under 12 KB, pointer files present and importing the core, hook or plugin registered and unaltered, a dry-run of the gate that must return \"blocked\"...", "fields": {}, "edge": false, "unanswered": false, "mandatory": false, "source": "spec.md"}, {"code": "FR-910", "kind": "fr", "text": "A guard test fails when CORE.md exceeds 12 KB or when any adapter pointer says to read AIDD.md in full", "fields": {}, "edge": false, "unanswered": false, "mandatory": false, "source": "spec.md"}, {"code": "FR-911", "kind": "fr", "text": "The files that carry the gate on each host (.gemini/settings.json, .opencode/opencode.json, .opencode/plugins/aidd.js) are protected from agent writes like .aidd/ (R9); aidd doctor reports a missing or altered registration", "fields": {}, "edge": false, "unanswered": false, "mandatory": false, "source": "spec.md"}, {"code": "FR-912", "kind": "fr", "text": "The host adapter creates the session \"AIDD invoked\" marker itself on the first event of an AIDD project (.aidd/AIDD.md exists), so the legacy require_aidd check does not block with a Claude-only instruction; outside an AIDD project the a...", "fields": {}, "edge": false, "unanswered": false, "mandatory": false, "source": "spec.md"}, {"code": "FR-913", "kind": "fr", "text": "The quote rules read the same everywhere: the spec template, AIDD.md and SKILL.md state that a typed quote needs 5+ words and must postdate the first spec.md draft, and an answer to a question needs 2+ words", "fields": {}, "edge": false, "unanswered": false, "mandatory": false, "source": "spec.md"}, {"code": "FR-914", "kind": "fr", "text": "aidd status shows the date of the last hook error and counts rules_override events only since a stated date, so an old record does not read as a current alarm", "fields": {}, "edge": false, "unanswered": false, "mandatory": false, "source": "spec.md"}, {"code": "FR-915", "kind": "fr", "text": "CI matrix executes stdlib discovery and actually collects all cases previously defined in the two pytest-only modules without requiring pytest.", "fields": {}, "edge": false, "unanswered": false, "mandatory": false, "source": "spec.md"}, {"code": "FR-916", "kind": "fr", "text": "flowmap parses and renders on Python 3.10\u20133.12 without changing JSON escaping or script boundary behavior.", "fields": {}, "edge": false, "unanswered": false, "mandatory": false, "source": "spec.md"}, {"code": "FR-917", "kind": "fr", "text": "R6/R9 correctly classify native POSIX and Windows paths, drive, UNC and extended UNC spellings; ambiguous foreign-platform spellings fail closed for protected artifacts without treating an unrelated native path as inside the project.", "fields": {}, "edge": false, "unanswered": false, "mandatory": false, "source": "spec.md"}, {"code": "FR-918", "kind": "fr", "text": "Memory import keeps absolute in-project files as relative paths, keeps valid relative paths and rejects outside, traversal and sensitive paths on Windows and POSIX.", "fields": {}, "edge": false, "unanswered": false, "mandatory": false, "source": "spec.md"}, {"code": "FR-919", "kind": "fr", "text": "CI loads the pinned old guard and confirms required equivalence cases actually ran; absent history, loader errors, missing cases or skips fail the check.", "fields": {}, "edge": false, "unanswered": false, "mandatory": false, "source": "spec.md"}, {"code": "FR-920", "kind": "fr", "text": "On each OS, record the old/current/desired decision for each path probe before implementing any owner-reviewed, enumerated security correction; all other FR-1003 cases retain exact decision and message equivalence.", "fields": {}, "edge": false, "unanswered": false, "mandatory": false, "source": "spec.md"}, {"code": "FR-921", "kind": "fr", "text": "Existing python -m pytest verification rows use pinned test-only pytest without a runtime dependency; changing those rows requires separate approval.", "fields": {}, "edge": false, "unanswered": false, "mandatory": false, "source": "spec.md"}]}, {"id": "ac", "label": "Casos", "items": [{"code": "AC-001", "kind": "ac", "text": "project D:\\Fuentes\\b1SycLink, spec P10-Payrol-Outputs (Impl 33%, Verify: none, no approval)", "fields": {"Expected": "with the Gemini hook installed, a write to Payroll/web/src/App.tsx is blocked with the R6 message"}, "edge": false, "unanswered": false, "mandatory": false, "source": "spec.md"}, {"code": "AC-002", "kind": "ac", "text": "same project, after the owner approves P10-Payrol-Outputs", "fields": {"Expected": "the same write is allowed and a code_edit event is appended, with no Claude-only \"invoke the skill\" message"}, "edge": false, "unanswered": false, "mandatory": false, "source": "spec.md"}, {"code": "AC-003", "kind": "ac", "text": "b1SycLink has 14+ open specs (memory: R6 blocked on ANY open spec)", "fields": {"Expected": "the gate checks only the gate target; aidd rules activate \u003cid\u003e switches it; other specs do not block"}, "edge": true, "unanswered": false, "mandatory": false, "source": "spec.md"}, {"code": "AC-004", "kind": "ac", "text": "a fixture project with no .aidd/", "fields": {"Expected": "aidd doctor exits 1 and says to run aidd install --host \u003ch\u003e; the adapter exits 0 without gating"}, "edge": true, "unanswered": false, "mandatory": false, "source": "spec.md"}, {"code": "AC-005", "kind": "ac", "text": ".opencode/opencode.json of b1SycLink already lists graphify.js and aidd.js; its .aidd/memory/ has entries", "fields": {"Expected": "install adds nothing twice, keeps graphify.js and deletes nothing in .aidd/memory/"}, "edge": true, "unanswered": false, "mandatory": false, "source": "spec.md"}, {"code": "AC-006", "kind": "ac", "text": "b1SycLink on a Gemini host, tasks of P10-Payrol-Outputs reviewed with aidd review --wait and approved by the owner", "fields": {"Expected": "aidd rules approve records the approval and the next code write is allowed"}, "edge": false, "unanswered": false, "mandatory": false, "source": "spec.md"}, {"code": "AC-907", "kind": "ac", "text": "CI discovery, test_aidd_readiness.py", "fields": {"Expected": "At least nine unittest cases run, including both parameter values, no missing pytest."}, "edge": false, "unanswered": false, "mandatory": false, "source": "spec.md"}, {"code": "AC-908", "kind": "ac", "text": "CI discovery, test_visual_review_binding.py", "fields": {"Expected": "At least six unittest cases run, including snapshot approval binding."}, "edge": false, "unanswered": false, "mandatory": false, "source": "spec.md"}, {"code": "AC-909", "kind": "ac", "text": "D:/proj/specs/F23-eDoc-POS/tasks.md, \\\\\\\\server\\\\share\\\\specs\\\\F23-eDoc-POS\\\\tasks.md, extended UNC, native POSIX and ..", "fields": {"Expected": "Protected tokens cannot bypass R6/R9; legitimate unrelated paths are allowed."}, "edge": true, "unanswered": false, "mandatory": false, "source": "spec.md"}, {"code": "AC-910", "kind": "ac", "text": "An absolute existing file inside temp project and C:/Users/someone/.claude/plans/x.md outside", "fields": {"Expected": "Import records only the inside path in relative POSIX form."}, "edge": true, "unanswered": false, "mandatory": false, "source": "spec.md"}, {"code": "AC-911", "kind": "ac", "text": "CI 3.10/3.11/3.12 on Ubuntu and Windows", "fields": {"Expected": "Syntax/import and full discovery pass; old-guard comparison is executed, not skipped because of a shallow clone."}, "edge": false, "unanswered": false, "mandatory": false, "source": "spec.md"}, {"code": "AC-912", "kind": "ac", "text": "Old/current/desired comparison for every reported guard regression and foreign drive/UNC spelling", "fields": {"Expected": "Any intentional old-to-new difference is enumerated, security-justified and owner-reviewed; all other results and messages remain equivalent."}, "edge": true, "unanswered": false, "mandatory": false, "source": "spec.md"}, {"code": "AC-913", "kind": "ac", "text": "Runner fixture: missing, skipped, failing, crashing or timed-out required case", "fields": {"Expected": "CI exits nonzero with a useful diagnostic; zero-case or skipped coverage is never success."}, "edge": true, "unanswered": false, "mandatory": false, "source": "spec.md"}, {"code": "AC-914", "kind": "ac", "text": "Missing relative file, in-root path whose parent symlink points outside, foreign absolute and sibling-prefix path", "fields": {"Expected": "A missing relative file remains allowed only after existing-parent containment is established; outside or unprovable absolute paths are rejected."}, "edge": true, "unanswered": false, "mandatory": false, "source": "spec.md"}]}, {"id": "tasks", "label": "Tareas", "items": [{"code": "T-01", "kind": "task", "text": "FR-904, FR-905, FR-906, FR-907, FR-908, FR-912", "fields": {"Target file": "skill/hooks/host_adapter.py", "Minutes": "12", "Tokens": "75k"}, "edge": false, "unanswered": false, "mandatory": false, "source": "tasks.md"}, {"code": "T-02", "kind": "task", "text": "FR-911", "fields": {"Target file": "skill/hooks/rule_gate.py", "Minutes": "10", "Tokens": "60k"}, "edge": false, "unanswered": false, "mandatory": false, "source": "tasks.md"}, {"code": "T-03", "kind": "task", "text": "FR-905", "fields": {"Target file": "adapters/opencode/plugins/aidd.js", "Minutes": "8", "Tokens": "45k"}, "edge": false, "unanswered": false, "mandatory": false, "source": "tasks.md"}, {"code": "T-04", "kind": "task", "text": "FR-901, FR-902, FR-903", "fields": {"Target file": "skill/scripts/install_host.py", "Minutes": "12", "Tokens": "80k"}, "edge": false, "unanswered": false, "mandatory": false, "source": "tasks.md"}, {"code": "T-05", "kind": "task", "text": "FR-909, FR-911", "fields": {"Target file": "skill/scripts/aidd_doctor.py", "Minutes": "10", "Tokens": "65k"}, "edge": false, "unanswered": false, "mandatory": false, "source": "tasks.md"}, {"code": "T-06", "kind": "task", "text": "FR-904, FR-905, FR-906, FR-907, FR-908, FR-911, FR-912", "fields": {"Target file": "tests/test_host_gates.py", "Minutes": "12", "Tokens": "70k"}, "edge": false, "unanswered": false, "mandatory": false, "source": "tasks.md"}, {"code": "T-07", "kind": "task", "text": "FR-901, FR-902, FR-903", "fields": {"Target file": "tests/test_host_install.py", "Minutes": "8", "Tokens": "55k"}, "edge": false, "unanswered": false, "mandatory": false, "source": "tasks.md"}, {"code": "T-08", "kind": "task", "text": "FR-909, FR-910, FR-911", "fields": {"Target file": "tests/test_host_doctor.py", "Minutes": "8", "Tokens": "55k"}, "edge": false, "unanswered": false, "mandatory": false, "source": "tasks.md"}, {"code": "T-09", "kind": "task", "text": "FR-901, FR-909", "fields": {"Target file": "aidd/cli.py", "Minutes": "8", "Tokens": "50k"}, "edge": false, "unanswered": false, "mandatory": false, "source": "tasks.md"}, {"code": "T-10", "kind": "task", "text": "FR-901, FR-912", "fields": {"Target file": "tests/test_dot_aidd_mirror.py", "Minutes": "8", "Tokens": "45k"}, "edge": false, "unanswered": false, "mandatory": false, "source": "tasks.md"}, {"code": "T-11", "kind": "task", "text": "FR-906, FR-910, FR-913", "fields": {"Target file": "adapters/README.md", "Minutes": "10", "Tokens": "55k"}, "edge": false, "unanswered": false, "mandatory": false, "source": "tasks.md"}, {"code": "T-12", "kind": "task", "text": "FR-901, FR-902, FR-903, FR-904, FR-905, FR-906, FR-907, FR-908, FR-909, FR-910, FR-911, FR-912, FR-913, FR-914", "fields": {"Target file": "specs/009-aidd-host-parity/evidence/verify-summary.md", "Minutes": "20", "Tokens": "90k"}, "edge": false, "unanswered": false, "mandatory": false, "source": "tasks.md"}, {"code": "T-13", "kind": "task", "text": "FR-913", "fields": {"Target file": "skill/templates/spec.md", "Minutes": "6", "Tokens": "40k"}, "edge": false, "unanswered": false, "mandatory": false, "source": "tasks.md"}, {"code": "T-14", "kind": "task", "text": "FR-914", "fields": {"Target file": "skill/scripts/aidd_status.py", "Minutes": "8", "Tokens": "60k"}, "edge": false, "unanswered": false, "mandatory": false, "source": "tasks.md"}, {"code": "T-15", "kind": "task", "text": "FR-915, AC-907", "fields": {"Target file": "tests/test_aidd_readiness.py", "Minutes": "12", "Tokens": "100k"}, "edge": false, "unanswered": false, "mandatory": false, "source": "tasks.md"}, {"code": "T-16", "kind": "task", "text": "FR-915, AC-908", "fields": {"Target file": "tests/test_visual_review_binding.py", "Minutes": "10", "Tokens": "100k"}, "edge": false, "unanswered": false, "mandatory": false, "source": "tasks.md"}, {"code": "T-17", "kind": "task", "text": "FR-916, AC-911", "fields": {"Target file": "skill/scripts/flowmap.py", "Minutes": "8", "Tokens": "65k"}, "edge": false, "unanswered": false, "mandatory": false, "source": "tasks.md"}, {"code": "T-18", "kind": "task", "text": "FR-917, AC-909", "fields": {"Target file": "tests/test_cross_platform_paths.py", "Minutes": "12", "Tokens": "110k"}, "edge": false, "unanswered": false, "mandatory": false, "source": "tasks.md"}, {"code": "T-19", "kind": "task", "text": "FR-917, AC-909", "fields": {"Target file": "skill/hooks/rule_gate.py (same owner as T-02)", "Minutes": "15", "Tokens": "130k"}, "edge": false, "unanswered": false, "mandatory": false, "source": "tasks.md"}, {"code": "T-20", "kind": "task", "text": "FR-918, AC-910", "fields": {"Target file": "skill/scripts/aidd_memory_import.py", "Minutes": "10", "Tokens": "80k"}, "edge": false, "unanswered": false, "mandatory": false, "source": "tasks.md"}, {"code": "T-21", "kind": "task", "text": "FR-915, FR-919, AC-911", "fields": {"Target file": ".github/workflows/test.yml", "Minutes": "8", "Tokens": "60k"}, "edge": false, "unanswered": false, "mandatory": false, "source": "tasks.md"}, {"code": "T-22", "kind": "task", "text": "FR-915..FR-919, AC-907..AC-911", "fields": {"Target file": "specs/009-aidd-host-parity/evidence/amendment-01-ci.txt", "Minutes": "20", "Tokens": "60k"}, "edge": false, "unanswered": false, "mandatory": false, "source": "tasks.md"}, {"code": "T-23", "kind": "task", "text": "FR-920, AC-912", "fields": {"Target file": "tests/report_guard_portability.py", "Minutes": "12", "Tokens": "120k"}, "edge": false, "unanswered": false, "mandatory": false, "source": "tasks.md"}, {"code": "T-24", "kind": "task", "text": "FR-915, FR-919, AC-913", "fields": {"Target file": "tests/test_ci_runner.py", "Minutes": "12", "Tokens": "100k"}, "edge": false, "unanswered": false, "mandatory": false, "source": "tasks.md"}, {"code": "T-25", "kind": "task", "text": "FR-915, FR-919, AC-913", "fields": {"Target file": "tests/run_parallel.py", "Minutes": "15", "Tokens": "90k"}, "edge": false, "unanswered": false, "mandatory": false, "source": "tasks.md"}, {"code": "T-26", "kind": "task", "text": "FR-921", "fields": {"Target file": "tests/requirements-test.txt", "Minutes": "5", "Tokens": "35k"}, "edge": false, "unanswered": false, "mandatory": false, "source": "tasks.md"}]}, {"id": "verification", "label": "Verificaci\u00f3n", "items": [{"code": "V-1", "kind": "verification", "text": "python -m pytest tests/test_host_install.py -q", "fields": {"Expected": "exit 0", "Covers": "FR-901, FR-902, FR-903"}, "edge": false, "unanswered": false, "mandatory": true, "source": "spec.md"}, {"code": "V-2", "kind": "verification", "text": "python -m pytest tests/test_host_gates.py -q", "fields": {"Expected": "exit 0", "Covers": "FR-904, FR-905, FR-906, FR-907, FR-908, FR-911, FR-912"}, "edge": false, "unanswered": false, "mandatory": true, "source": "spec.md"}, {"code": "V-3", "kind": "verification", "text": "python -m pytest tests/test_host_doctor.py -q", "fields": {"Expected": "exit 0", "Covers": "FR-909, FR-910"}, "edge": false, "unanswered": false, "mandatory": true, "source": "spec.md"}, {"code": "V-4", "kind": "verification", "text": "python -m pytest tests/test_aidd_status.py tests/test_dot_aidd_mirror.py -q", "fields": {"Expected": "exit 0", "Covers": "FR-913, FR-914"}, "edge": false, "unanswered": false, "mandatory": true, "source": "spec.md"}, {"code": "V-5", "kind": "verification", "text": "python tests/run_parallel.py", "fields": {"Expected": "exit 0", "Covers": "FR-901"}, "edge": false, "unanswered": false, "mandatory": true, "source": "spec.md"}]}], "codes": ["SUMMARY", "Q1", "Q2", "Q3", "Q4", "Q5", "Q6", "Q7", "Q8", "Q9", "Q10", "Q11", "Q12", "FR-901", "FR-902", "FR-903", "FR-904", "FR-905", "FR-906", "FR-907", "FR-908", "FR-909", "FR-910", "FR-911", "FR-912", "FR-913", "FR-914", "FR-915", "FR-916", "FR-917", "FR-918", "FR-919", "FR-920", "FR-921", "AC-001", "AC-002", "AC-003", "AC-004", "AC-005", "AC-006", "AC-907", "AC-908", "AC-909", "AC-910", "AC-911", "AC-912", "AC-913", "AC-914", "T-01", "T-02", "T-03", "T-04", "T-05", "T-06", "T-07", "T-08", "T-09", "T-10", "T-11", "T-12", "T-13", "T-14", "T-15", "T-16", "T-17", "T-18", "T-19", "T-20", "T-21", "T-22", "T-23", "T-24", "T-25", "T-26", "V-1", "V-2", "V-3", "V-4", "V-5"], "digests": {"SUMMARY": "83939c81", "Q1": "3ebfc578", "Q2": "e06d023b", "Q3": "cfd10997", "Q4": "51444a73", "Q5": "003d163e", "Q6": "02b80ba4", "Q7": "6027fdbd", "Q8": "0dacd573", "Q9": "5e303c75", "Q10": "3079dddd", "Q11": "92c649a6", "Q12": "9eb9c49b", "FR-901": "70521a73", "FR-902": "07f597ae", "FR-903": "2c91e882", "FR-904": "2ff1f7f6", "FR-905": "53f3df37", "FR-906": "c9001a69", "FR-907": "a730a66e", "FR-908": "d1aea295", "FR-909": "754a75a9", "FR-910": "8b6d1c5e", "FR-911": "c161a9dd", "FR-912": "dc7ff8a2", "FR-913": "574717f0", "FR-914": "47b3f3c2", "FR-915": "e57bc3b3", "FR-916": "ccc66ae2", "FR-917": "9222406e", "FR-918": "ddbc55e0", "FR-919": "42f80d6a", "FR-920": "9c967e28", "FR-921": "f485224d", "AC-001": "3c7eb603", "AC-002": "53fc88b7", "AC-003": "f6a79004", "AC-004": "7e0d1d04", "AC-005": "3839ee28", "AC-006": "55e5f5d1", "AC-907": "afa25869", "AC-908": "e5e8cf75", "AC-909": "a22e5b9e", "AC-910": "3b6fa308", "AC-911": "9ffc2945", "AC-912": "9c4d8fd1", "AC-913": "9359d403", "AC-914": "faf27642", "T-01": "4f2eb4ed", "T-02": "ad507f11", "T-03": "2f6da228", "T-04": "f5ff5bb2", "T-05": "fdfdf732", "T-06": "6180028c", "T-07": "e4a73744", "T-08": "e048bacd", "T-09": "f6738fa5", "T-10": "cfc4762f", "T-11": "43a9378b", "T-12": "f0a85c42", "T-13": "94ffe13e", "T-14": "44129791", "T-15": "881854e2", "T-16": "7cc78b38", "T-17": "679bdb0a", "T-18": "e034e9a7", "T-19": "1c84f561", "T-20": "ad5b939d", "T-21": "2e25b173", "T-22": "07a296c3", "T-23": "928f598b", "T-24": "f4c9fc33", "T-25": "e62cfbd6", "T-26": "20ddbd72", "V-1": "f9e5487b", "V-2": "6048d75a", "V-3": "942aeac4", "V-4": "c72362b1", "V-5": "b66a8f5b"}, "links": {"summary": "spec.md", "questions": "spec.md", "fr": "spec.md", "ac": "spec.md", "tasks": "tasks.md", "verification": "spec.md"}, "prior": {}, "carry": {"carried": 0, "total": 79, "pending": ["SUMMARY", "Q1", "Q2", "Q3", "Q4", "Q5", "Q6", "Q7", "Q8", "Q9", "Q10", "Q11", "Q12", "FR-901", "FR-902", "FR-903", "FR-904", "FR-905", "FR-906", "FR-907", "FR-908", "FR-909", "FR-910", "FR-911", "FR-912", "FR-913", "FR-914", "FR-915", "FR-916", "FR-917", "FR-918", "FR-919", "FR-920", "FR-921", "AC-001", "AC-002", "AC-003", "AC-004", "AC-005", "AC-006", "AC-907", "AC-908", "AC-909", "AC-910", "AC-911", "AC-912", "AC-913", "AC-914", "T-01", "T-02", "T-03", "T-04", "T-05", "T-06", "T-07", "T-08", "T-09", "T-10", "T-11", "T-12", "T-13", "T-14", "T-15", "T-16", "T-17", "T-18", "T-19", "T-20", "T-21", "T-22", "T-23", "T-24", "T-25", "T-26", "V-1", "V-2", "V-3", "V-4", "V-5"]}, "summary": {"objective": "Make AIDD enforce its rules on Gemini CLI and OpenCode (install, verify, block) instead of relying on the model reading instructions.", "scope": "aidd install --host gemini|opencode, aidd doctor, a Gemini BeforeTool/AfterTool hook set, an OpenCode plugin gate, a host adapter that spawns the existing rule_gate.py; two small fixes found while doing it (quote word-count wording, dated status counters). Out: Cursor/Windsurf/Cline/Copilot/Codex gates, Claude Code hook behaviour, methodology changes, gating shell edits of code files (same docu...", "cost": "14 tasks, 3 waves, about 42 min and 845k tokens.", "risks": "hooks from public docs behave differently on a real install (mitigated by aidd doctor and a real smoke run per host); a gate that blocks the wrong spec (reused per-spec gate target and aidd rules activate); approval on these hosts has no AskUserQuestion transcript, so it goes through the review page (AC-006).", "open_decisions": ["none."], "counts": {"fr": 21, "ac": 14, "edge_ac": 8, "screens": 0, "comps": 0, "ctls": 0, "apis": 0, "tasks": 26, "questions": 12, "unanswered": 0}, "minutes": 97, "tokens_k": 1895, "source": "spec.md#executive-summary"}, "verification_problems": []}</script>
+<script id="aidd-js">
+'use strict';
+/* aidd:FR-303 aidd:FR-304 aidd:FR-305 aidd:FR-310 aidd:FR-311 aidd:FR-312
+   Pure helpers first (exported for node, no DOM access), DOM wiring last.
+   No dynamic code, no HTML string injection, no inline handlers, no external URL: data reaches the page through textContent only. */
+var CODE_RE_SRC = '^(SUMMARY|Q\\d{1,3}|D\\d{1,3}(?:-?[a-z])?|V-\\d{1,3}|(?:FR|AC|T)-\\d{1,4}(?:-?[a-z])?|(?:API|COMP|CTL|SCREEN)-\\d{1,5}(?:-?[a-z])?)$';
+var CODE_RX = new RegExp(CODE_RE_SRC);
+var MAX_COMMENT = 500;
+var MAX_GROUPS = 12;
+var MAX_PAGE_CHARS = 32 * 1024 * 1024;
+var TAB_ORDER = ['summary', 'questions', 'fr', 'ac', 'screens', 'api', 'tasks', 'verification'];
+var TAB_LABELS = { summary: 'Resumen', questions: 'Preguntas', fr: 'Requisitos', ac: 'Casos', screens: 'Pantallas',
+  api: 'API', tasks: 'Tareas', verification: 'Verificaci\u00f3n' };
+var PREFIX_TAB = { Q: 'questions', D: 'questions', FR: 'fr', AC: 'ac', SCREEN: 'screens', COMP: 'screens', CTL: 'screens',
+  API: 'api', T: 'tasks', V: 'verification' };
+var DATA_TAG = '<scr' + 'ipt type="application/json" id="aidd-data">';
+
+function isCode(c) { return typeof c === 'string' && CODE_RX.test(c); }
+function oneLine(v) {
+  return String(v == null ? '' : v).replace(/[\u0000-\u001f\u007f\u2028\u2029]/g, ' ').replace(/\s+/g, ' ').trim();
+}
+function tabOf(code) {
+  if (code === 'SUMMARY') return 'summary';
+  var m = /^([A-Z]+)/.exec(code);
+  return (m && Object.prototype.hasOwnProperty.call(PREFIX_TAB, m[1])) ? PREFIX_TAB[m[1]] : 'summary';
+}
+function codeList(data) {
+  var d = data || {}, raw = Array.isArray(d.codes) ? d.codes : Object.keys((d.items && typeof d.items === 'object') ? d.items : {});
+  var seen = {}, out = [];
+  raw.forEach(function (c) { if (isCode(c) && !seen[c]) { seen[c] = 1; out.push(c); } });
+  return out;
+}
+function isChecked(checked, c) {
+  if (!checked) return false;
+  if (Array.isArray(checked)) return checked.indexOf(c) >= 0;
+  if (!Object.prototype.hasOwnProperty.call(checked, c)) return false;
+  var v = checked[c];
+  return v === true || (!!v && typeof v === 'object' && v.approved === true);
+}
+/* consecutive codes of one prefix without suffix -> V-1..V-5 (aidd:FR-310) */
+function compressCodes(codes) {
+  var runs = [], cur = null;
+  (codes || []).forEach(function (c) {
+    var m = /^([A-Z]+-?)(\d+)$/.exec(c), n = m ? parseInt(m[2], 10) : NaN;
+    if (cur && m && cur.prefix === m[1] && n === cur.last + 1) { cur.end = c; cur.last = n; return; }
+    if (cur) runs.push(cur);
+    cur = { start: c, end: c, prefix: m ? m[1] : null, last: m ? n : NaN };
+    if (!m) { runs.push(cur); cur = null; }
+  });
+  if (cur) runs.push(cur);
+  return runs.map(function (r) { return r.start === r.end ? r.start : r.start + '..' + r.end; });
+}
+/* aidd:FR-310 'Falta: <Tab> <ranges>; ...' in tab order, at most MAX_GROUPS groups then '+N more' */
+function missingSummary(data, checked) {
+  var byTab = {};
+  codeList(data).forEach(function (c) {
+    if (isChecked(checked, c)) return;
+    var t = tabOf(c);
+    (byTab[t] = byTab[t] || []).push(c);
+  });
+  var parts = [], used = 0, total = 0;
+  TAB_ORDER.forEach(function (t) {
+    if (!byTab[t]) return;
+    var runs = compressCodes(byTab[t]);
+    total += runs.length;
+    var take = runs.slice(0, Math.max(0, MAX_GROUPS - used));
+    used += take.length;
+    if (take.length) parts.push(TAB_LABELS[t] + ' ' + take.join(', '));
+  });
+  if (!total) return '';
+  return 'Falta: ' + parts.join('; ') + (total > used ? '; +' + (total - used) + ' more' : '');
+}
+/* aidd:FR-304 the codes-v2 grammar; {text, skipped}: codes not matching CODE_RE_SRC are dropped and counted */
+function buildReviewMdEx(data) {
+  var d = data || {}, items = (d.items && typeof d.items === 'object') ? d.items : {};
+  var dig = (d.digests && typeof d.digests === 'object') ? d.digests : {};
+  var raw = Array.isArray(d.codes) ? d.codes : Object.keys(items);
+  var seen = {}, lines = [], skipped = 0, all = true, n = 0;
+  raw.forEach(function (c) {
+    if (!isCode(c) || seen[c]) { skipped++; return; }
+    seen[c] = 1; n++;
+    var it = Object.prototype.hasOwnProperty.call(items, c) ? items[c] : null;
+    var on = !!it && typeof it === 'object' && it.approved === true;
+    if (!on) all = false;
+    var dg = Object.prototype.hasOwnProperty.call(dig, c) ? dig[c] : null;
+    lines.push('- [' + (on ? 'x' : ' ') + '] ' + c + ((typeof dg === 'string' && /^[0-9a-f]{8}$/.test(dg)) ? ' @' + dg : ''));
+    var cm = (it && typeof it === 'object') ? oneLine(it.comment).slice(0, MAX_COMMENT).trim() : '';
+    if (cm) lines.push('> ' + cm);
+  });
+  var head = ['---', 'spec: ' + oneLine(d.spec), 'tasks_hash: ' + oneLine(d.tasks_hash),
+    'sources_digest: ' + oneLine(d.sources_digest), 'format: codes-v2', 'approved: ' + ((all && n > 0) ? 'true' : 'false')];
+  if (d.generated) head.push('generated: ' + oneLine(d.generated));
+  if (d.reviewed) head.push('reviewed: ' + oneLine(d.reviewed));
+  head.push('---');
+  return { text: head.join('\n') + '\n' + lines.join('\n') + (lines.length ? '\n' : ''), skipped: skipped };
+}
+function buildReviewMd(data) { return buildReviewMdEx(data).text; }
+/* FNV-1a 32-bit, hex, 8 chars */
+function fnv1a(s) {
+  var h = 0x811c9dc5, str = String(s == null ? '' : s);
+  for (var i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; }
+  return ('00000000' + h.toString(16)).slice(-8);
+}
+/* aidd:FR-305 picker id: always 1..32 chars of [A-Za-z0-9_-], never the raw slug */
+function pickerId(data) {
+  var d = data || {};
+  var id = typeof d.picker_id === 'string' ? d.picker_id.replace(/[^A-Za-z0-9_-]/g, '').slice(0, 32) : '';
+  return id || ('aidd-' + fnv1a(d.spec));
+}
+/* the aidd-data blob of a review.html text, by a bounded string search (no DOM) */
+function blobOf(text) {
+  try {
+    if (typeof text !== 'string' || text.length > MAX_PAGE_CHARS) return null;
+    var i = text.indexOf(DATA_TAG);
+    if (i < 0) return null;
+    var s = i + DATA_TAG.length, e = text.indexOf('</' + 'script>', s);
+    if (e < 0) return null;
+    var o = JSON.parse(text.slice(s, e));
+    return (o && typeof o === 'object' && !Array.isArray(o)) ? o : null;
+  } catch (err) { return null; }
+}
+/* aidd:FR-305 the picked folder is THIS spec's folder: same spec AND same tasks_hash */
+function folderMatches(text, data) {
+  var b = blobOf(text), d = data || {};
+  return !!b && typeof b.spec === 'string' && b.spec !== '' && b.spec === d.spec &&
+    typeof b.tasks_hash === 'string' && b.tasks_hash !== '' && b.tasks_hash === d.tasks_hash;
+}
+
+/* ---- saving (aidd:FR-305): File System Access, then download, then copy ---- */
+var CTX = { data: null, w: null, status: null };
+function say(ctx, msg) { try { if (ctx && typeof ctx.status === 'function') ctx.status(String(msg)); } catch (e) { /* ui only */ } }
+function errName(e) { return oneLine((e && e.name) || 'Error').slice(0, 60) || 'Error'; }
+function settle(p, ms) {
+  return new Promise(function (res) {
+    var done = false;
+    var t = setTimeout(function () { if (!done) { done = true; res(null); } }, ms);
+    if (t && typeof t.unref === 'function') t.unref();
+    Promise.resolve(p).then(function (v) { if (!done) { done = true; clearTimeout(t); res(v); } },
+      function () { if (!done) { done = true; clearTimeout(t); res(null); } });
+  });
+}
+function idbCall(w, mode, key, val) {   /* any IndexedDB error means "no memory", never a failure */
+  return settle(new Promise(function (res) {
+    try {
+      if (!w || typeof w.indexedDB === 'undefined' || !w.indexedDB) { res(null); return; }
+      var rq = w.indexedDB.open('aidd-review', 1);
+      rq.addEventListener('upgradeneeded', function () { try { rq.result.createObjectStore('h'); } catch (e) { /* exists */ } });
+      rq.addEventListener('error', function () { res(null); });
+      rq.addEventListener('blocked', function () { res(null); });
+      rq.addEventListener('success', function () {
+        try {
+          var db = rq.result, st = db.transaction('h', mode).objectStore('h');
+          var op = mode === 'readwrite' ? st.put(val, key) : st.get(key);
+          op.addEventListener('success', function () { res(mode === 'readwrite' ? true : (op.result || null)); try { db.close(); } catch (e) { /* closed */ } });
+          op.addEventListener('error', function () { res(null); });
+        } catch (e) { res(null); }
+      });
+    } catch (e) { res(null); }
+  }), 1500);
+}
+async function readText(dir, name) {
+  try {
+    var fh = await dir.getFileHandle(name);
+    var f = await fh.getFile();
+    if (typeof f.size === 'number' && f.size > MAX_PAGE_CHARS) return null;
+    return await f.text();
+  } catch (e) { return null; }
+}
+async function checkFolder(dir, data) {
+  var text = await readText(dir, 'review.html');
+  if (text == null) return { ok: false, owner: null };
+  return { ok: folderMatches(text, data), owner: blobOf(text) };
+}
+function mismatchMessage(owner, spec) {
+  var pick = ': pick specs/' + spec + '/';
+  if (owner && typeof owner.spec === 'string' && owner.spec) {
+    return 'This folder belongs to ' + oneLine(owner.spec).slice(0, 80) + '/' + (oneLine(owner.tasks_hash).slice(0, 8) || '?') + pick;
+  }
+  return 'This folder belongs to no review of this spec (no matching review.html)' + pick;
+}
+async function rememberedFolder(w, data) {
+  try {
+    var h = await idbCall(w, 'readonly', String(data.spec || ''));
+    if (!h || typeof h.queryPermission !== 'function') return null;
+    var p = await h.queryPermission({ mode: 'readwrite' });
+    if (p !== 'granted' && typeof h.requestPermission === 'function') p = await h.requestPermission({ mode: 'readwrite' });
+    if (p !== 'granted') return null;
+    var chk = await checkFolder(h, data);   /* the remembered handle is re-validated too */
+    return chk.ok ? h : null;
+  } catch (e) { return null; }
+}
+async function pickFolder(w, data) {
+  try {
+    return { dir: await w.showDirectoryPicker({ id: pickerId(data), mode: 'readwrite' }) };
+  } catch (e) {
+    if (errName(e) === 'AbortError') return { abort: true };
+  }
+  try {   /* one retry without the id option (Chromium rejects a bad id with TypeError) */
+    return { dir: await w.showDirectoryPicker({ mode: 'readwrite' }) };
+  } catch (e2) {
+    if (errName(e2) === 'AbortError') return { abort: true };
+    return { fail: errName(e2) };
+  }
+}
+async function writeAndVerify(dir, text) {
+  var fh = await dir.getFileHandle('review.md', { create: true });
+  var ws = await fh.createWritable();
+  try { await ws.write(text); await ws.close(); } catch (e) { try { await ws.abort(); } catch (e2) { /* already closed */ } throw e; }
+  var back = await (await fh.getFile()).text();
+  return back === text;
+}
+function downloadReview(text, w) {
+  try {
+    var doc = w && w.document;
+    if (!doc || typeof w.Blob !== 'function' || !w.URL || typeof w.URL.createObjectURL !== 'function') return false;
+    var url = w.URL.createObjectURL(new w.Blob([text], { type: 'application/octet-stream' }));
+    var a = doc.createElement('a');
+    a.href = url; a.download = 'review.md'; a.rel = 'noopener';
+    doc.body.appendChild(a); a.click(); doc.body.removeChild(a);
+    var t = setTimeout(function () { try { w.URL.revokeObjectURL(url); } catch (e) { /* gone */ } }, 4000);
+    if (t && typeof t.unref === 'function') t.unref();
+    return true;
+  } catch (e) { return false; }
+}
+function fallback(text, ctx, w, spec, why) {
+  if (downloadReview(text, w)) {
+    say(ctx, 'review.md downloaded: if the browser renamed it, save it over specs/' + spec + '/review.md');
+    return { ok: true, method: 'download', reason: why };
+  }
+  return { ok: false, method: 'copy', reason: why };
+}
+async function saveReview(text, ctx) {
+  ctx = ctx || CTX;
+  var w = ctx.w || (typeof window !== 'undefined' ? window : null);
+  var data = ctx.data || {}, spec = oneLine(data.spec);
+  if (w && typeof w.showDirectoryPicker === 'function') {
+    var dir = await rememberedFolder(w, data);
+    if (!dir) {
+      var p = await pickFolder(w, data);
+      if (p.abort) return { ok: false, method: 'cancelled', reason: 'cancelled' };   /* silent; the download is offered */
+      if (p.fail) {
+        say(ctx, 'Folder picker failed (' + p.fail + '): using the download instead');
+        return fallback(text, ctx, w, spec, 'picker-failed');
+      }
+      var chk = await checkFolder(p.dir, data);
+      if (!chk.ok) { say(ctx, mismatchMessage(chk.owner, spec)); return { ok: false, method: 'mismatch', reason: 'mismatch' }; }
+      dir = p.dir;
+      await idbCall(w, 'readwrite', String(data.spec || ''), dir);
+    }
+    try {
+      var old = await readText(dir, 'review.md');
+      var oh = old ? /^tasks_hash: *([0-9a-f]{1,64})\s*$/m.exec(old) : null;
+      if (oh && oh[1] !== data.tasks_hash) say(ctx, 'Replacing a review.md saved for another tasks hash (' + oh[1].slice(0, 8) + ').');
+      if (await writeAndVerify(dir, text)) return { ok: true, method: 'fs', reason: '' };
+      say(ctx, 'The saved review.md did not read back identical: using the download instead');
+    } catch (e) {
+      say(ctx, 'Could not write review.md (' + errName(e) + '): using the download instead');
+    }
+    return fallback(text, ctx, w, spec, 'write-failed');
+  }
+  return fallback(text, ctx, w, spec, 'no-api');
+}
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = { CODE_RE_SRC: CODE_RE_SRC, buildReviewMd: buildReviewMd, buildReviewMdEx: buildReviewMdEx,
+    missingSummary: missingSummary, compressCodes: compressCodes, pickerId: pickerId, folderMatches: folderMatches,
+    saveReview: saveReview, downloadReview: downloadReview, TAB_LABELS: TAB_LABELS };
+}
+
+/* ---- DOM wiring: only in a browser ---- */
+if (typeof document !== 'undefined' && typeof window !== 'undefined') {
+  (function () {
+    var root = document.getElementById('aidd-root');
+    var A = function (n) { return (root && root.getAttribute(n)) || ''; };
+    var data = {};
+    try { data = JSON.parse(document.getElementById('aidd-data').textContent || '{}') || {}; } catch (e) { data = {}; }
+    if (typeof data !== 'object' || Array.isArray(data)) data = {};
+    var meta = { spec: A('data-spec'), tasks_hash: A('data-tasks-hash'), hash8: A('data-tasks-hash8'),
+      sources_digest: A('data-sources-digest'), generated: A('data-generated') };
+    var digests = (data.digests && typeof data.digests === 'object') ? data.digests : {};
+    var prior = (data.prior && typeof data.prior === 'object') ? data.prior : {};
+    var store = 'aidd-review:' + meta.spec + ':' + meta.tasks_hash + ':' + meta.sources_digest;
+    var tabStore = 'aidd-review-tab:' + meta.spec;
+    var saved = null;
+    try { var raw = window.localStorage.getItem(store); if (raw) saved = JSON.parse(raw); } catch (e) { saved = null; }
+    if (!saved || typeof saved !== 'object') saved = {};
+
+    var alertEl = document.getElementById('aidd-alert'), statusEl = document.getElementById('aidd-status');
+    var btn = document.getElementById('aidd-approve'), progress = document.getElementById('aidd-progress');
+    var tablist = document.getElementById('aidd-tablist');
+    function mk(tag, text, cls) { var e = document.createElement(tag); if (text) e.textContent = text; if (cls) e.className = cls; return e; }
+    function status(msg) { statusEl.appendChild(mk('p', msg)); }
+    CTX.data = { spec: meta.spec, tasks_hash: meta.tasks_hash, picker_id: data.picker_id };
+    CTX.w = window; CTX.status = status;
+
+    var panels = Array.prototype.slice.call(document.querySelectorAll('section[role="tabpanel"][data-tab]'));
+    var labelOf = {};
+    (Array.isArray(data.tabs) ? data.tabs : []).forEach(function (t) { if (t && typeof t.id === 'string' && typeof t.label === 'string') labelOf[t.id] = t.label; });
+    var state = {}, order = [], itemEl = {}, boxes = {}, tabOfCode = {}, tabCodes = {}, tabs = [];
+    function persist() { try { window.localStorage.setItem(store, JSON.stringify(state)); } catch (e) { /* storage may be blocked */ } }
+
+    panels.forEach(function (panel) {
+      var id = panel.getAttribute('data-tab');
+      tabCodes[id] = [];
+      Array.prototype.slice.call(panel.querySelectorAll('.aidd-item[data-code]')).forEach(function (el) {
+        var c = el.getAttribute('data-code');
+        if (!isCode(c) || state[c]) return;   /* never a reviewable code, never twice */
+        var src = Object.prototype.hasOwnProperty.call(saved, c) ? saved[c] : (Object.prototype.hasOwnProperty.call(prior, c) ? prior[c] : null);
+        state[c] = { approved: !!src && src.approved === true, comment: (src && typeof src.comment === 'string') ? src.comment.slice(0, 200) : '' };
+        order.push(c); itemEl[c] = el; tabOfCode[c] = id; tabCodes[id].push(c);
+        var lab = mk('label', '', 'ck'), cb = mk('input');
+        cb.type = 'checkbox'; cb.setAttribute('aria-label', 'Aprobar ' + c); cb.checked = state[c].approved;
+        lab.appendChild(cb);
+        el.insertBefore(lab, el.firstChild);
+        var inp = mk('input', '', 'aidd-c');
+        inp.type = 'text'; inp.setAttribute('maxlength', '200'); inp.setAttribute('aria-label', 'Comentario ' + c);
+        inp.placeholder = 'Comentario (opcional)'; inp.value = state[c].comment;
+        el.appendChild(inp);
+        cb.addEventListener('change', function () { state[c].approved = cb.checked; refresh(); });
+        inp.addEventListener('input', function () { state[c].comment = inp.value.slice(0, 200); persist(); });
+        boxes[c] = cb;
+      });
+    });
+
+    function tabLabel(id, panel) { return TAB_LABELS[id] || labelOf[id] || (panel && panel.getAttribute('aria-label')) || id; }
+    function checkedMap() { var m = {}; order.forEach(function (c) { m[c] = state[c].approved === true; }); return m; }
+    function countDone(list) { var n = 0; list.forEach(function (c) { if (state[c].approved) n++; }); return n; }
+
+    /* tabs: roving tabindex, Left/Right/Home/End, #tab-<id> deep link, last tab remembered per session */
+    panels.forEach(function (panel) {
+      var id = panel.getAttribute('data-tab');
+      var b = mk('button', tabLabel(id, panel));
+      b.type = 'button'; b.id = 'tabbtn-' + id;
+      b.setAttribute('role', 'tab'); b.setAttribute('aria-controls', panel.id || ('tab-' + id));
+      b.setAttribute('aria-selected', 'false'); b.tabIndex = -1;
+      var badge = mk('span', '', 'badge'); b.appendChild(badge);
+      panel.setAttribute('aria-labelledby', b.id); panel.tabIndex = 0;
+      tablist.appendChild(b);
+      tabs.push({ id: id, btn: b, panel: panel, badge: badge });
+      b.addEventListener('click', function () { select(id, true); });
+      b.addEventListener('keydown', function (ev) {
+        var i = indexOf(id), j = -1;
+        if (ev.key === 'ArrowRight') j = (i + 1) % tabs.length;
+        else if (ev.key === 'ArrowLeft') j = (i - 1 + tabs.length) % tabs.length;
+        else if (ev.key === 'Home') j = 0;
+        else if (ev.key === 'End') j = tabs.length - 1;
+        if (j < 0) return;
+        ev.preventDefault(); select(tabs[j].id, true); tabs[j].btn.focus();
+      });
+      /* per-tab bulk control: checks only this tab, never data-mandatory (aidd:FR-310 aidd:FR-311) */
+      var bar = mk('div', '', 'tabbar'), bulk = mk('button', 'Aprobar todo en esta pesta\u00f1a');
+      bulk.type = 'button';
+      bar.appendChild(bulk);
+      if (id === 'verification') {
+        bulk.disabled = true;
+        bar.appendChild(mk('span', 'Cada verificaci\u00f3n se marca a mano: confirma que el comando y lo esperado son correctos.', 'why'));
+      } else {
+        bulk.addEventListener('click', function () {
+          tabCodes[id].forEach(function (c) {
+            if (c === 'SUMMARY' || c.indexOf('V-') === 0 || itemEl[c].hasAttribute('data-mandatory')) return;
+            state[c].approved = true;
+          });
+          refresh();
+        });
+      }
+      var first = panel.firstElementChild;
+      if (first && first.tagName === 'H2') first = first.nextElementSibling;
+      while (first && first.classList && first.classList.contains('aidd-warn')) first = first.nextElementSibling;
+      panel.insertBefore(bar, first || null);
+      if (id === 'summary') {   /* aidd:FR-312 carry-over line */
+        var cr = (data.carry && typeof data.carry === 'object') ? data.carry : null;
+        if (cr) {
+          var pend = Array.isArray(cr.pending) ? cr.pending.filter(isCode) : [];
+          var runs = compressCodes(pend);
+          var txt = runs.length > MAX_GROUPS ? runs.slice(0, MAX_GROUPS).join(', ') + ' +' + (runs.length - MAX_GROUPS) + ' more' : runs.join(', ');
+          panel.insertBefore(mk('p', 'Arrastrados ' + (Number(cr.carried) || 0) + ' de ' + (Number(cr.total) || 0) + '; pendientes: ' + (txt || 'none'), 'carry'), bar);
+        }
+      }
+    });
+    function indexOf(id) { for (var i = 0; i < tabs.length; i++) if (tabs[i].id === id) return i; return 0; }
+    function select(id, remember) {
+      tabs.forEach(function (t) {
+        var on = t.id === id;
+        t.btn.setAttribute('aria-selected', on ? 'true' : 'false');
+        t.btn.tabIndex = on ? 0 : -1;
+        t.panel.hidden = !on;
+      });
+      if (remember) { try { window.sessionStorage.setItem(tabStore, id); } catch (e) { /* storage may be blocked */ } }
+    }
+
+    function refresh() {
+      var done = countDone(order), total = order.length;
+      order.forEach(function (c) { boxes[c].checked = state[c].approved; itemEl[c].classList.toggle('checked', state[c].approved); });
+      tabs.forEach(function (t) {
+        var list = tabCodes[t.id], n = countDone(list);
+        t.badge.textContent = n + '/' + list.length;
+        t.badge.classList.toggle('done', list.length > 0 && n === list.length);
+      });
+      progress.textContent = done + ' / ' + total;
+      btn.textContent = (total > 0 && done === total) ? 'Aprobar y guardar' : 'Guardar progreso';
+      persist();
+    }
+
+    function stamp() {
+      var d = new Date(), z = function (n) { return (n < 10 ? '0' : '') + n; };
+      return d.getFullYear() + '-' + z(d.getMonth() + 1) + '-' + z(d.getDate()) + 'T' + z(d.getHours()) + ':' + z(d.getMinutes()) + ':' + z(d.getSeconds());
+    }
+    function offer(text, label) {
+      var b = mk('button', label); b.type = 'button';
+      b.addEventListener('click', function () { if (!downloadReview(text, window)) copyBox(text); });
+      statusEl.appendChild(b);
+    }
+    function copyBox(text) {
+      status('The download was blocked. Copy the text below into specs/' + meta.spec + '/review.md:');
+      var box = mk('textarea'); box.readOnly = true; box.value = text; statusEl.appendChild(box);
+    }
+
+    btn.addEventListener('click', function () {
+      var total = order.length, done = countDone(order), complete = total > 0 && done === total;
+      var built = buildReviewMdEx({ spec: meta.spec, tasks_hash: meta.tasks_hash, sources_digest: meta.sources_digest,
+        generated: meta.generated, reviewed: stamp(), codes: order, digests: digests, items: state });
+      alertEl.textContent = ''; statusEl.textContent = '';
+      var saving = saveReview(built.text, CTX);   /* permission and picker run first in the click handler */
+      if (!complete) {
+        alertEl.textContent = missingSummary({ codes: order }, checkedMap());
+        for (var i = 0; i < order.length; i++) {
+          var c = order[i];
+          if (state[c].approved) continue;
+          select(tabOfCode[c], true);
+          itemEl[c].classList.add('focus');
+          try { itemEl[c].scrollIntoView({ block: 'center' }); } catch (e) { /* old browser */ }
+          try { boxes[c].focus({ preventScroll: true }); } catch (e) { boxes[c].focus(); }
+          break;
+        }
+      }
+      saving.then(function (r) {
+        var res = r || { ok: false, method: 'copy' };
+        if (res.method === 'fs') {
+          status(complete ? 'Saved to specs/' + meta.spec + '/review.md. Nothing else to do: the agent is waiting and will ask you once.'
+            : 'Saved to specs/' + meta.spec + '/review.md.');
+        } else if (res.method === 'cancelled' || res.method === 'mismatch') {
+          offer(built.text, 'Descargar review.md');
+        } else if (res.method === 'copy') {
+          copyBox(built.text);
+        }
+        if (!complete && res.method !== 'cancelled' && res.method !== 'mismatch') {
+          status('Progreso guardado (' + done + '/' + total + '): no es una aprobaci\u00f3n');
+        }
+      }, function () { copyBox(built.text); });
+    });
+
+    var start = '';
+    try { if (window.location && /^#tab-[A-Za-z0-9_-]+$/.test(window.location.hash)) start = window.location.hash.slice(5); } catch (e) { start = ''; }
+    if (!start) { try { start = window.sessionStorage.getItem(tabStore) || ''; } catch (e) { start = ''; } }
+    var known = tabs.some(function (t) { return t.id === start; });
+    if (tabs.length) select(known ? start : tabs[0].id, false);
+    refresh();
+  })();
+}
+</script>
+</body>
+</html>

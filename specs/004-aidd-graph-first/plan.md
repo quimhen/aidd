@@ -227,3 +227,58 @@ El alcance de la caché es explícito (`with`) y los hooks y decisiones de gate 
 ## Preguntas abiertas (enmienda)
 
 Ninguna bloqueante. Fuera de esta enmienda, por decisión: conectar `check_spec.py`, `aidd verify` y el auditor de cierre al conjunto `changed` (FR-024 solo imprime `changed` y `affected`).
+
+# Amendments 2026-11-03 — tool-first nudge (FR-049..FR-054) and unified explorer (FR-060..FR-077)
+
+Integrated from `amendment-tool-first-nudge.draft.md` and `amendment-unified-explorer.draft.md` (same folder). Analysis
+parameters: tool-first = M (hook, evidence, status, installer); explorer = L (new module, CLI, more than 8 files with mirrors).
+Immutable sources for the explorer port: `batch-staging/f47-port-sources/` (15 files, one `.sha256` each).
+
+## Naming & File Contract (additions)
+
+All stdlib only (Playwright only in the skipped-when-absent browser tests and in `tests/visual_compare_explorer.py`).
+
+| File (single owner) | Contents |
+|---|---|
+| `skill/hooks/tool_first_hint.py` (new, T-61) | constants `N_REPEAT = 4`, `WINDOW_S = 900`, `SILENCE_S = 300`, `MAX_KEYS = 200`, `EDIT_TOOLS`, `SHAPE_TOOLS`, `SHELL_TOOLS`, `READ_ONLY_GIT_RE`, `TOOLS_QUERY_RE`, `QUOTED_RE`, `PATHLIKE_RE`, `DIGITS_RE`, `SECRET_RE`; functions `_shape(text)`, `_edit_shape(tool, ti)`, `_rel_key(path, root, cwd)`, `_scrub(text)`, `_fresh_state()`, `_load_state(path)`, `_save_state(path, state)`, `_trim(stamps_by_key, now)`, `_update_counters(state, tool, ti, root, cwd, now)`, `_silenced(ev, sid)`, `_keywords(kind, label)`, `_advice(kind, count, label, keywords)`, `main()`; events `tool_query{source, command}`, `tool_miss{kind, target, count}`; triggers `same_shape`, `same_file`, `same_command`; state JSON `{"v", "edits", "shapes", "files", "shell", "advised"}`; never blocks, always exits 0 |
+| `skill/scripts/aidd_evidence.py` + mirror (T-65, T-66; same owner as T-11) | `SESSION_KINDS` += `tool_miss`, `tool_query`; `tool_first_state_path(session) -> Path` (`_sessions_dir() / (<sid> + '.tool-first.json')`), `read_tool_first_state(session) -> dict` |
+| `skill/scripts/aidd_status.py` + mirror (T-63, T-66; same owner as T-26) | `_tool_first_line(root=None) -> str` after `_graph_first_line`, printed by `format_global`: `tool-first: N advisories / M edits this session` |
+| `skill/scripts/install_hooks.py` (T-62; same owner as T-05) | `HOOK_DEFS` += `('PostToolUse', 'Write|Edit|MultiEdit|NotebookEdit|Bash|PowerShell', SKILL_DIR / 'hooks' / 'tool_first_hint.py')`; `tests/test_install_hooks.py` counts 14 (15 with the optional hook) |
+| `tests/test_tool_first_hint.py` (new, T-60) | class `ToolFirstHintCase`, 18 tests (AC-041..AC-046, FR-054 shapes) |
+| `skill/scripts/unified_graph.py` (new, T-71, T-72) | `HERE`, `KIND_COLOURS`, `EXTRA_COLOURS`, `KIND_PILL_LABELS`, `KIND_CHECKBOX_LABELS`, `DOMAIN_FIELDS`, `DEFAULT_DOMAIN = "Core"`, `REF_FIELDS`, `CODE_FIELDS`, `TOON_SECTION_RE`, `TOON_READERS = {"spec": _read_spec_toon, "ui": _read_ui_toon}` (extension point: spec 007 amendment 06 adds `aliases`), `MENTION_DOCS`, `MENTION_DB_TYPES`, `WORD_RE`, `CODE_PATH_RE`; functions `_sibling(name)`, `_endpoint(v)`, `layer_id(name)`, `layer_styles(entries)`, `read_graph_file(path, kind)`, `_read_json`, `_read_spec_toon`, `_read_ui_toon`, `_read_generic_toon`, `normalise(layer, kind, raw, prefix=True)`, `link_cross_layers(root, nodes, edges)`, `load_unified(root, names=None, skip=())`, `single_layer(raw, layer="graph", kind="graph")`, `compute_neighborhood(graph, focal_node_id, hop_radius=2)`, `filter_graph(graph, active_layers=None, active_domains=None)`, `main(argv=None)` (`--root`, `--json`); payload keys `summary`, `layers`, `domains`, `nodes`, `edges`, `warnings`; relations `references`, `mentions` |
+| `skill/scripts/graph_explorer.py` (T-74 copy; T-75, T-76, T-82, T-83, T-84 same owner as T-74) | copy of the 1371-line F47 explorer (sha256 `50b5e91c…2a04`); kept `build_unified_payload(graph, root_dir=None)`, `build_html(graph_data, title=DEFAULT_TITLE)`, `embed_json(obj)`, `main(argv=None)`; new `_metric_pills(layers)`, `_layer_checkboxes(layers)`, `_extra_layer_css(layers)`, `_size_report(payload, nbytes)`; constants `DEFAULT_UNIFIED_OUT = "docs/graphs/explorer.html"`, `DEFAULT_MAX_MB = 25`; flags `--graph`, `--root`, `--out`, `--title`, `--kind`, `--layer`, `--max-mb`, `--skip`; exit codes 0, 2 (unreadable input), 3 (above the ceiling); JS `layers`, `LAYER_NAMES`, `layerColor`, `layerDomId`, `updateZoomDisplay()`, `fitView()`, `centerOnFocal()`, `copyFocalNode()`, `toggleTheme()`, `isLightTheme()`, `loadThemeChoice()`, `saveThemeChoice(theme)`, `THEME_KEY = "aidd-explorer-theme"`, `ZOOM_MIN = 0.2`, `ZOOM_MAX = 4.0`, `FIT_MARGIN = 40`, `window.aiddExplorer = {getTransform, getFocalId, selectNode}`; element ids `metric-<layer id>`, `layer-cb-<layer id>`, `insp-tech-details`, `zoomInBtn`, `zoomOutBtn`, `zoomResetBtn`, `zoomLevelDisplay`, `fitViewBtn`, `centerNodeBtn`, `copyNodeBtn`, `themeToggleBtn`; CSS `:root.light` (10 tokens), `--layer-<layer id>` for non-F47 layers |
+| `skill/scripts/aidd_graphs.py` (T-77; same owner as T-17) | `explorer` branch: no name → `--root` run, default `docs/graphs/explorer.html`; with a name passes `--kind` and `--layer`; `--skip` and `--max-mb` pass through |
+| `tests/test_unified_graph.py` (new, T-70), `tests/test_unified_explorer.py` (new, T-73), `tests/test_explorer_controls.py` (new, T-80), `tests/test_explorer_controls_browser.py` (new, T-81), `tests/visual_compare_explorer.py` (new script, T-VISUAL) | synthetic temporary projects (`make_project(root, extra_rows=())`), no b1SycLink data, no network |
+| `tests/test_graph_explorer.py` (T-74) | the 9 assertion updates of T-74's mapping table, each keeping its intent |
+| `adapters/dot-aidd/scripts/unified_graph.py`, `graph_explorer.py`, `aidd_graphs.py`, `tests/test_dot_aidd_mirror.py` (T-78) | byte copies by `cp`; `VERBATIM_SCRIPTS` and `GRAPH_FIRST_SCRIPTS` += `"unified_graph.py"` |
+| `skill/SKILL.md` (T-64, T-79; same owner as T-09), `aidd/cli.py` (T-79; same owner as T-43) | T1 paragraph: the tool-first nudge; G1 item 1: the unified explorer, its path, the 25 MB ceiling; help `explorer [name]` |
+
+## FR / AC → code → test
+
+| Req | Code | Test (V) |
+|---|---|---|
+| FR-049..FR-054 / AC-041..AC-046 | `tool_first_hint`, `aidd_evidence.tool_first_state_path/read_tool_first_state`, `aidd_status._tool_first_line`, `install_hooks.HOOK_DEFS` | V-13, V-14, V-10, V-11 |
+| FR-060..FR-066 / AC-050..AC-056 | `unified_graph` | V-15, V-20 |
+| FR-067, FR-069 / AC-058..AC-060 | `graph_explorer` (T-74..T-76) | V-16, V-17 |
+| FR-068, FR-076 / AC-057, AC-064, AC-065 | `aidd_graphs` `explorer` branch, `graph_explorer.main` | V-16, V-19, V-21 |
+| FR-070 / AC-061 | mirrors | V-4 |
+| FR-071..FR-075 / AC-062, AC-063 | `graph_explorer` (T-82, T-83) | V-18 |
+| FR-077 / AC-066 | `tests/visual_compare_explorer.py` | V-22 |
+
+## Waves (11-20; both amendments in parallel, disjoint files per wave)
+
+| Wave | Tasks | Why |
+|---|---|---|
+| 11 | T-60, T-70 | tests first |
+| 12 | T-65, T-71, T-73, T-74, T-80, T-81 | evidence kinds, model part 1, explorer copy, the other test files |
+| 13 | T-61, T-62, T-63, T-72 | hook, installer, status line, model part 2 |
+| 14 | T-64, T-66, T-75 | docs and mirrors of the nudge; explorer Python side |
+| 15-19 | T-76, T-82, T-83, T-84, T-77 | one owner of `graph_explorer.py`, then `aidd_graphs.py` |
+| 20 | T-78, T-79, T-85 (the T-VISUAL gate) | mirrors, docs, measured comparison |
+
+## Risks (amendments 2026-11-03)
+
+16. The explorer file is versioned: each regeneration adds a blob to git history (about 1 MB compressed at b1SycLink scale); mitigated by the 25 MB ceiling (exit 3), `--skip` and on-demand regeneration only. b1SycLink runs it with `--skip code-graphify` (measured about 20 MB without that layer, about 63 MB with it).
+17. The ported view is a subset of the view F47 verified (20 generator-only elements); T-VISUAL lists them as `differ` (owner decision). The F47 dark palette and zoom differ from the alias mockup and are `accepted-differ`.
+18. `localStorage` can be blocked: every access is inside try/catch and a browser test proves the page behaves identically (theme not remembered).
+19. The tool-first hook runs on every edit: it fails open, keeps state outside the project tree and only advises.

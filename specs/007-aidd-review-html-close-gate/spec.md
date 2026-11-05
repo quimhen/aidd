@@ -35,7 +35,11 @@ The waiver of Steps 0/1/1.5 needs the owner's own words (R2); see Open decision 
 
 ## Visual debt
 
-None: no `SCREEN-nn` codes in this spec.
+None for the original spec (no `SCREEN-nn` codes). Amendment 06 adds `SCREEN-901`, resolved by its Stitch mockup approved by the owner (relayed 2026-11-03); SHA-256 `33bd7fb75fd696fef77d1adc2d8e1f41314eca0b3514ace79fab752f2f6ad8d7` recorded in `prototypes/alias-graph-explorer/alias-graph-explorer.sha256`, provenance in `prototypes/alias-graph-explorer/STITCH.md`:
+
+| Codes | Blocks spec | Status | Mockup source |
+|---|---|---|---|
+| SCREEN-901 | 007-aidd-review-html-close-gate | resolved | `specs/007-aidd-review-html-close-gate/prototypes/alias-graph-explorer/alias-graph-explorer.html` |
 
 ## Evidence from real use (project `b1SycLink`, 27 specs, read 2026-10-05)
 
@@ -194,6 +198,15 @@ Commands the tool will run at close (`aidd verify`); output goes to `specs/007-a
 | V-9 | `python -m unittest discover -s tests -p "test_progress_resolution.py" -v` | exit 0 | T-26, T-27, AC-261..AC-268 |
 | V-10 | `python -m unittest tests.test_aidd_progress -v` | exit 0 | T-27, AC-268 (no regression) |
 | V-11 | `python -m unittest tests.test_dot_aidd_mirror -v` | exit 0 | T-24, T-28 |
+| V-12 | `python -m unittest discover -s tests -p "test_aidd_coverage.py" -v` | exit 0 | T-30, T-31, AC-271..AC-284 |
+| V-13 | `python -m unittest discover -s tests -p "test_verify_changed_policy.py" -v` | exit 0 | T-43, T-44, AC-285..AC-290 |
+| V-14 | `python -m unittest tests.test_verify_git_contract tests.test_aidd_unit_audit_incremental tests.test_wave_verification -v` | exit 0 | T-44, AC-290 (no regression) |
+| V-15 | `python -m unittest discover -s tests -p "test_dot_aidd_mirror.py" -v` | exit 0 | T-33, T-40 |
+| V-16 | `python -m unittest discover -s tests -p "test_aidd_coverage.py" -k CoverageWiring -v` | exit 0 | T-32, T-34 |
+| V-17 | `python -m unittest discover -s tests -p "test_alias_graph.py" -v` | exit 0 | T-35, T-36, T-37, T-38, T-39, AC-291..AC-295, AC-297..AC-299 |
+| V-18 | `python -m unittest tests.test_aidd_progress tests.test_progress_resolution -v` | exit 0 | T-39, FR-257 (no regression) |
+| V-19 | `python -m unittest discover -s tests -p "test_unified_*.py" -v` | exit 0 | T-38 (no regression of the 004 amendment) |
+| V-20 | `python -m unittest discover -s tests -p "test_explorer_controls*.py" -v` | exit 0 | T-38 (no regression of the 004 amendment) |
 
 Owner-run (not executable by the agent): open a generated `review.html` in a real browser and send a `review.md` (T-11 does it once with the browser tool; the owner repeats it on `F23-eDoc-POS`). Device-only checks cannot be expressed as rows in this version (Open decision O-5).
 
@@ -313,3 +326,106 @@ Integrated from `batch-staging/reuse-front1/amendment-03-reuse-first-increment.d
 4. Whether the contract surface is later widened to `python -m pytest|unittest` (separate amendment).
 
 Amendment 04 open questions: none. Q-1 (alias file location) was answered by the owner on 2026-11-03: use the `.toon` graph format with the same structure (user — "estamos utilizando los grafos con formato toon, sigue la misma estructura"). A project generates `.aidd/graphs/path-aliases.toon` from its own rename map; AIDD only reads it.
+
+## Amendment 05 (2026-11-03) — `aidd coverage` and the `--changed` declaration policy
+
+Integrated from `specs/007-aidd-review-html-close-gate/amendment-05-coverage-derive.draft.md` (task blocks T-30..T-34, T-43, T-44 verbatim in tasks.md). Owner direction (verbatim, 2026-11-03): "este tipo de mejoras con script que propones son las mejoras que debemos implementar en aidd". Owner decisions D-1..D-3 (2026-11-03): user — "acepto recomendacion". Prototype (staging only): `batch-staging/coverage-derive/coverage_derive.py` (14 unit tests, exit 0). Its Verification rows are V-12..V-16 of `## Verification` above (draft V-1..V-5 -> V-12..V-16). Synthetic temporary directories only (T-43 creates a throwaway Git repository in a temp dir); no database, Docker or network.
+
+### Executive summary (amendment 05)
+
+- **Problem (measured 2026-11-03, b1SycLink, read-only):** `--changed` refuses unless every row has `Inputs` and task `Covers`; in 51 specs, 254 rows, only 15 name `T-nn`, 0 declare `Inputs`, 26 specs have tasks no row covers. Selective verification and amendment-03 reuse cannot run.
+- **Derivation by script:** 15 rows `cites-tasks`, 177 `via-fr-ac-api`, 57 `whole-suite`, 5 `unresolved`.
+- **Decisions (user — "acepto recomendacion"):** D-1 a row without declarations always runs with a warning; an uncovered task whose target changed prints a warning and runs the whole-suite rows; only malformed Covers/Inputs refuse. D-2 whole-suite rows keep all targets and their warning. D-3 `--base` accepts any revision Git resolves (`HEAD~1`).
+- **Pilot with the decisions (F12, F21, F36, F37, P03, S01; commit HEAD~1..HEAD; computed, not run):** 33 rows, 19 skipped, 14 run. Before the decisions every spec but F21 refused.
+- **Safety argument:** an under-declared `Covers`/`Inputs` skips a needed test (false PASS); therefore `aidd coverage` is a dry-run that never writes the spec and never shrinks declarations, uncertain rows carry the review marker for the owner, and in `verify` a missing declaration widens the run, never narrows it; partial evidence never closes a spec.
+
+### Functional requirements (amendment 05)
+
+| Code | Requirement | Source |
+|---|---|---|
+| FR-240 | `aidd coverage <spec_dir> [--apply-to FILE] [--json] [--changed-file PATH ...]` runs `skill/scripts/aidd_coverage.py`. Default is a read-only dry-run that prints, per `## Verification` row (parsed with `aidd_rules.parse_verification`): proposed `Covers`, proposed `Inputs`, derivation kind, `Reuse` note, notes; then a summary line and the tasks no row covers. Exit 0 on success, 2 on refusal (no `spec.md`, unsafe `--apply-to`). | owner brief 2026-11-03 |
+| FR-241 | Derivation kind per row, first match wins: `cites-tasks` (Covers names a `T-nn` or a `T-a..T-b` range in the forms `_task_rows` accepts); `via-fr-ac-api` (Covers cites FR/AC/API/SCREEN/COMP/CTL/US codes that at least one task cites); `whole-suite` (no code in Covers, or a suite word: todos, toda, todas, suite, completa, complete, regresión, regression, all, full, whole); `unresolved` (codes present, none cited by any task). | measured: 15 / 177 / 57 / 5 of 254 rows |
+| FR-242 | Task codes come from `aidd_progress.parse_tasks` plus the raw `Codes satisfied` cell and `- Cites:` lines under `### T-nn` headings, ranges expanded (`FR-001 to FR-012`, `FR-001..FR-012`, abbreviated end such as `AC-261..268`, en/em dash, `a`), at most 400 numbers per range. Codes compare by prefix + integer value; every printed code (notes, Covers) is written exactly as cited in the source text (`FR-014`, never `FR-14`); task IDs are emitted as written in tasks.md, upper-cased. | measured: prototype printed `FR-14` |
+| FR-243 | Proposed `Inputs` = union of the target paths of the proposed tasks (`whole-suite`: every target). A target absent at `root/p` is resolved in this order: `aidd_progress._resolve` (suffix match), `_renumbered`, `_alias_target`; a directory becomes `<dir>/**`; a `(delete)` target is excluded. A target that still matches no file is EXCLUDED from Inputs (a glob matching no file is a malformed declaration that `verify` refuses), listed in the row notes and in `missing_targets`, and the row needs review. | measured: F21 23, F36 12, F37 2 targets recovered |
+| FR-244 | Never shrink: proposed `Covers` = the existing Covers text, then `; ` and the added task IDs in numeric order; proposed `Inputs` ⊇ existing `Inputs`. An `unresolved` row keeps its Covers text and only its existing Inputs. | owner brief 2026-11-03 |
+| FR-245 | A row gets `needs_review = True` and the review marker text `[Proposed — unconfirmed]` (constant `REVIEW_MARK`) when: it is `whole-suite` (D-2 warning); its Covers names a task not in tasks.md; a `cites-tasks`/`via-fr-ac-api` row also cites codes no task cites; a target was excluded or resolved to another path; or the selected tasks have no targets. | user — "acepto recomendacion" (D-2) |
+| FR-246 | A row whose command matches `db_verify`, `psql`, `docker`, `pg_prove` or `--tap` is a database row: `Reuse` is reported as `none (database row: never reused)`; it gets Covers/Inputs for selection only. No row ever gets a proposed `Reuse` value. | SKILL.md "never infer their equivalence" |
+| FR-247 | `--apply-to FILE` writes a Markdown proposal whose first line is `<!-- coverage_derive proposal: not part of any spec; review and copy by hand -->`. It refuses (exit 2, nothing written) when FILE is named `spec.md`, `tasks.md`, `plan.md`, `contracts.md` or `mockup-audit.md`, or when FILE exists and its first line is not that marker. | owner brief 2026-11-03 |
+| FR-248 | `--changed-file PATH` (repeatable) adds `changed_simulation` = `{status, reason, selected_tasks, always_rows, rows_run, rows_skipped, warnings}` computed with the FR-259 rules on the PROPOSED values. Git is never called by `aidd_coverage.py`. | measured pilot above |
+| FR-249 | Stdlib only; never raises on malformed spec or tasks text (empty table gives zero rows); `--json` prints the full result as JSON. | repo convention `skill/scripts/*` |
+| FR-259 | New `_changed_selection(root, spec, base=None) -> tuple[list[str], list[str], list[str]]` in `aidd_status.py` returns `(task_ids, always_rows, warnings)`. Refusal (`ValueError`) only for: a changed spec policy file (unchanged rule); no rows or no tasks; a malformed declaration — Covers that `_task_rows` rejects (ambiguous exclusion, invalid identifier or range), Covers naming a task not in tasks.md, or declared Inputs for which `rules.row_input_fingerprint` returns None; or nothing to run (no task selected and no always-run row; existing message). A row without Inputs or without task IDs in Covers is an always-run row with the warning `warning: verification row <n> declares no Inputs or no task Covers; it always runs`. A task no row names whose `parse_tasks` targets match a changed path gives `warning: task <T> is covered by no verification row; whole-suite rows run` and adds every row whose Covers names all tasks; if no such row exists, every row is added. `_changed_task_selection` keeps its signature and returns `_changed_selection(...)[0]`. | user — "acepto recomendacion" (D-1) |
+| FR-260 | `cmd_verify` gains the keyword `always_rows=None` (list of row ids), accepted only with `task_ids` (from `--changed`). Rows run = `_task_rows(task_ids)` (skipped when `task_ids` is empty) plus the `always_rows` not already selected, in table order; each such row prints `always-run row <n>`. With always-run rows the partial guard scope is not attested (`guard_scope = None`), the `task_verify_run` event records `always_rows`, and the selection fingerprint covers both parts (`_changed_selection_fingerprint`). The `--changed` CLI prints each warning, then calls `cmd_verify(spec, task_ids=..., always_rows=...)`. | user — "acepto recomendacion" (D-1) |
+| FR-261 | New `aidd_unit_audit.resolve_base(root, base) -> str`: a non-empty string of at most 256 characters, not starting with `-`, without whitespace or NUL, resolved by `git rev-parse --verify --end-of-options <base>^{commit}` (timeout 30 s) to a 40- or 64-hex commit; anything else raises `ValueError('base is not a uniquely resolvable commit')`. `git_changed_paths` and `administrative_only_task_paths` use it instead of the hex-only check, so `--base HEAD~1` works. | user — "acepto recomendacion" (D-3) |
+
+### Acceptance criteria (amendment 05)
+
+| Code | Scenario | Expected |
+|---|---|---|
+| AC-271 | Row Covers `T-01` | kind `cites-tasks`, tasks `['T-01']`, Inputs = T-01 targets, no review needed |
+| AC-272 | Row Covers `FR-002 to FR-003`, tasks T-02 (FR-002) and T-03 (FR-003) | kind `via-fr-ac-api`, tasks `['T-02','T-03']`, Covers starts with `FR-002 to FR-003` |
+| AC-273 | Row Covers `full regression` | kind `whole-suite`, every task, every target, `needs_review` |
+| AC-274 | Row Covers `FR-099`, no task cites it | kind `unresolved`, tasks `[]`, Inputs `[]`, Covers unchanged |
+| AC-275 | Row command contains `db_verify.py --tap`; T-04 cites AC-010 only in its `- Cites:` line | database row, Reuse starts `none`, tasks include T-04 |
+| AC-276 | Row with existing Inputs `extra/keep.py` | proposed Inputs still contain `extra/keep.py` |
+| AC-277 | A target file removed | it is not in the proposed Inputs, it is in `missing_targets`, the row has `needs_review` and a note naming it |
+| AC-278 | Simulation, a row without Inputs, change `src/a.py` | `status == 'ok'`, that row in `always_rows`, a warning naming it |
+| AC-279 | Simulation, rows only T-01 and coded rows, changed `src/a.py` | selected `['T-01']`, 1 row run, others skipped |
+| AC-280 | Simulation with `specs/<spec>/tasks.md` changed | refused, reason `spec policy changed` |
+| AC-281 | Dry-run | exit 0, output contains `DRY-RUN`, no file created or modified |
+| AC-282 | `--apply-to` the spec's `spec.md`, or an existing foreign file | exit 2, file unchanged; an own proposal file can be rewritten |
+| AC-283 | Covers `FR-014, FR-099` where only FR-014 is cited by a task | the note reads `codes no task cites: FR-099` and no printed text contains `FR-14` or `FR-99` |
+| AC-284 | Task target `migrations/0120_x.sql`, only `migrations/3277_x.sql` exists | proposed Inputs contain `migrations/3277_x.sql`; the note names the resolution |
+| AC-285 | `--changed`, row V-2 without Inputs, change matches V-1 only | V-1 and V-2 run; output contains the FR-259 always-run warning for V-2 |
+| AC-286 | `--changed`, task T-03 named by no row, its target changed, row V-9 Covers `T-01..T-03` | warning for T-03; V-9 runs |
+| AC-287 | Same as AC-286 with no row naming all tasks | every row runs |
+| AC-288 | Covers `T-99` (unknown), Covers `all except T-02`, or Inputs `missing/*.py` | refused, nothing executed |
+| AC-289 | `--base HEAD~1` in a repo with two commits; `--base --all`; `--base nosuchrev` | the first selects the committed change; the other two raise `ValueError` |
+| AC-290 | Every row declares Inputs and task Covers (today's contract) | selection identical to the current `_changed_task_selection`; `tests/test_verify_git_contract.py` unchanged and green |
+
+### Out of scope (amendment 05)
+
+Proposing `Reuse`; writing any spec or tasks file; creating rows for uncovered tasks; changing `--tasks` or `--wave` selection; b1SycLink files; installed skills; amendment-04 logic (only called). Open questions: none (D-1..D-3 answered, user — "acepto recomendacion").
+
+## Amendment 06 (2026-11-03) — the alias graph is a registered graph and the explorer can draw it
+
+Integrated from `specs/007-aidd-review-html-close-gate/amendment-06-alias-graph.draft.md` (re-based on `specs/004-aidd-graph-first/amendment-unified-explorer.draft.md`; task blocks T-35..T-41 verbatim in tasks.md; former T-42 removed, superseded by T-74..T-76 of the 004 amendment). Owner direction (verbatim, 2026-11-03): "si adicionamos un grafo en aidd este tambien se debe poder leer con el explorer" and "si redacta la enmienda y luego le das la instruccion a agy para que haga el cambio y utilice el mcp stitch para la parte grafica del html". Visual source of truth: `SCREEN-901`, row `resolved` in `## Visual debt` above (approved Stitch mockup under `prototypes/alias-graph-explorer/`). Its Verification rows are V-15 (mirror, shared with amendment 05), V-17..V-20 (draft V-1 -> V-17, V-2 -> V-18, V-3 -> V-15, V-4 split into V-19 and V-20). T-41 (SKILL.md text) is checked by its own task command only: an inline `python -c` check cannot be a Verification row. Synthetic temporary directories only; no database, Docker or network.
+
+### Executive summary (amendment 06)
+
+- **Objective:** register the alias graph as a built-in graph kind `aliases`, query it with `aidd graphs show aliases <name>`, draw it with `aidd graphs explorer aliases` and in the unified explorer (layer `aliases`), and show task states `renamed` and delete-only in the `progress` graph.
+- **Today (verified 2026-11-03):** `aidd graphs list/status/show` know only graphs declared in `aidd_graphs.py` or in the charter `## Graphs` table; a loose `.toon` is invisible.
+- **Design:** the 004 amendment adopts the F47 explorer, generates one layer per registered graph and adds the mockup's controls for every layer; here T-36 writes the alias reader, T-37 registers the graph, T-38 registers `TOON_READERS["aliases"]` and adds only the alias-specific view of the layer `aliases`. Expected visual fidelity: exact replication of the approved mockup (structure, legend, states, spacing).
+- **Not in scope:** generating the alias file (a project script does that); the explorer base and its controls (004 amendment).
+- **Risk:** the visual part is the only subjective part; it is pinned to the approved mockup and measured by tests on DOM/legend/state attributes, not by eye.
+
+### Functional requirements (amendment 06)
+
+| Code | Requirement | Source |
+|---|---|---|
+| FR-250 | `aidd_graphs.py` `_builtin_registry` (the function that builds the list returned at line 181) adds `{"name": "aliases", "kind": "aliases", "output": ".aidd/graphs/path-aliases.toon", "refresh": "", "watch": [".aidd/graphs/path-aliases.toon"]}` only when that file exists AND no graph named `aliases` is already declared by the charter `## Graphs` table (a project such as b1SycLink declares it there with its own generator `python tools/gen_path_aliases.py --out .aidd/graphs/path-aliases.toon`; the charter row wins and no duplicate or `-renamed` entry is produced). `refresh` stays empty in the built-in row: the project generates the file, AIDD never builds it. | repo — `skill/scripts/aidd_graphs.py:167-181` |
+| FR-251 | `show(root, "aliases", query, limit=25)` returns, in at most `limit` lines, the rows whose old or new base name contains `query` (case-insensitive), as `old -> new [scope] reason`; no match returns `No alias matching '<query>'.`; a missing or unreadable file returns the message `Graph 'aliases' is missing; the project must generate .aidd/graphs/path-aliases.toon`. Never raises. | repo — `skill/scripts/aidd_graphs.py:889-907` |
+| FR-252 | New module `skill/scripts/alias_graph.py` is the ONLY reader of the format: `parse_aliases(text)`, `load_aliases(path)`, `to_graph(rows)`, `show_aliases(root, query, limit=25)`. Fail closed: any error gives `[]`/an empty graph, never an exception. | amendment 04 FR-233 |
+| FR-253 | `unified_graph.TOON_READERS` gains `"aliases"`, a reader that returns `alias_graph.to_graph(alias_graph.parse_aliases(text))`; so `graph_explorer.py --graph x.toon --kind aliases --layer aliases` and the unified explorer (`aidd graphs explorer`) both draw the alias graph. JSON input is untouched (owned by the 004 amendment). | 004 amendment FR-061 |
+| FR-254 | `to_graph(rows)` returns `{"nodes": [...], "edges": [...]}` with node `{"id": "old:<base>"\|"new:<base>", "label": <base>, "type": "alias_old"\|"alias_new", "scope", "reason"}` and edge `{"source": <old id>, "target": <new id>, "type": "RENAMED_TO"}`; a base name that is both an old and a new name keeps both nodes; duplicate rows collapse to one edge. | owner brief 2026-11-03 |
+| FR-255 | The alias-specific view of the layer `aliases` (SCREEN-901) replicates the approved Stitch mockup: legend with the three node states (`old name`, `new name`, `renamed in progress`), the `RENAMED_TO` edge style and badge, the inspector rows scope and reason, the empty banner; colours from the mockup's state tokens (old, new, progress) in dark and light. Layer pill, checkbox and colour come from the registry; the controls come from the 004 amendment. Zero external requests: all CSS, JS and data inline. | user — "utilice el mcp stitch para la parte grafica del html" |
+| FR-256 | `aidd_progress.py` graph writer adds to each task node the attribute `state` with the value `renamed` or `deleted` when `task_state` resolved it that way, and the explorer colours task nodes by that attribute. Nodes without the attribute are unchanged. | amendment 04 FR-234 |
+| FR-257 | `aidd_progress._load_aliases` (amendment 04) delegates to `alias_graph.load_aliases` so the format has a single reader; every amendment-04 test stays green. | Shared-First rule (SKILL.md) |
+| FR-258 | SUPERSEDED (2026-11-03) by FR-067 of the 004 amendment (`specs/004-aidd-graph-first/amendment-unified-explorer.draft.md`); kept only as a pointer, no task here. | 004 amendment |
+
+### Acceptance criteria (amendment 06)
+
+| Code | Scenario | Expected |
+|---|---|---|
+| AC-291 | Project with `.aidd/graphs/path-aliases.toon` | `aidd graphs list` shows `aliases` exactly once; without the file it is absent; with the file AND a charter row named `aliases`, only the charter row appears and the built-in is not added |
+| AC-292 | `aidd graphs show aliases ordr` with the row `ordr_table.dart,oped_table.dart,mobile,F30` | one line `ordr_table.dart -> oped_table.dart [mobile] F30` |
+| AC-293 | `show` with no match, with a missing file, and with binary file bytes | the three messages of FR-251; no exception |
+| AC-294 | `to_graph` of two rows sharing an old name | 3 nodes, 2 edges; the same row twice gives one edge |
+| AC-295 | `graph_explorer.py --graph x.toon --kind aliases --layer aliases --out y.html` | exit 0; `y.html` contains the three legend labels of FR-255, `RENAMED_TO`, `legend-aliases`, `insp-scope`, `insp-reason`, `aliases-empty-banner` |
+| AC-296 | SUPERSEDED by AC-060 of the 004 amendment (JSON path) | — |
+| AC-297 | Task resolved by delete or by rename | the `progress` graph node has `state` = `deleted`/`renamed`; others have no `state` key |
+| AC-298 | `y.html` | contains no `http://`, `https://` or `//cdn` reference and no external `<script src>`/`<link href>` (the general rule is AC-058 of the 004 amendment; kept here for the alias page) |
+| AC-299 | Unified explorer of a project with the alias file (`graph_explorer.py --root R`) | a layer `aliases` with 4 nodes; `metric-aliases` and `layer-cb-aliases` present (registry-generated) |
+
+### Out of scope (amendment 06)
+
+Generating `path-aliases.toon`; the explorer base, its layer machinery and its controls (zoom, fit, centre, copy, theme: all owned by the 004 amendment); any Stitch call at runtime; changing the JSON path of the explorer; b1SycLink files. Open questions: none.

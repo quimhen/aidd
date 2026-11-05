@@ -1,0 +1,47 @@
+specs with a parsable ## Verification table: 58 / 68
+rows total: 284
+distinct commands: 228
+commands shared by 2+ specs: 24  (rows in them: 77)
+verify_run events parsed: 349
+rows declaring Reuse: hermetic: 0
+rows with Inputs: 0
+rows with Environment contract:offline;...: 0
+rows eligible under the current contract: 0
+shared commands that are DB rows: 5
+shared non-DB commands: 19
+shared non-DB commands whose surface passes the contract (python <file>.py, no shell meta): 4
+shared commands with >=1 row eligible today: 0
+shared commands with a recorded duration: 24 / 24
+estimated secs saved per full round (known durations only): 6384 (DB 2117, non-DB 4266)
+
+TOP 10 shared commands (by number of specs, then median duration):
+ 1. [10 specs, 10 rows, non-DB, surface_ok=False, eligible_rows=0, 33.1s median of 61, real runs logged=64, reused logged=27]
+    cmd: node eDoc/web/node_modules/typescript/bin/tsc --noEmit -p eDoc/web --extendedDiagnostics
+    specs: F15-eDoc-Backoffice-Web, F17-eDoc-Inbound, F18-eDoc-Migration, F19-eDoc-Masters-Importers, F20-eDoc-Manual-Invoicing, F21-eDoc-Inventory, F22-eDoc-Pricing, F26-eDoc-Tax-Catalogs, F27-Correction-Backlog, F30-Rename-SAP-Names
+ 2. [9 specs, 10 rows, non-DB, surface_ok=True, eligible_rows=0, 188.1s median of 44, real runs logged=44, reused logged=0]
+    cmd: python Payroll/tools/charter_gate.py
+    specs: P03-Payrol-Employees-Contracts, P04-Payrol-Rubros-Plugins, P05-Payrol-Periods-Novelties, P06-Payrol-Calculation-Close, P07-Payrol-Ecuador-Package, P08-Payrol-Loans-Vacations, P10-Payrol-Outputs, P11-Payrol-Severance-Profit-Sharing, P12-Payrol-Employee-Portal
+ 3. [4 specs, 4 rows, DB, surface_ok=True, eligible_rows=0, 373.0s median of 14, real runs logged=14, reused logged=3]
+    cmd: python eDoc/tools/db_verify.py --psql "docker exec -i supabase_db_edoc psql -U postgres" --tap --plpgsql-check --extra-dir Payroll --extra-dir Selection
+    specs: F27-Correction-Backlog, F36-eDoc-Purchasing, F37-eDoc-Supplier-Invoice, F38-eDoc-Import-Costing
+ 4. [4 specs, 4 rows, DB, surface_ok=True, eligible_rows=0, 305.2s median of 14, real runs logged=20, reused logged=1]
+    cmd: python eDoc/tools/db_verify.py --psql "docker exec -i supabase_db_edoc psql -U postgres" --tap --plpgsql-check
+    specs: F28-DB-Unification-Sync, F30-Rename-SAP-Names, F33-ERP-Field-Mapping, F55-Mobile-W4
+ 5. [4 specs, 4 rows, non-DB, surface_ok=False, eligible_rows=0, 27.0s median of 10, real runs logged=16, reused logged=0]
+    cmd: python -m pytest eDoc/engine -q
+    specs: F28-DB-Unification-Sync, F30-Rename-SAP-Names, F31-F28-Followups, F33-ERP-Field-Mapping
+ 6. [3 specs, 3 rows, non-DB, surface_ok=False, eligible_rows=0, 469.6s median of 28, real runs logged=35, reused logged=4]
+    cmd: node eDoc/web/node_modules/vitest/vitest.mjs run --root eDoc/web
+    specs: F27-Correction-Backlog, F28-DB-Unification-Sync, F30-Rename-SAP-Names
+ 7. [3 specs, 3 rows, non-DB, surface_ok=False, eligible_rows=0, 357.4s median of 24, real runs logged=25, reused logged=0]
+    cmd: npm test --prefix eDoc/web
+    specs: F35-UI-Executive-Precision, F39-eDoc-Inventory-Accounting, F45-Aggregates-KPI-Engine
+ 8. [3 specs, 3 rows, non-DB, surface_ok=False, eligible_rows=0, 130.5s median of 5, real runs logged=11, reused logged=0]
+    cmd: powershell -NoProfile -File specs/F28-DB-Unification-Sync/verify/mobile_tests.ps1
+    specs: F28-DB-Unification-Sync, F30-Rename-SAP-Names, F31-F28-Followups
+ 9. [3 specs, 3 rows, non-DB, surface_ok=False, eligible_rows=0, 87.2s median of 17, real runs logged=17, reused logged=1]
+    cmd: python -m pytest Payroll/engine/tests -q
+    specs: P10-Payrol-Outputs, P12-Payrol-Employee-Portal, P13-Payrol-Commissions
+10. [3 specs, 3 rows, DB, surface_ok=True, eligible_rows=0, 29.9s median of 20, real runs logged=23, reused logged=0]
+    cmd: python eDoc/tools/db_verify.py --psql "docker exec -i supabase_db_edoc psql -U postgres" --tap --plpgsql-check --only-tests inventory_
+    specs: F21-eDoc-Inventory, F39-eDoc-Inventory-Accounting, F45-Aggregates-KPI-Engine

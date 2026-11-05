@@ -361,6 +361,26 @@ def _task_candidates(changed_paths, spec_id):
     return [path for path in changed_paths if _path_key(path).startswith(prefix)]
 
 
+def resolve_base(root, base):
+    """aidd:FR-261 the full commit hash Git resolves `base` to (`HEAD~1`, a branch, a short hash ...).
+    Refuses (ValueError) an empty, option-like, over-long or whitespace/NUL-bearing value and anything Git cannot
+    resolve to exactly one commit."""
+    message = 'base is not a uniquely resolvable commit'
+    if (not isinstance(base, str) or not base or len(base) > 256 or base.startswith('-')
+            or '\x00' in base or any(ch.isspace() for ch in base)):
+        raise ValueError(message)
+    try:
+        check = subprocess.run(['git', 'rev-parse', '--verify', '--end-of-options', base + '^{commit}'],
+                               cwd=str(root), stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                               stdin=subprocess.DEVNULL, timeout=30, check=False)
+    except (OSError, subprocess.TimeoutExpired, ValueError) as exc:
+        raise ValueError(message) from exc
+    out = check.stdout.strip()
+    if check.returncode or not re.fullmatch(rb'[0-9a-f]{40}|[0-9a-f]{64}', out):
+        raise ValueError(message)
+    return out.decode('ascii')
+
+
 def git_changed_paths(root, base=None):
     """Use Git's NUL-delimited staged, unstaged and untracked paths, not file scans."""
     def run_git(cmd):
@@ -371,12 +391,7 @@ def git_changed_paths(root, base=None):
             raise ValueError('Git changed-path query unavailable or timed out') from exc
     commands = []
     if base is not None:
-        if not isinstance(base, str) or not re.fullmatch(r'[0-9a-fA-F]{7,64}', base):
-            raise ValueError('base must be an explicit commit hash')
-        check = run_git(['git', 'rev-parse', '--verify', '--end-of-options', base + '^{commit}'])
-        if check.returncode or not re.fullmatch(rb'[0-9a-f]{40,64}\s*', check.stdout):
-            raise ValueError('base is not a uniquely resolvable commit')
-        resolved = check.stdout.decode('ascii').strip()
+        resolved = resolve_base(root, base)
         commands.append(['git', 'diff', '--no-ext-diff', '--no-renames', '--name-only', '-z', resolved, 'HEAD', '--'])
     commands.extend((['git', 'diff', '--no-ext-diff', '--no-renames', '--name-only', '-z', '--'],
                      ['git', 'diff', '--cached', '--no-ext-diff', '--no-renames', '--name-only', '-z', '--'],
@@ -405,8 +420,11 @@ def administrative_only_task_paths(root, changed_paths, rules, base=None):
     """
     task_path = re.compile(r'^specs/[A-Za-z0-9_-]+/(?:amendments/[A-Za-z0-9_-]+/)?'
                            r'tasks(?:-[A-Za-z0-9_-]+)?\.md$', re.I)
-    if base is not None and (not isinstance(base, str) or not re.fullmatch(r'[0-9a-fA-F]{7,64}', base)):
-        raise ValueError('base must be an explicit commit hash')
+    if base is not None:
+        try:
+            base = resolve_base(root, base)
+        except ValueError:
+            return set()          # an unresolvable base hides nothing (conservative, as before FR-261)
     base_ref = base or 'HEAD'
     root = Path(root).resolve(strict=True)
     result = set()

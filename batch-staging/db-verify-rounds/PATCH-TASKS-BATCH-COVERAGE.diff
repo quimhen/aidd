@@ -1,0 +1,1470 @@
+diff --git a/adapters/dot-aidd/hooks/mark_code_edit.py b/adapters/dot-aidd/hooks/mark_code_edit.py
+index 2a6f0be..baafb15 100644
+--- a/adapters/dot-aidd/hooks/mark_code_edit.py
++++ b/adapters/dot-aidd/hooks/mark_code_edit.py
+@@ -12,6 +12,7 @@ most recent code-file edit this session (legacy marker) and the AIDD evidence:
+ but record nothing here: a shell command's file writes cannot be attributed reliably (documented limit).
+ Always exits 0 — non-dict payloads / non-string fields are tolerated (hook_error recorded).
+ """
++import re
+ import sys
+ from pathlib import Path
+ 
+@@ -19,6 +20,7 @@ sys.path.insert(0, str(Path(__file__).parent))
+ from _common import read_event, write_timestamp, is_code_file, is_r6_gated  # noqa: E402
+ 
+ SPEC_FILES = {'spec.md', 'plan.md', 'tasks.md', 'mockup-audit.md', 'contracts.md', 'data-model.md'}
++_BATCH_NAME_RE = re.compile(r'tasks-[a-z0-9_-]+\.md')   # tasks-<name>.md batch task files of a spec
+ MAX_TASKS_BYTES = 2 * 1024 * 1024
+ 
+ event = read_event()
+@@ -83,7 +85,7 @@ try:  # evidence recorder
+         _real = _ev.real_path(_p)
+         _base = _real.name.lower()
+         _hits = []
+-        if _base in SPEC_FILES:
++        if _base in SPEC_FILES or _BATCH_NAME_RE.fullmatch(_base):
+             for _r in _roots:
+                 try:
+                     _parts = _real.relative_to(_ev.real_path(_r)).parts
+@@ -99,7 +101,7 @@ try:  # evidence recorder
+                 try:
+                     import aidd_rules as _rules
+                     if _real.stat().st_size <= MAX_TASKS_BYTES:
+-                        _extra['hash'] = _rules.approval_hash(_real.read_text(encoding='utf-8', errors='replace'))
++                        _extra['hash'] = _rules.approval_hash(_rules.with_batches(_real.parent, _real.read_text(encoding='utf-8', errors='replace')))
+                 except Exception:
+                     pass
+             for _r, _sp in _hits:
+diff --git a/adapters/dot-aidd/hooks/rule_gate.py b/adapters/dot-aidd/hooks/rule_gate.py
+index 27a8673..b8c9b94 100644
+--- a/adapters/dot-aidd/hooks/rule_gate.py
++++ b/adapters/dot-aidd/hooks/rule_gate.py
+@@ -316,11 +316,13 @@ def _r5_tasks(ev, d, root, session):
+ 
+ def _tasks_last_change(ev, root, d, spec_dir_name):
+     """Last content change of tasks.md: the later of its mtime and the newest recorded tasks.md edit."""
+-    t = _mtime(d / 'tasks.md') or 0.0
++    _, rules = _libs()
++    t = max([_mtime(d / 'tasks.md') or 0.0] + [_mtime(d / n) or 0.0 for n in rules.tasks_batch_names(d)])
+     try:
+         for e in ev.events(root, None, 'spec_edit'):
+             dd = e.get('detail') or {}
+-            if str(dd.get('spec', '')).lower() == spec_dir_name.lower() and str(dd.get('file', '')).lower() == 'tasks.md':
++            fn = str(dd.get('file', '')).lower()
++            if str(dd.get('spec', '')).lower() == spec_dir_name.lower() and (fn == 'tasks.md' or rules._BATCH_FILE_RE.fullmatch(fn)):
+                 t = max(t, e['ts'])
+     except Exception:
+         pass
+@@ -361,8 +363,8 @@ def _approval_gate(ev, rules, d, root, session, new_text, cur_text):
+         return [_v('R6', 'An Approved: line cannot be written together with a brand-new tasks.md.',
+                    'Write tasks.md with "Approved: PENDING", present it to the user (AskUserQuestion: approve '
+                    'the tasks? with an "Approve" option), then add the approval line by editing tasks.md.')]
+-    h_new = rules.approval_hash(new_text)
+-    if rules.approval_hash(cur_text) != h_new:
++    h_new = rules.approval_hash(rules.with_batches(d, new_text))   # tasks.md + its tasks-<name>.md batch files
++    if rules.approval_hash(rules.with_batches(d, cur_text)) != h_new:
+         return [_v('R6', 'This edit changes tasks.md content AND the Approved: line. An approval edit must change '
+                          'nothing else (the hash of the current file and of the result differ).',
+                    'First edit the tasks (without an Approved: line), present the result to the user, and only '
+@@ -588,7 +590,7 @@ def _ambiguous_violation(ev, root):
+ def _target_violation(ev, rules, root, sid, how):
+     """aidd:FR-201 at most ONE R6 violation for the gate target `sid`, naming it, `how` and the unblock path."""
+     d = root / 'specs' / sid
+-    tasks = _read(d / 'tasks.md', rules.MAX_CHARS * 2)
++    tasks = rules.with_batches(d, _read(d / 'tasks.md', rules.MAX_CHARS * 2))
+     why = _HOW_TEXT.get(how, how or 'gate target')
+     unblock = (f'Unblock: `aidd review specs/{sid}`, then `aidd review specs/{sid} --wait` in the background (the '
+                f'owner presses `Aprobar y guardar` on the page, which saves review.md); ask ONE tagged question, then '
+diff --git a/adapters/dot-aidd/scripts/aidd_guard.py b/adapters/dot-aidd/scripts/aidd_guard.py
+index 9c26b98..608bfed 100644
+--- a/adapters/dot-aidd/scripts/aidd_guard.py
++++ b/adapters/dot-aidd/scripts/aidd_guard.py
+@@ -287,6 +287,18 @@ def _safe_list(fn):
+         return []
+ 
+ 
++def _read_tasks_small(d):
++    """tasks.md + its tasks-<name>.md batch files (None/'' stay as they are)."""
++    text = _read_small(Path(d) / 'tasks.md')
++    if not text:
++        return text
++    try:
++        import aidd_rules
++        return aidd_rules.with_batches(d, text)
++    except Exception:
++        return text
++
++
+ def _read_small(p):
+     """Text of `p`, or None when it is missing, unreadable or larger than MAX_QA_READ."""
+     try:
+@@ -426,7 +438,7 @@ def _staged_hash(root, path):
+ def _partial_passes(root, d, code, status, ev, rules, full_ts):
+     """Read the latest relevant runner receipt; unknown coverage cannot bypass verify."""
+     try:
+-        tasks_text, spec_text = _read_small(d / 'tasks.md'), _read_small(d / 'spec.md')
++        tasks_text, spec_text = _read_tasks_small(d), _read_small(d / 'spec.md')
+         if tasks_text is None or spec_text is None:
+             return False
+         owners = _task_owners(tasks_text)
+@@ -499,7 +511,7 @@ def _latest_partial_failure(root, d, code, evidence):
+                     return float('inf')
+                 if set(values) & staged_ids:
+                     return float('inf')
+-        owners = _task_owners(_read_small(d / 'tasks.md') or '')
++        owners = _task_owners(_read_tasks_small(d) or '')
+         affected = {task for task, paths in owners.items() if set(paths) & set(code)}
+         latest = 0.0
+         provider_events = evidence.events(root, kind='provider_verify_run')
+@@ -565,7 +577,7 @@ def _owning_specs(root, code):
+     owners = []
+     for spec in _safe_list(lambda: ev.open_specs(root)):
+         d = root / 'specs' / str(spec)
+-        text = _read_small(d / 'tasks.md')
++        text = _read_tasks_small(d)
+         if not text:
+             continue
+         targets = set(_target_files(text))
+@@ -603,7 +615,7 @@ def _light_status(root, d, ev, rules, approved):
+     if not tasks_p.exists():
+         ap = 'no-tasks'
+     else:
+-        text = _read_small(tasks_p)
++        text = _read_tasks_small(d)
+         if text is None:
+             return {'spec': d.name, 'unparseable': True}
+         if rules.approval_line(text) is None:
+diff --git a/adapters/dot-aidd/scripts/aidd_progress.py b/adapters/dot-aidd/scripts/aidd_progress.py
+index d249999..1459eb8 100644
+--- a/adapters/dot-aidd/scripts/aidd_progress.py
++++ b/adapters/dot-aidd/scripts/aidd_progress.py
+@@ -344,6 +344,11 @@ def measure(root, spec_dir):
+     d = Path(spec_dir)
+     tasks_md = d / 'tasks.md'
+     text = tasks_md.read_text(encoding='utf-8', errors='replace') if tasks_md.is_file() else ''
++    try:   # tasks.md + its tasks-<name>.md batch files
++        import aidd_rules
++        text = aidd_rules.with_batches(d, text)
++    except Exception:
++        pass
+     rows = []
+     for t in parse_tasks(text):
+         rows.append({**t, 'state': task_state(t, root), 'declared_done': bool(DONE_RE.search(t['status']))})
+diff --git a/adapters/dot-aidd/scripts/aidd_review.py b/adapters/dot-aidd/scripts/aidd_review.py
+index bd66dba..3d8fee4 100644
+--- a/adapters/dot-aidd/scripts/aidd_review.py
++++ b/adapters/dot-aidd/scripts/aidd_review.py
+@@ -193,13 +193,30 @@ def _load_sources(spec_dir):
+                 text = _read_text(p)
+         except OSError:
+             text = None
++        if name == 'tasks.md' and text is not None:
++            try:   # tasks.md + its tasks-<name>.md batch files, one combined text (hash, items, headings)
++                text = _rules().with_batches(d, text)
++            except ImportError:
++                pass
+         out.append((name, text))
+     return out
+ 
+ 
+ def _oversize(sources):
+-    """[(name, chars)] of the sources over MAX_REVIEW_SOURCE_CHARS (aidd:FR-202 fail closed)."""
+-    return [(n, len(t)) for n, t in sources if t is not None and len(t) > MAX_REVIEW_SOURCE_CHARS]
++    """[(name, chars)] of the sources over MAX_REVIEW_SOURCE_CHARS (aidd:FR-202 fail closed). The limit is
++    per FILE: the combined tasks text is split back into tasks.md and each `tasks-<name>.md` batch file."""
++    out = []
++    for n, t in sources:
++        if t is None:
++            continue
++        parts = [(n, t)]
++        if n == 'tasks.md':
++            try:
++                parts = _rules().split_tasks_segments(t)
++            except ImportError:
++                pass
++        out += [(pn, len(pt)) for pn, pt in parts if len(pt) > MAX_REVIEW_SOURCE_CHARS]
++    return out
+ 
+ 
+ def size_warnings(sources):
+@@ -1339,6 +1356,10 @@ def _approval_tag(spec_dir):
+         text = _read_text(p)
+     except OSError:
+         return None
++    try:
++        text = _rules().with_batches(spec_dir, text)
++    except ImportError:
++        pass
+     try:
+         _script_dir_on_path()
+         import aidd_status  # noqa: E402 — lazy: a heavy module, needed only for the tag
+diff --git a/adapters/dot-aidd/scripts/aidd_rules.py b/adapters/dot-aidd/scripts/aidd_rules.py
+index b705b33..70698ad 100644
+--- a/adapters/dot-aidd/scripts/aidd_rules.py
++++ b/adapters/dot-aidd/scripts/aidd_rules.py
+@@ -497,6 +497,28 @@ def plan_totals(tasks_text):
+ 
+ 
+ def _check_tasks(text):
++    """R1 over a tasks text. With batch files (combined text) EACH file is checked on its own (own Waves
++    table, own totals; violations of a batch carry its file name) and a task id defined in two files is reported."""
++    segs = split_tasks_segments(text)
++    legacy_ok = _is_legacy_tasks(text)
++    if len(segs) == 1:
++        return _check_tasks_one(text, legacy_ok)
++    out, seen = [], {}
++    for name, seg in segs:
++        vs = _check_tasks_one(seg, legacy_ok)
++        if name != 'tasks.md':
++            for v in vs:
++                v['message'] = f'[{name}] ' + v['message']
++        out += vs
++        for tid in _task_blocks(_clean(seg)):
++            if tid in seen and seen[tid] != name:
++                out.append(_v('R1', f'{tid} has a task block in more than one tasks file ({seen[tid]} and {name}).',
++                              f'Keep the "### {tid}" block in ONE file (a pointer row in the base is fine, a second block is not).'))
++            seen.setdefault(tid, name)
++    return out
++
++
++def _check_tasks_one(text, legacy_ok):
+     out = []
+     t = _clean(text)
+     fix_w = (f'Add a "## Waves" section with the table {_NEW_WAVES_HDR} '
+@@ -506,7 +528,7 @@ def _check_tasks(text):
+     waves = []
+     variant = 'legacy'
+     # FR-009: ONLY an approved tasks.md (approval_valid) with no tokens column is legacy and exempt
+-    legacy_ok = _is_legacy_tasks(text)
++    # (legacy_ok is computed once over the whole combined text by _check_tasks)
+     if tbl is None:
+         out.append(_v('R1', 'tasks.md has no "## Waves" table.', fix_w))
+     else:
+@@ -1524,6 +1546,54 @@ def unit_consent_question(package):
+     return f"Aprobar unidad? [unit:{data['unit']}:{data['digest']}]\n{package}"
+ 
+ 
++# ------------------------------------------------- tasks split over batch files
++# A spec keeps `tasks.md` (the base, holds the single `Approved:` line) and may add batch files named
++# `tasks-<name>.md` (e.g. one per amendment batch). Drafts (`tasks-x.draft.md`, a dot in the name) are not
++# batches. Everything that hashes, checks, gates or reviews the tasks reads the COMBINED text: the base text
++# followed, in sorted file-name order, by `<!-- aidd-batch: <name> -->` + the batch text. A spec with no batch
++# file yields the base text unchanged, so its approval hash is byte-for-byte the historical one.
++_BATCH_FILE_RE = re.compile(r'tasks-[A-Za-z0-9_-]+\.md')
++_BATCH_MARK_RE = re.compile(r'^<!-- aidd-batch: (tasks-[A-Za-z0-9_-]+\.md) -->[ \t]*\r?$', re.M)
++
++
++def tasks_batch_names(spec_dir):
++    """Sorted names of the batch task files (`tasks-<name>.md`) of a spec folder; [] when none."""
++    try:
++        return sorted(p.name for p in Path(spec_dir).iterdir() if _BATCH_FILE_RE.fullmatch(p.name) and p.is_file())
++    except OSError:
++        return []
++
++
++def combine_tasks(base_text, batches):
++    """base text + `<!-- aidd-batch: name -->` + text for each (name, text) of `batches` (given in order)."""
++    out = base_text
++    for name, text in batches:
++        out += ('' if out.endswith('\n') else '\n') + f'\n<!-- aidd-batch: {name} -->\n' + text
++    return out
++
++
++def with_batches(spec_dir, base_text):
++    """The combined tasks text of a spec: `base_text` (tasks.md) plus its batch files. Returns `base_text`
++    itself when it is empty/None (no tasks.md) or the spec has no batch file."""
++    if not base_text:
++        return base_text
++    names = tasks_batch_names(spec_dir)
++    if not names:
++        return base_text
++    return combine_tasks(base_text, [(n, _read(Path(spec_dir) / n)) for n in names])
++
++
++def read_tasks(spec_dir):
++    """Combined tasks text of a spec folder ('' when tasks.md is missing)."""
++    return with_batches(spec_dir, _read(Path(spec_dir) / 'tasks.md'))
++
++
++def split_tasks_segments(text):
++    """[(file name, text)] of a combined tasks text; the first is always ('tasks.md', base)."""
++    parts = _BATCH_MARK_RE.split(text if isinstance(text, str) else '')
++    return [('tasks.md', parts[0])] + [(parts[i], parts[i + 1]) for i in range(1, len(parts) - 1, 2)]
++
++
+ def approval_projection(tasks_text):
+     """Semantic task text shared by legacy approval and incremental scope hashes."""
+     t = _norm_nl(tasks_text)
+@@ -1597,7 +1667,7 @@ def required_domains(spec_dir):
+     doms = {'security', 'functional'}
+     try:
+         d = Path(spec_dir)
+-        tasks = _read(d / 'tasks.md')
++        tasks = read_tasks(d)
+         if re.search(r'\b(SCREEN|CTL|COMP)-\d+', tasks):
+             doms.add('ui')
+         if re.search(r'\bAPI-\d+', tasks):
+@@ -1637,7 +1707,7 @@ def impact_summary(spec_dir):
+     when a target path names an auth/secret/permission surface; `performance` only for a large change or a
+     database change that is not small. A suggestion, never a gate. Never raises."""
+     try:
+-        files = task_targets(_read(Path(spec_dir) / 'tasks.md'))
++        files = task_targets(read_tasks(spec_dir))
+         n = len(files)
+         mag = 'small' if n <= 2 else ('medium' if n <= 8 else 'large')
+         doms = {'functional'}
+@@ -1895,6 +1965,11 @@ def check_spec_dir(spec_dir, root=None, session=None, static_only=False):
+         proj = _proj_root(d, root)
+         spec_big, tasks_big = _big(spec_p), _big(tasks_p)
+         spec_t, tasks_t = ('' if spec_big else _read(spec_p)), ('' if tasks_big else _read(tasks_p))
++        if not tasks_big:
++            for bn in tasks_batch_names(d):
++                if _big(d / bn):
++                    out.append(_v('R1', f'{bn} file too large (> 2 MB): it is not scanned.', f'Shrink {bn} below 2 MB.'))
++            tasks_t = with_batches(d, tasks_t)
+         if not spec_p.exists():
+             out.append(_v('R2', f'{d.name}/spec.md does not exist.', 'Create spec.md (templates/spec.md) first.'))
+         elif spec_big:
+@@ -2858,7 +2933,7 @@ def _current_approved(ev, root, spec_dir):
+     if not callable(f):
+         return None
+     try:
+-        tasks = _read(d / 'tasks.md')
++        tasks = read_tasks(d)
+         a = f(root, d.name, approval_hash(tasks)) if tasks.strip() else None
+         return a if a is not None else f(root, d.name)
+     except Exception:
+@@ -2998,7 +3073,7 @@ def _run_problems(ev, root, spec_dir, spec_text, run, fingerprint=None):
+                 return True
+             except (ValueError, re.error):
+                 return False
+-        current_scope = verification_scope(spec_text, _read(d / 'tasks.md'))
++        current_scope = verification_scope(spec_text, read_tasks(d))
+         recorded_generated = [str(x) for x in (run.get('code_generated') or [])]
+         legacy_fp = run.get('code_fp_end')
+         legacy_safe = (not algorithm and isinstance(legacy_fp, str)
+@@ -3033,7 +3108,7 @@ def _run_problems(ev, root, spec_dir, spec_text, run, fingerprint=None):
+             cnow = (g(root, scope=scope, exclude=excl, **kw) if (scope or excl) else g(root, **kw)) if callable(g) else None
+         except Exception:
+             cnow = None
+-        if verification_scope(spec_text, _read(d / 'tasks.md')) != sorted(scope):
++        if verification_scope(spec_text, read_tasks(d)) != sorted(scope):
+             out.append(('stale', _v('R10', 'The Verification `Scope:` line changed after the last verify_run.', rerun)))
+         if cnow != cfp_end:
+             out.append(('stale', _v('R10', 'A code or data file changed since the last verify_run (documentation edits and commits do not count).',
+@@ -3225,7 +3300,7 @@ def _closing_audit_reason(event, spec_dir, domains, gate2, ev, root):
+         if not want <= h['domains']:
+             return 'its header lacks the required domain(s): ' + ', '.join(sorted(want - h['domains']))
+         d = Path(spec_dir)
+-        tasks = _read(d / 'tasks.md')
++        tasks = read_tasks(d)
+         if not tasks.strip():
+             return 'tasks.md is missing or empty (no [tasks:<h8>] to match)'
+         h8 = approval_hash(tasks)[:8]
+diff --git a/adapters/dot-aidd/scripts/aidd_status.py b/adapters/dot-aidd/scripts/aidd_status.py
+index 94ff87d..a5f40ab 100644
+--- a/adapters/dot-aidd/scripts/aidd_status.py
++++ b/adapters/dot-aidd/scripts/aidd_status.py
+@@ -106,6 +106,20 @@ def _read(p):
+         return ''
+ 
+ 
++def _read_tasks(d):
++    """Combined tasks text of a spec folder: tasks.md plus its `tasks-<name>.md` batch files ('' without tasks.md).
++    Without batch files this is exactly the text of tasks.md."""
++    return rules.with_batches(d, _read(Path(d).joinpath('tasks.md')))
++
++
++def _tasks_mtime(d):
++    """Newest mtime over tasks.md and its batch files (None when tasks.md is missing)."""
++    base = _mtime(Path(d).joinpath('tasks.md'))
++    if base is None:
++        return None
++    return max([base] + [m for m in (_mtime(Path(d) / n) for n in rules.tasks_batch_names(d)) if m])
++
++
+ def _mtime(p):
+     try:
+         return Path(p).stat().st_mtime
+@@ -378,7 +392,7 @@ def _unit_audit_states(root, spec_id):
+ def _build_status(spec_dir, root=None, named=False, fingerprint=None):
+     d = Path(spec_dir).resolve()
+     root = Path(root) if root else ev.find_root(d)
+-    spec_text, tasks_text = _read(d / 'spec.md'), _read(d / 'tasks.md')
++    spec_text, tasks_text = _read(d / 'spec.md'), _read_tasks(d)
+     st = {'spec': d.name, 'root': str(root)}
+     since = rules.spec_first_edit_ts(ev, root, d.name)
+ 
+@@ -1053,7 +1067,7 @@ def _derived_facts(root, focus=None, fingerprint=None):
+     untracked_specs = facts['git'].get('untracked_specs') or {}
+     for d in _spec_dirs(root)[:500]:
+         try:
+-            t = _read(d / 'tasks.md')
++            t = _read_tasks(d)
+             ap = _approval_state(root, d, t)
+             counts[ap] = counts.get(ap, 0) + 1
+             if d.name not in listed:
+@@ -1136,7 +1150,7 @@ def cmd_check(spec_arg):
+     for v in vs:
+         print(f"FAIL {v['rule']} {v['message']} → {v['fix']}")
+     try:
+-        for note in rules.wave_agent_advice(_read(d / 'tasks.md')):
++        for note in rules.wave_agent_advice(_read_tasks(d)):
+             print(f'NOTE {note}')          # advice only: never changes the exit code
+     except Exception:
+         pass
+@@ -1189,7 +1203,7 @@ def _consent(ev, root, sess, d, tag, rs, tty=None):
+     Returns (kind, ts) with kind 'answer' | 'prompt' | 'tty', or None. `tty` replaces _tty_confirm
+     (tests). Never raises."""
+     try:
+-        since = max(_mtime(Path(d) / 'tasks.md') or 0.0, float((rs or {}).get('mtime') or 0.0))
++        since = max(_tasks_mtime(d) or 0.0, float((rs or {}).get('mtime') or 0.0))
+     except Exception:
+         since = time.time()          # fail closed: nothing recorded before now counts
+     try:
+@@ -1235,7 +1249,7 @@ def _review_approval(d, root, text):
+         return {'page_current': page.is_file(), 'complete': False,
+                 'reason': f'review state unavailable ({type(e).__name__})'}
+     try:
+-        if rs.get('complete') and rules.approval_hash(_read(Path(d) / 'tasks.md')) != rules.approval_hash(text):
++        if rs.get('complete') and rules.approval_hash(_read_tasks(d)) != rules.approval_hash(text):
+             rs['complete'] = False
+             rs['reason'] = 'tasks.md changed while the approval ran: run the command again'
+     except Exception:
+@@ -1408,6 +1422,8 @@ def cmd_approve(spec_arg):
+     root = ev.find_root(d)
+     raw = tasks_p.read_bytes()
+     text = raw.decode('utf-8', errors='replace')
++    base_text = text
++    text = rules.with_batches(d, base_text)   # the approval covers tasks.md + its tasks-<name>.md batch files
+     bad = rules.check_content('tasks', text)
+     if bad:
+         for v in bad[:8]:
+@@ -1424,7 +1440,7 @@ def cmd_approve(spec_arg):
+         print('Refused: spec.md has no valid "## Verification" table, so the tasks cannot be approved (the close '
+               'gate runs those commands). Fix the rows above, then ask for approval again.')
+         return 1
+-    tm = _mtime(tasks_p) or 0.0
++    tm = _tasks_mtime(d) or 0.0
+     sess = _current_session(root)
+     tag = approval_tag(text)
+     rs = _review_approval(d, root, text)
+@@ -1484,7 +1500,7 @@ def cmd_approve(spec_arg):
+     eol = _detect_eol(raw)
+     h = rules.approval_hash(text)
+     line = f'Approved: {date.today().isoformat()} hash:{h}'
+-    lines = text.replace('\r\n', '\n').replace('\r', '\n').split('\n')
++    lines = base_text.replace('\r\n', '\n').replace('\r', '\n').split('\n')
+     idx = [i for i, ln in enumerate(lines) if re.match(r'^\s*approved\s*:', ln, re.I)]
+     if idx:
+         lines[idx[-1]] = line
+@@ -1495,7 +1511,7 @@ def cmd_approve(spec_arg):
+             lines.pop()
+         lines += ['', line, '']
+     tasks_p.write_bytes('\n'.join(lines).encode('utf-8').replace(b'\n', eol))
+-    new = _read(tasks_p)
++    new = rules.with_batches(d, _read(tasks_p))
+     if not rules.approval_valid(new):  # pragma: no cover - defensive
+         print('Wrote the Approved line but it does not validate; please report this.')
+         return 1
+@@ -1944,7 +1960,7 @@ def cmd_verify_many(spec_args, full=False, bail=False, wave=None, result_sink=No
+                 return 1
+             root = ev.find_root(d)
+             try:
+-                rows = _wave_rows(_read(d / 'tasks.md'), rules.parse_verification(_read(d / 'spec.md')), wave)
++                rows = _wave_rows(_read_tasks(d), rules.parse_verification(_read(d / 'spec.md')), wave)
+                 if any(row.get('inputs') and not rules.row_input_fingerprint(root, row['inputs']) for row in rows):
+                     raise ValueError('missing or invalid Inputs')
+             except ValueError as exc:
+@@ -2116,7 +2132,7 @@ def _changed_task_selection(root, spec, base=None):
+     if any(path.replace('\\', '/').lower() in metadata for path in paths):
+         raise ValueError('spec policy changed; affected tasks cannot be determined from declared Inputs')
+     d = Path(root) / 'specs' / spec_id
+-    tasks_text = _read(d / 'tasks.md')
++    tasks_text = _read_tasks(d)
+     rows = rules.parse_verification(_read(d / 'spec.md'))
+     task_ids = set()
+     for line in rules._clean(tasks_text).splitlines():
+@@ -2176,7 +2192,7 @@ def cmd_verify(spec_arg, full=False, bail=False, wave=None, result_sink=None, wa
+             print('Refused: --tasks cannot be combined with --wave, --full or --bail; nothing was executed.')
+             return 1
+         try:
+-            tasks_text_start = _read(d / 'tasks.md')
++            tasks_text_start = _read_tasks(d)
+             selection_fp_start = _task_selection_fingerprint(tasks_text_start, spec_text, task_ids)
+             rows = _task_rows(tasks_text_start, rows, task_ids)
+         except ValueError as e:
+@@ -2192,7 +2208,7 @@ def cmd_verify(spec_arg, full=False, bail=False, wave=None, result_sink=None, wa
+             print('Refused: --bail cannot verify a complete wave.')
+             return 1
+         try:
+-            rows = _wave_rows(_read(d / 'tasks.md'), rows, wave)
++            rows = _wave_rows(_read_tasks(d), rows, wave)
+         except ValueError as e:
+             print(f'Refused: {e}; nothing was executed.')
+             return 1
+@@ -2234,7 +2250,7 @@ def cmd_verify(spec_arg, full=False, bail=False, wave=None, result_sink=None, wa
+     sess = _current_session(root)
+     started = time.time()
+     fp_start = ev.worktree_fingerprint(root)
+-    scope = rules.verification_scope(spec_text, _read(d / 'tasks.md'))   # [] = whole tree; else only these files count
++    scope = rules.verification_scope(spec_text, _read_tasks(d))   # [] = whole tree; else only these files count
+     if task_ids is not None and all(row.get('inputs') for row in rows):
+         scope = sorted({pattern for row in rows for pattern in row['inputs']})
+         print('task scope uses declared Inputs only; transitive completeness is not attested.', flush=True)
+@@ -2538,7 +2554,7 @@ def cmd_verify(spec_arg, full=False, bail=False, wave=None, result_sink=None, wa
+     if task_ids is not None:
+         try:
+             spec_text_end = _read(d / 'spec.md')
+-            tasks_text_end = _read(d / 'tasks.md')
++            tasks_text_end = _read_tasks(d)
+             selection_fp_end = _task_selection_fingerprint(tasks_text_end, spec_text_end, task_ids)
+             verification_hash_end = rules.verification_hash(spec_text_end)
+             if selection_fp_end != selection_fp_start:
+@@ -2702,7 +2718,7 @@ def _write_redacted_diagnostics(text):
+ def _json_pass_evidence_problem(root, d, spec_text, rows, run):
+     """Revalidate this invocation's evidence immediately before emitting PASS."""
+     try:
+-        scope = rules.verification_scope(spec_text, _read(d / 'tasks.md'))
++        scope = rules.verification_scope(spec_text, _read_tasks(d))
+         try:
+             ev._scope_re(rules.verification_generated(spec_text))
+             ev._scope_re(run.get('code_generated') or [])
+@@ -2772,7 +2788,7 @@ def cmd_verify_json(spec_arg, full=False, bail=False, wave=None, *, recorded_run
+             return _verify_json_error('verification manifest changed during execution', d.name, wave, elapsed)
+         rows = rules.parse_verification(spec_text)
+         if wave is not None:
+-            rows = _wave_rows(_read(d / 'tasks.md'), rows, wave)
++            rows = _wave_rows(_read_tasks(d), rows, wave)
+         results = run.get('results')
+         ids = [str(r.get('n') or i) for i, r in enumerate(rows, 1)]
+         if (not rows or not isinstance(results, list) or len(results) != len(rows)
+@@ -2843,7 +2859,7 @@ def _tasks_hash(d):
+     """approval_hash of the current tasks.md ('' when missing) - lets Status-only edits keep a spec closed."""
+     if d is None or not (d / 'tasks.md').exists():
+         return ''
+-    return rules.approval_hash(_read(d / 'tasks.md'))
++    return rules.approval_hash(_read_tasks(d))
+ 
+ 
+ def _fmt_violation(v):
+@@ -2875,7 +2891,7 @@ def _close_gaps(d, root):
+                                 f"{result.get('reason')} → review this unit and domain.")
+     except (OSError, ValueError, TypeError) as exc:
+         gaps.append(f'R7 unit audit evidence cannot be verified ({exc}).')
+-    tasks_t = _read(d / 'tasks.md')
++    tasks_t = _read_tasks(d)
+     if not (d / 'tasks.md').exists() or not rules.approval_valid(tasks_t):
+         gaps.append('R6 tasks.md has no valid approval → ask the user, then `aidd rules approve <spec_dir>`.')
+     elif not _approval_recorded(root, d.name, tasks_t):
+@@ -3055,7 +3071,7 @@ def _abandon_since(root, spec_id, d, session=None):
+         pass
+     try:
+         if d is not None:
+-            return max(_mtime(d / 'tasks.md') or 0.0, keep)
++            return max(_tasks_mtime(d) or 0.0, keep)
+     except Exception:
+         pass
+     return keep
+diff --git a/adapters/dot-aidd/scripts/aidd_tools.py b/adapters/dot-aidd/scripts/aidd_tools.py
+index 4063740..105c8bf 100644
+--- a/adapters/dot-aidd/scripts/aidd_tools.py
++++ b/adapters/dot-aidd/scripts/aidd_tools.py
+@@ -217,7 +217,15 @@ def catalog(root, keywords, as_json):
+ def _targets_of(path):
+     """[(task_id, [files])] from the Target file column of a tasks.md."""
+     out = []
+-    for ln in _read(path).splitlines():
++    texts = [_read(path)]
++    if os.path.basename(path) == 'tasks.md':   # + the tasks-<name>.md batch files of the same spec
++        try:
++            folder = os.path.dirname(path)
++            texts += [_read(os.path.join(folder, n)) for n in sorted(os.listdir(folder))
++                      if re.fullmatch(r'tasks-[A-Za-z0-9_-]+\.md', n)]
++        except OSError:
++            pass
++    for ln in '\n'.join(texts).splitlines():
+         cells = [c.strip() for c in ln.strip().strip('|').split('|')]
+         if len(cells) < 3 or not re.match(r'^T-\d+', cells[0]):
+             continue
+diff --git a/adapters/dot-aidd/scripts/check_spec.py b/adapters/dot-aidd/scripts/check_spec.py
+index e3d48e8..bead712 100644
+--- a/adapters/dot-aidd/scripts/check_spec.py
++++ b/adapters/dot-aidd/scripts/check_spec.py
+@@ -30,6 +30,17 @@ CODE_RE = re.compile(r'\b(SCREEN-\d+(?:-F\d+)?|CTL-\d+|COMP-\d+|API-\d+|US-\d+)\
+ TABLE_ROW_RE = re.compile(r'^\|(.+)\|\s*$')
+ 
+ 
++def read_tasks(spec_dir):
++    """tasks.md plus its `tasks-<name>.md` batch files as ONE text (same combination as aidd_rules.with_batches)."""
++    text = read(Path(spec_dir) / 'tasks.md')
++    try:
++        sys.path.insert(0, str(Path(__file__).resolve().parent))
++        import aidd_rules
++        return aidd_rules.with_batches(spec_dir, text)
++    except Exception:
++        return text
++
++
+ def read(path):
+     return path.read_text(encoding='utf-8') if path.exists() else ''
+ 
+@@ -478,7 +489,7 @@ def main():
+ 
+     mockup_audit = read(spec_dir / 'mockup-audit.md')
+     plan = read(spec_dir / 'plan.md')
+-    tasks = read(spec_dir / 'tasks.md')
++    tasks = read_tasks(spec_dir)
+     qa_audit = read(spec_dir / 'qa-audit.md')
+     contracts = read(spec_dir / 'contracts.md')
+     spec_text = read(spec_dir / 'spec.md')
+diff --git a/skill/hooks/mark_code_edit.py b/skill/hooks/mark_code_edit.py
+index 2a6f0be..baafb15 100644
+--- a/skill/hooks/mark_code_edit.py
++++ b/skill/hooks/mark_code_edit.py
+@@ -12,6 +12,7 @@ most recent code-file edit this session (legacy marker) and the AIDD evidence:
+ but record nothing here: a shell command's file writes cannot be attributed reliably (documented limit).
+ Always exits 0 — non-dict payloads / non-string fields are tolerated (hook_error recorded).
+ """
++import re
+ import sys
+ from pathlib import Path
+ 
+@@ -19,6 +20,7 @@ sys.path.insert(0, str(Path(__file__).parent))
+ from _common import read_event, write_timestamp, is_code_file, is_r6_gated  # noqa: E402
+ 
+ SPEC_FILES = {'spec.md', 'plan.md', 'tasks.md', 'mockup-audit.md', 'contracts.md', 'data-model.md'}
++_BATCH_NAME_RE = re.compile(r'tasks-[a-z0-9_-]+\.md')   # tasks-<name>.md batch task files of a spec
+ MAX_TASKS_BYTES = 2 * 1024 * 1024
+ 
+ event = read_event()
+@@ -83,7 +85,7 @@ try:  # evidence recorder
+         _real = _ev.real_path(_p)
+         _base = _real.name.lower()
+         _hits = []
+-        if _base in SPEC_FILES:
++        if _base in SPEC_FILES or _BATCH_NAME_RE.fullmatch(_base):
+             for _r in _roots:
+                 try:
+                     _parts = _real.relative_to(_ev.real_path(_r)).parts
+@@ -99,7 +101,7 @@ try:  # evidence recorder
+                 try:
+                     import aidd_rules as _rules
+                     if _real.stat().st_size <= MAX_TASKS_BYTES:
+-                        _extra['hash'] = _rules.approval_hash(_real.read_text(encoding='utf-8', errors='replace'))
++                        _extra['hash'] = _rules.approval_hash(_rules.with_batches(_real.parent, _real.read_text(encoding='utf-8', errors='replace')))
+                 except Exception:
+                     pass
+             for _r, _sp in _hits:
+diff --git a/skill/hooks/rule_gate.py b/skill/hooks/rule_gate.py
+index 27a8673..b8c9b94 100644
+--- a/skill/hooks/rule_gate.py
++++ b/skill/hooks/rule_gate.py
+@@ -316,11 +316,13 @@ def _r5_tasks(ev, d, root, session):
+ 
+ def _tasks_last_change(ev, root, d, spec_dir_name):
+     """Last content change of tasks.md: the later of its mtime and the newest recorded tasks.md edit."""
+-    t = _mtime(d / 'tasks.md') or 0.0
++    _, rules = _libs()
++    t = max([_mtime(d / 'tasks.md') or 0.0] + [_mtime(d / n) or 0.0 for n in rules.tasks_batch_names(d)])
+     try:
+         for e in ev.events(root, None, 'spec_edit'):
+             dd = e.get('detail') or {}
+-            if str(dd.get('spec', '')).lower() == spec_dir_name.lower() and str(dd.get('file', '')).lower() == 'tasks.md':
++            fn = str(dd.get('file', '')).lower()
++            if str(dd.get('spec', '')).lower() == spec_dir_name.lower() and (fn == 'tasks.md' or rules._BATCH_FILE_RE.fullmatch(fn)):
+                 t = max(t, e['ts'])
+     except Exception:
+         pass
+@@ -361,8 +363,8 @@ def _approval_gate(ev, rules, d, root, session, new_text, cur_text):
+         return [_v('R6', 'An Approved: line cannot be written together with a brand-new tasks.md.',
+                    'Write tasks.md with "Approved: PENDING", present it to the user (AskUserQuestion: approve '
+                    'the tasks? with an "Approve" option), then add the approval line by editing tasks.md.')]
+-    h_new = rules.approval_hash(new_text)
+-    if rules.approval_hash(cur_text) != h_new:
++    h_new = rules.approval_hash(rules.with_batches(d, new_text))   # tasks.md + its tasks-<name>.md batch files
++    if rules.approval_hash(rules.with_batches(d, cur_text)) != h_new:
+         return [_v('R6', 'This edit changes tasks.md content AND the Approved: line. An approval edit must change '
+                          'nothing else (the hash of the current file and of the result differ).',
+                    'First edit the tasks (without an Approved: line), present the result to the user, and only '
+@@ -588,7 +590,7 @@ def _ambiguous_violation(ev, root):
+ def _target_violation(ev, rules, root, sid, how):
+     """aidd:FR-201 at most ONE R6 violation for the gate target `sid`, naming it, `how` and the unblock path."""
+     d = root / 'specs' / sid
+-    tasks = _read(d / 'tasks.md', rules.MAX_CHARS * 2)
++    tasks = rules.with_batches(d, _read(d / 'tasks.md', rules.MAX_CHARS * 2))
+     why = _HOW_TEXT.get(how, how or 'gate target')
+     unblock = (f'Unblock: `aidd review specs/{sid}`, then `aidd review specs/{sid} --wait` in the background (the '
+                f'owner presses `Aprobar y guardar` on the page, which saves review.md); ask ONE tagged question, then '
+diff --git a/skill/hooks/stop_gate.py b/skill/hooks/stop_gate.py
+index 63e7e30..78dba15 100644
+--- a/skill/hooks/stop_gate.py
++++ b/skill/hooks/stop_gate.py
+@@ -86,7 +86,7 @@ def _closing_header(ev, rules, root, spec, d):
+     """aidd:FR-206 the exact FIRST line the closing auditor's prompt needs. Never raises."""
+     try:
+         doms = ', '.join(sorted(rules.required_domains(d)))
+-        tasks = (d / 'tasks.md').read_text(encoding='utf-8', errors='replace')
++        tasks = rules.with_batches(d, (d / 'tasks.md').read_text(encoding='utf-8', errors='replace'))
+         h = f'CLOSING AUDIT [domains: {doms}] [tasks:{rules.approval_hash(tasks)[:8]}]'
+         try:
+             if rules._is_gate2(ev, root, d):
+@@ -114,7 +114,7 @@ def _obligations(ev, rules, roots):
+         for spec in ev.open_specs(root):
+             d = Path(root) / 'specs' / spec
+             try:
+-                tasks = (d / 'tasks.md').read_text(encoding='utf-8', errors='replace')
++                tasks = rules.with_batches(d, (d / 'tasks.md').read_text(encoding='utf-8', errors='replace'))
+             except OSError:
+                 continue
+             if not rules.approval_valid(tasks):
+diff --git a/skill/scripts/aidd_guard.py b/skill/scripts/aidd_guard.py
+index 9c26b98..608bfed 100644
+--- a/skill/scripts/aidd_guard.py
++++ b/skill/scripts/aidd_guard.py
+@@ -287,6 +287,18 @@ def _safe_list(fn):
+         return []
+ 
+ 
++def _read_tasks_small(d):
++    """tasks.md + its tasks-<name>.md batch files (None/'' stay as they are)."""
++    text = _read_small(Path(d) / 'tasks.md')
++    if not text:
++        return text
++    try:
++        import aidd_rules
++        return aidd_rules.with_batches(d, text)
++    except Exception:
++        return text
++
++
+ def _read_small(p):
+     """Text of `p`, or None when it is missing, unreadable or larger than MAX_QA_READ."""
+     try:
+@@ -426,7 +438,7 @@ def _staged_hash(root, path):
+ def _partial_passes(root, d, code, status, ev, rules, full_ts):
+     """Read the latest relevant runner receipt; unknown coverage cannot bypass verify."""
+     try:
+-        tasks_text, spec_text = _read_small(d / 'tasks.md'), _read_small(d / 'spec.md')
++        tasks_text, spec_text = _read_tasks_small(d), _read_small(d / 'spec.md')
+         if tasks_text is None or spec_text is None:
+             return False
+         owners = _task_owners(tasks_text)
+@@ -499,7 +511,7 @@ def _latest_partial_failure(root, d, code, evidence):
+                     return float('inf')
+                 if set(values) & staged_ids:
+                     return float('inf')
+-        owners = _task_owners(_read_small(d / 'tasks.md') or '')
++        owners = _task_owners(_read_tasks_small(d) or '')
+         affected = {task for task, paths in owners.items() if set(paths) & set(code)}
+         latest = 0.0
+         provider_events = evidence.events(root, kind='provider_verify_run')
+@@ -565,7 +577,7 @@ def _owning_specs(root, code):
+     owners = []
+     for spec in _safe_list(lambda: ev.open_specs(root)):
+         d = root / 'specs' / str(spec)
+-        text = _read_small(d / 'tasks.md')
++        text = _read_tasks_small(d)
+         if not text:
+             continue
+         targets = set(_target_files(text))
+@@ -603,7 +615,7 @@ def _light_status(root, d, ev, rules, approved):
+     if not tasks_p.exists():
+         ap = 'no-tasks'
+     else:
+-        text = _read_small(tasks_p)
++        text = _read_tasks_small(d)
+         if text is None:
+             return {'spec': d.name, 'unparseable': True}
+         if rules.approval_line(text) is None:
+diff --git a/skill/scripts/aidd_progress.py b/skill/scripts/aidd_progress.py
+index d249999..1459eb8 100644
+--- a/skill/scripts/aidd_progress.py
++++ b/skill/scripts/aidd_progress.py
+@@ -344,6 +344,11 @@ def measure(root, spec_dir):
+     d = Path(spec_dir)
+     tasks_md = d / 'tasks.md'
+     text = tasks_md.read_text(encoding='utf-8', errors='replace') if tasks_md.is_file() else ''
++    try:   # tasks.md + its tasks-<name>.md batch files
++        import aidd_rules
++        text = aidd_rules.with_batches(d, text)
++    except Exception:
++        pass
+     rows = []
+     for t in parse_tasks(text):
+         rows.append({**t, 'state': task_state(t, root), 'declared_done': bool(DONE_RE.search(t['status']))})
+diff --git a/skill/scripts/aidd_review.py b/skill/scripts/aidd_review.py
+index bd66dba..3d8fee4 100644
+--- a/skill/scripts/aidd_review.py
++++ b/skill/scripts/aidd_review.py
+@@ -193,13 +193,30 @@ def _load_sources(spec_dir):
+                 text = _read_text(p)
+         except OSError:
+             text = None
++        if name == 'tasks.md' and text is not None:
++            try:   # tasks.md + its tasks-<name>.md batch files, one combined text (hash, items, headings)
++                text = _rules().with_batches(d, text)
++            except ImportError:
++                pass
+         out.append((name, text))
+     return out
+ 
+ 
+ def _oversize(sources):
+-    """[(name, chars)] of the sources over MAX_REVIEW_SOURCE_CHARS (aidd:FR-202 fail closed)."""
+-    return [(n, len(t)) for n, t in sources if t is not None and len(t) > MAX_REVIEW_SOURCE_CHARS]
++    """[(name, chars)] of the sources over MAX_REVIEW_SOURCE_CHARS (aidd:FR-202 fail closed). The limit is
++    per FILE: the combined tasks text is split back into tasks.md and each `tasks-<name>.md` batch file."""
++    out = []
++    for n, t in sources:
++        if t is None:
++            continue
++        parts = [(n, t)]
++        if n == 'tasks.md':
++            try:
++                parts = _rules().split_tasks_segments(t)
++            except ImportError:
++                pass
++        out += [(pn, len(pt)) for pn, pt in parts if len(pt) > MAX_REVIEW_SOURCE_CHARS]
++    return out
+ 
+ 
+ def size_warnings(sources):
+@@ -1339,6 +1356,10 @@ def _approval_tag(spec_dir):
+         text = _read_text(p)
+     except OSError:
+         return None
++    try:
++        text = _rules().with_batches(spec_dir, text)
++    except ImportError:
++        pass
+     try:
+         _script_dir_on_path()
+         import aidd_status  # noqa: E402 — lazy: a heavy module, needed only for the tag
+diff --git a/skill/scripts/aidd_rules.py b/skill/scripts/aidd_rules.py
+index b705b33..70698ad 100644
+--- a/skill/scripts/aidd_rules.py
++++ b/skill/scripts/aidd_rules.py
+@@ -497,6 +497,28 @@ def plan_totals(tasks_text):
+ 
+ 
+ def _check_tasks(text):
++    """R1 over a tasks text. With batch files (combined text) EACH file is checked on its own (own Waves
++    table, own totals; violations of a batch carry its file name) and a task id defined in two files is reported."""
++    segs = split_tasks_segments(text)
++    legacy_ok = _is_legacy_tasks(text)
++    if len(segs) == 1:
++        return _check_tasks_one(text, legacy_ok)
++    out, seen = [], {}
++    for name, seg in segs:
++        vs = _check_tasks_one(seg, legacy_ok)
++        if name != 'tasks.md':
++            for v in vs:
++                v['message'] = f'[{name}] ' + v['message']
++        out += vs
++        for tid in _task_blocks(_clean(seg)):
++            if tid in seen and seen[tid] != name:
++                out.append(_v('R1', f'{tid} has a task block in more than one tasks file ({seen[tid]} and {name}).',
++                              f'Keep the "### {tid}" block in ONE file (a pointer row in the base is fine, a second block is not).'))
++            seen.setdefault(tid, name)
++    return out
++
++
++def _check_tasks_one(text, legacy_ok):
+     out = []
+     t = _clean(text)
+     fix_w = (f'Add a "## Waves" section with the table {_NEW_WAVES_HDR} '
+@@ -506,7 +528,7 @@ def _check_tasks(text):
+     waves = []
+     variant = 'legacy'
+     # FR-009: ONLY an approved tasks.md (approval_valid) with no tokens column is legacy and exempt
+-    legacy_ok = _is_legacy_tasks(text)
++    # (legacy_ok is computed once over the whole combined text by _check_tasks)
+     if tbl is None:
+         out.append(_v('R1', 'tasks.md has no "## Waves" table.', fix_w))
+     else:
+@@ -1524,6 +1546,54 @@ def unit_consent_question(package):
+     return f"Aprobar unidad? [unit:{data['unit']}:{data['digest']}]\n{package}"
+ 
+ 
++# ------------------------------------------------- tasks split over batch files
++# A spec keeps `tasks.md` (the base, holds the single `Approved:` line) and may add batch files named
++# `tasks-<name>.md` (e.g. one per amendment batch). Drafts (`tasks-x.draft.md`, a dot in the name) are not
++# batches. Everything that hashes, checks, gates or reviews the tasks reads the COMBINED text: the base text
++# followed, in sorted file-name order, by `<!-- aidd-batch: <name> -->` + the batch text. A spec with no batch
++# file yields the base text unchanged, so its approval hash is byte-for-byte the historical one.
++_BATCH_FILE_RE = re.compile(r'tasks-[A-Za-z0-9_-]+\.md')
++_BATCH_MARK_RE = re.compile(r'^<!-- aidd-batch: (tasks-[A-Za-z0-9_-]+\.md) -->[ \t]*\r?$', re.M)
++
++
++def tasks_batch_names(spec_dir):
++    """Sorted names of the batch task files (`tasks-<name>.md`) of a spec folder; [] when none."""
++    try:
++        return sorted(p.name for p in Path(spec_dir).iterdir() if _BATCH_FILE_RE.fullmatch(p.name) and p.is_file())
++    except OSError:
++        return []
++
++
++def combine_tasks(base_text, batches):
++    """base text + `<!-- aidd-batch: name -->` + text for each (name, text) of `batches` (given in order)."""
++    out = base_text
++    for name, text in batches:
++        out += ('' if out.endswith('\n') else '\n') + f'\n<!-- aidd-batch: {name} -->\n' + text
++    return out
++
++
++def with_batches(spec_dir, base_text):
++    """The combined tasks text of a spec: `base_text` (tasks.md) plus its batch files. Returns `base_text`
++    itself when it is empty/None (no tasks.md) or the spec has no batch file."""
++    if not base_text:
++        return base_text
++    names = tasks_batch_names(spec_dir)
++    if not names:
++        return base_text
++    return combine_tasks(base_text, [(n, _read(Path(spec_dir) / n)) for n in names])
++
++
++def read_tasks(spec_dir):
++    """Combined tasks text of a spec folder ('' when tasks.md is missing)."""
++    return with_batches(spec_dir, _read(Path(spec_dir) / 'tasks.md'))
++
++
++def split_tasks_segments(text):
++    """[(file name, text)] of a combined tasks text; the first is always ('tasks.md', base)."""
++    parts = _BATCH_MARK_RE.split(text if isinstance(text, str) else '')
++    return [('tasks.md', parts[0])] + [(parts[i], parts[i + 1]) for i in range(1, len(parts) - 1, 2)]
++
++
+ def approval_projection(tasks_text):
+     """Semantic task text shared by legacy approval and incremental scope hashes."""
+     t = _norm_nl(tasks_text)
+@@ -1597,7 +1667,7 @@ def required_domains(spec_dir):
+     doms = {'security', 'functional'}
+     try:
+         d = Path(spec_dir)
+-        tasks = _read(d / 'tasks.md')
++        tasks = read_tasks(d)
+         if re.search(r'\b(SCREEN|CTL|COMP)-\d+', tasks):
+             doms.add('ui')
+         if re.search(r'\bAPI-\d+', tasks):
+@@ -1637,7 +1707,7 @@ def impact_summary(spec_dir):
+     when a target path names an auth/secret/permission surface; `performance` only for a large change or a
+     database change that is not small. A suggestion, never a gate. Never raises."""
+     try:
+-        files = task_targets(_read(Path(spec_dir) / 'tasks.md'))
++        files = task_targets(read_tasks(spec_dir))
+         n = len(files)
+         mag = 'small' if n <= 2 else ('medium' if n <= 8 else 'large')
+         doms = {'functional'}
+@@ -1895,6 +1965,11 @@ def check_spec_dir(spec_dir, root=None, session=None, static_only=False):
+         proj = _proj_root(d, root)
+         spec_big, tasks_big = _big(spec_p), _big(tasks_p)
+         spec_t, tasks_t = ('' if spec_big else _read(spec_p)), ('' if tasks_big else _read(tasks_p))
++        if not tasks_big:
++            for bn in tasks_batch_names(d):
++                if _big(d / bn):
++                    out.append(_v('R1', f'{bn} file too large (> 2 MB): it is not scanned.', f'Shrink {bn} below 2 MB.'))
++            tasks_t = with_batches(d, tasks_t)
+         if not spec_p.exists():
+             out.append(_v('R2', f'{d.name}/spec.md does not exist.', 'Create spec.md (templates/spec.md) first.'))
+         elif spec_big:
+@@ -2858,7 +2933,7 @@ def _current_approved(ev, root, spec_dir):
+     if not callable(f):
+         return None
+     try:
+-        tasks = _read(d / 'tasks.md')
++        tasks = read_tasks(d)
+         a = f(root, d.name, approval_hash(tasks)) if tasks.strip() else None
+         return a if a is not None else f(root, d.name)
+     except Exception:
+@@ -2998,7 +3073,7 @@ def _run_problems(ev, root, spec_dir, spec_text, run, fingerprint=None):
+                 return True
+             except (ValueError, re.error):
+                 return False
+-        current_scope = verification_scope(spec_text, _read(d / 'tasks.md'))
++        current_scope = verification_scope(spec_text, read_tasks(d))
+         recorded_generated = [str(x) for x in (run.get('code_generated') or [])]
+         legacy_fp = run.get('code_fp_end')
+         legacy_safe = (not algorithm and isinstance(legacy_fp, str)
+@@ -3033,7 +3108,7 @@ def _run_problems(ev, root, spec_dir, spec_text, run, fingerprint=None):
+             cnow = (g(root, scope=scope, exclude=excl, **kw) if (scope or excl) else g(root, **kw)) if callable(g) else None
+         except Exception:
+             cnow = None
+-        if verification_scope(spec_text, _read(d / 'tasks.md')) != sorted(scope):
++        if verification_scope(spec_text, read_tasks(d)) != sorted(scope):
+             out.append(('stale', _v('R10', 'The Verification `Scope:` line changed after the last verify_run.', rerun)))
+         if cnow != cfp_end:
+             out.append(('stale', _v('R10', 'A code or data file changed since the last verify_run (documentation edits and commits do not count).',
+@@ -3225,7 +3300,7 @@ def _closing_audit_reason(event, spec_dir, domains, gate2, ev, root):
+         if not want <= h['domains']:
+             return 'its header lacks the required domain(s): ' + ', '.join(sorted(want - h['domains']))
+         d = Path(spec_dir)
+-        tasks = _read(d / 'tasks.md')
++        tasks = read_tasks(d)
+         if not tasks.strip():
+             return 'tasks.md is missing or empty (no [tasks:<h8>] to match)'
+         h8 = approval_hash(tasks)[:8]
+diff --git a/skill/scripts/aidd_status.py b/skill/scripts/aidd_status.py
+index 94ff87d..a5f40ab 100644
+--- a/skill/scripts/aidd_status.py
++++ b/skill/scripts/aidd_status.py
+@@ -106,6 +106,20 @@ def _read(p):
+         return ''
+ 
+ 
++def _read_tasks(d):
++    """Combined tasks text of a spec folder: tasks.md plus its `tasks-<name>.md` batch files ('' without tasks.md).
++    Without batch files this is exactly the text of tasks.md."""
++    return rules.with_batches(d, _read(Path(d).joinpath('tasks.md')))
++
++
++def _tasks_mtime(d):
++    """Newest mtime over tasks.md and its batch files (None when tasks.md is missing)."""
++    base = _mtime(Path(d).joinpath('tasks.md'))
++    if base is None:
++        return None
++    return max([base] + [m for m in (_mtime(Path(d) / n) for n in rules.tasks_batch_names(d)) if m])
++
++
+ def _mtime(p):
+     try:
+         return Path(p).stat().st_mtime
+@@ -378,7 +392,7 @@ def _unit_audit_states(root, spec_id):
+ def _build_status(spec_dir, root=None, named=False, fingerprint=None):
+     d = Path(spec_dir).resolve()
+     root = Path(root) if root else ev.find_root(d)
+-    spec_text, tasks_text = _read(d / 'spec.md'), _read(d / 'tasks.md')
++    spec_text, tasks_text = _read(d / 'spec.md'), _read_tasks(d)
+     st = {'spec': d.name, 'root': str(root)}
+     since = rules.spec_first_edit_ts(ev, root, d.name)
+ 
+@@ -1053,7 +1067,7 @@ def _derived_facts(root, focus=None, fingerprint=None):
+     untracked_specs = facts['git'].get('untracked_specs') or {}
+     for d in _spec_dirs(root)[:500]:
+         try:
+-            t = _read(d / 'tasks.md')
++            t = _read_tasks(d)
+             ap = _approval_state(root, d, t)
+             counts[ap] = counts.get(ap, 0) + 1
+             if d.name not in listed:
+@@ -1136,7 +1150,7 @@ def cmd_check(spec_arg):
+     for v in vs:
+         print(f"FAIL {v['rule']} {v['message']} → {v['fix']}")
+     try:
+-        for note in rules.wave_agent_advice(_read(d / 'tasks.md')):
++        for note in rules.wave_agent_advice(_read_tasks(d)):
+             print(f'NOTE {note}')          # advice only: never changes the exit code
+     except Exception:
+         pass
+@@ -1189,7 +1203,7 @@ def _consent(ev, root, sess, d, tag, rs, tty=None):
+     Returns (kind, ts) with kind 'answer' | 'prompt' | 'tty', or None. `tty` replaces _tty_confirm
+     (tests). Never raises."""
+     try:
+-        since = max(_mtime(Path(d) / 'tasks.md') or 0.0, float((rs or {}).get('mtime') or 0.0))
++        since = max(_tasks_mtime(d) or 0.0, float((rs or {}).get('mtime') or 0.0))
+     except Exception:
+         since = time.time()          # fail closed: nothing recorded before now counts
+     try:
+@@ -1235,7 +1249,7 @@ def _review_approval(d, root, text):
+         return {'page_current': page.is_file(), 'complete': False,
+                 'reason': f'review state unavailable ({type(e).__name__})'}
+     try:
+-        if rs.get('complete') and rules.approval_hash(_read(Path(d) / 'tasks.md')) != rules.approval_hash(text):
++        if rs.get('complete') and rules.approval_hash(_read_tasks(d)) != rules.approval_hash(text):
+             rs['complete'] = False
+             rs['reason'] = 'tasks.md changed while the approval ran: run the command again'
+     except Exception:
+@@ -1408,6 +1422,8 @@ def cmd_approve(spec_arg):
+     root = ev.find_root(d)
+     raw = tasks_p.read_bytes()
+     text = raw.decode('utf-8', errors='replace')
++    base_text = text
++    text = rules.with_batches(d, base_text)   # the approval covers tasks.md + its tasks-<name>.md batch files
+     bad = rules.check_content('tasks', text)
+     if bad:
+         for v in bad[:8]:
+@@ -1424,7 +1440,7 @@ def cmd_approve(spec_arg):
+         print('Refused: spec.md has no valid "## Verification" table, so the tasks cannot be approved (the close '
+               'gate runs those commands). Fix the rows above, then ask for approval again.')
+         return 1
+-    tm = _mtime(tasks_p) or 0.0
++    tm = _tasks_mtime(d) or 0.0
+     sess = _current_session(root)
+     tag = approval_tag(text)
+     rs = _review_approval(d, root, text)
+@@ -1484,7 +1500,7 @@ def cmd_approve(spec_arg):
+     eol = _detect_eol(raw)
+     h = rules.approval_hash(text)
+     line = f'Approved: {date.today().isoformat()} hash:{h}'
+-    lines = text.replace('\r\n', '\n').replace('\r', '\n').split('\n')
++    lines = base_text.replace('\r\n', '\n').replace('\r', '\n').split('\n')
+     idx = [i for i, ln in enumerate(lines) if re.match(r'^\s*approved\s*:', ln, re.I)]
+     if idx:
+         lines[idx[-1]] = line
+@@ -1495,7 +1511,7 @@ def cmd_approve(spec_arg):
+             lines.pop()
+         lines += ['', line, '']
+     tasks_p.write_bytes('\n'.join(lines).encode('utf-8').replace(b'\n', eol))
+-    new = _read(tasks_p)
++    new = rules.with_batches(d, _read(tasks_p))
+     if not rules.approval_valid(new):  # pragma: no cover - defensive
+         print('Wrote the Approved line but it does not validate; please report this.')
+         return 1
+@@ -1944,7 +1960,7 @@ def cmd_verify_many(spec_args, full=False, bail=False, wave=None, result_sink=No
+                 return 1
+             root = ev.find_root(d)
+             try:
+-                rows = _wave_rows(_read(d / 'tasks.md'), rules.parse_verification(_read(d / 'spec.md')), wave)
++                rows = _wave_rows(_read_tasks(d), rules.parse_verification(_read(d / 'spec.md')), wave)
+                 if any(row.get('inputs') and not rules.row_input_fingerprint(root, row['inputs']) for row in rows):
+                     raise ValueError('missing or invalid Inputs')
+             except ValueError as exc:
+@@ -2116,7 +2132,7 @@ def _changed_task_selection(root, spec, base=None):
+     if any(path.replace('\\', '/').lower() in metadata for path in paths):
+         raise ValueError('spec policy changed; affected tasks cannot be determined from declared Inputs')
+     d = Path(root) / 'specs' / spec_id
+-    tasks_text = _read(d / 'tasks.md')
++    tasks_text = _read_tasks(d)
+     rows = rules.parse_verification(_read(d / 'spec.md'))
+     task_ids = set()
+     for line in rules._clean(tasks_text).splitlines():
+@@ -2176,7 +2192,7 @@ def cmd_verify(spec_arg, full=False, bail=False, wave=None, result_sink=None, wa
+             print('Refused: --tasks cannot be combined with --wave, --full or --bail; nothing was executed.')
+             return 1
+         try:
+-            tasks_text_start = _read(d / 'tasks.md')
++            tasks_text_start = _read_tasks(d)
+             selection_fp_start = _task_selection_fingerprint(tasks_text_start, spec_text, task_ids)
+             rows = _task_rows(tasks_text_start, rows, task_ids)
+         except ValueError as e:
+@@ -2192,7 +2208,7 @@ def cmd_verify(spec_arg, full=False, bail=False, wave=None, result_sink=None, wa
+             print('Refused: --bail cannot verify a complete wave.')
+             return 1
+         try:
+-            rows = _wave_rows(_read(d / 'tasks.md'), rows, wave)
++            rows = _wave_rows(_read_tasks(d), rows, wave)
+         except ValueError as e:
+             print(f'Refused: {e}; nothing was executed.')
+             return 1
+@@ -2234,7 +2250,7 @@ def cmd_verify(spec_arg, full=False, bail=False, wave=None, result_sink=None, wa
+     sess = _current_session(root)
+     started = time.time()
+     fp_start = ev.worktree_fingerprint(root)
+-    scope = rules.verification_scope(spec_text, _read(d / 'tasks.md'))   # [] = whole tree; else only these files count
++    scope = rules.verification_scope(spec_text, _read_tasks(d))   # [] = whole tree; else only these files count
+     if task_ids is not None and all(row.get('inputs') for row in rows):
+         scope = sorted({pattern for row in rows for pattern in row['inputs']})
+         print('task scope uses declared Inputs only; transitive completeness is not attested.', flush=True)
+@@ -2538,7 +2554,7 @@ def cmd_verify(spec_arg, full=False, bail=False, wave=None, result_sink=None, wa
+     if task_ids is not None:
+         try:
+             spec_text_end = _read(d / 'spec.md')
+-            tasks_text_end = _read(d / 'tasks.md')
++            tasks_text_end = _read_tasks(d)
+             selection_fp_end = _task_selection_fingerprint(tasks_text_end, spec_text_end, task_ids)
+             verification_hash_end = rules.verification_hash(spec_text_end)
+             if selection_fp_end != selection_fp_start:
+@@ -2702,7 +2718,7 @@ def _write_redacted_diagnostics(text):
+ def _json_pass_evidence_problem(root, d, spec_text, rows, run):
+     """Revalidate this invocation's evidence immediately before emitting PASS."""
+     try:
+-        scope = rules.verification_scope(spec_text, _read(d / 'tasks.md'))
++        scope = rules.verification_scope(spec_text, _read_tasks(d))
+         try:
+             ev._scope_re(rules.verification_generated(spec_text))
+             ev._scope_re(run.get('code_generated') or [])
+@@ -2772,7 +2788,7 @@ def cmd_verify_json(spec_arg, full=False, bail=False, wave=None, *, recorded_run
+             return _verify_json_error('verification manifest changed during execution', d.name, wave, elapsed)
+         rows = rules.parse_verification(spec_text)
+         if wave is not None:
+-            rows = _wave_rows(_read(d / 'tasks.md'), rows, wave)
++            rows = _wave_rows(_read_tasks(d), rows, wave)
+         results = run.get('results')
+         ids = [str(r.get('n') or i) for i, r in enumerate(rows, 1)]
+         if (not rows or not isinstance(results, list) or len(results) != len(rows)
+@@ -2843,7 +2859,7 @@ def _tasks_hash(d):
+     """approval_hash of the current tasks.md ('' when missing) - lets Status-only edits keep a spec closed."""
+     if d is None or not (d / 'tasks.md').exists():
+         return ''
+-    return rules.approval_hash(_read(d / 'tasks.md'))
++    return rules.approval_hash(_read_tasks(d))
+ 
+ 
+ def _fmt_violation(v):
+@@ -2875,7 +2891,7 @@ def _close_gaps(d, root):
+                                 f"{result.get('reason')} → review this unit and domain.")
+     except (OSError, ValueError, TypeError) as exc:
+         gaps.append(f'R7 unit audit evidence cannot be verified ({exc}).')
+-    tasks_t = _read(d / 'tasks.md')
++    tasks_t = _read_tasks(d)
+     if not (d / 'tasks.md').exists() or not rules.approval_valid(tasks_t):
+         gaps.append('R6 tasks.md has no valid approval → ask the user, then `aidd rules approve <spec_dir>`.')
+     elif not _approval_recorded(root, d.name, tasks_t):
+@@ -3055,7 +3071,7 @@ def _abandon_since(root, spec_id, d, session=None):
+         pass
+     try:
+         if d is not None:
+-            return max(_mtime(d / 'tasks.md') or 0.0, keep)
++            return max(_tasks_mtime(d) or 0.0, keep)
+     except Exception:
+         pass
+     return keep
+diff --git a/skill/scripts/aidd_tools.py b/skill/scripts/aidd_tools.py
+index 4063740..105c8bf 100644
+--- a/skill/scripts/aidd_tools.py
++++ b/skill/scripts/aidd_tools.py
+@@ -217,7 +217,15 @@ def catalog(root, keywords, as_json):
+ def _targets_of(path):
+     """[(task_id, [files])] from the Target file column of a tasks.md."""
+     out = []
+-    for ln in _read(path).splitlines():
++    texts = [_read(path)]
++    if os.path.basename(path) == 'tasks.md':   # + the tasks-<name>.md batch files of the same spec
++        try:
++            folder = os.path.dirname(path)
++            texts += [_read(os.path.join(folder, n)) for n in sorted(os.listdir(folder))
++                      if re.fullmatch(r'tasks-[A-Za-z0-9_-]+\.md', n)]
++        except OSError:
++            pass
++    for ln in '\n'.join(texts).splitlines():
+         cells = [c.strip() for c in ln.strip().strip('|').split('|')]
+         if len(cells) < 3 or not re.match(r'^T-\d+', cells[0]):
+             continue
+diff --git a/skill/scripts/check_spec.py b/skill/scripts/check_spec.py
+index e3d48e8..bead712 100644
+--- a/skill/scripts/check_spec.py
++++ b/skill/scripts/check_spec.py
+@@ -30,6 +30,17 @@ CODE_RE = re.compile(r'\b(SCREEN-\d+(?:-F\d+)?|CTL-\d+|COMP-\d+|API-\d+|US-\d+)\
+ TABLE_ROW_RE = re.compile(r'^\|(.+)\|\s*$')
+ 
+ 
++def read_tasks(spec_dir):
++    """tasks.md plus its `tasks-<name>.md` batch files as ONE text (same combination as aidd_rules.with_batches)."""
++    text = read(Path(spec_dir) / 'tasks.md')
++    try:
++        sys.path.insert(0, str(Path(__file__).resolve().parent))
++        import aidd_rules
++        return aidd_rules.with_batches(spec_dir, text)
++    except Exception:
++        return text
++
++
+ def read(path):
+     return path.read_text(encoding='utf-8') if path.exists() else ''
+ 
+@@ -478,7 +489,7 @@ def main():
+ 
+     mockup_audit = read(spec_dir / 'mockup-audit.md')
+     plan = read(spec_dir / 'plan.md')
+-    tasks = read(spec_dir / 'tasks.md')
++    tasks = read_tasks(spec_dir)
+     qa_audit = read(spec_dir / 'qa-audit.md')
+     contracts = read(spec_dir / 'contracts.md')
+     spec_text = read(spec_dir / 'spec.md')
+diff --git a/tests/test_tasks_batch_coverage.py b/tests/test_tasks_batch_coverage.py
+new file mode 100644
+index 0000000..3f44dc4
+--- /dev/null
++++ b/tests/test_tasks_batch_coverage.py
+@@ -0,0 +1,200 @@
++"""One spec may split its tasks over `tasks.md` + batch files `tasks-<name>.md` (e.g. one per amendment
++batch). The approval hash (R6), R1, check_spec, the code gate state and `aidd review` must cover ALL of
++them; a spec WITHOUT batch files keeps exactly the same hash (backward compatible: approvals stay valid)."""
++import hashlib
++import sys
++import tempfile
++import unittest
++from pathlib import Path
++
++REPO_ROOT = Path(__file__).resolve().parent.parent
++SCRIPTS = REPO_ROOT / "skill" / "scripts"
++sys.path.insert(0, str(SCRIPTS))
++import aidd_rules as R  # noqa: E402
++import aidd_review as RV  # noqa: E402
++import aidd_status  # noqa: E402
++
++
++def blk(n, agent, role="builder"):
++    return (f"### T-{n:02d}\n- Agent min: {agent}\n- Human ref hours: 2\n- Tokens (est): 10k\n"
++            f"- Agent role: {role}\n- Model tier: medium\n\n")
++
++
++def tasks_text(ids, agent=10, total=None, approved="Approved: PENDING", extra=""):
++    blocks = "".join(blk(i, agent) for i in ids)
++    rows = "".join(f"| {k} | T-{i:02d} | builder | {agent} | 10 | 2 |\n" for k, i in enumerate(ids, 1))
++    total = agent * len(ids) if total is None else total
++    return (f"# Tasks\n\n{blocks}## Waves\n\n| Wave | Tasks | Roles | Agent time (min) | Tokens (k) | Human ref (h) |\n"
++            f"|---|---|---|---|---|---|\n{rows}\nTotal agent time (critical path): {total} min\n"
++            f"Total tokens (k): {10 * len(ids)}\n{extra}\n{approved}\n")
++
++
++BASE = tasks_text([1, 2])
++BATCH = tasks_text([3, 4], approved="")
++# sha1[:12] of the approval projection of BASE: the compat pin (identical to approval_hash on HEAD)
++BASE_HASH_PIN = hashlib.sha1(R.approval_projection(BASE).encode("utf-8")).hexdigest()[:12]
++
++
++def make_spec(tmp, batches=None, base=BASE):
++    d = Path(tmp) / "specs" / "001-x"
++    d.mkdir(parents=True)
++    (d / "spec.md").write_text("# spec\n", encoding="utf-8")
++    (d / "tasks.md").write_text(base, encoding="utf-8", newline="")
++    for name, text in (batches or {}).items():
++        (d / name).write_text(text, encoding="utf-8", newline="")
++    return d
++
++
++class TestBatchNames(unittest.TestCase):
++    def test_only_tasks_dash_name_md_sorted(self):
++        with tempfile.TemporaryDirectory() as t:
++            d = make_spec(t, {"tasks-b.md": BATCH, "tasks-amendment-03.md": BATCH, "tasks-detail.draft.md": "x",
++                              "tasks.draft.md": "x", "tasks-x.txt": "x", "tasks-.md": "x"})
++            self.assertEqual(R.tasks_batch_names(d), ["tasks-amendment-03.md", "tasks-b.md"])
++
++    def test_no_batches(self):
++        with tempfile.TemporaryDirectory() as t:
++            self.assertEqual(R.tasks_batch_names(make_spec(t)), [])
++
++
++class TestHashCompat(unittest.TestCase):
++    def test_spec_without_batches_keeps_the_exact_hash(self):
++        with tempfile.TemporaryDirectory() as t:
++            d = make_spec(t)
++            combined = R.with_batches(d, BASE)
++            self.assertEqual(combined, BASE)  # byte identical text -> identical hash
++            self.assertEqual(R.approval_hash(combined), R.approval_hash(BASE))
++            self.assertEqual(R.approval_hash(combined), BASE_HASH_PIN)
++
++    def test_missing_base_stays_empty(self):
++        with tempfile.TemporaryDirectory() as t:
++            self.assertEqual(R.with_batches(Path(t), ""), "")
++
++
++class TestHashCoversBatches(unittest.TestCase):
++    def h(self, d):
++        return R.approval_hash(R.with_batches(d, (d / "tasks.md").read_text(encoding="utf-8")))
++
++    def test_batch_changes_hash_and_edit_changes_it_again(self):
++        with tempfile.TemporaryDirectory() as t:
++            d = make_spec(t)
++            h0 = self.h(d)
++            (d / "tasks-amendment-03.md").write_text(BATCH, encoding="utf-8")
++            h1 = self.h(d)
++            self.assertNotEqual(h0, h1)
++            (d / "tasks-amendment-03.md").write_text(BATCH.replace("Agent min: 10", "Agent min: 11", 1), encoding="utf-8")
++            self.assertNotEqual(h1, self.h(d))
++
++    def test_order_is_deterministic_by_name_not_by_creation(self):
++        with tempfile.TemporaryDirectory() as a, tempfile.TemporaryDirectory() as b:
++            da = make_spec(a, {"tasks-a.md": BATCH, "tasks-b.md": BASE})
++            db = Path(b) / "specs" / "001-x"
++            db.mkdir(parents=True)
++            (db / "tasks.md").write_text(BASE, encoding="utf-8", newline="")
++            (db / "tasks-b.md").write_text(BASE, encoding="utf-8")
++            (db / "tasks-a.md").write_text(BATCH, encoding="utf-8")
++            self.assertEqual(self.h(da), self.h(db))
++
++    def test_crlf_does_not_change_the_hash(self):
++        with tempfile.TemporaryDirectory() as t:
++            d = make_spec(t, {"tasks-a.md": BATCH})
++            h1 = self.h(d)
++            (d / "tasks-a.md").write_bytes(BATCH.replace("\n", "\r\n").encode("utf-8"))
++            self.assertEqual(h1, self.h(d))
++
++    def test_approval_valid_then_void_after_batch_edit(self):
++        with tempfile.TemporaryDirectory() as t:
++            d = make_spec(t, {"tasks-a.md": BATCH})
++            full = R.with_batches(d, BASE)
++            h = R.approval_hash(full)
++            (d / "tasks.md").write_text(BASE.replace("Approved: PENDING", f"Approved: 2026-11-05 hash:{h}"), encoding="utf-8")
++            vs = R.check_spec_dir(d, static_only=True)
++            self.assertFalse([v for v in vs if v["rule"] == "R6"], vs)
++            (d / "tasks-a.md").write_text(BATCH.replace("Human ref hours: 2", "Human ref hours: 3", 1), encoding="utf-8")
++            vs = R.check_spec_dir(d, static_only=True)
++            self.assertTrue([v for v in vs if v["rule"] == "R6" and "changed after approval" in v["message"]], vs)
++
++    def test_approved_line_inside_a_batch_voids_the_approval(self):
++        with tempfile.TemporaryDirectory() as t:
++            d = make_spec(t, {"tasks-a.md": BATCH + "\nApproved: 2026-11-05 hash:abcdefabcdef\n"})
++            vs = R.check_spec_dir(d, static_only=True)
++            self.assertTrue([v for v in vs if v["rule"] == "R6"], vs)
++
++
++class TestR1PerFile(unittest.TestCase):
++    def test_good_batch_passes(self):
++        with tempfile.TemporaryDirectory() as t:
++            d = make_spec(t, {"tasks-a.md": BATCH})
++            self.assertFalse([v for v in R.check_spec_dir(d, static_only=True) if v["rule"] == "R1"])
++
++    def test_bad_wave_total_in_a_batch_is_reported_with_its_file(self):
++        bad = tasks_text([3, 4], total=999, approved="")
++        with tempfile.TemporaryDirectory() as t:
++            d = make_spec(t, {"tasks-a.md": bad})
++            vs = [v for v in R.check_spec_dir(d, static_only=True) if v["rule"] == "R1"]
++            self.assertTrue([v for v in vs if "tasks-a.md" in v["message"] and "Total" in v["message"]], vs)
++
++    def test_same_task_in_two_files_is_reported(self):
++        with tempfile.TemporaryDirectory() as t:
++            d = make_spec(t, {"tasks-a.md": tasks_text([2, 5], approved="")})
++            vs = [v for v in R.check_spec_dir(d, static_only=True) if v["rule"] == "R1"]
++            self.assertTrue([v for v in vs if "T-02" in v["message"] and "more than one" in v["message"]], vs)
++
++    def test_batch_without_waves_is_reported(self):
++        with tempfile.TemporaryDirectory() as t:
++            d = make_spec(t, {"tasks-a.md": "# batch\n\n" + blk(3, 10)})
++            vs = [v for v in R.check_spec_dir(d, static_only=True) if v["rule"] == "R1"]
++            self.assertTrue([v for v in vs if "tasks-a.md" in v["message"]], vs)
++
++
++class TestStatusAndReview(unittest.TestCase):
++    def test_status_helper_reads_batches(self):
++        with tempfile.TemporaryDirectory() as t:
++            d = make_spec(t, {"tasks-a.md": BATCH})
++            text = aidd_status._read_tasks(d)
++            self.assertIn("### T-03", text)
++            self.assertIn("### T-01", text)
++
++    def test_review_loads_batches_and_checks_size_per_file(self):
++        big_a = BASE + "x" * 300_000
++        big_b = BATCH + "y" * 300_000   # 600k together, each file under the 400k limit
++        with tempfile.TemporaryDirectory() as t:
++            d = make_spec(t, {"tasks-a.md": big_b}, base=big_a)
++            sources = RV._load_sources(d)
++            self.assertIn("### T-03", dict(sources)["tasks.md"])
++            self.assertEqual(RV._oversize(sources), [])
++
++    def test_review_refuses_one_oversized_batch_file_naming_it(self):
++        with tempfile.TemporaryDirectory() as t:
++            d = make_spec(t, {"tasks-a.md": BATCH + "y" * 401_000})
++            big = RV._oversize(RV._load_sources(d))
++            self.assertEqual([n for n, _ in big], ["tasks-a.md"])
++
++    def test_review_digest_changes_with_a_batch_edit(self):
++        with tempfile.TemporaryDirectory() as t:
++            d = make_spec(t, {"tasks-a.md": BATCH})
++            d1 = RV.sources_digest(d)
++            (d / "tasks-a.md").write_text(BATCH + "\n- more\n", encoding="utf-8")
++            self.assertNotEqual(d1, RV.sources_digest(d))
++
++    def test_review_tag_without_batches_is_unchanged(self):
++        with tempfile.TemporaryDirectory() as t:
++            d = make_spec(t)
++            self.assertEqual(RV._approval_tag(d), "[tasks:" + BASE_HASH_PIN[:8] + "]")
++
++    def test_review_tag_with_a_batch_covers_it(self):
++        with tempfile.TemporaryDirectory() as t:
++            d = make_spec(t, {"tasks-a.md": BATCH})
++            self.assertNotEqual(RV._approval_tag(d), "[tasks:" + BASE_HASH_PIN[:8] + "]")
++
++
++class TestCheckSpec(unittest.TestCase):
++    def test_check_spec_reads_task_blocks_of_batches(self):
++        import check_spec
++        with tempfile.TemporaryDirectory() as t:
++            d = make_spec(t, {"tasks-a.md": BATCH})
++            self.assertIn("### T-03", check_spec.read_tasks(d))
++
++
++if __name__ == "__main__":
++    unittest.main()

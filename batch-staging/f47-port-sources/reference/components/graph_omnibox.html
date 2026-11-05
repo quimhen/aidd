@@ -1,0 +1,78 @@
+<!-- COMP-901, COMP-902, COMP-903: Omnibox, Layer Metric Badges, Layout Selector -->
+<div class="topbar">
+  <div class="brand">
+    <div class="brand-icon">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="6" cy="6" r="3"/><circle cx="18" cy="6" r="3"/><circle cx="12" cy="18" r="3"/>
+        <line x1="8.5" y1="7.5" x2="15.5" y2="7.5"/><line x1="7.5" y1="8.5" x2="10.5" y2="15.5"/><line x1="16.5" y1="8.5" x2="13.5" y2="15.5"/>
+      </svg>
+    </div>
+    <div class="brand-text">
+      <span class="brand-title">b1SyncLink</span>
+      <span class="brand-sub">Unified Knowledge Graph</span>
+    </div>
+  </div>
+
+  <div class="search-container" id="omnibox-container">
+    <div class="search-input-wrapper">
+      <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+      </svg>
+      <input type="text" id="omnibox-input" placeholder="Buscar nodo, tabla, función, spec o componente... (Presiona ⌘K o /)" autocomplete="off" spellcheck="false">
+      <kbd class="kbd-shortcut" id="omnibox-kbd">⌘K</kbd>
+    </div>
+    <div class="search-results-dropdown" id="search-dropdown" style="display: none;"></div>
+  </div>
+
+  <div class="topbar-actions">
+    <div class="metrics-pills" id="layer-metrics-pills">
+      <div class="metric-pill pill-db" title="Base de Datos PostgreSQL">
+        <span class="dot dot-db"></span>
+        <span class="metric-label">BD</span>
+        <span class="metric-val" id="metric-db">0</span>
+      </div>
+      <div class="metric-pill pill-code" title="Código Python AST">
+        <span class="dot dot-code"></span>
+        <span class="metric-label">AST</span>
+        <span class="metric-val" id="metric-code">0</span>
+      </div>
+      <div class="metric-pill pill-spec" title="Especificaciones AIDD">
+        <span class="dot dot-spec"></span>
+        <span class="metric-label">Spec</span>
+        <span class="metric-val" id="metric-spec">0</span>
+      </div>
+      <div class="metric-pill pill-ui" title="Componentes React UI">
+        <span class="dot dot-ui"></span>
+        <span class="metric-label">UI</span>
+        <span class="metric-val" id="metric-ui">0</span>
+      </div>
+    </div>
+
+    <div class="topbar-divider"></div>
+
+    <div class="layout-selector">
+      <label for="select-layout" class="sr-only">Disposición</label>
+      <select id="select-layout" class="action-select">
+        <option value="radial">Disposición Radial</option>
+        <option value="concentric">Concéntrica (Focal)</option>
+        <option value="force">Fuerza Dirigida</option>
+        <option value="grid">Jerárquica / Capas</option>
+      </select>
+    </div>
+
+    <div class="topbar-btn-group">
+      <button id="btn-export-json" class="btn-icon" title="Exportar Subgrafo Filtrado en JSON">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+        </svg>
+        <span>JSON</span>
+      </button>
+      <button id="btn-export-svg" class="btn-icon" title="Exportar Imagen PNG">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/>
+        </svg>
+        <span>PNG</span>
+      </button>
+    </div>
+  </div>
+</div>

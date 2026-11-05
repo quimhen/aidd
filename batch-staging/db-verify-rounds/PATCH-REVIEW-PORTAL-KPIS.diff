@@ -1,0 +1,720 @@
+--- a/skill/templates/review.html
++++ b/skill/templates/review.html
+@@ -64,13 +64,15 @@
+ #aidd-status textarea{width:100%;min-height:6em;font:12px/1.4 var(--font-mono);background:var(--bg-card);color:var(--fg);border:1px solid var(--line);border-radius:var(--radius-sm);padding:6px}
+ 
+ /* Executive KPI Cards Bar */
+-.kpi-row{flex-shrink:0;display:grid;grid-template-columns:repeat(4,1fr);gap:10px;padding:8px 18px;background:rgba(6,14,32,0.85);border-bottom:1px solid var(--line)}
+-.kpi-card{background:var(--bg-card);border:1px solid var(--line);border-radius:var(--radius-sm);padding:8px 12px;display:flex;flex-direction:column;justify-content:space-between;transition:border-color 0.15s}
++.kpi-row{flex-shrink:0;display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,150px),1fr));gap:10px;min-width:0;padding:8px 18px;background:rgba(6,14,32,0.85);border-bottom:1px solid var(--line)}
++.kpi-card{min-width:0;overflow-wrap:anywhere;background:var(--bg-card);border:1px solid var(--line);border-radius:var(--radius-sm);padding:8px 12px;display:flex;flex-direction:column;justify-content:space-between;transition:border-color 0.15s}
+ .kpi-card:hover{border-color:rgba(20,184,166,0.5)}
+ .kpi-head{display:flex;justify-content:space-between;align-items:center;font-size:0.72rem;font-weight:600;text-transform:uppercase;color:var(--muted);letter-spacing:0.04em}
+-.kpi-val{font-size:1.15rem;font-weight:700;color:var(--fg);margin:2px 0 1px;display:flex;align-items:baseline;gap:6px}
++.kpi-val{flex-wrap:wrap;min-width:0;font-size:1.15rem;font-weight:700;color:var(--fg);margin:2px 0 1px;display:flex;align-items:baseline;gap:6px}
+ .kpi-val.accent{color:var(--accent)}
+-.kpi-sub{font-size:0.72rem;color:var(--muted);display:flex;align-items:center;gap:4px}
++.kpi-sub{font-size:0.72rem;color:var(--muted);display:flex;flex-wrap:wrap;align-items:center;gap:4px;min-width:0}
++.kpi-head{gap:6px;min-width:0}
++@media (max-width:640px){.kpi-row{padding:8px 10px}.kpi-card{padding:6px 8px}}
+ .kpi-badge{display:inline-block;padding:1px 5px;border-radius:4px;font-size:0.68rem;font-family:var(--font-mono);font-weight:600}
+ .kpi-badge.ok{background:rgba(16,185,129,0.2);color:var(--ok);border:1px solid rgba(16,185,129,0.4)}
+ .kpi-badge.info{background:rgba(110,212,239,0.2);color:var(--secondary);border:1px solid rgba(110,212,239,0.4)}
+@@ -115,8 +117,8 @@
+ .mockup-dot{width:8px;height:8px;border-radius:50%;background:#334155}
+ .mockup-title{font-size:0.72rem;color:var(--muted);font-family:var(--font-mono)}
+ 
+-.mockup-img-container{position:relative;min-height:340px;display:flex;align-items:center;justify-content:center;background:#080D17;overflow:hidden}
+-.mockup-real-img{width:100%;height:auto;display:block;object-fit:contain}
++.mockup-img-container{position:relative;min-height:340px;display:flex;align-items:flex-start;justify-content:flex-start;background:#080D17;overflow:auto}
++.mockup-real-img{width:100%;max-width:none;height:auto;display:block;object-fit:contain}
+ .mockup-empty-msg{padding:24px;text-align:center;color:var(--muted);display:flex;flex-direction:column;align-items:center;gap:6px}
+ 
+ .mockup-bottom-strip{height:32px;background:var(--bg-card);border-top:1px solid var(--line);padding:0 12px;display:flex;align-items:center;justify-content:space-between;font-size:0.72rem;color:var(--muted);flex-shrink:0;overflow-x:auto}
+@@ -247,23 +249,23 @@
+ <section class="kpi-row" id="aidd-kpi-row">
+   <div class="kpi-card">
+     <div class="kpi-head"><span>Esfuerzo Estimado</span><span>⏱️ R1</span></div>
+-    <div class="kpi-val accent" id="kpi-val-effort">~35 min</div>
+-    <div class="kpi-sub" id="kpi-sub-effort">Ref. Humano: ~1.8h (Ahorro: 68%)</div>
++    <div class="kpi-val accent" id="kpi-val-effort">—</div>
++    <div class="kpi-sub" id="kpi-sub-effort">—</div>
+   </div>
+   <div class="kpi-card">
+     <div class="kpi-head"><span>Tareas Planificadas</span><span>📋 R6</span></div>
+-    <div class="kpi-val" id="kpi-val-tasks">0 Tareas</div>
+-    <div class="kpi-sub"><span class="kpi-badge ok">DAG READY</span> 100% Cobertura</div>
++    <div class="kpi-val" id="kpi-val-tasks">—</div>
++    <div class="kpi-sub" id="kpi-sub-tasks">—</div>
+   </div>
+   <div class="kpi-card">
+     <div class="kpi-head"><span>Prototipos &amp; UI</span><span>🎨 R4</span></div>
+-    <div class="kpi-val" id="kpi-val-mockups">0 Pantallas</div>
+-    <div class="kpi-sub"><span class="kpi-badge info">Executive Precision</span> 0 Deuda Visual</div>
++    <div class="kpi-val" id="kpi-val-mockups">—</div>
++    <div class="kpi-sub" id="kpi-sub-mockups">—</div>
+   </div>
+   <div class="kpi-card">
+     <div class="kpi-head"><span>Verificaciones</span><span>🛡️ Gate</span></div>
+-    <div class="kpi-val" id="kpi-val-verif">0 Reglas</div>
+-    <div class="kpi-sub"><span class="kpi-badge ok">R1 - R6 PASS</span> Zero-Regression</div>
++    <div class="kpi-val" id="kpi-val-verif">—</div>
++    <div class="kpi-sub" id="kpi-sub-verif">—</div>
+   </div>
+ </section>
+ 
+@@ -285,6 +287,9 @@
+         <button type="button" class="vp-btn active" id="vp-btn-desktop" data-vp="vp-desktop">1440px</button>
+         <button type="button" class="vp-btn" id="vp-btn-tablet" data-vp="vp-tablet">768px</button>
+         <button type="button" class="vp-btn" id="vp-btn-mobile" data-vp="vp-mobile">375px</button>
++        <button type="button" class="vp-btn" id="vp-zoom-out" aria-label="Alejar" title="Alejar">&minus;</button>
++        <button type="button" class="vp-btn" id="vp-zoom-reset" aria-label="Restablecer zoom a 100%" title="Restablecer zoom">100%</button>
++        <button type="button" class="vp-btn" id="vp-zoom-in" aria-label="Acercar" title="Acercar">+</button>
+       </div>
+     </div>
+     <div class="mockup-canvas-viewport" id="mockup-canvas">
+@@ -305,7 +310,7 @@
+       </div>
+     </div>
+     <div class="mockup-bottom-strip">
+-      <div>Resolución: <strong>1440x900px</strong> • Tokens: <strong>Executive Precision</strong> • Deuda UI: <strong class="verif">0 Desalineados</strong></div>
++      <div>Pantalla activa: <strong id="mockup-strip-screen">—</strong> • Zoom: <strong id="mockup-strip-zoom">100%</strong></div>
+       <div>Audit Asset: <strong id="mockup-asset-id">ACTIVE</strong></div>
+     </div>
+   </section>
+@@ -665,6 +670,8 @@
+       }
+       if (titleEl) titleEl.textContent = found.id + (found.name ? ' — ' + found.name : '');
+       if (assetIdEl) assetIdEl.textContent = found.id;
++      var stripEl = document.getElementById('mockup-strip-screen');
++      if (stripEl) stripEl.textContent = found.id;
+       if (imgEl) {
+         if (found.snapshot) {
+           imgEl.src = found.snapshot;
+@@ -1129,16 +1136,29 @@
+       if (remember) { try { window.sessionStorage.setItem(tabStore, id); } catch (e) { /* storage may be blocked */ } }
+     }
+ 
+-    /* Dynamic KPI cards */
+-    var taskCodes = order.filter(function (c) { return c.indexOf('T-') === 0; });
+-    var screenCodes = order.filter(function (c) { return c.indexOf('SCREEN') === 0; });
+-    var verifCodes = order.filter(function (c) { return c.indexOf('V-') === 0; });
+-    var valTasks = document.getElementById('kpi-val-tasks');
+-    if (valTasks) valTasks.textContent = taskCodes.length ? (taskCodes.length + ' Tareas (' + taskCodes[0] + '..' + taskCodes[taskCodes.length - 1] + ')') : (order.length + ' Items');
+-    var valMockups = document.getElementById('kpi-val-mockups');
+-    if (valMockups) valMockups.textContent = screenCodes.length ? (screenCodes.length + ' Pantallas UI') : '0 Pantallas UI';
+-    var valVerif = document.getElementById('kpi-val-verif');
+-    if (valVerif) valVerif.textContent = verifCodes.length ? (verifCodes.length + ' Comandos') : 'Reglas R1-R6';
++    /* KPI cards: only values MEASURED by the generator (data.kpis); a card without data stays a dash */
++    (Array.isArray(data.kpis) ? data.kpis : []).forEach(function (k) {
++      if (!k || typeof k.id !== 'string') return;
++      var v = document.getElementById('kpi-val-' + k.id), s = document.getElementById('kpi-sub-' + k.id);
++      if (v && typeof k.value === 'string' && k.value) v.textContent = k.value;
++      if (s && typeof k.sub === 'string' && k.sub) s.textContent = k.sub;
++    });
++
++    /* Zoom of the mockup (aidd:CTL-REV-009): 50%..300% in steps of 25, reset returns to 100% */
++    var zoom = 100;
++    function setZoom(z) {
++      zoom = Math.max(50, Math.min(300, z));
++      if (imgEl) imgEl.style.width = zoom + '%';
++      var zr = document.getElementById('vp-zoom-reset'), zs = document.getElementById('mockup-strip-zoom');
++      if (zr) zr.textContent = zoom + '%';
++      if (zs) zs.textContent = zoom + '%';
++    }
++    [['vp-zoom-out', -25], ['vp-zoom-in', 25]].forEach(function (p) {
++      var b = document.getElementById(p[0]);
++      if (b) b.addEventListener('click', function () { setZoom(zoom + p[1]); });
++    });
++    var zReset = document.getElementById('vp-zoom-reset');
++    if (zReset) zReset.addEventListener('click', function () { setZoom(100); });
+ 
+     /* Mockup Inspector Panel (aidd:FR-1403 aidd:FR-1404 aidd:FR-1405 aidd:FR-1407) */
+     if (screenList.length > 0) {
+--- a/skill/scripts/aidd_review.py
++++ b/skill/scripts/aidd_review.py
+@@ -993,6 +993,93 @@
+     return kept, carry
+ 
+ 
++# ---------------------------------------------------------------------------
++# KPI strip: every figure is MEASURED here from the spec's own files (never template text)
++# ---------------------------------------------------------------------------
++
++def _plural(n, one, many):
++    return f'{n} {one if n == 1 else many}'
++
++
++def _visual_debt_open_count(spec_text):
++    """Open rows of the spec's `## Visual debt` table (Status column == open); None when the spec
++    has no such section (nothing was measured), 0 when the section has no open row."""
++    if not spec_text:
++        return None
++    lines, fence, inside, found, header, n = str(spec_text).replace('\r\n', '\n').split('\n'), False, False, False, None, 0
++    for line in lines:
++        s = line.strip()
++        if s.startswith('```') or s.startswith('~~~'):
++            fence = not fence
++            continue
++        if fence:
++            continue
++        h = re.match(r'^ {0,3}#{1,6}[ \t]+(.*?)[ \t#]*$', line)
++        if h:
++            inside = h.group(1).strip().lower().startswith('visual debt')
++            found = found or inside
++            header = None
++            continue
++        if not inside or not s.startswith('|'):
++            continue
++        cells = [c.strip() for c in s.strip('|').split('|')]
++        if header is None:
++            header = [c.lower() for c in cells]
++            continue
++        if all(re.fullmatch(r':?-{1,}:?', c) for c in cells if c):
++            continue
++        if 'status' in header:
++            si = header.index('status')
++            if si < len(cells) and cells[si].lower() == 'open' and cells[0]:
++                n += 1
++    return n if found else None
++
++
++def _kpis(texts, order, summary, waves, problems, lint_ok):
++    """The four KPI cards as [{'id','value','sub'}]: counts of the page's own items, the plan totals
++    of tasks.md, the open rows of `## Visual debt` and the `check_verification` lint result. What
++    cannot be measured says so ('sin estimar', 'sin tabla ...'); nothing is ever a fixed PASS/100%."""
++    summary = summary if isinstance(summary, dict) else {}
++    minutes, tokens = summary.get('minutes'), summary.get('tokens_k')
++    n_tasks = sum(1 for c in order if c.startswith('T-'))
++    n_screens = sum(1 for c in order if c.startswith('SCREEN-'))
++    n_verif = sum(1 for c in order if c.startswith('V-'))
++    debt = _visual_debt_open_count(texts.get('spec.md'))
++    if minutes is not None:
++        effort = (f'{minutes} min', f'{tokens}k tokens (tasks.md)' if tokens is not None
++                  else 'tokens no declarados en tasks.md')
++    else:
++        effort = ('sin estimar', 'tasks.md no declara minutos')
++    if not lint_ok:
++        lint = 'lint de verificaci\u00f3n no disponible'
++    elif problems:
++        lint = _plural(len(problems), 'problema', 'problemas') + ' de lint (bloquean la aprobaci\u00f3n)'
++    else:
++        lint = '0 problemas de lint de verificaci\u00f3n'
++    return [
++        {'id': 'effort', 'value': effort[0], 'sub': effort[1]},
++        {'id': 'tasks', 'value': _plural(n_tasks, 'tarea', 'tareas'),
++         'sub': _plural(waves, 'ola', 'olas') if waves else 'sin tabla Waves'},
++        {'id': 'mockups', 'value': _plural(n_screens, 'pantalla', 'pantallas'),
++         'sub': f'Deuda visual abierta: {debt}' if debt is not None else 'sin tabla Visual debt'},
++        {'id': 'verif', 'value': _plural(n_verif, 'verificaci\u00f3n', 'verificaciones'), 'sub': lint},
++    ]
++
++
++def _lint_available():
++    try:
++        return getattr(_rules(), 'check_verification', None) is not None
++    except Exception:  # noqa: BLE001
++        return False
++
++
++def _wave_total(it, tasks_text):
++    try:
++        return int(it.wave_count(tasks_text or ''))
++    except Exception:  # noqa: BLE001 — informative only
++        return 0
++
++
+ def _compact_page(d, texts, prior, problems):
+     """(body, blob fields) of the compact page. ValueError over MAX_ITEMS (nothing written).
+     aidd:FR-301 aidd:FR-303 aidd:FR-312"""
+@@ -1044,6 +1131,8 @@
+         'summary': summary if isinstance(summary, dict) else {},
+         'verification_problems': problems,
+         'mockups': _extract_mockups(d, texts.get('mockup-audit.md')),
++        'kpis': _kpis(texts, order, summary, _wave_total(it, texts.get('tasks.md')), problems,
++                      _lint_available()),
+     }
+     return _compact_body(tabs, items, warnings, texts, problems), data
+ 
+--- a/adapters/dot-aidd/templates/review.html
++++ b/adapters/dot-aidd/templates/review.html
+@@ -64,13 +64,15 @@
+ #aidd-status textarea{width:100%;min-height:6em;font:12px/1.4 var(--font-mono);background:var(--bg-card);color:var(--fg);border:1px solid var(--line);border-radius:var(--radius-sm);padding:6px}
+ 
+ /* Executive KPI Cards Bar */
+-.kpi-row{flex-shrink:0;display:grid;grid-template-columns:repeat(4,1fr);gap:10px;padding:8px 18px;background:rgba(6,14,32,0.85);border-bottom:1px solid var(--line)}
+-.kpi-card{background:var(--bg-card);border:1px solid var(--line);border-radius:var(--radius-sm);padding:8px 12px;display:flex;flex-direction:column;justify-content:space-between;transition:border-color 0.15s}
++.kpi-row{flex-shrink:0;display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,150px),1fr));gap:10px;min-width:0;padding:8px 18px;background:rgba(6,14,32,0.85);border-bottom:1px solid var(--line)}
++.kpi-card{min-width:0;overflow-wrap:anywhere;background:var(--bg-card);border:1px solid var(--line);border-radius:var(--radius-sm);padding:8px 12px;display:flex;flex-direction:column;justify-content:space-between;transition:border-color 0.15s}
+ .kpi-card:hover{border-color:rgba(20,184,166,0.5)}
+ .kpi-head{display:flex;justify-content:space-between;align-items:center;font-size:0.72rem;font-weight:600;text-transform:uppercase;color:var(--muted);letter-spacing:0.04em}
+-.kpi-val{font-size:1.15rem;font-weight:700;color:var(--fg);margin:2px 0 1px;display:flex;align-items:baseline;gap:6px}
++.kpi-val{flex-wrap:wrap;min-width:0;font-size:1.15rem;font-weight:700;color:var(--fg);margin:2px 0 1px;display:flex;align-items:baseline;gap:6px}
+ .kpi-val.accent{color:var(--accent)}
+-.kpi-sub{font-size:0.72rem;color:var(--muted);display:flex;align-items:center;gap:4px}
++.kpi-sub{font-size:0.72rem;color:var(--muted);display:flex;flex-wrap:wrap;align-items:center;gap:4px;min-width:0}
++.kpi-head{gap:6px;min-width:0}
++@media (max-width:640px){.kpi-row{padding:8px 10px}.kpi-card{padding:6px 8px}}
+ .kpi-badge{display:inline-block;padding:1px 5px;border-radius:4px;font-size:0.68rem;font-family:var(--font-mono);font-weight:600}
+ .kpi-badge.ok{background:rgba(16,185,129,0.2);color:var(--ok);border:1px solid rgba(16,185,129,0.4)}
+ .kpi-badge.info{background:rgba(110,212,239,0.2);color:var(--secondary);border:1px solid rgba(110,212,239,0.4)}
+@@ -115,8 +117,8 @@
+ .mockup-dot{width:8px;height:8px;border-radius:50%;background:#334155}
+ .mockup-title{font-size:0.72rem;color:var(--muted);font-family:var(--font-mono)}
+ 
+-.mockup-img-container{position:relative;min-height:340px;display:flex;align-items:center;justify-content:center;background:#080D17;overflow:hidden}
+-.mockup-real-img{width:100%;height:auto;display:block;object-fit:contain}
++.mockup-img-container{position:relative;min-height:340px;display:flex;align-items:flex-start;justify-content:flex-start;background:#080D17;overflow:auto}
++.mockup-real-img{width:100%;max-width:none;height:auto;display:block;object-fit:contain}
+ .mockup-empty-msg{padding:24px;text-align:center;color:var(--muted);display:flex;flex-direction:column;align-items:center;gap:6px}
+ 
+ .mockup-bottom-strip{height:32px;background:var(--bg-card);border-top:1px solid var(--line);padding:0 12px;display:flex;align-items:center;justify-content:space-between;font-size:0.72rem;color:var(--muted);flex-shrink:0;overflow-x:auto}
+@@ -247,23 +249,23 @@
+ <section class="kpi-row" id="aidd-kpi-row">
+   <div class="kpi-card">
+     <div class="kpi-head"><span>Esfuerzo Estimado</span><span>⏱️ R1</span></div>
+-    <div class="kpi-val accent" id="kpi-val-effort">~35 min</div>
+-    <div class="kpi-sub" id="kpi-sub-effort">Ref. Humano: ~1.8h (Ahorro: 68%)</div>
++    <div class="kpi-val accent" id="kpi-val-effort">—</div>
++    <div class="kpi-sub" id="kpi-sub-effort">—</div>
+   </div>
+   <div class="kpi-card">
+     <div class="kpi-head"><span>Tareas Planificadas</span><span>📋 R6</span></div>
+-    <div class="kpi-val" id="kpi-val-tasks">0 Tareas</div>
+-    <div class="kpi-sub"><span class="kpi-badge ok">DAG READY</span> 100% Cobertura</div>
++    <div class="kpi-val" id="kpi-val-tasks">—</div>
++    <div class="kpi-sub" id="kpi-sub-tasks">—</div>
+   </div>
+   <div class="kpi-card">
+     <div class="kpi-head"><span>Prototipos &amp; UI</span><span>🎨 R4</span></div>
+-    <div class="kpi-val" id="kpi-val-mockups">0 Pantallas</div>
+-    <div class="kpi-sub"><span class="kpi-badge info">Executive Precision</span> 0 Deuda Visual</div>
++    <div class="kpi-val" id="kpi-val-mockups">—</div>
++    <div class="kpi-sub" id="kpi-sub-mockups">—</div>
+   </div>
+   <div class="kpi-card">
+     <div class="kpi-head"><span>Verificaciones</span><span>🛡️ Gate</span></div>
+-    <div class="kpi-val" id="kpi-val-verif">0 Reglas</div>
+-    <div class="kpi-sub"><span class="kpi-badge ok">R1 - R6 PASS</span> Zero-Regression</div>
++    <div class="kpi-val" id="kpi-val-verif">—</div>
++    <div class="kpi-sub" id="kpi-sub-verif">—</div>
+   </div>
+ </section>
+ 
+@@ -285,6 +287,9 @@
+         <button type="button" class="vp-btn active" id="vp-btn-desktop" data-vp="vp-desktop">1440px</button>
+         <button type="button" class="vp-btn" id="vp-btn-tablet" data-vp="vp-tablet">768px</button>
+         <button type="button" class="vp-btn" id="vp-btn-mobile" data-vp="vp-mobile">375px</button>
++        <button type="button" class="vp-btn" id="vp-zoom-out" aria-label="Alejar" title="Alejar">&minus;</button>
++        <button type="button" class="vp-btn" id="vp-zoom-reset" aria-label="Restablecer zoom a 100%" title="Restablecer zoom">100%</button>
++        <button type="button" class="vp-btn" id="vp-zoom-in" aria-label="Acercar" title="Acercar">+</button>
+       </div>
+     </div>
+     <div class="mockup-canvas-viewport" id="mockup-canvas">
+@@ -305,7 +310,7 @@
+       </div>
+     </div>
+     <div class="mockup-bottom-strip">
+-      <div>Resolución: <strong>1440x900px</strong> • Tokens: <strong>Executive Precision</strong> • Deuda UI: <strong class="verif">0 Desalineados</strong></div>
++      <div>Pantalla activa: <strong id="mockup-strip-screen">—</strong> • Zoom: <strong id="mockup-strip-zoom">100%</strong></div>
+       <div>Audit Asset: <strong id="mockup-asset-id">ACTIVE</strong></div>
+     </div>
+   </section>
+@@ -665,6 +670,8 @@
+       }
+       if (titleEl) titleEl.textContent = found.id + (found.name ? ' — ' + found.name : '');
+       if (assetIdEl) assetIdEl.textContent = found.id;
++      var stripEl = document.getElementById('mockup-strip-screen');
++      if (stripEl) stripEl.textContent = found.id;
+       if (imgEl) {
+         if (found.snapshot) {
+           imgEl.src = found.snapshot;
+@@ -1129,16 +1136,29 @@
+       if (remember) { try { window.sessionStorage.setItem(tabStore, id); } catch (e) { /* storage may be blocked */ } }
+     }
+ 
+-    /* Dynamic KPI cards */
+-    var taskCodes = order.filter(function (c) { return c.indexOf('T-') === 0; });
+-    var screenCodes = order.filter(function (c) { return c.indexOf('SCREEN') === 0; });
+-    var verifCodes = order.filter(function (c) { return c.indexOf('V-') === 0; });
+-    var valTasks = document.getElementById('kpi-val-tasks');
+-    if (valTasks) valTasks.textContent = taskCodes.length ? (taskCodes.length + ' Tareas (' + taskCodes[0] + '..' + taskCodes[taskCodes.length - 1] + ')') : (order.length + ' Items');
+-    var valMockups = document.getElementById('kpi-val-mockups');
+-    if (valMockups) valMockups.textContent = screenCodes.length ? (screenCodes.length + ' Pantallas UI') : '0 Pantallas UI';
+-    var valVerif = document.getElementById('kpi-val-verif');
+-    if (valVerif) valVerif.textContent = verifCodes.length ? (verifCodes.length + ' Comandos') : 'Reglas R1-R6';
++    /* KPI cards: only values MEASURED by the generator (data.kpis); a card without data stays a dash */
++    (Array.isArray(data.kpis) ? data.kpis : []).forEach(function (k) {
++      if (!k || typeof k.id !== 'string') return;
++      var v = document.getElementById('kpi-val-' + k.id), s = document.getElementById('kpi-sub-' + k.id);
++      if (v && typeof k.value === 'string' && k.value) v.textContent = k.value;
++      if (s && typeof k.sub === 'string' && k.sub) s.textContent = k.sub;
++    });
++
++    /* Zoom of the mockup (aidd:CTL-REV-009): 50%..300% in steps of 25, reset returns to 100% */
++    var zoom = 100;
++    function setZoom(z) {
++      zoom = Math.max(50, Math.min(300, z));
++      if (imgEl) imgEl.style.width = zoom + '%';
++      var zr = document.getElementById('vp-zoom-reset'), zs = document.getElementById('mockup-strip-zoom');
++      if (zr) zr.textContent = zoom + '%';
++      if (zs) zs.textContent = zoom + '%';
++    }
++    [['vp-zoom-out', -25], ['vp-zoom-in', 25]].forEach(function (p) {
++      var b = document.getElementById(p[0]);
++      if (b) b.addEventListener('click', function () { setZoom(zoom + p[1]); });
++    });
++    var zReset = document.getElementById('vp-zoom-reset');
++    if (zReset) zReset.addEventListener('click', function () { setZoom(100); });
+ 
+     /* Mockup Inspector Panel (aidd:FR-1403 aidd:FR-1404 aidd:FR-1405 aidd:FR-1407) */
+     if (screenList.length > 0) {
+--- a/adapters/dot-aidd/scripts/aidd_review.py
++++ b/adapters/dot-aidd/scripts/aidd_review.py
+@@ -993,6 +993,93 @@
+     return kept, carry
+ 
+ 
++# ---------------------------------------------------------------------------
++# KPI strip: every figure is MEASURED here from the spec's own files (never template text)
++# ---------------------------------------------------------------------------
++
++def _plural(n, one, many):
++    return f'{n} {one if n == 1 else many}'
++
++
++def _visual_debt_open_count(spec_text):
++    """Open rows of the spec's `## Visual debt` table (Status column == open); None when the spec
++    has no such section (nothing was measured), 0 when the section has no open row."""
++    if not spec_text:
++        return None
++    lines, fence, inside, found, header, n = str(spec_text).replace('\r\n', '\n').split('\n'), False, False, False, None, 0
++    for line in lines:
++        s = line.strip()
++        if s.startswith('```') or s.startswith('~~~'):
++            fence = not fence
++            continue
++        if fence:
++            continue
++        h = re.match(r'^ {0,3}#{1,6}[ \t]+(.*?)[ \t#]*$', line)
++        if h:
++            inside = h.group(1).strip().lower().startswith('visual debt')
++            found = found or inside
++            header = None
++            continue
++        if not inside or not s.startswith('|'):
++            continue
++        cells = [c.strip() for c in s.strip('|').split('|')]
++        if header is None:
++            header = [c.lower() for c in cells]
++            continue
++        if all(re.fullmatch(r':?-{1,}:?', c) for c in cells if c):
++            continue
++        if 'status' in header:
++            si = header.index('status')
++            if si < len(cells) and cells[si].lower() == 'open' and cells[0]:
++                n += 1
++    return n if found else None
++
++
++def _kpis(texts, order, summary, waves, problems, lint_ok):
++    """The four KPI cards as [{'id','value','sub'}]: counts of the page's own items, the plan totals
++    of tasks.md, the open rows of `## Visual debt` and the `check_verification` lint result. What
++    cannot be measured says so ('sin estimar', 'sin tabla ...'); nothing is ever a fixed PASS/100%."""
++    summary = summary if isinstance(summary, dict) else {}
++    minutes, tokens = summary.get('minutes'), summary.get('tokens_k')
++    n_tasks = sum(1 for c in order if c.startswith('T-'))
++    n_screens = sum(1 for c in order if c.startswith('SCREEN-'))
++    n_verif = sum(1 for c in order if c.startswith('V-'))
++    debt = _visual_debt_open_count(texts.get('spec.md'))
++    if minutes is not None:
++        effort = (f'{minutes} min', f'{tokens}k tokens (tasks.md)' if tokens is not None
++                  else 'tokens no declarados en tasks.md')
++    else:
++        effort = ('sin estimar', 'tasks.md no declara minutos')
++    if not lint_ok:
++        lint = 'lint de verificaci\u00f3n no disponible'
++    elif problems:
++        lint = _plural(len(problems), 'problema', 'problemas') + ' de lint (bloquean la aprobaci\u00f3n)'
++    else:
++        lint = '0 problemas de lint de verificaci\u00f3n'
++    return [
++        {'id': 'effort', 'value': effort[0], 'sub': effort[1]},
++        {'id': 'tasks', 'value': _plural(n_tasks, 'tarea', 'tareas'),
++         'sub': _plural(waves, 'ola', 'olas') if waves else 'sin tabla Waves'},
++        {'id': 'mockups', 'value': _plural(n_screens, 'pantalla', 'pantallas'),
++         'sub': f'Deuda visual abierta: {debt}' if debt is not None else 'sin tabla Visual debt'},
++        {'id': 'verif', 'value': _plural(n_verif, 'verificaci\u00f3n', 'verificaciones'), 'sub': lint},
++    ]
++
++
++def _lint_available():
++    try:
++        return getattr(_rules(), 'check_verification', None) is not None
++    except Exception:  # noqa: BLE001
++        return False
++
++
++def _wave_total(it, tasks_text):
++    try:
++        return int(it.wave_count(tasks_text or ''))
++    except Exception:  # noqa: BLE001 — informative only
++        return 0
++
++
+ def _compact_page(d, texts, prior, problems):
+     """(body, blob fields) of the compact page. ValueError over MAX_ITEMS (nothing written).
+     aidd:FR-301 aidd:FR-303 aidd:FR-312"""
+@@ -1044,6 +1131,8 @@
+         'summary': summary if isinstance(summary, dict) else {},
+         'verification_problems': problems,
+         'mockups': _extract_mockups(d, texts.get('mockup-audit.md')),
++        'kpis': _kpis(texts, order, summary, _wave_total(it, texts.get('tasks.md')), problems,
++                      _lint_available()),
+     }
+     return _compact_body(tabs, items, warnings, texts, problems), data
+ 
+--- a/tests/test_aidd_review.py
++++ b/tests/test_aidd_review.py
+@@ -1433,5 +1433,88 @@
+             self.assertEqual(_page_data(page.read_text(encoding="utf-8"))["carry"]["pending"], ["T-17"])
+ 
+ 
++KPI_SPEC = SPEC_MD + """
++## Visual debt
++| Item | Status |
++|---|---|
++| Header differs from the mockup | open |
++| Footer spacing | closed |
++"""
++KPI_TASKS = """# Tasks
++
++Approved: PENDING
++
++| Task | Codes satisfied | Target file | Status |
++|---|---|---|---|
++| T-01 | FR-001 | a.py | |
++| T-02 | FR-002 | b.py | |
++| T-03 | FR-002 | c.py | |
++
++## Waves
++| Wave | Tasks | Agent time (min) | Human ref (h) |
++|---|---|---|---|
++| 1 | T-01, T-02 | 10 | 1 |
++| 2 | T-03 | 15 | 1 |
++
++Total agent time (critical path): 25 min
++"""
++
++
++def _kpis(page_text):
++    return {k["id"]: k for k in _page_data(page_text)["kpis"]}
++
++
++class TestKpisFakes(_Faked):
++    """The KPI strip carries MEASURED values only (generator-computed, never template text)."""
++
++    def test_kpis_measured_from_the_spec(self):
++        d = _make_spec(self.root, IDS[0])
++        k = _kpis(aidd_review.build_html(d, template_text=TEMPLATE))
++        self.assertEqual(list(k), ["effort", "tasks", "mockups", "verif"])
++        self.assertEqual(k["effort"]["value"], "10 min")
++        self.assertIn("5k tokens", k["effort"]["sub"])
++        self.assertEqual(k["tasks"]["value"], "2 tareas")
++        self.assertIn("1 ola", k["tasks"]["sub"])
++        self.assertEqual(k["mockups"]["value"], "0 pantallas")
++        self.assertIn("sin tabla Visual debt", k["mockups"]["sub"])
++
++    def test_kpis_never_assert_pass_or_full_coverage(self):
++        d = _make_spec(self.root, IDS[0])
++        blob = json.dumps(_page_data(aidd_review.build_html(d, template_text=TEMPLATE))["kpis"])
++        for fixed in ("PASS", "100%", "Zero-Regression", "DAG READY", "Ahorro", "~35 min"):
++            self.assertNotIn(fixed, blob)
++
++
++@unittest.skipIf(FAKES_ONLY, "AIDD_REVIEW_FAKES_ONLY=1: the main agent runs this with the real modules")
++class TestKpisReal(_Tmp):
++    def test_kpis_computed_from_real_sources(self):
++        d = _make_spec(self.root, IDS[0], spec=KPI_SPEC, tasks=KPI_TASKS)
++        page, _ = aidd_review.generate(d, template_text=TEMPLATE)
++        data = _page_data(page.read_text(encoding="utf-8"))
++        k = {x["id"]: x for x in data["kpis"]}
++        self.assertEqual(k["effort"]["value"], "25 min")
++        self.assertEqual(k["tasks"]["value"], "3 tareas")
++        self.assertIn("2 olas", k["tasks"]["sub"])
++        self.assertIn("Deuda visual abierta: 1", k["mockups"]["sub"])
++        self.assertEqual(k["verif"]["value"], "1 verificación")
++        n = len(data["verification_problems"])
++        self.assertIn(f"{n} problema" if n == 1 else f"{n} problemas", k["verif"]["sub"])
++
++    def test_kpis_say_unknown_when_not_measurable(self):
++        d = _make_spec(self.root, IDS[1])           # TASKS_MD: no Waves table, no total, no debt table
++        page, _ = aidd_review.generate(d, template_text=TEMPLATE)
++        k = {x["id"]: x for x in _page_data(page.read_text(encoding="utf-8"))["kpis"]}
++        self.assertEqual(k["effort"]["value"], "sin estimar")
++        self.assertIn("sin tabla Waves", k["tasks"]["sub"])
++        self.assertIn("sin tabla Visual debt", k["mockups"]["sub"])
++
++    def test_visual_debt_counts_only_open_rows(self):
++        self.assertIsNone(aidd_review._visual_debt_open_count("# S\n\n## Other\n| A | Status |\n|---|---|\n| x | open |\n"))
++        self.assertEqual(aidd_review._visual_debt_open_count(KPI_SPEC), 1)
++        self.assertEqual(aidd_review._visual_debt_open_count(
++            "## Visual debt\n| Item | Status |\n|---|---|\n| a | Open |\n| b | open |\n| c | closed |\n"), 2)
++        self.assertEqual(aidd_review._visual_debt_open_count("## Visual debt\n\nNone.\n"), 0)
++
++
+ if __name__ == "__main__":
+     unittest.main()
+--- a/tests/test_review_template.py
++++ b/tests/test_review_template.py
+@@ -691,5 +691,150 @@
+             os.chdir(cwd)
+ 
+ 
++FIXED_RESULT_STRINGS = ["~35 min", "Ahorro", "68%", "DAG READY", "100% Cobertura", "0 Deuda Visual",
++                        "R1 - R6 PASS", "R1-R6 PASS", "Zero-Regression", "0 Desalineados",
++                        "Executive Precision"]
++PLAYWRIGHT_DIR = Path(os.environ.get("AIDD_PLAYWRIGHT_DIR",
++                                     r"D:\Fuentes\b1SycLink\eDoc\web\node_modules\playwright"))
++
++
++class TestKpiHonesty(unittest.TestCase):
++    """A KPI on an approval page is measured by the generator or it does not exist."""
++
++    def setUp(self):
++        self.text = COMPACT.read_text(encoding="utf-8")
++
++    def test_no_fixed_result_text(self):
++        for s in FIXED_RESULT_STRINGS:
++            self.assertNotIn(s, self.text, f"fixed result text in the template: {s!r}")
++
++    def test_kpi_slots_are_empty_placeholders(self):
++        slots = re.findall(r'<div class="kpi-(?:val|sub)[^"]*" id="kpi-(?:val|sub)-(\w+)">(.*?)</div>', self.text)
++        self.assertEqual(sorted({s[0] for s in slots}), ["effort", "mockups", "tasks", "verif"])
++        for _id, content in slots:
++            self.assertEqual(content, "\u2014", f"kpi-{_id} must be a placeholder until measured")
++        self.assertEqual(len(slots), 8)
++
++    def test_kpis_filled_from_generator_data(self):
++        js = SCRIPT_RE.search(self.text).group(1)
++        self.assertIn("data.kpis", js)
++        self.assertNotIn("Reglas R1-R6", js)
++
++    def test_zoom_controls(self):
++        for cid in ("vp-zoom-out", "vp-zoom-reset", "vp-zoom-in"):
++            self.assertIn(f'id="{cid}"', self.text)
++        js = SCRIPT_RE.search(self.text).group(1)
++        self.assertIn("vp-zoom-reset", js)
++
++    def test_kpi_layout_cannot_force_overflow(self):
++        self.assertRegex(self.text, r"\.kpi-card\{[^}]*min-width:0")
++        self.assertIn("@media (max-width:", self.text)
++
++
++PROBE_JS = r"""
++const { chromium } = require(process.argv[2]);
++(async () => {
++  const url = process.argv[3];
++  const out = { widths: {}, zoom: {} };
++  const browser = await chromium.launch();
++  for (const w of [375, 768, 1440]) {
++    const page = await browser.newPage({ viewport: { width: w, height: 900 } });
++    await page.goto(url);
++    out.widths[w] = await page.evaluate(() => {
++      const iw = window.innerWidth, off = [];
++      document.querySelectorAll('.kpi-row, .kpi-row *').forEach(e => {
++        const r = e.getBoundingClientRect();
++        if (r.width && r.right > iw + 0.5) off.push((e.className || e.tagName) + ':' + Math.round(r.right - iw));
++      });
++      const row = document.querySelector('.kpi-row');
++      return { doc: document.documentElement.scrollWidth - iw, body: document.body.scrollWidth - iw,
++               row: row.scrollWidth - row.clientWidth, offenders: off,
++               kpi: Array.from(document.querySelectorAll('.kpi-card')).map(c => c.innerText.replace(/\s+/g, ' ')) };
++    });
++    if (w === 1440) {
++      const label = () => page.textContent('#vp-zoom-reset');
++      out.zoom.start = (await label()).trim();
++      await page.click('#vp-zoom-in');
++      out.zoom.in = (await label()).trim();
++      out.zoom.imgWidth = await page.evaluate(() => document.getElementById('mockup-img').style.width);
++      await page.click('#vp-zoom-out'); await page.click('#vp-zoom-out');
++      out.zoom.out = (await label()).trim();
++      await page.click('#vp-zoom-reset');
++      out.zoom.reset = (await label()).trim();
++    }
++    await page.close();
++  }
++  await browser.close();
++  console.log(JSON.stringify(out));
++})().catch(e => { console.error(String(e)); process.exit(1); });
++"""
++PNG_1PX = bytes.fromhex("89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c489"
++                        "0000000d49444154789c6360f8ffff3f0005fe02fea7d6a2540000000049454e44ae426082")
++AUDIT_MD = """# Mockup audit
++
++## Screen inventory
++| Screen | Route | Name | Type | Uses | Source | Purpose |
++|---|---|---|---|---|---|---|
++| SCREEN-01 | / | Home | view | COMP-01 | mockup | The home |
++"""
++
++
++@unittest.skipUnless(NODE and (PLAYWRIGHT_DIR / "package.json").is_file(),
++                     "node or playwright (AIDD_PLAYWRIGHT_DIR) not available")
++class TestPortalBrowser(unittest.TestCase):
++    """Measured in a real browser on a page generated from a COPY of a fixture spec."""
++
++    @classmethod
++    def setUpClass(cls):
++        sys.path.insert(0, str(ROOT / "skill" / "scripts"))
++        import aidd_review
++        cls.tmp = tempfile.TemporaryDirectory()
++        d = Path(cls.tmp.name) / "specs" / "999-kpi-fixture"
++        (d / "prototype").mkdir(parents=True)
++        (d / "spec.md").write_text(
++            "# Spec\n\n## Requirements\n| Code | Requirement |\n|---|---|\n| FR-001 | Do X. |\n\n"
++            "## Visual debt\n| Item | Status |\n|---|---|\n| Header | open |\n", encoding="utf-8")
++        (d / "plan.md").write_text("# Plan\n\nNames.\n", encoding="utf-8")
++        (d / "tasks.md").write_text(
++            "# Tasks\n\nApproved: PENDING\n\n| Task | Codes satisfied | Target file | Status |\n|---|---|---|---|\n"
++            "| T-01 | FR-001 | a.py | |\n\n## Waves\n| Wave | Tasks | Agent time (min) | Human ref (h) |\n"
++            "|---|---|---|---|\n| 1 | T-01 | 7 | 1 |\n\nTotal agent time (critical path): 7 min\n", encoding="utf-8")
++        (d / "mockup-audit.md").write_text(AUDIT_MD, encoding="utf-8")
++        (d / "prototype" / "SCREEN-01.png").write_bytes(PNG_1PX)
++        page, _ = aidd_review.generate(d)
++        script = Path(cls.tmp.name) / "probe.js"
++        script.write_text(PROBE_JS, encoding="utf-8")
++        r = subprocess.run([NODE, str(script), str(PLAYWRIGHT_DIR), page.resolve().as_uri()],
++                           capture_output=True, text=True, encoding="utf-8", timeout=180)
++        cls.err = r.stderr
++        cls.out = json.loads(r.stdout) if r.returncode == 0 else None
++
++    @classmethod
++    def tearDownClass(cls):
++        cls.tmp.cleanup()
++
++    def test_probe_ran(self):
++        self.assertIsNotNone(self.out, self.err)
++
++    def test_no_horizontal_overflow_at_375_768_1440(self):
++        for w in ("375", "768", "1440"):
++            m = self.out["widths"][w]
++            self.assertEqual((m["doc"], m["body"], m["row"], m["offenders"]), (0, 0, 0, []), f"{w}px: {m}")
++
++    def test_kpi_cards_show_measured_values(self):
++        text = " | ".join(self.out["widths"]["1440"]["kpi"])
++        self.assertIn("7 min", text)
++        self.assertIn("1 tarea", text)
++        self.assertIn("1 ola", text)
++        self.assertIn("Deuda visual abierta: 1", text)
++        for s in FIXED_RESULT_STRINGS:
++            self.assertNotIn(s, text)
++
++    def test_zoom_and_reset(self):
++        z = self.out["zoom"]
++        self.assertEqual((z["start"], z["in"], z["out"], z["reset"]), ("100%", "125%", "75%", "100%"))
++        self.assertEqual(z["imgWidth"], "125%")
++
++
+ if __name__ == "__main__":
+     unittest.main()

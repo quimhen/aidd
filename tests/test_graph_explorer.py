@@ -32,7 +32,7 @@ def test_edges_and_links_equivalent():
     h1, h2 = g.build_html(G_EDGES, "T"), g.build_html(G_LINKS, "T")
     assert h1 == h2
     d = json.loads(data_of(h1))
-    assert len(d["edges"]) == 2 and d["group"] == "domain"
+    assert len(d["edges"]) == 2 and d["domains"] == ["core", "sync"]
     assert {n["id"] for n in d["nodes"]} == {"a", "b", "c"}
 
 
@@ -64,12 +64,10 @@ def test_extra_fields_rendered():
     html = g.build_html(G_EDGES, "T")
     d = json.loads(data_of(html))
     by = {n["id"]: n for n in d["nodes"]}
-    assert by["a"]["weird_field"] == "zz9" and by["b"]["extra_n"] == 7
+    assert by["a"]["metadata"]["weird_field"] == "zz9" and by["b"]["metadata"]["extra_n"] == 7
     # card renders every key generically, with a priority list first
-    assert "Object.keys(n).sort().forEach(row)" in html
-    for k in ("purpose_source", "source_location", "data_type", "community"):
-        assert '"' + k + '"' in html
-    assert "Incoming" in html and "Outgoing" in html and 'id="q"' in html and 'id="ft"' in html
+    assert "Object.entries(n.metadata)" in html
+    assert 'id="insp-trace-in"' in html and 'id="insp-trace-out"' in html and 'id="omnibox-input"' in html and 'id="select-module"' in html and 'id="insp-tech-details"' in html
 
 
 def test_no_external_resources():
@@ -81,8 +79,8 @@ def test_no_external_resources():
 
 def test_group_autodetect():
     nodes = [{"id": "x", "community": 3}, {"id": "y", "community": 4}]
-    assert json.loads(data_of(g.build_html({"nodes": nodes}, "T")))["group"] == "community"
-    assert json.loads(data_of(g.build_html({"nodes": [{"id": "x"}]}, "T")))["group"] == ""
+    assert json.loads(data_of(g.build_html({"nodes": nodes}, "T")))["domains"] == ["3", "4"]
+    assert json.loads(data_of(g.build_html({"nodes": [{"id": "x"}]}, "T")))["domains"] == ["Core"]
 
 
 def test_cli_exit_codes(tmp_path):
@@ -90,7 +88,7 @@ def test_cli_exit_codes(tmp_path):
     gp.write_text(json.dumps(G_LINKS), encoding="utf-8")
     assert g.main(["--graph", str(gp), "--title", "Mine"]) == 0
     default_out = tmp_path / "graph.html"
-    assert default_out.read_text(encoding="utf-8").startswith("<!doctype html>")
+    assert default_out.read_text(encoding="utf-8").lower().startswith("<!doctype html>")
     o2 = tmp_path / "b.html"
     assert g.main(["--graph", str(gp), "--out", str(o2), "--title", "Mine"]) == 0
     assert o2.read_bytes() == default_out.read_bytes()
@@ -110,5 +108,5 @@ def test_size_sanity():
              for i in range(10000)]
     html = g.build_html({"nodes": nodes, "links": edges}, "Big")
     assert len(html) < 3_000_000
-    assert "MAXR=200" in html
+    assert "finalNodes.length > 200" in html
     assert html == g.build_html({"nodes": nodes, "links": edges}, "Big")

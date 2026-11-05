@@ -1,0 +1,301 @@
+diff --git a/eDoc/tools/db_verify.py b/eDoc/tools/db_verify.py
+index 3cd4715..1ce6f39 100644
+--- a/eDoc/tools/db_verify.py
++++ b/eDoc/tools/db_verify.py
+@@ -43,12 +43,14 @@ import argparse
+ import hashlib
+ import json
+ import os
++import queue
+ import re
+ import shlex
+ import shutil
+ import subprocess
+ import sys
+ import tempfile
++import threading
+ import time
+ import uuid
+ from dataclasses import dataclass, field, asdict
+@@ -387,6 +389,160 @@ def parse_tap(stdout: str) -> dict:
+     return {"planned": planned, "ok": ok, "not_ok": notok, "failed": failed}
+ 
+ 
++def _tap_batch_source(path: Path, allowlist: set[str]) -> str | None:
++    """Only explicit, transaction-bounded files without obvious session hazards.
++
++    The allowlist must itself be reviewed: lexical checks cannot prove a called
++    function has no outside side effects. Anything ambiguous runs individually.
++    """
++    try:
++        if str(path.resolve()) not in allowlist:
++            return None
++        text = path.read_text(encoding="utf-8")
++        if re.search(r"(?m)^\s*\\", text):
++            return None
++        if re.search(r"\b(?:COMMIT|DBLINK\w*|PG_SLEEP\w*|LISTEN|NOTIFY|COPY|DISCARD)\b", text, re.I):
++            return None
++        if not (re.search(r"\bBEGIN\s*;", text, re.I) and re.search(r"\bROLLBACK\s*;", text, re.I)):
++            return None
++        return text
++    except (OSError, UnicodeError):
++        return None
++
++
++def tap_batch_eligible(path: Path, allowlist: set[str]) -> bool:
++    return _tap_batch_source(path, allowlist) is not None
++
++
++def run_tap_batch(psql: Psql, db: str, tests: list[Path], tap_prefix: str,
++                  timeout: int, admin_db: str) -> list[tuple[Path, subprocess.CompletedProcess, float]]:
++    """Run approved files via one psql process; reconnect before each file.
++
++    Files are sent one at a time. EOF, timeout or SQL errors fail the active
++    file; only files not yet started use a fresh process. Never retry a test
++    that might have executed. stdout and stderr share one ordered pipe.
++    """
++    results = []
++    batch_started = time.monotonic()
++    launches = 0
++    proc = None
++    output = None
++
++    def terminate():
++        nonlocal proc
++        if proc is None:
++            return
++        try:
++            if os.name == 'nt':
++                subprocess.run(['taskkill', '/F', '/T', '/PID', str(proc.pid)],
++                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=15)
++            else:
++                import signal
++                os.killpg(proc.pid, signal.SIGKILL)
++        except (OSError, subprocess.SubprocessError):
++            pass
++        try:
++            proc.kill()
++            proc.wait(timeout=15)
++        except (OSError, subprocess.SubprocessError):
++            pass
++        for stream in (proc.stdin, proc.stdout):
++            try:
++                stream.close()
++            except (OSError, AttributeError):
++                pass
++        proc = None
++
++    def launch():
++        nonlocal proc, output, launches
++        cmd = list(psql.prefix) + ['-X', '-q', '-d', db, '-v', 'ON_ERROR_STOP=1', '-At', '-F', '\t', '-f', '-']
++        proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
++                                start_new_session=(os.name != 'nt'))
++        launches += 1
++        output = queue.Queue()
++        target, process = output, proc
++        def reader():
++            try:
++                for line in iter(process.stdout.readline, b''):
++                    target.put(line)
++            finally:
++                target.put(None)
++        threading.Thread(target=reader, daemon=True).start()
++
++    try:
++        for path in tests:
++            start = time.monotonic()
++            lines = []
++            try:
++                # Recheck immediately before use; send precisely the bytes inspected.
++                source = _tap_batch_source(path, {str(path.resolve())})
++                if source is None:
++                    raise RuntimeError('batch eligibility changed before execution')
++                if proc is None or proc.poll() is not None:
++                    terminate()
++                    launch()
++                token = '__AIDD_TAP_' + uuid.uuid4().hex + '__'
++                begin, end = token + '_BEGIN', token + '_END'
++                # \p flushes stdout in psql even when stdout is a pipe.
++                payload = ('\\connect ' + db + '\n\\echo ' + begin + '\n\\p\n' + tap_prefix +
++                           source + '\nROLLBACK;\nDISCARD ALL;\n\\echo ' + end + '\n\\p\n').encode('utf-8')
++                stream = proc.stdin
++                writer_error = []
++                def writer(data=payload, target_stream=stream, errors=writer_error):
++                    try:
++                        target_stream.write(data)
++                        target_stream.flush()
++                    except (OSError, ValueError) as exc:
++                        errors.append(str(exc))
++                threading.Thread(target=writer, daemon=True).start()
++                deadline = start + timeout
++                begun = complete = False
++                prelude = []
++                while True:
++                    remaining = deadline - time.monotonic()
++                    if remaining <= 0:
++                        raise subprocess.TimeoutExpired('psql batch', timeout)
++                    try:
++                        line = output.get(timeout=remaining)
++                    except queue.Empty:
++                        raise subprocess.TimeoutExpired('psql batch', timeout)
++                    if line is None:
++                        break
++                    decoded = line.decode('utf-8', errors='replace')
++                    if decoded.strip() == begin:
++                        begun = True
++                    elif decoded.strip() == end and begun:
++                        complete = True
++                        break
++                    elif begun:
++                        lines.append(decoded)
++                    else:
++                        prelude.append(decoded)
++                if not complete:
++                    lines[:0] = prelude
++                    raise RuntimeError('psql session ended before the test completed' +
++                                       (': ' + writer_error[0] if writer_error else ''))
++                if proc.poll() is not None:
++                    raise RuntimeError('psql session ended while reporting the test')
++                if path.read_text(encoding='utf-8') != source:
++                    raise RuntimeError('test file changed during execution')
++                results.append((path, subprocess.CompletedProcess([], 0, ''.join(lines), ''), time.monotonic() - start))
++            except (OSError, UnicodeError, RuntimeError, subprocess.TimeoutExpired) as exc:
++                terminate()
++                if isinstance(exc, subprocess.TimeoutExpired):
++                    try:
++                        psql.run(admin_db, f"SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '{db}' AND pid <> pg_backend_pid();")
++                    except Exception:
++                        pass
++                results.append((path, subprocess.CompletedProcess([], 1, ''.join(lines),
++                                f'{type(exc).__name__}: {exc}'), time.monotonic() - start))
++    finally:
++        terminate()
++    print(f'== pgTAP batch: {len(tests)} file(s), {launches} psql process(es), '
++          f'{time.monotonic() - batch_started:.2f}s')
++    return results
++
++
+ PLPGSQL_CHECK_SQL = r"""
+ WITH fns AS (
+   SELECT p.oid, p.oid::regprocedure::text AS sig, 0::oid AS relid,
+@@ -484,6 +640,8 @@ def main() -> int:
+     ap.add_argument("--keep-db", action="store_true", help="do not drop the test database after the run")
+     ap.add_argument("--json", metavar="PATH", help="write a JSON report")
+     ap.add_argument("--only-tests", default=None, help="substring filter for pgTAP file names")
++    ap.add_argument("--tap-batch-allowlist", metavar="PATH",
++                    help="opt in to persistent psql for reviewed test files listed one project-relative path per line")
+     ap.add_argument("--only-functions", default=None,
+                     help="regex/substring pattern for function names in plpgsql_check (e.g. 'trace' or 'pos_')")
+     ap.add_argument("--skip-tests", default="", metavar="NAMES",
+@@ -491,10 +649,36 @@ def main() -> int:
+                          "so it is explicit in the log. Use only for documented known failures.")
+     args = ap.parse_args()
+ 
++    if args.tap_batch_allowlist and (not args.tap or args.runner == 'pg_prove'):
++        print('ERROR: --tap-batch-allowlist requires --tap and the psql runner.', file=sys.stderr)
++        return 2
++
+     extra_dirs_list = [Path(d).resolve() for d in args.extra_dir]
+     if not extra_dirs_list and os.environ.get("DB_VERIFY_EXTRA_DIRS"):
+         extra_dirs_list = [Path(d.strip()).resolve() for d in os.environ["DB_VERIFY_EXTRA_DIRS"].split(",") if d.strip()]
+ 
++    batch_allowlist = set()
++    if args.tap_batch_allowlist:
++        try:
++            repo = ROOT.parent.resolve()
++            for line in Path(args.tap_batch_allowlist).read_text(encoding='utf-8-sig').splitlines():
++                raw = line.strip()
++                if not raw or raw.startswith('#'):
++                    continue
++                rel = Path(raw)
++                if rel.is_absolute() or '..' in rel.parts or len(rel.parts) < 2:
++                    raise ValueError(f'allowlist entry must be a project-relative path: {raw}')
++                candidate = (repo / rel).resolve(strict=True)
++                candidate.relative_to(repo)
++                if not candidate.is_file() or not candidate.name.endswith('.test.sql'):
++                    raise ValueError(f'not a pgTAP test file: {raw}')
++                batch_allowlist.add(str(candidate))
++            if not batch_allowlist:
++                raise ValueError('allowlist has no test files')
++        except (OSError, UnicodeError, ValueError) as exc:
++            print(f'ERROR: invalid pgTAP batch allowlist: {exc}', file=sys.stderr)
++            return 2
++
+ 
+     prefix = shlex.split(args.psql, posix=(os.name != "nt")) if args.psql else ["psql"]
+     if shutil.which(prefix[0]) is None:
+@@ -681,12 +865,19 @@ def main() -> int:
+                     psql.run(db, "CREATE EXTENSION IF NOT EXISTS pgtap WITH SCHEMA extensions;")
+                     use_prove = (args.runner == "pg_prove" or
+                                  (args.runner == "auto" and prefix == ["psql"] and shutil.which("pg_prove")))
++                    if batch_allowlist:
++                        use_prove = False
+                     tests = sorted(TEST_DIR.glob("*.test.sql"))
+                     if extra_dirs_list:
+                         for ed in extra_dirs_list:
+                             ed_tests_dir = ed / "supabase" / "tests" if (ed / "supabase" / "tests").exists() else ed / "tests"
+                             if ed_tests_dir.exists():
+                                 tests.extend(sorted(ed_tests_dir.glob("*.test.sql"), key=sort_key))
++                    discovered_files = {str(t.resolve()) for t in tests}
++                    if batch_allowlist - discovered_files:
++                        print('ERROR: batch allowlist includes files outside the selected test directories.', file=sys.stderr)
++                        failures += 1
++                        tests = []
+                     if args.only_tests:
+                         tests = [t for t in tests if args.only_tests in t.name]
+                     skip = {n.strip() for n in args.skip_tests.split(",") if n.strip()}
+@@ -696,10 +887,20 @@ def main() -> int:
+                             rep.notes.append(f"pgTAP skipped explicitly: {t.name}")
+                     tests = [t for t in tests if t.name not in skip]
+                     print(f"\n== pgTAP: {len(tests)} files via {'pg_prove' if use_prove else 'psql'}")
++                    if batch_allowlist:
++                        eligible = sum(tap_batch_eligible(t, batch_allowlist) for t in tests)
++                        print(f'== pgTAP batch candidates: {eligible}/{len(tests)}; other files remain isolated')
+                     if not tests:
+                         print('ERROR: pgTAP selected no test files.', file=sys.stderr)
+                         failures += 1
+-                    for t in tests:
++                    batch_end, batch_items = 0, iter(())
++                    for test_index, t in enumerate(tests):
++                        if not use_prove and test_index >= batch_end and tap_batch_eligible(t, batch_allowlist):
++                            batch_end = test_index
++                            while batch_end < len(tests) and tap_batch_eligible(tests[batch_end], batch_allowlist):
++                                batch_end += 1
++                            batch_items = iter(run_tap_batch(psql, db, tests[test_index:batch_end],
++                                                             tap_prefix, args.test_timeout, args.admin_db))
+                         if use_prove:
+                             p = subprocess.run(["pg_prove", "-d", db, str(t)], capture_output=True,
+                                                text=True, encoding="utf-8", errors="replace")
+@@ -708,13 +909,20 @@ def main() -> int:
+                                     "failed": [] if rc == 0 else [first_error(out)]}
+                         else:
+                             try:
+-                                p = psql.run(db, tap_prefix + t.read_text(encoding="utf-8"), tuples=True,
+-                                             timeout=args.test_timeout)
++                                if test_index < batch_end:
++                                    _, p, test_seconds = next(batch_items)
++                                else:
++                                    t_started = time.monotonic()
++                                    p = psql.run(db, tap_prefix + t.read_text(encoding="utf-8"), tuples=True,
++                                                 timeout=args.test_timeout)
++                                    test_seconds = time.monotonic() - t_started
+                             except subprocess.TimeoutExpired:
+                                 p = subprocess.CompletedProcess([], 124, "", f"ERROR: test timed out after {args.test_timeout}s")
++                                test_seconds = args.test_timeout
+                                 # kill the orphaned server backend so it does not keep running
+                                 psql.run(args.admin_db, f"SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '{db}' AND pid <> pg_backend_pid();")
+                             info = parse_tap(p.stdout)
++                            info['seconds'] = round(test_seconds, 3)
+                             rc = p.returncode
+                             if rc != 0:
+                                 info["failed"].append("psql error: " + first_error(p.stderr, p.stdout))
+@@ -728,7 +936,8 @@ def main() -> int:
+                         info["file"] = str(t) if extra_dirs_list else t.name
+                         rep.tap.append(info)
+                         good = info["not_ok"] == 0
+-                        print(f"[{'ok' if good else 'FAIL'}] {t.name}: ok={info['ok']} not_ok={info['not_ok']} planned={info['planned']}")
++                        elapsed = f" {info['seconds']:.3f}s" if 'seconds' in info else ''
++                        print(f"[{'ok' if good else 'FAIL'}] {t.name}: ok={info['ok']} not_ok={info['not_ok']} planned={info['planned']}{elapsed}")
+                         for f in info["failed"][:8]:
+                             print(f"       {f}")
+                         if not good:

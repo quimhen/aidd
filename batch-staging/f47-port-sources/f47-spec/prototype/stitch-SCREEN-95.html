@@ -1,0 +1,898 @@
+<!DOCTYPE html>
+
+<html class="h-full" lang="es"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>b1SyncLink :: GraphExplorer - SCREEN-95</title>
+<!-- Material Symbols Outlined -->
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<!-- Fonts: Roboto Flex & JetBrains Mono -->
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&amp;family=Roboto+Flex:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<!-- Tailwind CSS -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+          "colors": {
+            "tertiary-fixed-dim": "#4ae176",
+            "primary": "#004d5e",
+            "surface-tint": "#01677c",
+            "on-tertiary-container": "#5ff386",
+            "secondary-fixed-dim": "#62d5f5",
+            "inverse-primary": "#86d1e9",
+            "inverse-surface": "#273238",
+            "surface": "#f4faff",
+            "secondary": "#00677c",
+            "on-tertiary": "#ffffff",
+            "on-error": "#ffffff",
+            "surface-dim": "#d0dce4",
+            "on-secondary-fixed": "#001f27",
+            "outline": "#6f797c",
+            "on-secondary-container": "#006074",
+            "on-primary-fixed": "#001f27",
+            "primary-fixed-dim": "#86d1e9",
+            "on-surface-variant": "#3f484c",
+            "tertiary": "#005221",
+            "outline-variant": "#bec8cc",
+            "on-primary": "#ffffff",
+            "secondary-container": "#6bddfd",
+            "on-secondary": "#ffffff",
+            "on-tertiary-fixed": "#002109",
+            "on-tertiary-fixed-variant": "#005321",
+            "primary-fixed": "#b2ebff",
+            "tertiary-fixed": "#6bff8f",
+            "tertiary-container": "#006d2e",
+            "on-error-container": "#93000a",
+            "on-background": "#121d23",
+            "surface-container-low": "#e9f5fd",
+            "surface-bright": "#f4faff",
+            "surface-container-high": "#deeaf2",
+            "on-secondary-fixed-variant": "#004e5e",
+            "inverse-on-surface": "#e7f2fb",
+            "surface-container-lowest": "#ffffff",
+            "on-surface": "#121d23",
+            "on-primary-fixed-variant": "#004e5e",
+            "background": "#f4faff",
+            "surface-variant": "#d8e4ec",
+            "secondary-fixed": "#b1ecff",
+            "surface-container-highest": "#d8e4ec",
+            "error": "#ba1a1a",
+            "primary-container": "#00677c",
+            "error-container": "#ffdad6",
+            "surface-container": "#e4f0f8",
+            "on-primary-container": "#98e3fb"
+          },
+          "borderRadius": {
+            "DEFAULT": "0.125rem",
+            "lg": "0.25rem",
+            "xl": "0.5rem",
+            "full": "0.75rem"
+          },
+          "spacing": {
+            "space-xs": "0.25rem",
+            "space-sm": "0.5rem",
+            "gutter-compact": "0.5rem",
+            "space-xl": "2rem",
+            "space-md": "0.75rem",
+            "margin": "1.5rem",
+            "margin-mobile": "1rem",
+            "space-lg": "1.25rem",
+            "gutter": "1rem"
+          },
+          "fontFamily": {
+            "mono-data-table": ["JetBrains Mono"],
+            "headline-sm": ["Roboto Flex"],
+            "body-md": ["Roboto Flex"],
+            "headline-lg": ["Roboto Flex"],
+            "headline-md": ["Roboto Flex"],
+            "body-lg": ["Roboto Flex"],
+            "label-caps": ["Roboto Flex"],
+            "label-code": ["JetBrains Mono"],
+            "mono-metric-md": ["JetBrains Mono"],
+            "headline-xl": ["Roboto Flex"],
+            "mono-metric-lg": ["JetBrains Mono"],
+            "body-sm": ["Roboto Flex"]
+          },
+          "fontSize": {
+            "mono-data-table": ["0.8125rem", { "lineHeight": "1.125rem", "fontWeight": "400" }],
+            "headline-sm": ["0.875rem", { "lineHeight": "1.25rem", "letterSpacing": "0", "fontWeight": "600" }],
+            "body-md": ["0.875rem", { "lineHeight": "1.25rem", "fontWeight": "400" }],
+            "headline-lg": ["1.5rem", { "lineHeight": "2rem", "letterSpacing": "-0.015em", "fontWeight": "600" }],
+            "headline-md": ["1.125rem", { "lineHeight": "1.5rem", "letterSpacing": "-0.01em", "fontWeight": "600" }],
+            "body-lg": ["1rem", { "lineHeight": "1.5rem", "fontWeight": "400" }],
+            "label-caps": ["0.6875rem", { "lineHeight": "0.875rem", "letterSpacing": "0.06em", "fontWeight": "600" }],
+            "label-code": ["0.6875rem", { "lineHeight": "0.875rem", "letterSpacing": "0.02em", "fontWeight": "500" }],
+            "mono-metric-md": ["1.125rem", { "lineHeight": "1.5rem", "letterSpacing": "-0.01em", "fontWeight": "500" }],
+            "headline-xl": ["2rem", { "lineHeight": "2.5rem", "letterSpacing": "-0.02em", "fontWeight": "700" }],
+            "mono-metric-lg": ["1.75rem", { "lineHeight": "2rem", "letterSpacing": "-0.02em", "fontWeight": "600" }],
+            "body-sm": ["0.75rem", { "lineHeight": "1rem", "fontWeight": "400" }]
+          }
+        }
+      }
+    }
+  </script>
+<style>
+    .material-symbols-outlined {
+      font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 20;
+      font-size: 1.125rem;
+      line-height: 1;
+      display: inline-block;
+      vertical-align: middle;
+    }
+    .custom-scrollbar::-webkit-scrollbar {
+      width: 4px;
+      height: 4px;
+    }
+    .custom-scrollbar::-webkit-scrollbar-track {
+      background: #f4faff;
+    }
+    .custom-scrollbar::-webkit-scrollbar-thumb {
+      background: #bec8cc;
+      border-radius: 2px;
+    }
+  </style>
+</head>
+<body class="h-screen w-screen overflow-hidden bg-background text-on-surface flex flex-col font-body-md text-body-md select-none">
+<!-- TOP HEADER (h-14 / 56px docked full-width) -->
+<header class="h-14 min-h-[3.5rem] bg-surface-container-lowest border-b border-outline-variant px-space-md flex items-center justify-between gap-space-md z-30 shadow-sm">
+<!-- Left Section: Brand & Breadcrumbs -->
+<div class="flex items-center gap-space-md shrink-0">
+<div class="flex items-center gap-space-xs bg-surface-container-low px-2 py-1 rounded border border-outline-variant">
+<span class="material-symbols-outlined text-secondary" style="font-variation-settings: 'FILL' 1;">hub</span>
+<span class="font-headline-sm text-headline-sm font-bold tracking-tight text-primary">b1SyncLink</span>
+<span class="font-label-code text-label-code bg-secondary text-on-secondary px-1 py-0.5 rounded text-[10px]">GRAPH</span>
+</div>
+<div class="h-4 w-px bg-outline-variant"></div>
+<nav class="flex items-center gap-1.5 text-xs">
+<span class="text-on-surface-variant font-medium">Arquitectura</span>
+<span class="text-outline">/</span>
+<span class="font-headline-sm text-headline-sm text-primary flex items-center gap-1">
+<span>Explorador Global de Grafos</span>
+<span class="font-label-code text-label-code bg-surface-container px-1 py-0.2 rounded text-outline font-semibold">SCREEN-95</span>
+</span>
+</nav>
+</div>
+<!-- Center Search Bar with Omnisearch Prompt -->
+<div class="flex-1 max-w-xl relative">
+<div class="relative flex items-center">
+<span class="material-symbols-outlined absolute left-2.5 text-outline text-sm">search</span>
+<input class="w-full h-8 pl-8 pr-20 bg-surface-container-low hover:bg-surface-container-lowest focus:bg-surface-container-lowest border border-outline-variant focus:border-secondary rounded text-xs text-on-surface focus:outline-none transition-colors" placeholder="Buscar nodo, clase AST, spec AIDD o tabla (ej. OPRM, PayrollEngine)..." type="text" value="OPRM :: Nómina Parámetros Decimo_3ro"/>
+<div class="absolute right-2 flex items-center gap-1">
+<span class="font-label-code text-[10px] bg-surface-container-high text-on-surface-variant px-1.5 py-0.5 rounded border border-outline-variant font-mono">⌘K</span>
+</div>
+</div>
+</div>
+<!-- Center-Right Domain Metrics Indicators -->
+<div class="hidden xl:flex items-center gap-2">
+<!-- BD Metric -->
+<div class="flex items-center gap-1.5 px-2 py-1 rounded bg-surface-container-low border border-outline-variant text-[11px]" title="Base de Datos">
+<span class="h-2 w-2 rounded-full bg-secondary"></span>
+<span class="font-label-code text-label-code font-semibold text-primary">6,980</span>
+<span class="text-outline text-[10px]">Nodos BD</span>
+</div>
+<!-- Code AST Metric -->
+<div class="flex items-center gap-1.5 px-2 py-1 rounded bg-surface-container-low border border-outline-variant text-[11px]" title="Python AST">
+<span class="h-2 w-2 rounded-full bg-blue-600"></span>
+<span class="font-label-code text-label-code font-semibold text-blue-900">1,094</span>
+<span class="text-outline text-[10px]">Módulos AST</span>
+</div>
+<!-- UI Components -->
+<div class="flex items-center gap-1.5 px-2 py-1 rounded bg-surface-container-low border border-outline-variant text-[11px]" title="Componentes React UI">
+<span class="h-2 w-2 rounded-full bg-purple-600"></span>
+<span class="font-label-code text-label-code font-semibold text-purple-900">501</span>
+<span class="text-outline text-[10px]">Componentes UI</span>
+</div>
+<!-- Specs AIDD -->
+<div class="flex items-center gap-1.5 px-2 py-1 rounded bg-surface-container-low border border-outline-variant text-[11px]" title="Especificaciones AIDD">
+<span class="h-2 w-2 rounded-full bg-emerald-600"></span>
+<span class="font-label-code text-label-code font-semibold text-emerald-900">69</span>
+<span class="text-outline text-[10px]">Specs AIDD</span>
+</div>
+</div>
+<!-- Right Actions Cluster -->
+<div class="flex items-center gap-2 shrink-0">
+<!-- Layout Selector -->
+<div class="relative">
+<button class="h-8 px-2.5 bg-surface-container-lowest border border-outline-variant hover:border-secondary rounded flex items-center gap-1.5 text-xs text-on-surface font-medium transition-colors">
+<span class="material-symbols-outlined text-sm text-secondary">account_tree</span>
+<span>Jerárquico DAG</span>
+<span class="material-symbols-outlined text-xs text-outline">expand_more</span>
+</button>
+</div>
+<!-- Export Action -->
+<button class="h-8 px-2.5 bg-surface-container-lowest border border-outline-variant hover:bg-surface-container-low rounded flex items-center gap-1 text-xs text-on-surface transition-colors" title="Exportar grafo en JSON-LD o SVG">
+<span class="material-symbols-outlined text-sm text-outline">download</span>
+<span class="font-medium">Exportar</span>
+</button>
+<!-- Fullscreen / Reset View -->
+<button class="h-8 w-8 flex items-center justify-center border border-outline-variant hover:bg-surface-container-low rounded text-outline hover:text-on-surface transition-colors" title="Pantalla Completa">
+<span class="material-symbols-outlined text-sm">fullscreen</span>
+</button>
+<!-- Theme Badge -->
+<div class="hidden 2xl:flex items-center gap-1 px-2 py-1 bg-surface-container-high rounded text-[11px] text-on-surface-variant font-medium">
+<span class="material-symbols-outlined text-xs text-secondary">verified</span>
+<span>Precision Light</span>
+</div>
+<div class="h-4 w-px bg-outline-variant"></div>
+<!-- Chief Architect Profile -->
+<div class="flex items-center gap-2 pl-1 cursor-pointer">
+<div class="w-8 h-8 rounded-full bg-secondary flex items-center justify-center text-on-secondary font-headline-sm text-xs font-semibold ring-2 ring-surface-container">
+          DR
+        </div>
+</div>
+</div>
+</header>
+<!-- MAIN WORKSPACE CONTAINER -->
+<main class="flex-1 flex overflow-hidden relative">
+<!-- A. LEFT FILTER & CONTROL SIDEBAR (w-[280px]) -->
+<aside class="w-[280px] shrink-0 border-r border-outline-variant bg-surface-container-lowest flex flex-col justify-between overflow-y-auto custom-scrollbar z-20 text-xs p-3 space-y-4 shadow-sm">
+<div class="space-y-4">
+<!-- Sidebar Title & Clear -->
+<div class="flex items-center justify-between pb-2 border-b border-outline-variant">
+<div class="flex items-center gap-1.5">
+<span class="material-symbols-outlined text-secondary text-sm">tune</span>
+<span class="font-headline-sm text-headline-sm text-primary font-semibold">Filtros &amp; Capas de Grafo</span>
+</div>
+<button class="font-label-caps text-label-caps text-secondary hover:underline cursor-pointer uppercase">Restablecer</button>
+</div>
+<!-- 1. Capas de Conocimiento (Knowledge Layers) -->
+<div class="space-y-2">
+<div class="flex items-center justify-between">
+<span class="font-label-caps text-label-caps text-outline uppercase font-semibold">Capas de Conocimiento</span>
+<span class="text-[10px] text-outline">4/4 activas</span>
+</div>
+<div class="space-y-1.5">
+<!-- DB Layer -->
+<label class="flex items-center justify-between p-2 rounded bg-surface-container-low hover:bg-surface-container border border-outline-variant cursor-pointer transition-colors">
+<div class="flex items-center gap-2">
+<input checked="" class="rounded-sm text-secondary focus:ring-secondary h-3.5 w-3.5 border-outline-variant" type="checkbox"/>
+<span class="material-symbols-outlined text-secondary text-sm">database</span>
+<div class="flex flex-col">
+<span class="font-medium text-on-surface">Base de Datos</span>
+<span class="text-[10px] text-outline">PostgreSQL 16 / RLS</span>
+</div>
+</div>
+<span class="font-label-code text-[11px] bg-surface-container-lowest px-1.5 py-0.5 rounded border border-outline-variant font-mono text-primary font-semibold">6,980</span>
+</label>
+<!-- Python AST Layer -->
+<label class="flex items-center justify-between p-2 rounded bg-surface-container-low hover:bg-surface-container border border-outline-variant cursor-pointer transition-colors">
+<div class="flex items-center gap-2">
+<input checked="" class="rounded-sm text-blue-600 focus:ring-blue-600 h-3.5 w-3.5 border-outline-variant" type="checkbox"/>
+<span class="material-symbols-outlined text-blue-600 text-sm">code</span>
+<div class="flex flex-col">
+<span class="font-medium text-on-surface">Código Fuente</span>
+<span class="text-[10px] text-outline">Python AST / FastAPI</span>
+</div>
+</div>
+<span class="font-label-code text-[11px] bg-surface-container-lowest px-1.5 py-0.5 rounded border border-outline-variant font-mono text-blue-900 font-semibold">1,094</span>
+</label>
+<!-- Specs AIDD Layer -->
+<label class="flex items-center justify-between p-2 rounded bg-surface-container-low hover:bg-surface-container border border-outline-variant cursor-pointer transition-colors">
+<div class="flex items-center gap-2">
+<input checked="" class="rounded-sm text-emerald-600 focus:ring-emerald-600 h-3.5 w-3.5 border-outline-variant" type="checkbox"/>
+<span class="material-symbols-outlined text-emerald-600 text-sm">assignment</span>
+<div class="flex flex-col">
+<span class="font-medium text-on-surface">Especificaciones AIDD</span>
+<span class="text-[10px] text-outline">Specs &amp; PRD Tasks</span>
+</div>
+</div>
+<span class="font-label-code text-[11px] bg-surface-container-lowest px-1.5 py-0.5 rounded border border-outline-variant font-mono text-emerald-900 font-semibold">69</span>
+</label>
+<!-- UI Components Layer -->
+<label class="flex items-center justify-between p-2 rounded bg-surface-container-low hover:bg-surface-container border border-outline-variant cursor-pointer transition-colors">
+<div class="flex items-center gap-2">
+<input checked="" class="rounded-sm text-purple-600 focus:ring-purple-600 h-3.5 w-3.5 border-outline-variant" type="checkbox"/>
+<span class="material-symbols-outlined text-purple-600 text-sm">widgets</span>
+<div class="flex flex-col">
+<span class="font-medium text-on-surface">Componentes UI</span>
+<span class="text-[10px] text-outline">React / ui-kit tokens</span>
+</div>
+</div>
+<span class="font-label-code text-[11px] bg-surface-container-lowest px-1.5 py-0.5 rounded border border-outline-variant font-mono text-purple-900 font-semibold">501</span>
+</label>
+</div>
+</div>
+<!-- 2. Filtro por Dominio de Negocio -->
+<div class="space-y-2">
+<span class="font-label-caps text-label-caps text-outline uppercase font-semibold">Filtro por Dominio Negocio</span>
+<div class="space-y-1">
+<div class="flex items-center justify-between p-1.5 rounded bg-surface-container border border-secondary text-primary font-medium">
+<div class="flex items-center gap-1.5">
+<span class="material-symbols-outlined text-secondary text-sm">check_box</span>
+<span>Nómina &amp; Payroll Engine</span>
+</div>
+<span class="font-label-code text-[10px] bg-white px-1 rounded text-primary font-mono">1,420 rel</span>
+</div>
+<div class="flex items-center justify-between p-1.5 rounded hover:bg-surface-container-low text-on-surface-variant">
+<div class="flex items-center gap-1.5">
+<span class="material-symbols-outlined text-outline text-sm">check_box_outline_blank</span>
+<span>eDoc Facturación SRI</span>
+</div>
+<span class="font-label-code text-[10px] text-outline font-mono">840 rel</span>
+</div>
+<div class="flex items-center justify-between p-1.5 rounded hover:bg-surface-container-low text-on-surface-variant">
+<div class="flex items-center gap-1.5">
+<span class="material-symbols-outlined text-outline text-sm">check_box_outline_blank</span>
+<span>Ficha Única &amp; Talento</span>
+</div>
+<span class="font-label-code text-[10px] text-outline font-mono">610 rel</span>
+</div>
+<div class="flex items-center justify-between p-1.5 rounded hover:bg-surface-container-low text-on-surface-variant">
+<div class="flex items-center gap-1.5">
+<span class="material-symbols-outlined text-outline text-sm">check_box_outline_blank</span>
+<span>Sync Mobile SAP DI-API</span>
+</div>
+<span class="font-label-code text-[10px] text-outline font-mono">320 rel</span>
+</div>
+</div>
+</div>
+<!-- 3. Profundidad de Rastreo (Hop Radius) -->
+<div class="space-y-2 p-2.5 rounded bg-surface-container-low border border-outline-variant">
+<div class="flex items-center justify-between">
+<span class="font-label-caps text-label-caps text-on-surface-variant uppercase font-semibold">Radio de Saltos (Hop Radius)</span>
+<span class="font-label-code text-[11px] font-bold text-secondary">2 Saltos</span>
+</div>
+<input class="w-full accent-secondary h-1.5 bg-outline-variant rounded cursor-pointer" max="5" min="1" type="range" value="2"/>
+<div class="flex justify-between text-[10px] text-outline">
+<span>1: Directos</span>
+<span class="text-secondary font-medium">2: Vecindario</span>
+<span>3</span>
+<span>4</span>
+<span>5: Global</span>
+</div>
+<p class="text-[10px] text-on-surface-variant leading-tight">Visualizando vecindario extendido a 2 saltos desde el nodo focal seleccionado.</p>
+</div>
+<!-- 4. Modo Análisis de Impacto (Blast Radius) -->
+<div class="p-2.5 rounded border border-amber-300 bg-amber-50 space-y-1.5">
+<div class="flex items-center justify-between">
+<span class="font-medium text-amber-900 flex items-center gap-1">
+<span class="material-symbols-outlined text-amber-600 text-sm">warning</span>
+<span>Modo Impacto Activo</span>
+</span>
+<label class="relative inline-flex items-center cursor-pointer">
+<input checked="" class="sr-only peer" type="checkbox"/>
+<div class="w-7 h-4 bg-gray-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-amber-600"></div>
+</label>
+</div>
+<p class="text-[11px] text-amber-800 leading-tight">
+            Proyectando cambios en cascada desde <span class="font-label-code font-bold">OPRM</span>. 14 nodos afectados aguas abajo en nómina.
+          </p>
+</div>
+</div>
+<!-- Quick Legend & Edges Definition -->
+<div class="pt-3 border-t border-outline-variant space-y-2">
+<span class="font-label-caps text-label-caps text-outline uppercase font-semibold">Semántica de Aristas</span>
+<div class="grid grid-cols-1 gap-1 text-[11px]">
+<div class="flex items-center justify-between py-0.5">
+<span class="flex items-center gap-1 text-on-surface-variant">
+<span class="w-3 h-0.5 border-t border-dashed border-secondary inline-block"></span>
+<span class="font-label-code text-[10px]">lee_col</span>
+</span>
+<span class="text-outline text-[10px]">Lectura campo</span>
+</div>
+<div class="flex items-center justify-between py-0.5">
+<span class="flex items-center gap-1 text-on-surface-variant">
+<span class="w-3 h-0.5 bg-red-600 inline-block"></span>
+<span class="font-label-code text-[10px]">escribe_col</span>
+</span>
+<span class="text-outline text-[10px]">Mutación</span>
+</div>
+<div class="flex items-center justify-between py-0.5">
+<span class="flex items-center gap-1 text-on-surface-variant">
+<span class="w-3 h-0.5 bg-emerald-600 inline-block"></span>
+<span class="font-label-code text-[10px]">implementa</span>
+</span>
+<span class="text-outline text-[10px]">AIDD Spec</span>
+</div>
+<div class="flex items-center justify-between py-0.5">
+<span class="flex items-center gap-1 text-on-surface-variant">
+<span class="w-3 h-0.5 bg-blue-600 inline-block"></span>
+<span class="font-label-code text-[10px]">importa</span>
+</span>
+<span class="text-outline text-[10px]">Python AST</span>
+</div>
+<div class="flex items-center justify-between py-0.5">
+<span class="flex items-center gap-1 text-on-surface-variant">
+<span class="w-3 h-0.5 bg-purple-600 inline-block"></span>
+<span class="font-label-code text-[10px]">compone</span>
+</span>
+<span class="text-outline text-[10px]">React Render</span>
+</div>
+</div>
+<div class="pt-2 flex items-center justify-between text-[10px] text-outline">
+<span class="flex items-center gap-1">
+<span class="material-symbols-outlined text-xs">memory</span>
+<span>Motor: v4.12-rc</span>
+</span>
+<span class="text-emerald-700 font-medium">Sincronizado</span>
+</div>
+</div>
+</aside>
+<!-- B. CENTER GRAPH CANVAS (flex-1 interactive SVG and node cards) -->
+<section class="flex-1 relative bg-[#F8FAFC] overflow-hidden flex items-center justify-center">
+<!-- Architectural Grid Background Pattern -->
+<div class="absolute inset-0 opacity-[0.035] pointer-events-none" style="background-size: 24px 24px; background-image: linear-gradient(to right, #004d5e 1px, transparent 1px), linear-gradient(to bottom, #004d5e 1px, transparent 1px);"></div>
+<!-- Floating Canvas Control Toolbar (Top-Left) -->
+<div class="absolute top-4 left-4 z-10 bg-white/95 backdrop-blur border border-outline-variant rounded shadow-sm p-1 flex items-center gap-1 text-xs">
+<button class="w-7 h-7 flex items-center justify-center hover:bg-surface-container rounded text-on-surface-variant hover:text-primary" title="Zoom In">
+<span class="material-symbols-outlined text-sm">zoom_in</span>
+</button>
+<button class="w-7 h-7 flex items-center justify-center hover:bg-surface-container rounded text-on-surface-variant hover:text-primary" title="Zoom Out">
+<span class="material-symbols-outlined text-sm">zoom_out</span>
+</button>
+<div class="h-4 w-px bg-outline-variant"></div>
+<button class="px-2 h-7 flex items-center justify-center hover:bg-surface-container rounded text-on-surface-variant hover:text-primary font-mono text-[11px]" title="Reset Zoom">
+          100%
+        </button>
+<button class="w-7 h-7 flex items-center justify-center hover:bg-surface-container rounded text-on-surface-variant hover:text-primary" title="Ajustar a la ventana">
+<span class="material-symbols-outlined text-sm">fit_screen</span>
+</button>
+<div class="h-4 w-px bg-outline-variant"></div>
+<button class="px-2 h-7 flex items-center gap-1 bg-surface-container text-primary font-medium rounded hover:bg-surface-container-high transition-colors text-[11px]" title="Centrar en OPRM">
+<span class="material-symbols-outlined text-sm">filter_center_focus</span>
+<span>Centrar Nodo</span>
+</button>
+<button class="w-7 h-7 flex items-center justify-center hover:bg-surface-container rounded text-on-surface-variant" title="Congelar física de layout">
+<span class="material-symbols-outlined text-sm">lock_open</span>
+</button>
+</div>
+<!-- Floating Domain Clusters Legend Banner (Top-Right) -->
+<div class="absolute top-4 right-4 z-10 bg-white/90 backdrop-blur border border-outline-variant px-3 py-1.5 rounded shadow-sm flex items-center gap-3 text-[11px]">
+<div class="flex items-center gap-1.5">
+<span class="w-2.5 h-2.5 rounded bg-secondary"></span>
+<span class="font-medium text-primary">PostgreSQL (BD)</span>
+</div>
+<div class="flex items-center gap-1.5">
+<span class="w-2.5 h-2.5 rounded bg-blue-600"></span>
+<span class="font-medium text-blue-900">Python AST (Backend)</span>
+</div>
+<div class="flex items-center gap-1.5">
+<span class="w-2.5 h-2.5 rounded bg-purple-600"></span>
+<span class="font-medium text-purple-900">React UI (Frontend)</span>
+</div>
+<div class="flex items-center gap-1.5">
+<span class="w-2.5 h-2.5 rounded bg-emerald-600"></span>
+<span class="font-medium text-emerald-900">AIDD Specs (Specs)</span>
+</div>
+</div>
+<!-- INTERACTIVE GRAPH CANVAS CONTAINER -->
+<div class="w-full h-full relative flex items-center justify-center">
+<!-- SVG CONNECTION LINES (EDGES) -->
+<svg class="absolute inset-0 w-full h-full pointer-events-none z-0" xmlns="http://www.w3.org/2000/svg">
+<defs>
+<!-- Marker Arrows -->
+<marker id="arrow-teal" markerheight="6" markerwidth="6" orient="auto-start-reverse" refx="8" refy="5" viewbox="0 0 10 10">
+<path d="M 0 1 L 10 5 L 0 9 z" fill="#00677c"></path>
+</marker>
+<marker id="arrow-blue" markerheight="6" markerwidth="6" orient="auto-start-reverse" refx="8" refy="5" viewbox="0 0 10 10">
+<path d="M 0 1 L 10 5 L 0 9 z" fill="#2563eb"></path>
+</marker>
+<marker id="arrow-emerald" markerheight="6" markerwidth="6" orient="auto-start-reverse" refx="8" refy="5" viewbox="0 0 10 10">
+<path d="M 0 1 L 10 5 L 0 9 z" fill="#059669"></path>
+</marker>
+<marker id="arrow-purple" markerheight="6" markerwidth="6" orient="auto-start-reverse" refx="8" refy="5" viewbox="0 0 10 10">
+<path d="M 0 1 L 10 5 L 0 9 z" fill="#7c3aed"></path>
+</marker>
+<marker id="arrow-amber" markerheight="6" markerwidth="6" orient="auto-start-reverse" refx="8" refy="5" viewbox="0 0 10 10">
+<path d="M 0 1 L 10 5 L 0 9 z" fill="#d97706"></path>
+</marker>
+</defs>
+<!-- Edge 1: SPEC-F35 (Top-Left) -> OPRM (Center) [implementa] -->
+<path d="M 230 180 C 350 200, 390 280, 480 340" fill="none" marker-end="url(#arrow-emerald)" stroke="#059669" stroke-dasharray="4 2" stroke-width="2"></path>
+<!-- Edge 2: OPRM (Center) -> SQL Funcs (Bottom-Left) [lee_col] -->
+<path d="M 480 390 C 380 430, 340 500, 260 540" fill="none" marker-end="url(#arrow-teal)" stroke="#00677c" stroke-dasharray="3 3" stroke-width="2"></path>
+<path d="M 480 410 C 380 470, 350 580, 270 630" fill="none" marker-end="url(#arrow-teal)" stroke="#00677c" stroke-width="1.5"></path>
+<!-- Edge 3: OPRM (Center) -> Python AST (Top-Right) [importa_esquema] -->
+<path d="M 640 330 C 720 280, 770 230, 850 190" fill="none" marker-end="url(#arrow-blue)" stroke="#2563eb" stroke-width="2.5"></path>
+<!-- Edge 4: Python AST (Top-Right) -> UI Component (Center-Right) [consume_props] -->
+<path d="M 920 240 C 920 290, 890 320, 880 370" fill="none" marker-end="url(#arrow-purple)" stroke="#7c3aed" stroke-width="2"></path>
+<!-- Edge 5: OPRM (Center) -> UI Component (Direct Read / Context) -->
+<path d="M 640 370 C 710 370, 760 380, 820 400" fill="none" marker-end="url(#arrow-amber)" stroke="#d97706" stroke-dasharray="5 3" stroke-width="2"></path>
+<!-- Edge 6: UI Component (Center-Right) -> SCREEN-72 (Far Right Hop 2) [renderiza] -->
+<path d="M 980 420 C 1040 420, 1080 430, 1140 450" fill="none" marker-end="url(#arrow-purple)" stroke="#7c3aed" stroke-width="2"></path>
+</svg>
+<!-- GRAPH EDGE RELATION LABELS (Pills positioned over paths) -->
+<div class="absolute top-[230px] left-[320px] bg-emerald-50 border border-emerald-300 text-emerald-800 text-[10px] font-mono px-2 py-0.5 rounded shadow-sm z-10 flex items-center gap-1">
+<span>implementa_regla</span>
+</div>
+<div class="absolute top-[440px] left-[330px] bg-teal-50 border border-teal-300 text-teal-800 text-[10px] font-mono px-2 py-0.5 rounded shadow-sm z-10 flex items-center gap-1">
+<span>lee_col: decimo_3ro_acc</span>
+</div>
+<div class="absolute top-[240px] left-[700px] bg-blue-50 border border-blue-300 text-blue-800 text-[10px] font-mono px-2 py-0.5 rounded shadow-sm z-10 flex items-center gap-1">
+<span>importa_esquema [Pydantic]</span>
+</div>
+<div class="absolute top-[405px] left-[700px] bg-amber-50 border border-amber-300 text-amber-900 text-[10px] font-mono px-2 py-0.5 rounded shadow-sm z-10 flex items-center gap-1">
+<span>impacto_cascada (14 nodos)</span>
+</div>
+<div class="absolute top-[410px] left-[1020px] bg-purple-50 border border-purple-300 text-purple-800 text-[10px] font-mono px-2 py-0.5 rounded shadow-sm z-10 flex items-center gap-1">
+<span>renderiza_en</span>
+</div>
+<!-- ============================================== -->
+<!-- GRAPH NODES CONSTELLATION                      -->
+<!-- ============================================== -->
+<!-- 1. FOCAL NODE (OPRM - PostgreSQL Table in Center) -->
+<div class="absolute top-[300px] left-[450px] w-64 bg-white border-2 border-secondary rounded shadow-xl ring-4 ring-secondary/20 z-20 cursor-pointer transform hover:scale-[1.02] transition-transform">
+<!-- Focal Header -->
+<div class="bg-secondary text-white p-2.5 rounded-t flex items-center justify-between">
+<div class="flex items-center gap-1.5">
+<span class="material-symbols-outlined text-sm">database</span>
+<span class="font-headline-sm text-xs font-bold tracking-tight">OPRM (PostgreSQL)</span>
+</div>
+<span class="bg-white/20 text-[10px] font-mono px-1.5 py-0.5 rounded font-semibold uppercase">Focal</span>
+</div>
+<!-- Focal Body -->
+<div class="p-3 space-y-2 text-xs bg-white">
+<div class="flex items-center justify-between text-[11px]">
+<span class="text-outline">Esquema: <span class="text-on-surface font-mono font-medium">public</span></span>
+<span class="bg-emerald-50 text-emerald-800 border border-emerald-200 px-1 py-0.2 rounded font-mono text-[10px]">RLS OK</span>
+</div>
+<div class="font-medium text-on-surface text-xs leading-snug">
+              Nómina Parámetros &amp; Periodicidad Fiscal Corporativa
+            </div>
+<!-- Key Columns Preview -->
+<div class="pt-1 border-t border-outline-variant space-y-1 font-label-code text-[11px]">
+<div class="flex items-center justify-between py-0.5 px-1 bg-surface-container rounded text-primary">
+<span class="font-semibold">decimo_3ro_acc</span>
+<span class="text-outline text-[10px]">VARCHAR(16)</span>
+</div>
+<div class="flex items-center justify-between py-0.5 px-1 hover:bg-surface-container rounded text-on-surface-variant">
+<span>code [PK]</span>
+<span class="text-outline text-[10px]">VARCHAR(64)</span>
+</div>
+<div class="flex items-center justify-between py-0.5 px-1 hover:bg-surface-container rounded text-on-surface-variant">
+<span>tenant_id [RLS]</span>
+<span class="text-outline text-[10px]">UUID</span>
+</div>
+</div>
+<!-- Focal Node Status Footer -->
+<div class="pt-1 flex items-center justify-between text-[10px] text-outline border-t border-outline-variant">
+<span>Grado: 9 conexiones</span>
+<span class="text-secondary font-bold">Hop 0 (Centro)</span>
+</div>
+</div>
+</div>
+<!-- 2. AIDD SPEC NODE (Hop 1 - Top Left) -->
+<div class="absolute top-[100px] left-[80px] w-60 bg-white border border-emerald-500 rounded shadow-md z-10 cursor-pointer hover:shadow-lg transition-shadow">
+<div class="bg-emerald-50 border-b border-emerald-200 p-2 flex items-center justify-between">
+<div class="flex items-center gap-1.5 text-emerald-900 font-semibold text-xs">
+<span class="material-symbols-outlined text-emerald-700 text-sm">assignment</span>
+<span>SPEC-F35</span>
+</div>
+<span class="bg-emerald-600 text-white font-mono text-[10px] px-1 py-0.2 rounded">Cerrada</span>
+</div>
+<div class="p-2.5 space-y-1 text-xs">
+<p class="font-medium text-on-surface text-[11px] leading-tight">Configuración Parámetros Legales Nómina Ecuador 2025</p>
+<p class="text-[10px] text-outline">Definición de décimotercero mensual vs acumulado y validación de reglas SRI.</p>
+<div class="pt-1 flex items-center justify-between text-[10px] text-emerald-800 font-mono">
+<span>AIDD Engine v2</span>
+<span>3 Tareas PRD</span>
+</div>
+</div>
+</div>
+<!-- 3. SQL FUNCTIONS CLUSTER (Hop 1 - Bottom Left) -->
+<div class="absolute top-[490px] left-[70px] w-64 bg-white border border-teal-500 rounded shadow-md z-10 space-y-2 p-2.5">
+<div class="flex items-center justify-between border-b border-outline-variant pb-1.5">
+<span class="flex items-center gap-1 text-primary font-semibold text-xs">
+<span class="material-symbols-outlined text-secondary text-sm">terminal</span>
+<span>Funciones SQL PL/pgSQL</span>
+</span>
+<span class="text-[10px] font-mono bg-surface-container px-1 py-0.2 rounded text-outline">2 Nodos</span>
+</div>
+<div class="space-y-1.5">
+<div class="p-1.5 rounded bg-surface-container-low border border-outline-variant text-[11px] cursor-pointer hover:border-secondary transition-colors">
+<div class="flex items-center justify-between font-mono font-medium text-primary">
+<span>pr_param_get()</span>
+<span class="text-[9px] bg-teal-100 text-teal-800 px-1 rounded">STABLE</span>
+</div>
+<p class="text-[10px] text-outline mt-0.5">Lectura indexada con validación tenant RLS</p>
+</div>
+<div class="p-1.5 rounded bg-surface-container-low border border-outline-variant text-[11px] cursor-pointer hover:border-secondary transition-colors">
+<div class="flex items-center justify-between font-mono font-medium text-primary">
+<span>pr_company_enable()</span>
+<span class="text-[9px] bg-red-100 text-red-800 px-1 rounded">WRITE</span>
+</div>
+<p class="text-[10px] text-outline mt-0.5">Mutación de periodicidad con log de auditoría</p>
+</div>
+</div>
+</div>
+<!-- 4. PYTHON BACKEND AST CLUSTER (Hop 1 - Top Right) -->
+<div class="absolute top-[110px] left-[820px] w-64 bg-white border border-blue-500 rounded shadow-md z-10 p-2.5 space-y-2">
+<div class="flex items-center justify-between border-b border-outline-variant pb-1.5">
+<div class="flex items-center gap-1.5 text-blue-900 font-semibold text-xs">
+<span class="material-symbols-outlined text-blue-700 text-sm">code</span>
+<span>Python Backend AST</span>
+</div>
+<span class="font-mono text-[10px] bg-blue-100 text-blue-800 px-1 py-0.2 rounded">FastAPI</span>
+</div>
+<div class="space-y-1.5">
+<div class="p-1.5 rounded bg-blue-50/60 border border-blue-200 text-[11px] cursor-pointer hover:border-blue-500 transition-colors">
+<div class="font-mono font-medium text-blue-950 flex items-center justify-between">
+<span>payroll_service.py</span>
+<span class="text-[9px] text-blue-700">Class Service</span>
+</div>
+<p class="text-[10px] text-outline mt-0.5">Calculador proporcional décimotercero</p>
+</div>
+<div class="p-1.5 rounded bg-blue-50/60 border border-blue-200 text-[11px] cursor-pointer hover:border-blue-500 transition-colors">
+<div class="font-mono font-medium text-blue-950 flex items-center justify-between">
+<span>param_router.py</span>
+<span class="text-[9px] text-blue-700">GET/PUT</span>
+</div>
+<p class="text-[10px] text-outline mt-0.5">API REST /api/v1/payroll/params</p>
+</div>
+</div>
+</div>
+<!-- 5. UI COMPONENTS CLUSTER (Hop 1 - Center Right) -->
+<div class="absolute top-[350px] left-[810px] w-60 bg-white border border-purple-500 rounded shadow-md z-10 p-2.5 space-y-2">
+<div class="flex items-center justify-between border-b border-outline-variant pb-1.5">
+<div class="flex items-center gap-1.5 text-purple-900 font-semibold text-xs">
+<span class="material-symbols-outlined text-purple-700 text-sm">widgets</span>
+<span>UI Components</span>
+</div>
+<span class="font-mono text-[10px] bg-purple-100 text-purple-800 px-1 py-0.2 rounded">React 18</span>
+</div>
+<div class="space-y-1.5">
+<div class="p-1.5 rounded bg-purple-50/50 border border-purple-200 text-[11px] cursor-pointer hover:border-purple-600 transition-colors">
+<div class="font-mono font-medium text-purple-950 flex items-center justify-between">
+<span>&lt;CompanySelector /&gt;</span>
+<span class="text-[9px] text-purple-700">Organism</span>
+</div>
+<p class="text-[10px] text-outline mt-0.5">Selector de entidad y parámetros de nómina</p>
+</div>
+<div class="p-1.5 rounded bg-purple-50/50 border border-purple-200 text-[11px] cursor-pointer hover:border-purple-600 transition-colors">
+<div class="font-mono font-medium text-purple-950 flex items-center justify-between">
+<span>&lt;PeriodContext /&gt;</span>
+<span class="text-[9px] text-purple-700">Context</span>
+</div>
+<p class="text-[10px] text-outline mt-0.5">Provee estado de cálculo fiscal a subcomponentes</p>
+</div>
+</div>
+</div>
+<!-- 6. HOP 2 VIEW / SCREEN CLUSTER (Far Right) -->
+<div class="absolute top-[410px] left-[1110px] w-56 bg-white border border-outline-variant rounded shadow-md z-10 p-2.5 space-y-2 opacity-95 hover:opacity-100 transition-opacity">
+<div class="flex items-center justify-between border-b border-outline-variant pb-1">
+<span class="font-semibold text-on-surface text-xs flex items-center gap-1">
+<span class="material-symbols-outlined text-outline text-sm">desktop_windows</span>
+<span>SCREEN-72</span>
+</span>
+<span class="font-mono text-[9px] bg-surface-container px-1 py-0.2 rounded text-outline">Hop 2</span>
+</div>
+<p class="text-[11px] font-medium text-on-surface">Configuración Parámetros Nómina</p>
+<p class="text-[10px] text-outline">Vista administrativa de ajustes legales y periodicidad de pagos.</p>
+<div class="text-[10px] text-purple-700 font-medium">Consumidor downstream directo</div>
+</div>
+</div>
+<!-- Floating Mini-map (Bottom Right, 180x120px) -->
+<div class="absolute bottom-4 right-4 z-20 w-[180px] h-[120px] rounded border border-outline-variant bg-white/95 shadow-md backdrop-blur p-1.5 flex flex-col justify-between">
+<div class="flex items-center justify-between text-[10px] text-outline border-b border-outline-variant pb-1">
+<span class="font-mono font-semibold">MINIMAP 1:10</span>
+<span>4 Clústers</span>
+</div>
+<!-- Mini canvas constellation representation -->
+<div class="relative w-full h-[75px] bg-surface-container-low rounded overflow-hidden">
+<!-- Mini nodes -->
+<div class="absolute top-2 left-3 w-3 h-2 bg-emerald-600 rounded-[1px]"></div>
+<div class="absolute top-4 right-4 w-3.5 h-2 bg-blue-600 rounded-[1px]"></div>
+<div class="absolute bottom-2 left-3 w-3 h-2 bg-teal-600 rounded-[1px]"></div>
+<div class="absolute top-7 right-5 w-3 h-2 bg-purple-600 rounded-[1px]"></div>
+<div class="absolute top-9 right-1 w-2.5 h-2 bg-gray-400 rounded-[1px]"></div>
+<!-- Focal center node in minimap -->
+<div class="absolute top-6 left-11 w-3.5 h-3 bg-secondary rounded-[1px] ring-2 ring-secondary/40"></div>
+<!-- Viewport rectangle tracker -->
+<div class="absolute top-2 left-6 w-20 h-14 border border-secondary bg-secondary/10 rounded-[1px]"></div>
+</div>
+<div class="flex justify-between text-[9px] text-outline">
+<span>Vista interactiva</span>
+<span class="text-secondary font-mono">1440x900</span>
+</div>
+</div>
+</section>
+<!-- C. RIGHT NODE INSPECTOR PANEL (w-[360px]) -->
+<aside class="w-[360px] shrink-0 border-l border-outline-variant bg-surface-container-lowest flex flex-col justify-between overflow-y-auto custom-scrollbar z-20 p-4 text-xs space-y-4 shadow-sm">
+<div class="space-y-4">
+<!-- Panel Header -->
+<div class="border-b border-outline-variant pb-3 space-y-1.5">
+<div class="flex items-center justify-between">
+<span class="font-label-caps text-label-caps bg-surface-container text-secondary px-2 py-0.5 rounded font-semibold uppercase flex items-center gap-1">
+<span class="material-symbols-outlined text-xs">database</span>
+<span>Nodo Seleccionado</span>
+</span>
+<div class="flex items-center gap-1 text-outline">
+<button class="hover:text-primary p-0.5" title="Centrar"><span class="material-symbols-outlined text-sm">filter_center_focus</span></button>
+<button class="hover:text-primary p-0.5" title="Cerrar"><span class="material-symbols-outlined text-sm">close</span></button>
+</div>
+</div>
+<div>
+<h2 class="font-headline-md text-headline-md text-primary font-bold">OPRM (Tabla PostgreSQL)</h2>
+<p class="text-xs text-on-surface-variant font-medium">Dominio: Nómina &amp; Motor Salarial</p>
+</div>
+<!-- Technical Badges -->
+<div class="flex flex-wrap gap-1 pt-1">
+<span class="bg-surface-container-low text-on-surface border border-outline-variant px-1.5 py-0.5 rounded text-[10px] font-mono">PostgreSQL 16</span>
+<span class="bg-emerald-50 text-emerald-800 border border-emerald-200 px-1.5 py-0.5 rounded text-[10px] font-mono">RLS Activo: tenant_id</span>
+<span class="bg-surface-container-low text-outline border border-outline-variant px-1.5 py-0.5 rounded text-[10px] font-mono">Esquema: public</span>
+</div>
+</div>
+<!-- Propósito Documentado -->
+<div class="space-y-1">
+<span class="font-label-caps text-label-caps text-outline uppercase font-semibold">Propósito Documentado</span>
+<p class="text-[11px] text-on-surface-variant leading-relaxed bg-surface-container-low p-2 rounded border border-outline-variant">
+            Tabla maestra de configuración de parámetros corporativos de nómina y periodicidad fiscal. Contiene reglas para decimotercero, fondos de reserva y sincronización con SAP B1.
+          </p>
+</div>
+<!-- Columnas Clave & Tipos -->
+<div class="space-y-1.5">
+<div class="flex items-center justify-between">
+<span class="font-label-caps text-label-caps text-outline uppercase font-semibold">Columnas Clave &amp; Tipos</span>
+<span class="text-[10px] font-mono text-outline">4 de 18 cols</span>
+</div>
+<div class="border border-outline-variant rounded overflow-hidden">
+<table class="w-full text-left font-mono text-[11px]">
+<thead class="bg-surface-container text-outline text-[10px] border-b border-outline-variant">
+<tr>
+<th class="py-1 px-2 font-semibold">Columna</th>
+<th class="py-1 px-2 font-semibold">Tipo</th>
+<th class="py-1 px-2 font-semibold text-right">Rol</th>
+</tr>
+</thead>
+<tbody class="divide-y divide-outline-variant bg-white">
+<tr class="hover:bg-surface-container-low">
+<td class="py-1 px-2 font-semibold text-primary">code</td>
+<td class="py-1 px-2 text-outline">VARCHAR(64)</td>
+<td class="py-1 px-2 text-right"><span class="bg-secondary text-white text-[9px] px-1 py-0.2 rounded font-sans">PK</span></td>
+</tr>
+<tr class="bg-amber-50/50 hover:bg-amber-100/50">
+<td class="py-1 px-2 font-semibold text-amber-900">decimo_3ro_acc</td>
+<td class="py-1 px-2 text-outline">VARCHAR(16)</td>
+<td class="py-1 px-2 text-right"><span class="bg-amber-200 text-amber-900 text-[9px] px-1 py-0.2 rounded font-sans">Vigente</span></td>
+</tr>
+<tr class="hover:bg-surface-container-low">
+<td class="py-1 px-2 font-medium text-on-surface">val_num</td>
+<td class="py-1 px-2 text-outline">NUMERIC(14,4)</td>
+<td class="py-1 px-2 text-right"><span class="text-outline text-[10px]">Parám</span></td>
+</tr>
+<tr class="hover:bg-surface-container-low">
+<td class="py-1 px-2 font-medium text-on-surface">tenant_id</td>
+<td class="py-1 px-2 text-outline">UUID</td>
+<td class="py-1 px-2 text-right"><span class="bg-emerald-100 text-emerald-800 text-[9px] px-1 py-0.2 rounded font-sans">RLS Key</span></td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+<!-- Trazabilidad Cruzada Multidominio (Cross-Graph Trace) -->
+<div class="space-y-2 pt-1 border-t border-outline-variant">
+<span class="font-label-caps text-label-caps text-outline uppercase font-semibold">Trazabilidad Cruzada Multidominio</span>
+<!-- AIDD Specs Section -->
+<div class="space-y-1">
+<div class="flex items-center justify-between text-[11px] text-emerald-900 font-semibold">
+<span class="flex items-center gap-1">
+<span class="material-symbols-outlined text-xs text-emerald-700">assignment</span>
+<span>3 Specs AIDD Vinculadas</span>
+</span>
+</div>
+<div class="space-y-1 font-mono text-[10px]">
+<div class="p-1 rounded bg-surface-container-low hover:bg-surface-container border border-outline-variant flex items-center justify-between cursor-pointer">
+<span class="text-on-surface font-medium">[SPEC-P01] Arquitectura Multi-tenant RLS</span>
+<span class="text-emerald-700">Cerrada</span>
+</div>
+<div class="p-1 rounded bg-surface-container-low hover:bg-surface-container border border-outline-variant flex items-center justify-between cursor-pointer">
+<span class="text-on-surface font-medium">[SPEC-P05] Sync Parámetros SAP B1 DI-API</span>
+<span class="text-blue-700">Revisión</span>
+</div>
+<div class="p-1 rounded bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 flex items-center justify-between cursor-pointer text-emerald-900">
+<span class="font-semibold">[SPEC-F35] Ajustes y Seguridad Nómina (SCREEN-72)</span>
+<span class="text-emerald-700">Activa</span>
+</div>
+</div>
+</div>
+<!-- Funciones SQL & Endpoints AST -->
+<div class="space-y-1">
+<div class="flex items-center justify-between text-[11px] text-blue-900 font-semibold">
+<span class="flex items-center gap-1">
+<span class="material-symbols-outlined text-xs text-blue-700">code</span>
+<span>8 Funciones SQL &amp; Endpoints</span>
+</span>
+</div>
+<div class="space-y-1 font-mono text-[10px]">
+<div class="p-1 rounded bg-surface-container-low border border-outline-variant flex items-center justify-between">
+<span class="text-on-surface font-medium">pr_param_get()</span>
+<span class="text-outline">Lectura Indexada</span>
+</div>
+<div class="p-1 rounded bg-surface-container-low border border-outline-variant flex items-center justify-between">
+<span class="text-on-surface font-medium">pr_company_enable()</span>
+<span class="text-amber-800">Mutación Auditoría</span>
+</div>
+<div class="p-1 rounded bg-surface-container-low border border-outline-variant flex items-center justify-between">
+<span class="text-blue-950 font-medium">GET /api/v1/payroll/params</span>
+<span class="text-blue-700 font-semibold">FastAPI AST</span>
+</div>
+</div>
+</div>
+<!-- Componentes UI Dependientes -->
+<div class="space-y-1">
+<div class="flex items-center justify-between text-[11px] text-purple-900 font-semibold">
+<span class="flex items-center gap-1">
+<span class="material-symbols-outlined text-xs text-purple-700">widgets</span>
+<span>4 Componentes UI Dependientes</span>
+</span>
+</div>
+<div class="space-y-1 font-mono text-[10px]">
+<div class="p-1 rounded bg-surface-container-low border border-outline-variant flex items-center justify-between">
+<span class="text-purple-950 font-medium">&lt;CompanySelector /&gt;</span>
+<span class="text-outline">ui-kit/organisms</span>
+</div>
+<div class="p-1 rounded bg-surface-container-low border border-outline-variant flex items-center justify-between">
+<span class="text-purple-950 font-medium">&lt;PeriodContext /&gt;</span>
+<span class="text-outline">state/store</span>
+</div>
+<div class="p-1 rounded bg-surface-container-low border border-outline-variant flex items-center justify-between">
+<span class="text-purple-950 font-medium">SCREEN-72 SettingsView</span>
+<span class="text-outline">app/payroll</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Matriz de Impacto de Cambio (Blast Radius) -->
+<div class="p-2.5 rounded border border-red-200 bg-red-50/60 space-y-1.5">
+<div class="flex items-center justify-between text-red-900 font-semibold text-xs">
+<span class="flex items-center gap-1">
+<span class="material-symbols-outlined text-sm text-red-600">crisis_alert</span>
+<span>Matriz de Impacto (Blast Radius)</span>
+</span>
+<span class="font-mono text-red-700 bg-red-100 px-1 rounded text-[10px]">Score 84/100</span>
+</div>
+<div class="flex items-center gap-2">
+<div class="flex-1 bg-red-200 h-2 rounded-full overflow-hidden">
+<div class="bg-red-600 h-full w-[84%]"></div>
+</div>
+<span class="font-bold text-red-700 text-[11px]">ALTO RIESGO</span>
+</div>
+<p class="text-[10px] text-red-800 leading-tight">
+            Alterar la columna <span class="font-mono font-bold">decimo_3ro_acc</span> impactará 14 nodos aguas abajo (incluyendo conciliación tributaria SRI y vouchers de pago).
+          </p>
+</div>
+</div>
+<!-- Footer Pinned Quick Actions -->
+<div class="pt-3 border-t border-outline-variant space-y-2">
+<div class="grid grid-cols-2 gap-2">
+<button class="h-8 px-2 bg-secondary hover:bg-[#005263] text-white rounded font-medium text-xs flex items-center justify-center gap-1 transition-colors shadow-sm">
+<span class="material-symbols-outlined text-sm">filter_center_focus</span>
+<span>Nodo Focal</span>
+</button>
+<button class="h-8 px-2 bg-white hover:bg-surface-container border border-outline-variant rounded font-medium text-xs text-on-surface flex items-center justify-center gap-1 transition-colors">
+<span class="material-symbols-outlined text-sm text-outline">near_me</span>
+<span>Aislar (1 Salto)</span>
+</button>
+</div>
+<div class="flex items-center justify-between text-[11px] text-outline pt-1">
+<button class="hover:text-primary flex items-center gap-1 underline underline-offset-2">
+<span class="material-symbols-outlined text-xs">link</span>
+<span>Copiar Enlace</span>
+</button>
+<button class="hover:text-primary flex items-center gap-1 underline underline-offset-2">
+<span class="material-symbols-outlined text-xs">terminal</span>
+<span>Ver DDL en Git</span>
+</button>
+</div>
+</div>
+</aside>
+</main>
+<!-- Interactive JavaScript for micro-interactions -->
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+      // Focus interactive feedback
+      const focalCard = document.querySelector('.ring-secondary\\/20');
+      if (focalCard) {
+        focalCard.addEventListener('click', () => {
+          focalCard.classList.add('ring-8');
+          setTimeout(() => focalCard.classList.remove('ring-8'), 300);
+        });
+      }
+    });
+  </script>
+</body></html>

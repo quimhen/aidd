@@ -236,20 +236,11 @@ def _load_aliases(root):
     if key not in _ALIASES:
         out = {}
         try:
+            import alias_graph
             fp = Path(root) / ALIAS_FILE
             if fp.is_file() and fp.stat().st_size <= MAX_READ:
-                for line in fp.read_bytes().decode('utf-8').splitlines():
-                    if not line.startswith('  '):
-                        continue
-                    fields = [f.strip() for f in line.split(',')]
-                    if len(fields) < 2:
-                        continue
-                    old, new = fields[0], fields[1]
-                    if not old or not new or new in ('.', '..') or any(c in old + new for c in '/\\\x00'):
-                        continue       # base names only: never a path that could leave the directory
-                    out[old] = new
-        except (OSError, UnicodeDecodeError, ValueError):
-            out = {}
+                for r in alias_graph.load_aliases(fp):
+                    out[r['old']] = r['new']
         except Exception:
             out = {}
         _ALIASES[key] = out
@@ -373,8 +364,13 @@ def graph(root, results):
                       'marked_pct': r['marked_pct'], 'tasks': r['tasks'], **{'stage_' + k: v for k, v in r['stages'].items()}})
         for t in r['rows']:
             tid = '%s/%s' % (r['spec'], t['id'])
-            nodes.append({'id': tid, 'type': 'T', 'label': t['id'], 'state': t['state'], 'status': t['status'],
-                          'codes': t['codes']})
+            nd = {'id': tid, 'type': 'T', 'label': t['id'], 'status': t['status'], 'codes': t['codes']}
+            is_delete_only = bool(t.get('paths') and set(t.get('paths')) <= set(t.get('delete') or []))
+            if t.get('state') == 'renamed':
+                nd['state'] = 'renamed'
+            elif is_delete_only and t.get('state') == 'present':
+                nd['state'] = 'deleted'
+            nodes.append(nd)
             edges.append({'source': sid, 'target': tid, 'relation': 'contains'})
             for p in t['paths']:
                 edges.append({'source': tid, 'target': p, 'relation': 'targets'})

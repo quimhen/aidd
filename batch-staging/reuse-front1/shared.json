@@ -1,0 +1,486 @@
+[
+ {
+  "cmd": "node eDoc/web/node_modules/typescript/bin/tsc --noEmit -p eDoc/web --extendedDiagnostics",
+  "n_specs": 10,
+  "specs": [
+   "F15-eDoc-Backoffice-Web",
+   "F17-eDoc-Inbound",
+   "F18-eDoc-Migration",
+   "F19-eDoc-Masters-Importers",
+   "F20-eDoc-Manual-Invoicing",
+   "F21-eDoc-Inventory",
+   "F22-eDoc-Pricing",
+   "F26-eDoc-Tax-Catalogs",
+   "F27-Correction-Backlog",
+   "F30-Rename-SAP-Names"
+  ],
+  "n_rows": 10,
+  "db": false,
+  "surface_ok": false,
+  "rows_hermetic_declared": 0,
+  "rows_eligible_today": 0,
+  "median_secs": 33.1,
+  "timed_samples": 61,
+  "real_runs_logged": 64,
+  "reused_runs_logged": 27,
+  "distinct_specs_that_ran_it": 10,
+  "saved_per_round_secs": 297.90000000000003
+ },
+ {
+  "cmd": "python Payroll/tools/charter_gate.py",
+  "n_specs": 9,
+  "specs": [
+   "P03-Payrol-Employees-Contracts",
+   "P04-Payrol-Rubros-Plugins",
+   "P05-Payrol-Periods-Novelties",
+   "P06-Payrol-Calculation-Close",
+   "P07-Payrol-Ecuador-Package",
+   "P08-Payrol-Loans-Vacations",
+   "P10-Payrol-Outputs",
+   "P11-Payrol-Severance-Profit-Sharing",
+   "P12-Payrol-Employee-Portal"
+  ],
+  "n_rows": 10,
+  "db": false,
+  "surface_ok": true,
+  "rows_hermetic_declared": 0,
+  "rows_eligible_today": 0,
+  "median_secs": 188.1,
+  "timed_samples": 44,
+  "real_runs_logged": 44,
+  "reused_runs_logged": 0,
+  "distinct_specs_that_ran_it": 9,
+  "saved_per_round_secs": 1504.8
+ },
+ {
+  "cmd": "python eDoc/tools/db_verify.py --psql \"docker exec -i supabase_db_edoc psql -U postgres\" --tap --plpgsql-check --extra-dir Payroll --extra-dir Selection",
+  "n_specs": 4,
+  "specs": [
+   "F27-Correction-Backlog",
+   "F36-eDoc-Purchasing",
+   "F37-eDoc-Supplier-Invoice",
+   "F38-eDoc-Import-Costing"
+  ],
+  "n_rows": 4,
+  "db": true,
+  "surface_ok": true,
+  "rows_hermetic_declared": 0,
+  "rows_eligible_today": 0,
+  "median_secs": 373.0,
+  "timed_samples": 14,
+  "real_runs_logged": 14,
+  "reused_runs_logged": 3,
+  "distinct_specs_that_ran_it": 4,
+  "saved_per_round_secs": 1119.0
+ },
+ {
+  "cmd": "python eDoc/tools/db_verify.py --psql \"docker exec -i supabase_db_edoc psql -U postgres\" --tap --plpgsql-check",
+  "n_specs": 4,
+  "specs": [
+   "F28-DB-Unification-Sync",
+   "F30-Rename-SAP-Names",
+   "F33-ERP-Field-Mapping",
+   "F55-Mobile-W4"
+  ],
+  "n_rows": 4,
+  "db": true,
+  "surface_ok": true,
+  "rows_hermetic_declared": 0,
+  "rows_eligible_today": 0,
+  "median_secs": 305.2,
+  "timed_samples": 14,
+  "real_runs_logged": 20,
+  "reused_runs_logged": 1,
+  "distinct_specs_that_ran_it": 8,
+  "saved_per_round_secs": 915.5999999999999
+ },
+ {
+  "cmd": "python -m pytest eDoc/engine -q",
+  "n_specs": 4,
+  "specs": [
+   "F28-DB-Unification-Sync",
+   "F30-Rename-SAP-Names",
+   "F31-F28-Followups",
+   "F33-ERP-Field-Mapping"
+  ],
+  "n_rows": 4,
+  "db": false,
+  "surface_ok": false,
+  "rows_hermetic_declared": 0,
+  "rows_eligible_today": 0,
+  "median_secs": 27.049999999999997,
+  "timed_samples": 10,
+  "real_runs_logged": 16,
+  "reused_runs_logged": 0,
+  "distinct_specs_that_ran_it": 5,
+  "saved_per_round_secs": 81.14999999999999
+ },
+ {
+  "cmd": "node eDoc/web/node_modules/vitest/vitest.mjs run --root eDoc/web",
+  "n_specs": 3,
+  "specs": [
+   "F27-Correction-Backlog",
+   "F28-DB-Unification-Sync",
+   "F30-Rename-SAP-Names"
+  ],
+  "n_rows": 3,
+  "db": false,
+  "surface_ok": false,
+  "rows_hermetic_declared": 0,
+  "rows_eligible_today": 0,
+  "median_secs": 469.65,
+  "timed_samples": 28,
+  "real_runs_logged": 35,
+  "reused_runs_logged": 4,
+  "distinct_specs_that_ran_it": 11,
+  "saved_per_round_secs": 939.3
+ },
+ {
+  "cmd": "npm test --prefix eDoc/web",
+  "n_specs": 3,
+  "specs": [
+   "F35-UI-Executive-Precision",
+   "F39-eDoc-Inventory-Accounting",
+   "F45-Aggregates-KPI-Engine"
+  ],
+  "n_rows": 3,
+  "db": false,
+  "surface_ok": false,
+  "rows_hermetic_declared": 0,
+  "rows_eligible_today": 0,
+  "median_secs": 357.35,
+  "timed_samples": 24,
+  "real_runs_logged": 25,
+  "reused_runs_logged": 0,
+  "distinct_specs_that_ran_it": 3,
+  "saved_per_round_secs": 714.7
+ },
+ {
+  "cmd": "powershell -NoProfile -File specs/F28-DB-Unification-Sync/verify/mobile_tests.ps1",
+  "n_specs": 3,
+  "specs": [
+   "F28-DB-Unification-Sync",
+   "F30-Rename-SAP-Names",
+   "F31-F28-Followups"
+  ],
+  "n_rows": 3,
+  "db": false,
+  "surface_ok": false,
+  "rows_hermetic_declared": 0,
+  "rows_eligible_today": 0,
+  "median_secs": 130.5,
+  "timed_samples": 5,
+  "real_runs_logged": 11,
+  "reused_runs_logged": 0,
+  "distinct_specs_that_ran_it": 3,
+  "saved_per_round_secs": 261.0
+ },
+ {
+  "cmd": "python -m pytest Payroll/engine/tests -q",
+  "n_specs": 3,
+  "specs": [
+   "P10-Payrol-Outputs",
+   "P12-Payrol-Employee-Portal",
+   "P13-Payrol-Commissions"
+  ],
+  "n_rows": 3,
+  "db": false,
+  "surface_ok": false,
+  "rows_hermetic_declared": 0,
+  "rows_eligible_today": 0,
+  "median_secs": 87.2,
+  "timed_samples": 17,
+  "real_runs_logged": 17,
+  "reused_runs_logged": 1,
+  "distinct_specs_that_ran_it": 6,
+  "saved_per_round_secs": 174.4
+ },
+ {
+  "cmd": "python eDoc/tools/db_verify.py --psql \"docker exec -i supabase_db_edoc psql -U postgres\" --tap --plpgsql-check --only-tests inventory_",
+  "n_specs": 3,
+  "specs": [
+   "F21-eDoc-Inventory",
+   "F39-eDoc-Inventory-Accounting",
+   "F45-Aggregates-KPI-Engine"
+  ],
+  "n_rows": 3,
+  "db": true,
+  "surface_ok": true,
+  "rows_hermetic_declared": 0,
+  "rows_eligible_today": 0,
+  "median_secs": 29.85,
+  "timed_samples": 20,
+  "real_runs_logged": 23,
+  "reused_runs_logged": 0,
+  "distinct_specs_that_ran_it": 3,
+  "saved_per_round_secs": 59.7
+ },
+ {
+  "cmd": "python -m pytest Payroll/tools/tests/test_charter_gate.py -q",
+  "n_specs": 3,
+  "specs": [
+   "P01-Payrol-Foundation",
+   "P02-Payrol-Approval-Flows",
+   "P15-Payrol-Hardening-Pilot"
+  ],
+  "n_rows": 3,
+  "db": false,
+  "surface_ok": false,
+  "rows_hermetic_declared": 0,
+  "rows_eligible_today": 0,
+  "median_secs": 2.7,
+  "timed_samples": 17,
+  "real_runs_logged": 17,
+  "reused_runs_logged": 2,
+  "distinct_specs_that_ran_it": 3,
+  "saved_per_round_secs": 5.4
+ },
+ {
+  "cmd": "python Payroll/tools/check_ranges.py --specs specs",
+  "n_specs": 3,
+  "specs": [
+   "P02-Payrol-Approval-Flows",
+   "P05-Payrol-Periods-Novelties",
+   "P08-Payrol-Loans-Vacations"
+  ],
+  "n_rows": 3,
+  "db": false,
+  "surface_ok": true,
+  "rows_hermetic_declared": 0,
+  "rows_eligible_today": 0,
+  "median_secs": 1.15,
+  "timed_samples": 20,
+  "real_runs_logged": 20,
+  "reused_runs_logged": 0,
+  "distinct_specs_that_ran_it": 3,
+  "saved_per_round_secs": 2.3
+ },
+ {
+  "cmd": "powershell -NoProfile -File specs/F55-Mobile-W4/verify/mobile_w4.ps1 -Mode test",
+  "n_specs": 2,
+  "specs": [
+   "F06-Orders-Returns",
+   "F55-Mobile-W4"
+  ],
+  "n_rows": 2,
+  "db": false,
+  "surface_ok": false,
+  "rows_hermetic_declared": 0,
+  "rows_eligible_today": 0,
+  "median_secs": 119.9,
+  "timed_samples": 2,
+  "real_runs_logged": 2,
+  "reused_runs_logged": 0,
+  "distinct_specs_that_ran_it": 2,
+  "saved_per_round_secs": 119.9
+ },
+ {
+  "cmd": "python docs/db-graph/build_graph.py",
+  "n_specs": 2,
+  "specs": [
+   "F32-DB-Graph-Enrichment",
+   "F47-Unified-Knowledge-Graph-Explorer"
+  ],
+  "n_rows": 2,
+  "db": false,
+  "surface_ok": true,
+  "rows_hermetic_declared": 0,
+  "rows_eligible_today": 0,
+  "median_secs": 52.2,
+  "timed_samples": 5,
+  "real_runs_logged": 8,
+  "reused_runs_logged": 0,
+  "distinct_specs_that_ran_it": 2,
+  "saved_per_round_secs": 52.2
+ },
+ {
+  "cmd": "python -m pytest Payroll/tools/tests -q",
+  "n_specs": 2,
+  "specs": [
+   "P01-Payrol-Foundation",
+   "P07-Payrol-Ecuador-Package"
+  ],
+  "n_rows": 2,
+  "db": false,
+  "surface_ok": false,
+  "rows_hermetic_declared": 0,
+  "rows_eligible_today": 0,
+  "median_secs": 37.95,
+  "timed_samples": 28,
+  "real_runs_logged": 28,
+  "reused_runs_logged": 3,
+  "distinct_specs_that_ran_it": 4,
+  "saved_per_round_secs": 37.95
+ },
+ {
+  "cmd": "python -m pytest eDoc/engine/tests -q",
+  "n_specs": 2,
+  "specs": [
+   "F13-eDoc-Emission-Engine",
+   "F14-eDoc-ERP-API"
+  ],
+  "n_rows": 2,
+  "db": false,
+  "surface_ok": false,
+  "rows_hermetic_declared": 0,
+  "rows_eligible_today": 0,
+  "median_secs": 35.8,
+  "timed_samples": 27,
+  "real_runs_logged": 27,
+  "reused_runs_logged": 11,
+  "distinct_specs_that_ran_it": 4,
+  "saved_per_round_secs": 35.8
+ },
+ {
+  "cmd": "python -m pytest docs/db-graph docs/rename-sap-names -q",
+  "n_specs": 2,
+  "specs": [
+   "F27-Correction-Backlog",
+   "F32-DB-Graph-Enrichment"
+  ],
+  "n_rows": 2,
+  "db": false,
+  "surface_ok": false,
+  "rows_hermetic_declared": 0,
+  "rows_eligible_today": 0,
+  "median_secs": 14.45,
+  "timed_samples": 4,
+  "real_runs_logged": 7,
+  "reused_runs_logged": 0,
+  "distinct_specs_that_ran_it": 2,
+  "saved_per_round_secs": 14.45
+ },
+ {
+  "cmd": "python eDoc/tools/db_verify.py --psql \"docker exec -i supabase_db_edoc psql -U postgres\" --tap --plpgsql-check --only-tests schema_invariants --extra-dir Payroll --extra-dir Selection",
+  "n_specs": 2,
+  "specs": [
+   "F12-eDoc-Foundation",
+   "F13-eDoc-Emission-Engine"
+  ],
+  "n_rows": 2,
+  "db": true,
+  "surface_ok": true,
+  "rows_hermetic_declared": 0,
+  "rows_eligible_today": 0,
+  "median_secs": 12.7,
+  "timed_samples": 10,
+  "real_runs_logged": 10,
+  "reused_runs_logged": 0,
+  "distinct_specs_that_ran_it": 2,
+  "saved_per_round_secs": 12.7
+ },
+ {
+  "cmd": "npm run typecheck --prefix Selection/web",
+  "n_specs": 2,
+  "specs": [
+   "S04-Select-Interviews-Evaluation",
+   "S05-Select-Offer-Selection-Hire"
+  ],
+  "n_rows": 2,
+  "db": false,
+  "surface_ok": false,
+  "rows_hermetic_declared": 0,
+  "rows_eligible_today": 0,
+  "median_secs": 11.45,
+  "timed_samples": 8,
+  "real_runs_logged": 8,
+  "reused_runs_logged": 0,
+  "distinct_specs_that_ran_it": 2,
+  "saved_per_round_secs": 11.45
+ },
+ {
+  "cmd": "npm test --prefix Payroll/shared",
+  "n_specs": 2,
+  "specs": [
+   "P07-Payrol-Ecuador-Package",
+   "P08-Payrol-Loans-Vacations"
+  ],
+  "n_rows": 2,
+  "db": false,
+  "surface_ok": false,
+  "rows_hermetic_declared": 0,
+  "rows_eligible_today": 0,
+  "median_secs": 10.8,
+  "timed_samples": 9,
+  "real_runs_logged": 9,
+  "reused_runs_logged": 0,
+  "distinct_specs_that_ran_it": 2,
+  "saved_per_round_secs": 10.8
+ },
+ {
+  "cmd": "python eDoc/tools/db_verify.py --psql \"docker exec -i supabase_db_edoc psql -U postgres\" --tap --plpgsql-check --only-tests emission_",
+  "n_specs": 2,
+  "specs": [
+   "F13-eDoc-Emission-Engine",
+   "F45-Aggregates-KPI-Engine"
+  ],
+  "n_rows": 2,
+  "db": true,
+  "surface_ok": true,
+  "rows_hermetic_declared": 0,
+  "rows_eligible_today": 0,
+  "median_secs": 10.4,
+  "timed_samples": 18,
+  "real_runs_logged": 19,
+  "reused_runs_logged": 1,
+  "distinct_specs_that_ran_it": 2,
+  "saved_per_round_secs": 10.4
+ },
+ {
+  "cmd": "python -m pytest eDoc/connectors/sap/tests -q",
+  "n_specs": 2,
+  "specs": [
+   "F27-Correction-Backlog",
+   "F33-ERP-Field-Mapping"
+  ],
+  "n_rows": 2,
+  "db": false,
+  "surface_ok": false,
+  "rows_hermetic_declared": 0,
+  "rows_eligible_today": 0,
+  "median_secs": 1.4,
+  "timed_samples": 6,
+  "real_runs_logged": 6,
+  "reused_runs_logged": 0,
+  "distinct_specs_that_ran_it": 2,
+  "saved_per_round_secs": 1.4
+ },
+ {
+  "cmd": "python -m pytest Payroll/connectors/sap/tests -q",
+  "n_specs": 2,
+  "specs": [
+   "P09-Payrol-Accounting-SAP",
+   "P13-Payrol-Commissions"
+  ],
+  "n_rows": 2,
+  "db": false,
+  "surface_ok": false,
+  "rows_hermetic_declared": 0,
+  "rows_eligible_today": 0,
+  "median_secs": 1.25,
+  "timed_samples": 2,
+  "real_runs_logged": 2,
+  "reused_runs_logged": 0,
+  "distinct_specs_that_ran_it": 2,
+  "saved_per_round_secs": 1.25
+ },
+ {
+  "cmd": "python Payroll/tools/check_ranges.py --specs specs/",
+  "n_specs": 2,
+  "specs": [
+   "P14-Payrol-Migration-Reconciliation",
+   "P15-Payrol-Hardening-Pilot"
+  ],
+  "n_rows": 2,
+  "db": false,
+  "surface_ok": true,
+  "rows_hermetic_declared": 0,
+  "rows_eligible_today": 0,
+  "median_secs": 0.25,
+  "timed_samples": 2,
+  "real_runs_logged": 2,
+  "reused_runs_logged": 0,
+  "distinct_specs_that_ran_it": 2,
+  "saved_per_round_secs": 0.25
+ }
+]

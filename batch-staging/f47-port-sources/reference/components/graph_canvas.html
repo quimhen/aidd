@@ -1,0 +1,40 @@
+<!-- COMP-907, COMP-908: Interactive Graph Canvas, Zoom & Navigation Toolbar -->
+<div class="canvas-viewport" id="canvas-viewport">
+  <!-- Canvas principal para renderizado a 60fps con escala HDPI -->
+  <canvas id="network-canvas"></canvas>
+
+  <!-- Indicador flotante de foco / subgrafo activo -->
+  <div class="active-focus-pill" id="active-focus-pill" style="display: none;">
+    <span class="focus-dot"></span>
+    <span class="focus-label" id="focus-pill-name">-</span>
+    <button id="btn-clear-focus" class="btn-clear-pill" title="Volver a vista completa">×</button>
+  </div>
+
+  <!-- Barra de herramientas flotante de navegación -->
+  <div class="floating-toolbar">
+    <button id="btn-zoom-in" class="tool-btn" title="Acercar (+)">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/>
+      </svg>
+    </button>
+    <button id="btn-zoom-out" class="tool-btn" title="Alejar (-)">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="8" y1="11" x2="14" y2="11"/>
+      </svg>
+    </button>
+    <button id="btn-zoom-reset" class="tool-btn" title="Ajustar a Pantalla (100%)">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M15 3h6v6"/><path d="M9 21H3v-6"/><path d="M21 3l-7 7"/><path d="M3 21l7-7"/>
+      </svg>
+    </button>
+    <div class="toolbar-sep"></div>
+    <button id="btn-relayout" class="tool-btn" title="Reorganizar Grafo">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
+      </svg>
+    </button>
+  </div>
+
+  <!-- Tooltip flotante al pasar el cursor sobre nodos -->
+  <div class="canvas-tooltip" id="canvas-tooltip" style="display: none;"></div>
+</div>

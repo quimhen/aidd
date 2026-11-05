@@ -1,0 +1,561 @@
+--- a/adapters/dot-aidd/scripts/aidd_review.py
++++ b/adapters/dot-aidd/scripts/aidd_review.py
+@@ -47,6 +47,7 @@
+
+ SOURCES = ('spec.md', 'plan.md', 'tasks.md', 'mockup-audit.md', 'contracts.md')
+ MAX_REVIEW_SOURCE_CHARS = 400_000
++WARN_REVIEW_SOURCE_CHARS = 300_000   # early warning (amendment 09 FR-299): split before the limit refuses
+ REVIEW_HTML = 'review.html'
+ REVIEW_MD = 'review.md'
+ TEMPLATE_COMPACT = 'review.html'
+@@ -201,6 +202,15 @@
+     return [(n, len(t)) for n, t in sources if t is not None and len(t) > MAX_REVIEW_SOURCE_CHARS]
+
+
++def size_warnings(sources):
++    """[sentence] for each source in the warning band (WARN_REVIEW_SOURCE_CHARS < chars <= MAX_REVIEW_SOURCE_CHARS):
++    still reviewable, but the spec should be split by amendment batches before the limit refuses it."""
++    return [f'{n} is {len(t)} chars (warning at {WARN_REVIEW_SOURCE_CHARS}, limit {MAX_REVIEW_SOURCE_CHARS}): '
++            'split the spec by amendment batches (one amendment file per batch) before the limit refuses it'
++            for n, t in sources
++            if t is not None and WARN_REVIEW_SOURCE_CHARS < len(t) <= MAX_REVIEW_SOURCE_CHARS]
++
++
+ def _stem(source):
+     name = Path(str(source)).name
+     return name[:-3] if name.lower().endswith('.md') else name
+@@ -1559,6 +1569,8 @@
+             return 0
+         if a.visual:
+             p.error('--visual requires --unit')
++        for w in size_warnings(_load_sources(d)):
++            print(f'warning: {w}', file=sys.stderr)
+         if a.check or a.wait or a.comments or a.summary:
+             _items()
+             sm = _state()
+--- a/adapters/dot-aidd/scripts/aidd_status.py
++++ b/adapters/dot-aidd/scripts/aidd_status.py
+@@ -26,6 +26,9 @@
+                                                 qa-audit.md, every required domain audited (spec 007 specs:
+                                                 plus a fresh passing verify_run) and the user's
+                                                 affirmative answer to a "close/finish" question
++    aidd_status.py rules close <spec_id> --check  dry run of `rules close`: runs the SAME gates (R6/R7 gaps and the
++                                                "Yes, close" answer), lists everything that is missing, records nothing;
++                                                exit 0 only when `rules close` would be accepted now
+     aidd_status.py rules abandon <spec_id> [--reason TEXT]
+                                                 record spec_closed(abandoned): needs the user's affirmative
+                                                 answer to an "abandon/discard" question (no qa-audit needed)
+@@ -2244,10 +2247,10 @@
+     except (ValueError, re.error):
+         print('Refused: invalid Scope or Generated pattern; no verification commands were run.', flush=True)
+         return 1
+-    st_start = ev.code_state(root, scope=scope)
++    st_start = ev.code_state(root, budget_s=_fingerprint_budget(), scope=scope)
+     if st_start is None:
+         print('Refused: cannot fingerprint the verification inputs; no verification commands were run. '
+-              'Check the scope and fingerprint budget before retrying.', flush=True)
++              'Check the scope, or raise the budget with AIDD_FINGERPRINT_BUDGET=<seconds> (default 8), before retrying.', flush=True)
+         return 1
+     prior = None if task_ids is not None else ((_latest_wave_run(root, d.name, wave) if wave is not None else None) or ev.latest_verify_run(root, d.name))
+     from glob import escape as escape_glob
+@@ -2504,7 +2507,7 @@
+               + ('; add `Jobs: N` under ## Verification to run independent rows in parallel' if jobs == 1 and len(rows) > 1 else ''),
+               flush=True)
+     fp_end = ev.worktree_fingerprint(root)
+-    st_end = ev.code_state(root, scope=scope)
++    st_end = ev.code_state(root, budget_s=_fingerprint_budget(), scope=scope)
+     # Files a command rewrote (a graph.json with a timestamp, a report): outputs, not code. Declared in `Generated:`
+     # they are fine; undeclared they fail THIS run, but the file list is recorded so adding the `Generated:` line
+     # later makes the gate accept the very same run (no re-execution, no edit of the generator).
+@@ -2709,7 +2712,7 @@
+             return 'code fingerprint algorithm unavailable or changed'
+         if scope != (run.get('code_scope') or []):
+             return 'verification scope changed'
+-        state = ev.code_state(root, scope=scope)
++        state = ev.code_state(root, budget_s=_fingerprint_budget(), scope=scope)
+         from glob import escape as escape_glob
+         exclude = list(run.get('code_generated') or []) + [escape_glob(x) for x in (run.get('code_changed') or [])]
+         fingerprint = ev.fingerprint_of(state, scope, exclude=exclude) if state else None
+@@ -2946,7 +2949,24 @@
+     return False
+
+
+-def cmd_close(spec_arg):
++FINGERPRINT_BUDGET_DEFAULT = 8.0
++
++
++def _fingerprint_budget():
++    """Seconds allowed to fingerprint the verification inputs: env AIDD_FINGERPRINT_BUDGET (positive finite
++    number), else 8. A bad value falls back to the default."""
++    try:
++        v = float(os.environ.get('AIDD_FINGERPRINT_BUDGET', ''))
++        if v > 0 and v != float('inf'):
++            return v
++    except ValueError:
++        pass
++    return FINGERPRINT_BUDGET_DEFAULT
++
++
++def cmd_close(spec_arg, check=False):
++    """`rules close`; with check=True a dry run with no side effects that runs the same gates and lists ALL that
++    is missing (exit 0 only when the real close would be accepted now)."""
+     root = ev.find_root()
+     d = _resolve_spec(spec_arg, root)
+     if d is None:
+@@ -2959,10 +2979,13 @@
+         return 1
+     gaps = _close_gaps(d, root)
+     if gaps:
++        if check:
++            print('close --check applies the gates of `aidd rules close` (not those of `aidd rules check`):')
+         for g in gaps:
+             print(f'FAIL {g}')
+-        print(f'Refused: {d.name} stays open until these gaps are closed.')
+-        return 1
++        if not check:
++            print(f'Refused: {d.name} stays open until these gaps are closed.')
++            return 1
+     sess = _current_session(root)
+     # the answer must postdate qa-audit.md (a stale "yes" from before the audit does not count)
+     ans = ev.affirmative_answer(root, sess, CLOSE_TOPIC, _mtime(d / 'qa-audit.md') or 0.0, label_re=CLOSE_LABEL,
+@@ -2970,12 +2993,22 @@
+     if ans is None:     # the click may have been recorded under another window's session: the tag binds it
+         ans = ev.tagged_answer_any_session(root, sess, CLOSE_TOPIC, _mtime(d / 'qa-audit.md') or 0.0,
+                                            label_re=CLOSE_LABEL, must_contain=f'[spec:{d.name}]')
+-    if ans is None:
++    if ans is None and check:
++        gaps.append('close no recorded user answer "Yes, close" to a close question asked after qa-audit.md '
++                    '(ask it last, after the final qa-audit.md and fresh evidence).')
++        print('FAIL ' + gaps[-1])
++    elif ans is None:
+         print('Refused: no recorded user answer "Yes, close" to a close question (asked after qa-audit.md).\n'
+               'Fix: ' + _ASK_FIX.format(opt='Yes, close', what='closing the spec (e.g. "Close spec X as '
+                                                          'completed?")')
+               + _session_note(sess))
+         return 1
++    if check:
++        if gaps:
++            print(f'close --check: {d.name} would be REFUSED by `aidd rules close` ({len(gaps)} missing).')
++            return 1
++        print(f'close --check: PASS - `aidd rules close {d.name}` would be accepted now (dry run, nothing recorded).')
++        return 0
+     ev.append_spec_closed(root, sess, d.name, reason='completed', hash=_tasks_hash(d))
+     cleared = _clear_pointer(root, d.name)
+     print(f'{d.name} closed as completed' + (' (active-spec pointer cleared).' if cleared else '.'))
+@@ -3071,6 +3104,8 @@
+         if (len(argv) == 5 and argv[:2] == ['rules', 'approve']
+                 and argv[3] == '--unit'):
+             return cmd_approve_unit(argv[2], argv[4])
++        if len(argv) == 4 and argv[:2] == ['rules', 'close'] and argv[3] == '--check':
++            return cmd_close(argv[2], check=True)
+         if len(argv) == 3 and argv[0] == 'rules' and argv[1] in ('check', 'approve', 'close', 'activate'):
+             return {'check': cmd_check, 'approve': cmd_approve, 'close': cmd_close,
+                     'activate': cmd_activate}[argv[1]](argv[2])
+--- a/adapters/dot-aidd/scripts/check_spec.py
++++ b/adapters/dot-aidd/scripts/check_spec.py
+@@ -672,6 +672,12 @@
+     except Exception:
+         pass
+     print(_banner)
++    # amendment 09 FR-299 / B6: informational spec-size warning (never a gap, never affects the exit code)
++    for _fname, _ftext in (('spec.md', spec_text), ('plan.md', plan), ('tasks.md', tasks),
++                           ('mockup-audit.md', mockup_audit), ('contracts.md', contracts)):
++        if 300_000 < len(_ftext) <= 400_000:
++            print(f"WARNING: {_fname} is {len(_ftext)} chars (warning at 300000, limit 400000 for `aidd review`): "
++                  f"split the spec by amendment batches before the limit refuses it.")
+     # FR-008: informational plan totals (never a gap, never affects the exit code)
+     try:
+         if tasks:
+--- a/aidd/cli.py
++++ b/aidd/cli.py
+@@ -428,7 +428,7 @@
+     p_progress.set_defaults(func=cmd_progress)
+
+     p_rules = sub.add_parser(
+-        "rules", help="Hard rules: check <spec_dir> | approve <spec_dir> | close <spec_id> | abandon <spec_id> [--reason TEXT]",
++        "rules", help="Hard rules: check <spec_dir> | approve <spec_dir> | close <spec_id> [--check] | abandon <spec_id> [--reason TEXT]",
+         add_help=False)
+     p_rules.add_argument("rules_args", nargs=argparse.REMAINDER, help="forwarded to aidd_status.py (try: aidd rules check specs/001-x)")
+     p_rules.set_defaults(func=cmd_rules)
+--- a/skill/scripts/aidd_review.py
++++ b/skill/scripts/aidd_review.py
+@@ -47,6 +47,7 @@
+
+ SOURCES = ('spec.md', 'plan.md', 'tasks.md', 'mockup-audit.md', 'contracts.md')
+ MAX_REVIEW_SOURCE_CHARS = 400_000
++WARN_REVIEW_SOURCE_CHARS = 300_000   # early warning (amendment 09 FR-299): split before the limit refuses
+ REVIEW_HTML = 'review.html'
+ REVIEW_MD = 'review.md'
+ TEMPLATE_COMPACT = 'review.html'
+@@ -201,6 +202,15 @@
+     return [(n, len(t)) for n, t in sources if t is not None and len(t) > MAX_REVIEW_SOURCE_CHARS]
+
+
++def size_warnings(sources):
++    """[sentence] for each source in the warning band (WARN_REVIEW_SOURCE_CHARS < chars <= MAX_REVIEW_SOURCE_CHARS):
++    still reviewable, but the spec should be split by amendment batches before the limit refuses it."""
++    return [f'{n} is {len(t)} chars (warning at {WARN_REVIEW_SOURCE_CHARS}, limit {MAX_REVIEW_SOURCE_CHARS}): '
++            'split the spec by amendment batches (one amendment file per batch) before the limit refuses it'
++            for n, t in sources
++            if t is not None and WARN_REVIEW_SOURCE_CHARS < len(t) <= MAX_REVIEW_SOURCE_CHARS]
++
++
+ def _stem(source):
+     name = Path(str(source)).name
+     return name[:-3] if name.lower().endswith('.md') else name
+@@ -1559,6 +1569,8 @@
+             return 0
+         if a.visual:
+             p.error('--visual requires --unit')
++        for w in size_warnings(_load_sources(d)):
++            print(f'warning: {w}', file=sys.stderr)
+         if a.check or a.wait or a.comments or a.summary:
+             _items()
+             sm = _state()
+--- a/skill/scripts/aidd_status.py
++++ b/skill/scripts/aidd_status.py
+@@ -26,6 +26,9 @@
+                                                 qa-audit.md, every required domain audited (spec 007 specs:
+                                                 plus a fresh passing verify_run) and the user's
+                                                 affirmative answer to a "close/finish" question
++    aidd_status.py rules close <spec_id> --check  dry run of `rules close`: runs the SAME gates (R6/R7 gaps and the
++                                                "Yes, close" answer), lists everything that is missing, records nothing;
++                                                exit 0 only when `rules close` would be accepted now
+     aidd_status.py rules abandon <spec_id> [--reason TEXT]
+                                                 record spec_closed(abandoned): needs the user's affirmative
+                                                 answer to an "abandon/discard" question (no qa-audit needed)
+@@ -2244,10 +2247,10 @@
+     except (ValueError, re.error):
+         print('Refused: invalid Scope or Generated pattern; no verification commands were run.', flush=True)
+         return 1
+-    st_start = ev.code_state(root, scope=scope)
++    st_start = ev.code_state(root, budget_s=_fingerprint_budget(), scope=scope)
+     if st_start is None:
+         print('Refused: cannot fingerprint the verification inputs; no verification commands were run. '
+-              'Check the scope and fingerprint budget before retrying.', flush=True)
++              'Check the scope, or raise the budget with AIDD_FINGERPRINT_BUDGET=<seconds> (default 8), before retrying.', flush=True)
+         return 1
+     prior = None if task_ids is not None else ((_latest_wave_run(root, d.name, wave) if wave is not None else None) or ev.latest_verify_run(root, d.name))
+     from glob import escape as escape_glob
+@@ -2504,7 +2507,7 @@
+               + ('; add `Jobs: N` under ## Verification to run independent rows in parallel' if jobs == 1 and len(rows) > 1 else ''),
+               flush=True)
+     fp_end = ev.worktree_fingerprint(root)
+-    st_end = ev.code_state(root, scope=scope)
++    st_end = ev.code_state(root, budget_s=_fingerprint_budget(), scope=scope)
+     # Files a command rewrote (a graph.json with a timestamp, a report): outputs, not code. Declared in `Generated:`
+     # they are fine; undeclared they fail THIS run, but the file list is recorded so adding the `Generated:` line
+     # later makes the gate accept the very same run (no re-execution, no edit of the generator).
+@@ -2709,7 +2712,7 @@
+             return 'code fingerprint algorithm unavailable or changed'
+         if scope != (run.get('code_scope') or []):
+             return 'verification scope changed'
+-        state = ev.code_state(root, scope=scope)
++        state = ev.code_state(root, budget_s=_fingerprint_budget(), scope=scope)
+         from glob import escape as escape_glob
+         exclude = list(run.get('code_generated') or []) + [escape_glob(x) for x in (run.get('code_changed') or [])]
+         fingerprint = ev.fingerprint_of(state, scope, exclude=exclude) if state else None
+@@ -2946,7 +2949,24 @@
+     return False
+
+
+-def cmd_close(spec_arg):
++FINGERPRINT_BUDGET_DEFAULT = 8.0
++
++
++def _fingerprint_budget():
++    """Seconds allowed to fingerprint the verification inputs: env AIDD_FINGERPRINT_BUDGET (positive finite
++    number), else 8. A bad value falls back to the default."""
++    try:
++        v = float(os.environ.get('AIDD_FINGERPRINT_BUDGET', ''))
++        if v > 0 and v != float('inf'):
++            return v
++    except ValueError:
++        pass
++    return FINGERPRINT_BUDGET_DEFAULT
++
++
++def cmd_close(spec_arg, check=False):
++    """`rules close`; with check=True a dry run with no side effects that runs the same gates and lists ALL that
++    is missing (exit 0 only when the real close would be accepted now)."""
+     root = ev.find_root()
+     d = _resolve_spec(spec_arg, root)
+     if d is None:
+@@ -2959,10 +2979,13 @@
+         return 1
+     gaps = _close_gaps(d, root)
+     if gaps:
++        if check:
++            print('close --check applies the gates of `aidd rules close` (not those of `aidd rules check`):')
+         for g in gaps:
+             print(f'FAIL {g}')
+-        print(f'Refused: {d.name} stays open until these gaps are closed.')
+-        return 1
++        if not check:
++            print(f'Refused: {d.name} stays open until these gaps are closed.')
++            return 1
+     sess = _current_session(root)
+     # the answer must postdate qa-audit.md (a stale "yes" from before the audit does not count)
+     ans = ev.affirmative_answer(root, sess, CLOSE_TOPIC, _mtime(d / 'qa-audit.md') or 0.0, label_re=CLOSE_LABEL,
+@@ -2970,12 +2993,22 @@
+     if ans is None:     # the click may have been recorded under another window's session: the tag binds it
+         ans = ev.tagged_answer_any_session(root, sess, CLOSE_TOPIC, _mtime(d / 'qa-audit.md') or 0.0,
+                                            label_re=CLOSE_LABEL, must_contain=f'[spec:{d.name}]')
+-    if ans is None:
++    if ans is None and check:
++        gaps.append('close no recorded user answer "Yes, close" to a close question asked after qa-audit.md '
++                    '(ask it last, after the final qa-audit.md and fresh evidence).')
++        print('FAIL ' + gaps[-1])
++    elif ans is None:
+         print('Refused: no recorded user answer "Yes, close" to a close question (asked after qa-audit.md).\n'
+               'Fix: ' + _ASK_FIX.format(opt='Yes, close', what='closing the spec (e.g. "Close spec X as '
+                                                          'completed?")')
+               + _session_note(sess))
+         return 1
++    if check:
++        if gaps:
++            print(f'close --check: {d.name} would be REFUSED by `aidd rules close` ({len(gaps)} missing).')
++            return 1
++        print(f'close --check: PASS - `aidd rules close {d.name}` would be accepted now (dry run, nothing recorded).')
++        return 0
+     ev.append_spec_closed(root, sess, d.name, reason='completed', hash=_tasks_hash(d))
+     cleared = _clear_pointer(root, d.name)
+     print(f'{d.name} closed as completed' + (' (active-spec pointer cleared).' if cleared else '.'))
+@@ -3071,6 +3104,8 @@
+         if (len(argv) == 5 and argv[:2] == ['rules', 'approve']
+                 and argv[3] == '--unit'):
+             return cmd_approve_unit(argv[2], argv[4])
++        if len(argv) == 4 and argv[:2] == ['rules', 'close'] and argv[3] == '--check':
++            return cmd_close(argv[2], check=True)
+         if len(argv) == 3 and argv[0] == 'rules' and argv[1] in ('check', 'approve', 'close', 'activate'):
+             return {'check': cmd_check, 'approve': cmd_approve, 'close': cmd_close,
+                     'activate': cmd_activate}[argv[1]](argv[2])
+--- a/skill/scripts/check_spec.py
++++ b/skill/scripts/check_spec.py
+@@ -672,6 +672,12 @@
+     except Exception:
+         pass
+     print(_banner)
++    # amendment 09 FR-299 / B6: informational spec-size warning (never a gap, never affects the exit code)
++    for _fname, _ftext in (('spec.md', spec_text), ('plan.md', plan), ('tasks.md', tasks),
++                           ('mockup-audit.md', mockup_audit), ('contracts.md', contracts)):
++        if 300_000 < len(_ftext) <= 400_000:
++            print(f"WARNING: {_fname} is {len(_ftext)} chars (warning at 300000, limit 400000 for `aidd review`): "
++                  f"split the spec by amendment batches before the limit refuses it.")
+     # FR-008: informational plan totals (never a gap, never affects the exit code)
+     try:
+         if tasks:
+--- a/tests/test_b10_b11_b6.py
++++ b/tests/test_b10_b11_b6.py
+@@ -0,0 +1,211 @@
++"""Amendment 09 backlog B10 / B11 / B6 (stdlib unittest; evidence in a temp dir through EvBase).
++
++B10 `aidd rules close <id> --check`: dry run that runs the SAME gates as `rules close` and records nothing.
++B11 `AIDD_FINGERPRINT_BUDGET`: seconds for `ev.code_state` in `cmd_verify` (default 8).
++B6  spec-size warning at 300 000 chars in `aidd review` / `check_spec` (limit stays 400 000).
++"""
++import contextlib
++import io
++import os
++import subprocess
++import sys
++import tempfile
++import unittest
++from pathlib import Path
++from unittest import mock
++
++sys.path.insert(0, str(Path(__file__).resolve().parent))
++import test_aidd_status as tas  # noqa: E402  (helpers only)
++
++SCRIPTS_DIR = tas.SCRIPTS_DIR
++import aidd_evidence as ev  # noqa: E402
++import aidd_review  # noqa: E402
++import aidd_status  # noqa: E402
++
++
++class TestCloseCheck(tas.EvBase):
++    """B10."""
++
++    def project(self):
++        return tas.TestRulesClose._approved_project(self)
++
++    def ready(self, root, d):
++        return tas.TestRulesClose._ready_to_close(self, root, d)
++
++    def events_closed(self, root):
++        return ev.events(root, kind="spec_closed")
++
++    def test_unready_spec_lists_gaps_and_records_nothing(self):
++        tmp, root, d = self.project()
++        with tmp:
++            r = tas.run_script("rules", "close", "001-x", "--check", cwd=root)
++            self.assertEqual(r.returncode, 1, r.stdout)
++            self.assertIn("FAIL R7", r.stdout)
++            self.assertIn("would be REFUSED", r.stdout)
++            self.assertEqual(self.events_closed(root), [])
++            self.assertEqual(ev.open_specs(root), ["001-x"])
++
++    def test_lists_gaps_and_the_missing_answer_together(self):
++        tmp, root, d = self.project()
++        with tmp:
++            r = tas.run_script("rules", "close", "001-x", "--check", cwd=root)
++            self.assertIn("FAIL R7", r.stdout)
++            self.assertIn('"Yes, close"', r.stdout)
++
++    def test_ready_without_answer_is_refused_and_names_the_answer(self):
++        tmp, root, d = self.project()
++        with tmp:
++            self.ready(root, d)
++            r = tas.run_script("rules", "close", "001-x", "--check", cwd=root)
++            self.assertEqual(r.returncode, 1, r.stdout)
++            self.assertIn('"Yes, close"', r.stdout)
++            self.assertNotIn("FAIL R7", r.stdout)
++
++    def test_ready_with_answer_passes_without_closing_then_real_close_agrees(self):
++        tmp, root, d = self.project()
++        with tmp:
++            self.ready(root, d)
++            self.answer(root, "Close this spec? [spec:001-x]", "Yes, close")
++            r = tas.run_script("rules", "close", "001-x", "--check", cwd=root)
++            self.assertEqual(r.returncode, 0, r.stdout)
++            self.assertIn("close --check: PASS", r.stdout)
++            self.assertEqual(self.events_closed(root), [])          # dry run: nothing recorded
++            self.assertEqual(ev.get_active_spec(root), "001-x")     # pointer untouched
++            self.assertEqual(tas.run_script("rules", "close", "001-x", cwd=root).returncode, 0)
++            self.assertEqual(len(self.events_closed(root)), 1)
++
++    def test_check_and_close_exit_codes_agree_on_a_stale_close(self):
++        tmp, root, d = self.project()
++        with tmp:
++            self.ready(root, d)
++            self.answer(root, "Close this spec? [spec:001-x]", "Yes, close")
++            tas.tick()
++            ev.append(root, "s1", "code_edit", path="src/other.py", spec="002-other")   # after the auditors
++            chk = tas.run_script("rules", "close", "001-x", "--check", cwd=root)
++            real = tas.run_script("rules", "close", "001-x", cwd=root)
++            self.assertEqual((chk.returncode, real.returncode), (1, 1))
++            self.assertIn("R7", chk.stdout)
++            self.assertIn("R7", real.stdout)
++
++    def test_unknown_spec_exit_one(self):
++        with tempfile.TemporaryDirectory() as t:
++            self.assertEqual(tas.run_script("rules", "close", "999-nope", "--check", cwd=t).returncode, 1)
++
++    def test_via_aidd_cli(self):
++        tmp, root, d = self.project()
++        with tmp:
++            env = dict(os.environ, PYTHONPATH=str(tas.REPO_ROOT), PYTHONIOENCODING="utf-8",
++                       AIDD_HOME=str(tas.REPO_ROOT / "skill"))   # the repo scripts, not the installed skill
++            r = subprocess.run([sys.executable, "-m", "aidd.cli", "rules", "close", "001-x", "--check"],
++                               cwd=str(root), env=env, capture_output=True, text=True, encoding="utf-8")
++            self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
++            self.assertIn("close --check", r.stdout)
++
++
++class TestFingerprintBudget(tas.Spec007Base):
++    """B11."""
++
++    def test_budget_default_env_and_bad_values(self):
++        os.environ.pop("AIDD_FINGERPRINT_BUDGET", None)
++        self.assertEqual(aidd_status._fingerprint_budget(), 8.0)
++        for raw, want in (("30", 30.0), ("0.5", 0.5), ("0", 8.0), ("-3", 8.0), ("abc", 8.0), ("", 8.0), ("inf", 8.0),
++                          ("nan", 8.0)):
++            with self.subTest(raw=raw):
++                os.environ["AIDD_FINGERPRINT_BUDGET"] = raw
++                self.assertEqual(aidd_status._fingerprint_budget(), want)
++
++    def run_verify_with_refused_scan(self, env_value):
++        tmp, root, d = tas.TestVerify.vproject(self, [("python src/check.py", "exit 0")])
++        with tmp:
++            if env_value is None:
++                os.environ.pop("AIDD_FINGERPRINT_BUDGET", None)
++            else:
++                os.environ["AIDD_FINGERPRINT_BUDGET"] = env_value
++            old = os.getcwd()
++            os.chdir(root)
++            buf = io.StringIO()
++            try:
++                with mock.patch.object(aidd_status.ev, "code_state", return_value=None) as m, \
++                        contextlib.redirect_stdout(buf):
++                    rc = aidd_status.cmd_verify("F23-eDoc-POS")
++            finally:
++                os.chdir(old)
++            return rc, m.call_args, buf.getvalue()
++
++    def test_cmd_verify_passes_the_default_budget(self):
++        rc, call, out = self.run_verify_with_refused_scan(None)
++        self.assertEqual(rc, 1)
++        self.assertEqual(call.kwargs.get("budget_s"), 8.0)
++        self.assertIn("cannot fingerprint", out)
++        self.assertIn("AIDD_FINGERPRINT_BUDGET", out)       # the refusal names the knob
++
++    def test_cmd_verify_passes_the_env_budget(self):
++        rc, call, _out = self.run_verify_with_refused_scan("45")
++        self.assertEqual(rc, 1)
++        self.assertEqual(call.kwargs.get("budget_s"), 45.0)
++
++
++class TestSpecSizeWarning(unittest.TestCase):
++    """B6."""
++
++    def test_constants_and_band(self):
++        self.assertEqual(aidd_review.WARN_REVIEW_SOURCE_CHARS, 300_000)
++        self.assertEqual(aidd_review.MAX_REVIEW_SOURCE_CHARS, 400_000)
++        src = [("spec.md", "x" * 300_000), ("plan.md", "x" * 300_001), ("tasks.md", "x" * 400_000),
++               ("mockup-audit.md", "x" * 400_001), ("contracts.md", None)]
++        w = aidd_review.size_warnings(src)
++        self.assertEqual(len(w), 2)                                  # plan.md and tasks.md only
++        self.assertTrue(w[0].startswith("plan.md is 300001 chars"))
++        self.assertIn("split the spec by amendment batches", w[0])
++        self.assertTrue(w[1].startswith("tasks.md is 400000 chars"))
++        self.assertEqual(aidd_review.size_warnings([("spec.md", "x" * 1000)]), [])
++
++    def test_limit_still_refuses(self):
++        self.assertEqual(aidd_review._oversize([("plan.md", "x" * 400_001)]), [("plan.md", 400_001)])
++        self.assertEqual(aidd_review._oversize([("plan.md", "x" * 400_000)]), [])
++
++    def test_aidd_review_main_warns_on_stderr_and_still_works(self):
++        with tempfile.TemporaryDirectory() as t:
++            d = Path(t) / "specs" / "001-x"
++            d.mkdir(parents=True)
++            (d / "spec.md").write_text("# s\n", encoding="utf-8")
++            (d / "plan.md").write_text("x" * 350_000, encoding="utf-8")
++            (d / "tasks.md").write_text("# t\n", encoding="utf-8")
++            err, out = io.StringIO(), io.StringIO()
++            with mock.patch.object(aidd_review, "generate", return_value=(d / "review.html", True)), \
++                    contextlib.redirect_stderr(err), contextlib.redirect_stdout(out):
++                rc = aidd_review.main([str(d)])
++            self.assertEqual(rc, 0, err.getvalue())
++            self.assertIn("warning: plan.md is 350000 chars", err.getvalue())
++
++    def test_aidd_review_main_silent_below_threshold(self):
++        with tempfile.TemporaryDirectory() as t:
++            d = Path(t) / "specs" / "001-x"
++            d.mkdir(parents=True)
++            (d / "plan.md").write_text("x" * 299_999, encoding="utf-8")
++            err = io.StringIO()
++            with mock.patch.object(aidd_review, "generate", return_value=(d / "review.html", True)), \
++                    contextlib.redirect_stderr(err), contextlib.redirect_stdout(io.StringIO()):
++                aidd_review.main([str(d)])
++            self.assertNotIn("chars (warning at", err.getvalue())
++
++    def check_spec_out(self, plan_chars):
++        with tempfile.TemporaryDirectory() as t:
++            d = Path(t) / "001-x"
++            d.mkdir()
++            (d / "spec.md").write_text("# s\n", encoding="utf-8")
++            (d / "plan.md").write_text("# plan\n" + "x" * plan_chars, encoding="utf-8")
++            r = subprocess.run([sys.executable, str(SCRIPTS_DIR / "check_spec.py"), str(d)],
++                               capture_output=True, text=True, encoding="utf-8")
++            return r
++
++    def test_check_spec_warns_without_changing_the_exit_code(self):
++        small = self.check_spec_out(1000)
++        big = self.check_spec_out(350_000)
++        self.assertIn("WARNING: plan.md is", big.stdout)
++        self.assertNotIn("WARNING: plan.md", small.stdout)
++        self.assertEqual(big.returncode, small.returncode)
++
++
++if __name__ == "__main__":
++    unittest.main()

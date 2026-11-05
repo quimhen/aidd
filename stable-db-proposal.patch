@@ -1,0 +1,415 @@
+diff --git a/D:/Fuentes/b1SycLink/eDoc/tools/db_verify.py b/D:/Fuentes/AIDD/batch-staging/stable_db_verify.py
+index f83df56..4657d13 100644
+--- a/D:/Fuentes/b1SycLink/eDoc/tools/db_verify.py
++++ b/D:/Fuentes/AIDD/batch-staging/stable_db_verify.py
+@@ -40,6 +40,7 @@ Exit code: 0 all good, 1 verification failures, 2 usage / infrastructure error.
+ from __future__ import annotations
+ 
+ import argparse
++import math
+ import hashlib
+ import json
+ import os
+@@ -181,6 +182,8 @@ class Report:
+     notes: list[str] = field(default_factory=list)
+     input_schema_sha1: str = ""
+     input_tap_sha256: str = ""
++    status: str = ""
++    changed_inputs: list[str] = field(default_factory=list)
+ 
+ 
+ class Psql:
+@@ -417,21 +420,22 @@ def parse_tap(stdout: str) -> dict:
+             "skipped_count": skipped}
+ 
+ 
+-def _tap_batch_source(path: Path, allowlist: set[str], expected_hash: str | None = None) -> str | None:
++def _tap_batch_source(path: Path, allowlist: set[str], expected_hash: str | None = None,
++                      snapshots: dict[str, bytes] | None = None) -> str | None:
+     """Only explicit, transaction-bounded files without obvious session hazards.
+ 
+     The allowlist must itself be reviewed: lexical checks cannot prove a called
+     function has no outside side effects. Anything ambiguous runs individually.
+     """
+     try:
+-        resolved = path.resolve(strict=True)
++        resolved = path.resolve()
+         if str(resolved) not in allowlist:
+             return None
+-        data = resolved.read_bytes()
++        data = snapshots[str(resolved)] if snapshots is not None else resolved.read_bytes()
+         if expected_hash is not None and hashlib.sha256(data).hexdigest() != expected_hash:
+             return None
+         text = snapshot_sql(data)
+-        if path.resolve(strict=True) != resolved:
++        if snapshots is None and path.resolve(strict=True) != resolved:
+             return None
+         # psql accepts metacommands after SQL on the same line.  Conservatively
+         # keep any backslash-containing file on the existing isolated path.
+@@ -442,7 +446,7 @@ def _tap_batch_source(path: Path, allowlist: set[str], expected_hash: str | None
+         if not (re.search(r"\bBEGIN\s*;", text, re.I) and re.search(r"\bROLLBACK\s*;", text, re.I)):
+             return None
+         return text
+-    except (OSError, UnicodeError):
++    except (OSError, UnicodeError, KeyError):
+         return None
+ 
+ 
+@@ -460,7 +464,50 @@ def selected_tap_tests(extra_dirs: list[Path], only_tests: str | None, skip: set
+     return [test for test in tests if (not only_tests or only_tests in test.name) and test.name not in skip]
+ 
+ 
+-def tap_snapshot(tests: list[Path], allowlist_path: str | None) -> tuple[str, dict[str, str]]:
++def capture_used_inputs(extra_dirs: list[Path], tap: bool, only_tests: str | None,
++                        skip: set[str], allowlist_path: str | None) -> dict[str, str]:
++    """Fingerprint selected files, including their paths, without accessing PostgreSQL."""
++    paths = [path for _, path in build_plan(extra_dirs)]
++    if tap:
++        paths.extend(selected_tap_tests(extra_dirs, only_tests, skip))
++    if allowlist_path:
++        paths.append(Path(allowlist_path))
++    return {str(path.resolve()): hashlib.sha256(path.read_bytes()).hexdigest() for path in paths}
++
++
++def wait_for_stable_inputs(capture, stable_seconds: float, timeout: float) -> dict[str, str]:
++    """Wait for identical input manifests for an uninterrupted bounded period."""
++    if not (math.isfinite(stable_seconds) and math.isfinite(timeout) and 0 <= stable_seconds <= timeout and timeout > 0):
++        raise ValueError('input stability must be nonnegative and at most a positive timeout')
++    start = time.monotonic()
++    previous = None
++    stable_since = start
++    while True:
++        now = time.monotonic()
++        if now - start > timeout:
++            raise TimeoutError('database inputs did not stabilize before timeout')
++        try:
++            current = capture()
++        except OSError:
++            previous = None
++            stable_since = time.monotonic()
++        else:
++            now = time.monotonic()
++            if now - start > timeout:
++                raise TimeoutError('database inputs did not stabilize before timeout')
++            if current != previous:
++                previous = current
++                stable_since = now
++            if stable_seconds == 0 or now - stable_since >= stable_seconds:
++                return current
++        remaining = timeout - (time.monotonic() - start)
++        if remaining <= 0:
++            raise TimeoutError('database inputs did not stabilize before timeout')
++        time.sleep(min(1.0, remaining))
++
++
++def tap_snapshot(tests: list[Path], allowlist_path: str | None,
++                 allowlist_bytes: bytes | None = None) -> tuple[str, dict[str, str]]:
+     """Hash selected files and retain each digest from the same read."""
+     digest = hashlib.sha256()
+     hashes = {}
+@@ -472,7 +519,7 @@ def tap_snapshot(tests: list[Path], allowlist_path: str | None) -> tuple[str, di
+         hashes[str(resolved)] = content_hash
+     if allowlist_path:
+         digest.update(b'allowlist\0')
+-        digest.update(hashlib.sha256(Path(allowlist_path).read_bytes()).digest())
++        digest.update(hashlib.sha256(allowlist_bytes if allowlist_bytes is not None else Path(allowlist_path).read_bytes()).digest())
+     return digest.hexdigest(), hashes
+ 
+ 
+@@ -492,7 +539,8 @@ def tap_digest_from_hashes(tests: list[Path], hashes: dict[str, str]) -> str:
+ 
+ def run_tap_batch(psql: Psql, db: str, tests: list[Path], tap_prefix: str,
+                   timeout: int, admin_db: str, allowlist: set[str] | None = None,
+-                  expected_hashes: dict[str, str] | None = None) -> list[tuple[Path, subprocess.CompletedProcess, float]]:
++                  expected_hashes: dict[str, str] | None = None,
++                  snapshots: dict[str, bytes] | None = None) -> list[tuple[Path, subprocess.CompletedProcess, float]]:
+     """Run approved files via one psql process; reconnect before each file.
+ 
+     Files are sent one at a time. EOF, timeout or SQL errors fail the active
+@@ -556,7 +604,7 @@ def run_tap_batch(psql: Psql, db: str, tests: list[Path], tap_prefix: str,
+                 expected = (expected_hashes or {}).get(str(path.resolve()))
+                 if not expected:
+                     raise RuntimeError('test has no preflight fingerprint')
+-                source = _tap_batch_source(path, allowlist or set(), expected)
++                source = _tap_batch_source(path, allowlist or set(), expected, snapshots)
+                 if source is None:
+                     raise RuntimeError('batch eligibility changed before execution')
+                 if proc is None or proc.poll() is not None:
+@@ -607,7 +655,7 @@ def run_tap_batch(psql: Psql, db: str, tests: list[Path], tap_prefix: str,
+                     raise RuntimeError('psql session ended while reporting the test')
+                 if re.search(r'(?im)^(?:psql:[^\n]*?:\s*)?(?:ERROR|FATAL|PANIC):', ''.join(lines)):
+                     raise RuntimeError('psql reported an error during the test')
+-                if snapshot_sql(path.read_bytes()) != source:
++                if snapshots is None and snapshot_sql(path.read_bytes()) != source:
+                     raise RuntimeError('test file changed during execution')
+                 results.append((path, subprocess.CompletedProcess([], 0, ''.join(lines), ''), time.monotonic() - start))
+             except (OSError, UnicodeError, RuntimeError, subprocess.TimeoutExpired) as exc:
+@@ -733,6 +781,10 @@ def main() -> int:
+     ap.add_argument("--only-tests", default=None, help="substring filter for pgTAP file names")
+     ap.add_argument("--tap-batch-allowlist", metavar="PATH",
+                     help="opt in to persistent psql for reviewed test files listed one project-relative path per line")
++    ap.add_argument("--input-stable-seconds", type=float, default=2,
++                    help="quiet period for selected database inputs (default 2; 0 disables waiting)")
++    ap.add_argument("--input-stable-timeout", type=float, default=30,
++                    help="maximum seconds waiting for stable inputs (default 30)")
+     ap.add_argument("--only-functions", default=None,
+                     help="regex/substring pattern for function names in plpgsql_check (e.g. 'trace' or 'pos_')")
+     ap.add_argument("--skip-tests", default="", metavar="NAMES",
+@@ -748,11 +800,25 @@ def main() -> int:
+     if not extra_dirs_list and os.environ.get("DB_VERIFY_EXTRA_DIRS"):
+         extra_dirs_list = [Path(d.strip()).resolve() for d in os.environ["DB_VERIFY_EXTRA_DIRS"].split(",") if d.strip()]
+ 
++    skip_names = {n.strip() for n in args.skip_tests.split(',') if n.strip()}
++    capture_inputs = lambda: capture_used_inputs(extra_dirs_list, args.tap, args.only_tests, skip_names,
++                                                 args.tap_batch_allowlist)
++    try:
++        stable_inputs = ({} if args.gc else wait_for_stable_inputs(
++            capture_inputs, args.input_stable_seconds, args.input_stable_timeout))
++    except (OSError, ValueError, TimeoutError) as exc:
++        print(f'ERROR: input stability preflight: {exc}', file=sys.stderr)
++        return 2
++
+     batch_allowlist = set()
++    allowlist_bytes = None
+     if args.tap_batch_allowlist:
+         try:
+             repo = ROOT.parent.resolve()
+-            for line in Path(args.tap_batch_allowlist).read_text(encoding='utf-8-sig').splitlines():
++            allowlist_bytes = Path(args.tap_batch_allowlist).read_bytes()
++            if hashlib.sha256(allowlist_bytes).hexdigest() != stable_inputs.get(str(Path(args.tap_batch_allowlist).resolve())):
++                raise ValueError('allowlist changed while capturing snapshot')
++            for line in allowlist_bytes.decode('utf-8-sig').splitlines():
+                 raw = line.strip()
+                 if not raw or raw.startswith('#'):
+                     continue
+@@ -770,17 +836,19 @@ def main() -> int:
+             print(f'ERROR: invalid pgTAP batch allowlist: {exc}', file=sys.stderr)
+             return 2
+ 
+-    skip_names = {n.strip() for n in args.skip_tests.split(',') if n.strip()}
+-    tap_tests, tap_inputs, tap_hashes, tap_selection = [], None, {}, ''
++    tap_tests, tap_inputs, tap_hashes, tap_selection, tap_bytes = [], None, {}, '', {}
+     if args.tap:
+         try:
+             discovered = selected_tap_tests(extra_dirs_list, None, set())
+             if batch_allowlist - {str(t.resolve()) for t in discovered}:
+                 raise ValueError('batch allowlist includes files outside the selected test directories')
+-            tap_tests = selected_tap_tests(extra_dirs_list, args.only_tests, skip_names)
++            tap_tests = [test.resolve(strict=True) for test in selected_tap_tests(extra_dirs_list, args.only_tests, skip_names)]
+             if not tap_tests:
+                 raise ValueError('pgTAP selected no test files')
+-            tap_inputs, tap_hashes = tap_snapshot(tap_tests, args.tap_batch_allowlist)
++            tap_inputs, tap_hashes = tap_snapshot(tap_tests, args.tap_batch_allowlist, allowlist_bytes)
++            tap_bytes = {str(t.resolve()): t.read_bytes() for t in tap_tests}
++            if any(hashlib.sha256(data).hexdigest() != tap_hashes[path] for path, data in tap_bytes.items()):
++                raise ValueError('pgTAP inputs changed while capturing snapshot')
+             tap_selection = tap_digest_from_hashes(tap_tests, tap_hashes)
+             expected_tap = os.environ.get('DB_VERIFY_EXPECT_TAP_SHA256')
+             if expected_tap and expected_tap != tap_selection:
+@@ -816,6 +884,15 @@ def main() -> int:
+     rep.input_tap_sha256 = tap_selection
+     failures = 0
+ 
++    def check_input_changes():
++        try:
++            current_inputs = capture_inputs()
++            changed = [path for path in stable_inputs.keys() | current_inputs.keys()
++                       if stable_inputs.get(path) != current_inputs.get(path)]
++        except OSError as exc:
++            changed = [f"unavailable: {exc.filename or type(exc).__name__}"]
++        rep.changed_inputs = sorted(set(rep.changed_inputs) | set(changed))
++
+     def step(name: str, fn):
+         t0 = time.time()
+         r = fn()
+@@ -829,11 +906,16 @@ def main() -> int:
+     extra_plan = build_plan(extra_dirs_list)
+     try:
+         apply_snapshot = snapshot_plan(extra_plan)
+-    except OSError as exc:
++        if capture_inputs() != stable_inputs or any(
++                hashlib.sha256(data).hexdigest() != stable_inputs.get(str(path.resolve()))
++                for path, data in apply_snapshot.items()) or any(
++                hashlib.sha256(data).hexdigest() != stable_inputs.get(path) for path, data in tap_bytes.items()):
++            raise ValueError('database inputs changed while capturing snapshot')
++    except (OSError, ValueError) as exc:
+         print(f'ERROR: cannot snapshot database inputs: {exc}', file=sys.stderr)
+         return 2
+     use_tpl = not args.no_template_cache and not args.apply_only and args.bootstrap != "never"
+-    h = hashlib.sha1(f"snapshot-v1|{args.bootstrap}|{args.single_tx}|{BOOTSTRAP_SQL}".encode("utf-8"))
++    h = hashlib.sha1(f"snapshot-v2|{args.bootstrap}|{args.single_tx}|{args.exact_apply}|{BOOTSTRAP_SQL}".encode("utf-8"))
+     for kind, path in extra_plan:
+         h.update(f"|{kind}|{path.name}|".encode("utf-8"))
+         h.update(apply_snapshot[path])
+@@ -844,9 +926,6 @@ def main() -> int:
+         print('ERROR: database inputs differ from the expected manifest.', file=sys.stderr)
+         return 2
+     cached = False
+-    if use_tpl:
+-        r = psql.run(args.admin_db, f"SELECT 1 FROM pg_database WHERE datname='{tpl}';", tuples=True)
+-        cached = r.returncode == 0 and r.stdout.strip() == "1"
+ 
+     # Serialize runs on the shared work db (the OS drops the lock if the process is killed, so it never goes stale),
+     # then reset it. FORCE also cleans what a previously killed run left behind.
+@@ -854,13 +933,16 @@ def main() -> int:
+     if lock is None:
+         print(f"ERROR: another db_verify run kept the test database busy for {args.lock_wait} s.", file=sys.stderr)
+         return 2
+-    current = hashlib.sha1(f"snapshot-v1|{args.bootstrap}|{args.single_tx}|{BOOTSTRAP_SQL}".encode("utf-8"))
+-    for kind, path in build_plan(extra_dirs_list):
+-        current.update(f"|{kind}|{path.name}|".encode("utf-8"))
+-        current.update(path.read_bytes())
+-    if current.hexdigest() != h.hexdigest():
+-        print('ERROR: database inputs changed while waiting for the lock; retry after the wave is stable.', file=sys.stderr)
+-        return 2
++    check_input_changes()
++    if rep.changed_inputs:
++        rep.status = 'STALE'
++        print('STALE: selected database inputs changed while waiting for lock:', file=sys.stderr)
++        for path in rep.changed_inputs:
++            print(f'  - {path}', file=sys.stderr)
++        if args.json:
++            Path(args.json).write_text(json.dumps(asdict(rep), indent=2, ensure_ascii=False), encoding='utf-8')
++        print('\n== RESULT: STALE (0 failing item(s))')
++        return 1
+     if use_tpl:
+         r = psql.run(args.admin_db, f"SELECT 1 FROM pg_database WHERE datname='{tpl}';", tuples=True)
+         cached = r.returncode == 0 and r.stdout.strip() == "1"
+@@ -943,14 +1025,8 @@ def main() -> int:
+             for n, e in failed_files:
+                 print(f"  - {n}: {e}")
+ 
+-        current = hashlib.sha1(f"snapshot-v1|{args.bootstrap}|{args.single_tx}|{BOOTSTRAP_SQL}".encode("utf-8"))
+-        for kind, path in build_plan(extra_dirs_list):
+-            current.update(f"|{kind}|{path.name}|".encode("utf-8"))
+-            current.update(path.read_bytes())
+-        if current.hexdigest() != h.hexdigest():
+-            print('ERROR: database inputs changed during setup; verification is invalid.', file=sys.stderr)
+-            failures += 1
+-        if use_tpl and not cached and not args.fail_fast and failures == len(failed_files):
++        check_input_changes()
++        if use_tpl and not cached and not args.fail_fast and not rep.changed_inputs and failures == len(failed_files):
+             # No session is open on `db` between psql calls, so it can be the template source. A concurrent run
+             # may win the race (CREATE then fails harmlessly). The database comment holds the last-use epoch;
+             # only the TPL_KEEP most recently used templates are kept (different --extra-dir sets have own keys).
+@@ -974,7 +1050,9 @@ def main() -> int:
+                 for o in old:
+                     psql.run(args.admin_db, f'DROP DATABASE IF EXISTS "{o}" WITH (FORCE);')
+ 
+-        if not args.apply_only:
++        if rep.changed_inputs and not args.apply_only:
++            rep.notes.append('pgTAP and plpgsql_check skipped: database inputs changed during setup')
++        if not args.apply_only and not rep.changed_inputs:
+             # ---- pgTAP
+             if args.tap:
+                 has_tap = psql.run(db, "SELECT 1 FROM pg_available_extensions WHERE name='pgtap';",
+@@ -987,45 +1065,30 @@ def main() -> int:
+                     psql.run(db, "CREATE EXTENSION IF NOT EXISTS pgtap WITH SCHEMA extensions;")
+                     use_prove = (args.runner == "pg_prove" or
+                                  (args.runner == "auto" and prefix == ["psql"] and shutil.which("pg_prove")))
+-                    tests = sorted(TEST_DIR.glob("*.test.sql"))
+-                    if extra_dirs_list:
+-                        for ed in extra_dirs_list:
+-                            ed_tests_dir = ed / "supabase" / "tests" if (ed / "supabase" / "tests").exists() else ed / "tests"
+-                            if ed_tests_dir.exists():
+-                                tests.extend(sorted(ed_tests_dir.glob("*.test.sql"), key=sort_key))
+-                    discovered_files = {str(t.resolve()) for t in tests}
+-                    if batch_allowlist - discovered_files:
+-                        print('ERROR: batch allowlist includes files outside the selected test directories.', file=sys.stderr)
+-                        failures += 1
+-                        tests = []
+-                    if args.only_tests:
+-                        tests = [t for t in tests if args.only_tests in t.name]
+-                    skip = {n.strip() for n in args.skip_tests.split(",") if n.strip()}
+-                    for t in tests:
+-                        if t.name in skip:
+-                            print(f"[SKIP] {t.name} (explicit --skip-tests)")
+-                            rep.notes.append(f"pgTAP skipped explicitly: {t.name}")
+-                    tests = [t for t in tests if t.name not in skip]
++                    tests = tap_tests
++                    for name in sorted(skip_names):
++                        print(f"[SKIP] {name} (explicit --skip-tests)")
++                        rep.notes.append(f"pgTAP skipped explicitly: {name}")
+                     print(f"\n== pgTAP: {len(tests)} files via {'pg_prove' if use_prove else 'psql'}")
+                     if batch_allowlist:
+-                        eligible = sum(tap_batch_eligible(t, batch_allowlist) for t in tests)
++                        eligible = sum(_tap_batch_source(t, batch_allowlist, snapshots=tap_bytes) is not None for t in tests)
+                         print(f'== pgTAP batch candidates: {eligible}/{len(tests)}; other files remain isolated')
+                     if not tests:
+                         print('ERROR: pgTAP selected no test files.', file=sys.stderr)
+                         failures += 1
+                     batch_end, batch_items, batch_group = 0, iter(()), 0
+                     for test_index, t in enumerate(tests):
+-                        if not use_prove and test_index >= batch_end and tap_batch_eligible(t, batch_allowlist):
++                        if not use_prove and test_index >= batch_end and _tap_batch_source(t, batch_allowlist, snapshots=tap_bytes) is not None:
+                             batch_end = test_index
+-                            while batch_end < len(tests) and tap_batch_eligible(tests[batch_end], batch_allowlist):
++                            while batch_end < len(tests) and _tap_batch_source(tests[batch_end], batch_allowlist, snapshots=tap_bytes) is not None:
+                                 batch_end += 1
+                             batch_group += 1
+                             batch_items = iter(run_tap_batch(psql, db, tests[test_index:batch_end],
+-                                                             tap_prefix, args.test_timeout, args.admin_db, batch_allowlist, tap_hashes))
++                                                             tap_prefix, args.test_timeout, args.admin_db, batch_allowlist, tap_hashes, tap_bytes))
+                         if use_prove:
+                             try:
+-                                resolved = t.resolve(strict=True)
+-                                raw = resolved.read_bytes()
++                                resolved = t.resolve()
++                                raw = tap_bytes[str(resolved)]
+                                 if hashlib.sha256(raw).hexdigest() != tap_hashes.get(str(resolved)):
+                                     raise ValueError('test changed since preflight')
+                                 # Relative includes depend on the script's directory and cannot be
+@@ -1048,8 +1111,8 @@ def main() -> int:
+                                     _, p, test_seconds = next(batch_items)
+                                 else:
+                                     t_started = time.monotonic()
+-                                    raw = t.resolve(strict=True).read_bytes()
+-                                    if hashlib.sha256(raw).hexdigest() != tap_hashes.get(str(t.resolve(strict=True))):
++                                    raw = tap_bytes[str(t.resolve())]
++                                    if hashlib.sha256(raw).hexdigest() != tap_hashes.get(str(t.resolve())):
+                                         raise ValueError('test changed since preflight')
+                                     source = snapshot_sql(raw)
+                                     p = psql.run(db, tap_prefix + source, tuples=True, timeout=args.test_timeout)
+@@ -1147,22 +1210,11 @@ def main() -> int:
+                             print("  (psql stderr) " + first_error(r.stderr))
+                         if (new_rows or r.stderr.strip()) and not args.no_check_gate:
+                             failures += 1
+-        try:
+-            if args.tap:
+-                current_tests = selected_tap_tests(extra_dirs_list, args.only_tests, skip_names)
+-                if tap_manifest(current_tests, args.tap_batch_allowlist) != tap_inputs:
+-                    print('ERROR: pgTAP tests or allowlist changed during verification.', file=sys.stderr)
+-                    failures += 1
+-            current = hashlib.sha1(f"snapshot-v1|{args.bootstrap}|{args.single_tx}|{BOOTSTRAP_SQL}".encode("utf-8"))
+-            for kind, path in build_plan(extra_dirs_list):
+-                current.update(f"|{kind}|{path.name}|".encode("utf-8"))
+-                current.update(path.read_bytes())
+-            if current.hexdigest() != h.hexdigest():
+-                print('ERROR: database inputs changed during tests; verification is invalid.', file=sys.stderr)
+-                failures += 1
+-        except OSError as exc:
+-            print(f'ERROR: database inputs unavailable after tests: {exc}', file=sys.stderr)
+-            failures += 1
++        check_input_changes()
++        if rep.changed_inputs:
++            print('STALE: selected database inputs changed during verification:', file=sys.stderr)
++            for path in rep.changed_inputs:
++                print(f'  - {path}', file=sys.stderr)
+     finally:
+         if created and not args.keep_db:
+             r = psql.run(args.admin_db, f'DROP DATABASE IF EXISTS "{db}" WITH (FORCE);')
+@@ -1173,11 +1225,12 @@ def main() -> int:
+         elif args.keep_db:
+             print(f"\n== kept {db} (drop it manually)")
+ 
++    rep.status = ("STALE_WITH_FAILURES" if failures else "STALE") if rep.changed_inputs else ("FAIL" if failures else "OK")
+     if args.json:
+         Path(args.json).write_text(json.dumps(asdict(rep), indent=2, ensure_ascii=False), encoding="utf-8")
+ 
+-    print(f"\n== RESULT: {'FAIL' if failures else 'OK'} ({failures} failing item(s))")
+-    return 1 if failures else 0
++    print(f"\n== RESULT: {rep.status} ({failures} failing item(s))")
++    return 1 if failures or rep.changed_inputs else 0
+ 
+ 
+ if __name__ == "__main__":

@@ -51,6 +51,22 @@ class TestAiddRulesCli(unittest.TestCase):
             self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
             self.assertIn("FAIL R2", r.stdout)
 
+    def test_rules_check_preflights_verification_before_approval(self):
+        """A tasks.md awaiting approval gets the same `## Verification` check `rules approve` applies;
+        once an `Approved:` line exists the preflight no longer adds it (legacy specs are not re-judged)."""
+        bad_spec = ("# spec\n\n## Verification\n\n| # | Command | Expected | Covers |\n|---|---|---|---|\n"
+                    "| 1 | `cd x && python -m unittest` | all tests pass | T-01 |\n")
+        with tempfile.TemporaryDirectory() as t:
+            d = Path(t) / "specs" / "001-y"
+            d.mkdir(parents=True)
+            (d / "spec.md").write_text(bad_spec, encoding="utf-8")
+            (d / "tasks.md").write_text("# Tasks\n", encoding="utf-8")
+            r = tas.run_script("rules", "check", str(d), cwd=t)
+            self.assertIn("FAIL R10 Verification row 1", r.stdout, r.stdout + r.stderr)
+            (d / "tasks.md").write_text("# Tasks\n\nApproved: 2026-11-04 hash:abcdef123456\n", encoding="utf-8")
+            r = tas.run_script("rules", "check", str(d), cwd=t)
+            self.assertNotIn("Verification row 1", r.stdout, r.stdout)
+
     def test_rules_close_and_abandon_unknown_spec_exit_one(self):
         with tempfile.TemporaryDirectory() as t:
             self.assertEqual(self.aidd("rules", "close", "000-none", cwd=t).returncode, 1)

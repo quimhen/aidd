@@ -1,0 +1,87 @@
+---
+spec: 007-aidd-review-html-close-gate
+tasks_hash: c865f422582a
+sources_digest: 02c2788fe4e6
+format: codes-v2
+approved: true
+generated: 2026-10-31
+reviewed: 2026-10-31T22:08:48
+---
+- [x] SUMMARY @85645052
+- [x] Q1 @66cd3435
+- [x] Q2 @77c55003
+- [x] Q3 @90888148
+- [x] Q4 @dd3451bb
+- [x] Q5 @1f60ab65
+- [x] Q6 @b48dc804
+- [x] Q7 @984ec61b
+- [x] FR-201 @c37d905a
+- [x] FR-202 @0c783c24
+- [x] FR-203 @51ee2978
+- [x] FR-204 @603c1dda
+- [x] FR-205 @d02fa05e
+- [x] FR-206 @3d83ca33
+- [x] FR-207 @d0e2e362
+- [x] FR-208 @b5230904
+- [x] FR-209 @7a06d7aa
+- [x] FR-210 @0f84ff1d
+- [x] FR-211 @5931cdc1
+- [x] FR-212 @e2ae7edd
+- [x] FR-213 @16a94504
+- [x] AC-201 @ff264d25
+- [x] AC-202 @0a6403a8
+- [x] AC-203 @254e0b54
+- [x] AC-204 @31884afc
+- [x] AC-205 @49ff45d7
+- [x] AC-206 @19df17f3
+- [x] AC-207 @6248c7bb
+- [x] AC-208 @9f266e3b
+- [x] AC-209 @f76896eb
+- [x] AC-210 @723026a9
+- [x] AC-211 @aba8191d
+- [x] AC-212 @13ef7ed7
+- [x] AC-213 @f1446919
+- [x] AC-214 @c13b73f7
+- [x] AC-215 @210a44b9
+- [x] AC-216 @47c113eb
+- [x] AC-217 @af88028b
+- [x] AC-218 @404e3464
+- [x] AC-219 @4599a8ea
+- [x] AC-220 @e6a17586
+- [x] AC-221 @f4a56637
+- [x] AC-222 @6a177b4c
+- [x] AC-223 @3dc905fc
+- [x] AC-224 @674b96df
+- [x] AC-225 @c32cbbbd
+- [x] AC-226 @5398b9fb
+- [x] AC-227 @4234333c
+- [x] AC-228 @448d4189
+- [x] AC-229 @f1b20fef
+- [x] AC-230 @3bd33347
+- [x] AC-231 @55c4d712
+- [x] AC-232 @f8300c98
+- [x] AC-233 @cdd62981
+- [x] AC-234 @75cd1ef4
+- [x] AC-235 @5c3f95ad
+- [x] T-01 @a8049342
+- [x] T-02 @6d9c4214
+- [x] T-03 @281884b1
+- [x] T-04 @2ceaa9f5
+- [x] T-05 @a2f2b648
+- [x] T-06 @abd900dd
+- [x] T-07 @08d46cfc
+- [x] T-08 @c47662d2
+- [x] T-09 @464a2d7c
+- [x] T-10 @6101bcfd
+- [x] T-11 @edb60f98
+- [x] T-12 @ac9bfa31
+- [x] T-13 @20d156f6
+- [x] T-14 @6d0b05fa
+- [x] T-15 @95574860
+- [x] T-16 @ba3ab09e
+- [x] V-1 @2f855d26
+- [x] V-2 @e1485d47
+- [x] V-3 @3ee4bca5
+- [x] V-4 @646f1d06
+- [x] V-5 @7b2c8c3e
+- [x] V-6 @537ecf59

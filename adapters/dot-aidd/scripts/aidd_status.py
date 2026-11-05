@@ -725,6 +725,22 @@ def _graph_first_line(root=None):
     return f'graph-first: {n} misses / {m} searches this session'
 
 
+def _tool_first_line(root=None):
+    """aidd:FR-052 `tool-first: N advisories / M edits this session` from the session's tool_miss events
+    (N) and the tool-first hook's edit counter (M). Always returns a line; never raises."""
+    n = m = 0
+    try:
+        root = root or ev.find_root()
+        sess = _current_session(root)
+        if sess:
+            n = len(ev.events(root, kind='tool_miss', session=sess))
+            edits = ev.read_tool_first_state(sess).get('edits')
+            m = edits if isinstance(edits, int) and edits >= 0 else 0
+    except Exception:
+        n = m = 0
+    return f'tool-first: {n} advisories / {m} edits this session'
+
+
 def format_global(g):
     stops = ', '.join(f'{k} x{v}' for k, v in sorted(g['stop_blocks'].items())) or 'none'
     lines = [
@@ -738,6 +754,7 @@ def format_global(g):
            if g['last_hook_error'] else ' total'),
         format_pointer(g),
         _graph_first_line(),  # aidd:FR-027
+        _tool_first_line(),  # aidd:FR-052
     ]
     # aidd:FR-208 aidd:AC-214 shown only when they carry information (default output stays as before)
     rm = g.get('rules_mode') or _rules_mode()
@@ -1126,6 +1143,14 @@ def cmd_check(spec_arg):
         print(f'Not a spec directory: {spec_arg}')
         return 1
     vs = rules.check_spec_dir(d)
+    # Approval preflight: a tasks.md still awaiting approval must already carry the `## Verification` rows that
+    # `aidd rules approve` demands (same check_verification), so the owner is never asked before it would fail.
+    try:
+        tp = d / 'tasks.md'
+        if tp.exists() and not re.search(r'(?m)^\s*Approved:', _read(tp)):
+            vs = list(vs) + list(rules.check_verification(_read(d / 'spec.md'), ev.find_root(d)))
+    except Exception:
+        pass
     bad = {v['rule'] for v in vs}
     for rid in rules.RULE_IDS:
         if rid not in bad:
@@ -2001,10 +2026,11 @@ def _wave_rows(tasks_text, rows, wave):
     return selected
 
 
-def _task_rows(tasks_text, rows, task_ids):
-    """Select rows whose explicit Covers include the requested real task IDs."""
-    if not task_ids or len(set(task_ids)) != len(task_ids):
-        raise ValueError('tasks must be nonempty and unique')
+_TASK_RANGE_RE = re.compile(r'\b(T-\d+)\s*(?:\.\.|–|—|\bto\b)\s*(T-\d+)\b', re.I)
+
+
+def _known_task_ids(tasks_text):
+    """Upper-cased task IDs of tasks.md (first table cell or `#`..`###` heading)."""
     known = set()
     for line in rules._clean(tasks_text).splitlines():
         if line.lstrip().startswith('|'):
@@ -2014,35 +2040,50 @@ def _task_rows(tasks_text, rows, task_ids):
             match = re.match(r'^\s*#{1,3}\s+(T-\d+)\b', line, re.I)
         if match:
             known.add(match.group(1).upper())
-    selected_ids = {str(value).upper() for value in task_ids}
-    if any(not re.fullmatch(r'T-\d+', value) for value in selected_ids) or not selected_ids <= known:
-        raise ValueError('unknown or invalid task IDs: ' + ', '.join(sorted(selected_ids - known)))
+    return known
+
+
+def _covers_task_refs(covers, known):
+    """Task IDs one Covers cell references (single IDs and `T-a..T-b` ranges over `known`); malformed or
+    ambiguous task references raise ValueError. Referenced IDs are not checked against `known` here."""
+    covers = covers or ''
     by_number = {}
     for value in known:
         by_number.setdefault(int(value[2:]), set()).add(value)
+    range_re = _TASK_RANGE_RE
+    if re.search(r'\b(?:except|excepto|excluding|exclude|omitting|omit|salvo|menos|sin|not)\b', covers, re.I) and re.search(r'\bT-', covers, re.I):
+        raise ValueError('ambiguous exclusion in task Covers')
+    if re.search(r'\bT-(?!\d+\b)', covers, re.I):
+        raise ValueError('invalid task identifier in Covers')
+    without_ranges = range_re.sub('', covers)
+    if (re.search(r'\bT-\d+\s*(?:\.\.|…|–|—|\bto\b|-\s*T-)', without_ranges, re.I)
+            or re.search(r'(?:\.\.|…|–|—|\bto\b)\s*T-\d+\b', without_ranges, re.I)
+            or re.search(r'\bT-\d+\s*/\s*(?:T-)?\d', without_ranges, re.I)):
+        raise ValueError('invalid or ambiguous task range in Covers')
+    referenced = {x.upper() for x in re.findall(r'\bT-\d+\b', covers, re.I)}
+    for start, end in range_re.findall(covers):
+        low, high = int(start[2:]), int(end[2:])
+        if low > high:
+            raise ValueError('invalid descending task range in Covers')
+        for number, variants in by_number.items():
+            if low <= number <= high:
+                if len(variants) != 1:
+                    raise ValueError('ambiguous task IDs in Covers range')
+                referenced.update(variants)
+    return referenced
+
+
+def _task_rows(tasks_text, rows, task_ids):
+    """Select rows whose explicit Covers include the requested real task IDs."""
+    if not task_ids or len(set(task_ids)) != len(task_ids):
+        raise ValueError('tasks must be nonempty and unique')
+    known = _known_task_ids(tasks_text)
+    selected_ids = {str(value).upper() for value in task_ids}
+    if any(not re.fullmatch(r'T-\d+', value) for value in selected_ids) or not selected_ids <= known:
+        raise ValueError('unknown or invalid task IDs: ' + ', '.join(sorted(selected_ids - known)))
     selected, covered = [], set()
-    range_re = re.compile(r'\b(T-\d+)\s*(?:\.\.|–|—|\bto\b)\s*(T-\d+)\b', re.I)
     for row in rows:
-        covers = row.get('covers') or ''
-        if re.search(r'\b(?:except|excepto|excluding|exclude|omitting|omit|salvo|menos|sin|not)\b', covers, re.I) and re.search(r'\bT-', covers, re.I):
-            raise ValueError('ambiguous exclusion in task Covers')
-        if re.search(r'\bT-(?!\d+\b)', covers, re.I):
-            raise ValueError('invalid task identifier in Covers')
-        without_ranges = range_re.sub('', covers)
-        if (re.search(r'\bT-\d+\s*(?:\.\.|…|–|—|\bto\b|-\s*T-)', without_ranges, re.I)
-                or re.search(r'(?:\.\.|…|–|—|\bto\b)\s*T-\d+\b', without_ranges, re.I)
-                or re.search(r'\bT-\d+\s*/\s*(?:T-)?\d', without_ranges, re.I)):
-            raise ValueError('invalid or ambiguous task range in Covers')
-        referenced = {x.upper() for x in re.findall(r'\bT-\d+\b', covers, re.I)}
-        for start, end in range_re.findall(covers):
-            low, high = int(start[2:]), int(end[2:])
-            if low > high:
-                raise ValueError('invalid descending task range in Covers')
-            for number, variants in by_number.items():
-                if low <= number <= high:
-                    if len(variants) != 1:
-                        raise ValueError('ambiguous task IDs in Covers range')
-                    referenced.update(variants)
+        referenced = _covers_task_refs(row.get('covers') or '', known)
         hits = selected_ids & referenced
         if hits:
             selected.append(row)
@@ -2096,8 +2137,11 @@ def _task_selection_fingerprint(tasks_text, spec_text, task_ids):
     return hashlib.sha256(raw).hexdigest()
 
 
-def _changed_task_selection(root, spec, base=None):
-    """Select declared Covers whose declared Inputs intersect a Git diff.
+def _changed_selection(root, spec, base=None):
+    """aidd:FR-259 `(task_ids, always_rows, warnings)` for `aidd verify --changed`: tasks whose declared
+    Inputs intersect a Git diff, plus rows that must always run (no Inputs or no task Covers; whole-suite rows
+    for a changed task no row names). Refuses (ValueError) a changed spec policy, a malformed declaration or
+    nothing to run.
 
     This is a provisional direct relationship, not a proof of transitive
     dependency closure or of a previously verified baseline.
@@ -2115,26 +2159,88 @@ def _changed_task_selection(root, spec, base=None):
     d = Path(root) / 'specs' / spec_id
     tasks_text = _read(d / 'tasks.md')
     rows = rules.parse_verification(_read(d / 'spec.md'))
-    task_ids = set()
-    for line in rules._clean(tasks_text).splitlines():
-        if line.lstrip().startswith('|'):
-            cells = rules._split_row(line)
-            match = re.fullmatch(r'[`*\s]*(T-\d+)[`*\s]*', cells[0], re.I) if cells else None
-        else:
-            match = re.match(r'^\s*#{1,3}\s+(T-\d+)\b', line, re.I)
-        if match:
-            task_ids.add(match.group(1).upper())
-    if not rows or not task_ids or any(not row.get('inputs') or not row.get('covers') for row in rows):
-        raise ValueError('each verification row needs explicit Inputs and Covers')
-    selected = []
-    for task in sorted(task_ids):
-        related_rows = _task_rows(tasks_text, rows, [task])
-        if any(rules._glob_hit(path.replace('\\', '/'), row['inputs'])
-               for row in related_rows for path in paths):
-            selected.append(task)
-    if not selected:
+    known = _known_task_ids(tasks_text)
+    if not rows or not known:
+        raise ValueError('the spec needs verification rows and tasks')
+    paths = [str(path).replace('\\', '/') for path in paths]
+    ids = [str(row.get('n') or i) for i, row in enumerate(rows, 1)]
+    refs = []
+    for n, row in zip(ids, rows):
+        referenced = _covers_task_refs(row.get('covers') or '', known)
+        if referenced - known:
+            raise ValueError(f'verification row {n} names tasks not in tasks.md: ' + ', '.join(sorted(referenced - known)))
+        refs.append(referenced)
+        if (row.get('inputs') and not rules.row_input_fingerprint(root, row['inputs'])
+                and _inputs_malformed(root, row['inputs'])):
+            raise ValueError(f'verification row {n} has missing or invalid Inputs')
+    warnings, always = [], set()
+    for n, row, referenced in zip(ids, rows, refs):
+        if not row.get('inputs') or not referenced:
+            always.add(n)
+            warnings.append(f'warning: verification row {n} declares no Inputs or no task Covers; it always runs')
+    selected = set()
+    for task in sorted(known):
+        if any(task in referenced and row.get('inputs') and rules._glob_hit(path, row['inputs'])
+               for row, referenced in zip(rows, refs) for path in paths):
+            selected.add(task)
+    # A task named by no row (one by one, outside a T-a..T-b range) whose target changed runs the rows that
+    # name every task, or every row when there is none (FR-259).
+    named = set()
+    for row in rows:
+        named |= {x.upper() for x in re.findall(r'\bT-\d+\b', _TASK_RANGE_RE.sub(' ', row.get('covers') or ''), re.I)}
+    try:
+        try:
+            from . import aidd_progress as progress
+        except ImportError:
+            import aidd_progress as progress
+        targets = {}
+        for task in progress.parse_tasks(tasks_text):
+            targets.setdefault(str(task.get('id') or '').upper(), []).extend(task.get('paths') or [])
+    except (ImportError, OSError, ValueError, TypeError) as error:
+        raise ValueError('task targets cannot be read') from error
+    for task in sorted(known - named):
+        if any(rules._glob_hit(path, targets.get(task) or []) for path in paths):
+            warnings.append(f'warning: task {task} is covered by no verification row; whole-suite rows run')
+            suite = [n for n, referenced in zip(ids, refs) if known <= referenced]
+            always.update(suite or ids)
+    if not selected and not always:
         raise ValueError('no declared task Inputs match the Git changes; no verification was executed')
-    return selected
+    return sorted(selected), [n for n in ids if n in always], warnings
+
+
+def _inputs_malformed(root, inputs):
+    """True when declared Inputs are malformed: an unsafe or invalid glob, or a wildcard matching no file.
+    A literal path missing on disk (e.g. deleted) is not malformed: it is matched literally against the Git
+    changes, as before FR-259 (orchestrator decision on AC-290 / D-1)."""
+    try:
+        ev._scope_re(inputs)
+        base = Path(root)
+        for pattern in inputs:
+            p = str(pattern).strip().strip('`').replace('\\', '/')
+            if any(ch in p for ch in '*?[') and not any(f.is_file() for f in base.glob(p)):
+                return True
+        return False
+    except Exception:
+        return True
+
+
+def _changed_task_selection(root, spec, base=None):
+    """Tasks whose declared Inputs intersect a Git diff (see `_changed_selection`)."""
+    return _changed_selection(root, spec, base)[0]
+
+
+def _changed_selection_fingerprint(tasks_text, spec_text, task_ids, always_rows):
+    """Hash the selected task text plus the policy of the always-run rows (FR-260)."""
+    task_fp = _task_selection_fingerprint(tasks_text, spec_text, task_ids) if task_ids else None
+    wanted = set(always_rows or [])
+    rows = rules.parse_verification(spec_text)
+    policy = [{key: row.get(key) for key in ('n', 'cmd', 'expected', 'covers', 'inputs', 'reuse', 'environment')}
+              for i, row in enumerate(rows, 1) if str(row.get('n') or i) in wanted]
+    if len(policy) != len(wanted):
+        raise ValueError('always-run rows are not in the verification table')
+    payload = {'format': 'aidd-changed-selection-v1', 'tasks': task_fp, 'always_rows': policy}
+    raw = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(',', ':')).encode('utf-8')
+    return hashlib.sha256(raw).hexdigest()
 
 
 def _latest_wave_run(root, spec, wave):
@@ -2148,7 +2254,8 @@ def _latest_wave_run(root, spec, wave):
         return None
 
 
-def cmd_verify(spec_arg, full=False, bail=False, wave=None, result_sink=None, wave_cache=None, task_ids=None):
+def cmd_verify(spec_arg, full=False, bail=False, wave=None, result_sink=None, wave_cache=None, task_ids=None,
+               always_rows=None):
     """aidd:FR-205 aidd:AC-209 aidd:AC-216 aidd:AC-218 `aidd verify <spec>`: run every `## Verification` row
     (shell, project root, AIDD_VERIFY_TIMEOUT per row), save `evidence/verify-<n>.txt` (header line
     `# <cmd> | exit <code> | <ISO ts>` + combined output), mark zero-test / too-short output failed,
@@ -2168,19 +2275,35 @@ def cmd_verify(spec_arg, full=False, bail=False, wave=None, result_sink=None, wa
             print(f"FAIL {v['rule']} {v['message']} → {v['fix']}")
         print(f'Refused: {d.name}/spec.md has no runnable "## Verification" row - nothing was executed.')
         return 1
+    if always_rows is not None and task_ids is None:
+        print('Refused: always_rows requires --changed; nothing was executed.')
+        return 1
     if task_ids is not None:
         if wave is not None or full or bail:
             print('Refused: --tasks cannot be combined with --wave, --full or --bail; nothing was executed.')
             return 1
         try:
             tasks_text_start = _read(d / 'tasks.md')
-            selection_fp_start = _task_selection_fingerprint(tasks_text_start, spec_text, task_ids)
-            rows = _task_rows(tasks_text_start, rows, task_ids)
+            if always_rows is not None:
+                # aidd:FR-260 --changed: task rows plus the always-run rows, in table order, no duplicates
+                selection_fp_start = _changed_selection_fingerprint(tasks_text_start, spec_text, task_ids, always_rows)
+                task_rows = _task_rows(tasks_text_start, rows, task_ids) if task_ids else []
+                wanted = {str(n) for n in always_rows}
+                added = [row for i, row in enumerate(rows, 1)
+                         if str(row.get('n') or i) in wanted and not any(row is t for t in task_rows)]
+                rows = [row for row in rows if any(row is t for t in task_rows) or any(row is a for a in added)]
+            else:
+                selection_fp_start = _task_selection_fingerprint(tasks_text_start, spec_text, task_ids)
+                rows = _task_rows(tasks_text_start, rows, task_ids)
+                added = []
         except ValueError as e:
             print(f'Refused: {e}; nothing was executed.')
             return 1
         for row in rows:
-            print(f"selected row {row.get('n') or '?'} covers: {row.get('covers') or '(none)'}", flush=True)
+            if any(row is a for a in added):
+                print(f"always-run row {row.get('n') or '?'}", flush=True)
+            else:
+                print(f"selected row {row.get('n') or '?'} covers: {row.get('covers') or '(none)'}", flush=True)
     if wave is not None:
         if not re.fullmatch(r'[A-Za-z0-9_-]+', str(wave)):
             print('Refused: invalid wave ID; nothing was executed.')
@@ -2210,7 +2333,7 @@ def cmd_verify(spec_arg, full=False, bail=False, wave=None, result_sink=None, wa
                 print(f"Refused: row {row.get('n') or '?'}: {problem}; nothing was executed.")
                 return 1
     guard_scope_start = None
-    if task_ids is not None:
+    if task_ids is not None and not always_rows:
         try:
             try:
                 from . import aidd_guard as guard
@@ -2536,7 +2659,10 @@ def cmd_verify(spec_arg, full=False, bail=False, wave=None, result_sink=None, wa
         try:
             spec_text_end = _read(d / 'spec.md')
             tasks_text_end = _read(d / 'tasks.md')
-            selection_fp_end = _task_selection_fingerprint(tasks_text_end, spec_text_end, task_ids)
+            if always_rows is not None:
+                selection_fp_end = _changed_selection_fingerprint(tasks_text_end, spec_text_end, task_ids, always_rows)
+            else:
+                selection_fp_end = _task_selection_fingerprint(tasks_text_end, spec_text_end, task_ids)
             verification_hash_end = rules.verification_hash(spec_text_end)
             if selection_fp_end != selection_fp_start:
                 all_ok = stable = False
@@ -2623,7 +2749,7 @@ def cmd_verify(spec_arg, full=False, bail=False, wave=None, result_sink=None, wa
                              selection_fp_start=selection_fp_start, selection_fp_end=selection_fp_end,
                              selection_algorithm='aidd-task-selection-v1', code_fp_end=code_end,
                              code_scope=scope, scope_attested=False, code_algorithm=ev.EVIDENCE_ALGORITHM,
-                             guard_scope=guard_scope)
+                             guard_scope=guard_scope, always_rows=sorted(always_rows or []))
         if not recorded:
             print('FAIL: task verification evidence could not be recorded.')
             return 1
@@ -3131,12 +3257,15 @@ def main(argv=None):
                     return 1
                 try:
                     root = ev.find_root()
-                    task_ids = _changed_task_selection(root, specs[0], base)
+                    task_ids, always_rows, warnings = _changed_selection(root, specs[0], base)
                 except (OSError, ValueError, TypeError) as error:
                     print(f'Refused: {error}; nothing was verified.')
                     return 1
+                for warning in warnings:
+                    print(warning)
                 print('Git selection is provisional: direct declared Inputs only; transitive dependencies and baseline are not attested.')
-                print('Selected tasks: ' + ', '.join(task_ids))
+                print('Selected tasks: ' + (', '.join(task_ids) or '(none)'))
+                return cmd_verify(specs[0], task_ids=task_ids, always_rows=always_rows)
             if task_ids is not None:
                 if len(specs) != 1 or as_json or wave is not None or full or bail:
                     print('Refused: --tasks requires one spec and cannot be combined with --json, --wave, --full or --bail.')

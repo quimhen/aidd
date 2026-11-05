@@ -397,6 +397,8 @@ class TestRouting(EvidenceCase):
             ev.append(self.root, "s", k, spec="x")
         ev.append(self.root, "s", "graph_miss", tool="Grep", target="x", silenced=False)      # 004 kinds
         ev.append(self.root, "s", "graph_snapshot", name="code", label="l", sha256="0" * 64, nodes=1, edges=1)
+        ev.append(self.root, "s", "tool_miss", kind="same_shape", target="x", count=4)
+        ev.append(self.root, "s", "tool_query", source="agent", command="aidd tools x")
         sess =(self.evdir / "sessions" / "s.toon").read_text(encoding="utf-8")
         proj = (self.evdir / "events.toon").read_text(encoding="utf-8")
         for k in ev.SESSION_KINDS:
@@ -405,8 +407,8 @@ class TestRouting(EvidenceCase):
         for k in ev.PROJECT_KINDS:
             self.assertIn(f",{k},", proj)
             self.assertNotIn(f",{k},", sess)
-        self.assertEqual(len(ev.events(self.root)), 19)                    # kind=None merges both
-        self.assertEqual(len(ev.events(self.root, session="s")), 19)
+        self.assertEqual(len(ev.events(self.root)), 21)                    # kind=None merges both
+        self.assertEqual(len(ev.events(self.root, session="s")), 21)
         self.assertEqual(len(ev.events(self.root, kind="prompt")), 1)
         self.assertEqual(ev.events(self.root, session="other"), [])
         self.assertEqual(ev.count(self.root, "prompt", session="s"), 1)

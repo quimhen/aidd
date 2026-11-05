@@ -434,7 +434,7 @@ def build_parser():
     p_rules.set_defaults(func=cmd_rules)
 
     p_graphs = sub.add_parser(
-        "graphs", help="Project graphs registry: list | status | refresh <name|all> | show <name> <query> | explorer <name>",
+        "graphs", help="Project graphs registry: list | status | refresh <name|all> | show <name> <query> | explorer [name]",
         add_help=False)
     p_graphs.add_argument("graphs_args", nargs=argparse.REMAINDER, help="forwarded to aidd_graphs.py")
     p_graphs.set_defaults(func=lambda a: _run("aidd_graphs.py", a.graphs_args))
@@ -451,7 +451,8 @@ def build_parser():
             ("units", "aidd_units.py", [], "Plan, apply or safely revert an explicit unit migration"),
             ("provider", "aidd_provider_attestation.py", [], "Run a unit-approved verification provider"),
             ("tools", "aidd_tools.py", [], "Catalog of AIDD and project tools by task: tools [keywords] (aidd_tools.py)"),
-            ("size", "aidd_tools.py", ["size"], "Size the work XS/S/M/L and print the analysis parameters: size --spec <id> | --files <f...> (aidd_tools.py size)")):
+            ("size", "aidd_tools.py", ["size"], "Size the work XS/S/M/L and print the analysis parameters: size --spec <id> | --files <f...> (aidd_tools.py size)"),
+            ("coverage", "aidd_coverage.py", [], "Propose task Covers and Inputs for a spec's Verification rows (dry-run; never writes the spec) (aidd_coverage.py)")):
         _p = sub.add_parser(_name, help=_help, add_help=False)
         _p.add_argument("fwd_args", nargs=argparse.REMAINDER, help=f"forwarded to {_script}")
         _p.set_defaults(func=lambda a, _s=_script, _x=_pre: _run(_s, _x + a.fwd_args))

@@ -76,15 +76,15 @@ class TestInstallHooks(unittest.TestCase):
             self.assertEqual(cm.exception.code, 1)
             self.assertEqual(settings_path.read_text(encoding="utf-8"), "{not valid json")
 
-    def test_registers_thirteen_hooks_with_session_memory_only_by_default(self):
-        self.assertEqual(len(install_hooks.HOOK_DEFS), 13)
+    def test_registers_fourteen_hooks_with_session_memory_only_by_default(self):
+        self.assertEqual(len(install_hooks.HOOK_DEFS), 14)
         with TemporaryDirectory() as d:
             settings_path = Path(d) / "settings.json"
             with patch.object(install_hooks, "SETTINGS_PATH", settings_path):
                 install_hooks.main([])
                 install_hooks.main([])
             hooks = json.loads(settings_path.read_text(encoding="utf-8"))["hooks"]
-            self.assertEqual(sum(len(v) for v in hooks.values()), 13)
+            self.assertEqual(sum(len(v) for v in hooks.values()), 14)
             rh = [e for e in hooks["PreToolUse"]
                   if any("read_hint.py" in h["command"] for h in e["hooks"])]
             self.assertEqual(len(rh), 1)
@@ -135,7 +135,7 @@ class TestInstallHooks(unittest.TestCase):
                 install_hooks.main(["--with-memory-file-hook"])
                 install_hooks.main([])
             hooks = json.loads(settings_path.read_text(encoding="utf-8"))["hooks"]
-            self.assertEqual(sum(len(v) for v in hooks.values()), 14)
+            self.assertEqual(sum(len(v) for v in hooks.values()), 15)
 
     def test_default_set_is_rule_gate_plus_recorders_and_stop(self):
         names = sorted(p.name for _, _, p in install_hooks.HOOK_DEFS)
@@ -143,7 +143,7 @@ class TestInstallHooks(unittest.TestCase):
             "session_start.py", "mark_invoked.py", "rule_gate.py", "prompt_trigger.py",
             "mark_code_edit.py", "mark_agent_dispatch.py", "mark_graph_rebuild.py",
             "memory_context.py", "mark_user_question.py", "stop_gate.py", "read_hint.py",
-            "record_dispatch_pre.py", "graph_refresh.py"]))
+            "record_dispatch_pre.py", "graph_refresh.py", "tool_first_hint.py"]))
         by = {p.name: (e, m) for e, m, p in install_hooks.HOOK_DEFS}
         self.assertEqual(by["rule_gate.py"], ("PreToolUse", "Write|Edit|MultiEdit|NotebookEdit|Bash|PowerShell"))
         self.assertEqual(by["mark_code_edit.py"], ("PostToolUse", "Write|Edit|MultiEdit|NotebookEdit|PowerShell"))
@@ -151,6 +151,7 @@ class TestInstallHooks(unittest.TestCase):
         self.assertEqual(by["stop_gate.py"][0], "Stop")
         self.assertEqual(by["read_hint.py"], ("PreToolUse", "Read|Grep|Glob|Bash|PowerShell"))
         self.assertEqual(by["record_dispatch_pre.py"], ("PreToolUse", "Task|Agent"))
+        self.assertEqual(by["tool_first_hint.py"], ("PostToolUse", "Write|Edit|MultiEdit|NotebookEdit|Bash|PowerShell"))
         self.assertEqual(by["mark_graph_rebuild.py"], ("PostToolUse", "Bash|PowerShell"))
         self.assertEqual(by["graph_refresh.py"], ("PostToolUse", "Write|Edit|MultiEdit|NotebookEdit"))
 
@@ -167,7 +168,7 @@ class TestInstallHooks(unittest.TestCase):
                         seen += 1
                         want = 15 if ("rule_gate.py'" in h["command"] or "stop_gate.py'" in h["command"]) else 10
                         self.assertEqual(h.get("timeout"), want, h["command"])
-            self.assertEqual(seen, 14)
+            self.assertEqual(seen, 15)
 
     def test_old_matcher_entries_are_upgraded_in_place_and_foreign_hooks_kept(self):
         gate = install_hooks.command_for(install_hooks.SKILL_DIR / "hooks" / "rule_gate.py")

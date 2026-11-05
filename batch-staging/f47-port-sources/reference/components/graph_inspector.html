@@ -1,0 +1,66 @@
+<!-- COMP-910: Right Node Inspector & Cross-Graph Trace Drawer -->
+<aside class="inspector-drawer" id="inspector-drawer">
+  <div class="inspector-header">
+    <div class="inspector-headline">
+      <span class="inspector-layer-pill" id="insp-layer-pill">DB</span>
+      <h2 class="inspector-title" id="insp-title">Inspector de Nodo</h2>
+    </div>
+    <button id="btn-close-inspector" class="btn-icon-xs" title="Cerrar panel lateral">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+      </svg>
+    </button>
+  </div>
+
+  <div class="inspector-content" id="inspector-content">
+    <div class="inspector-empty-state" id="insp-empty-state">
+      <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+        <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+      </svg>
+      <p>Selecciona o busca un nodo en el lienzo para inspeccionar sus dependencias, especificaciones y trazabilidad cruzada.</p>
+    </div>
+
+    <div class="inspector-body" id="insp-body" style="display: none;">
+      <!-- Identidad y Resumen -->
+      <div class="insp-card">
+        <div class="insp-meta-row">
+          <span class="insp-meta-key">ID Canónico</span>
+          <code class="insp-meta-code" id="insp-id">-</code>
+        </div>
+        <div class="insp-meta-row">
+          <span class="insp-meta-key">Tipo / Capa</span>
+          <span class="insp-meta-val" id="insp-type-layer">-</span>
+        </div>
+        <div class="insp-meta-row">
+          <span class="insp-meta-key">Dominio</span>
+          <span class="insp-meta-val" id="insp-domain">-</span>
+        </div>
+      </div>
+
+      <!-- Propósito / Documentación -->
+      <div class="insp-card">
+        <div class="insp-card-title">Propósito & Responsabilidad</div>
+        <div class="insp-purpose-text" id="insp-purpose">Sin propósito documentado.</div>
+      </div>
+
+      <!-- Trazabilidad Cruzada Multi-Capa (Cross-Graph Trace) -->
+      <div class="insp-card">
+        <div class="insp-card-title">
+          <span>Trazabilidad Multi-Capa</span>
+          <span class="badge-count" id="insp-trace-count">0</span>
+        </div>
+        <div class="trace-group-title">Entrantes (Referencias a este nodo)</div>
+        <div class="trace-list" id="insp-trace-in"></div>
+
+        <div class="trace-group-title">Salientes (Dependencias / Llamadas)</div>
+        <div class="trace-list" id="insp-trace-out"></div>
+      </div>
+
+      <!-- Metadatos y Propiedades Específicas -->
+      <div class="insp-card">
+        <div class="insp-card-title">Propiedades Técnicas</div>
+        <div class="insp-tech-details" id="insp-tech-details"></div>
+      </div>
+    </div>
+  </div>
+</aside>

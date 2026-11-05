@@ -1,0 +1,1268 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Alias Graph Explorer (SCREEN-901)</title>
+  <style>
+
+:root {
+  --bg: #ffffff;
+  --fg: #1b1f24;
+  --mut: #667788;
+  --bd: #d0d7de;
+  --ac: #0b5cad;
+  --sf: #f6f8fa;
+  --old: #d9383a;
+  --old-bg: #ffebe9;
+  --old-bd: rgba(217, 56, 58, 0.3);
+  --new: #1a7f37;
+  --new-bg: #dafbe1;
+  --new-bd: rgba(26, 127, 55, 0.3);
+  --prog: #bf8700;
+  --prog-bg: #fff8c5;
+  --prog-bd: rgba(191, 135, 0, 0.3);
+  --warn-bg: #fff8c5;
+  --warn-fg: #734f00;
+  --warn-bd: rgba(191, 135, 0, 0.3);
+  --card-bg: #ffffff;
+}
+
+.dark {
+  --bg: #14171a;
+  --fg: #e6e8ea;
+  --mut: #9aa4ae;
+  --bd: #2f363d;
+  --ac: #6cb0f5;
+  --sf: #1d2227;
+  --old: #f85149;
+  --old-bg: #3d1618;
+  --old-bd: rgba(248, 81, 73, 0.3);
+  --new: #3fb950;
+  --new-bg: #14331e;
+  --new-bd: rgba(63, 185, 80, 0.3);
+  --prog: #d29922;
+  --prog-bg: #382800;
+  --prog-bd: rgba(210, 153, 34, 0.3);
+  --warn-bg: #382800;
+  --warn-fg: #f8e3a1;
+  --warn-bd: rgba(210, 153, 34, 0.3);
+  --card-bg: #14171a;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not(.light) {
+    --bg: #14171a;
+    --fg: #e6e8ea;
+    --mut: #9aa4ae;
+    --bd: #2f363d;
+    --ac: #6cb0f5;
+    --sf: #1d2227;
+    --old: #f85149;
+    --old-bg: #3d1618;
+    --old-bd: rgba(248, 81, 73, 0.3);
+    --new: #3fb950;
+    --new-bg: #14331e;
+    --new-bd: rgba(63, 185, 80, 0.3);
+    --prog: #d29922;
+    --prog-bg: #382800;
+    --prog-bd: rgba(210, 153, 34, 0.3);
+    --warn-bg: #382800;
+    --warn-fg: #f8e3a1;
+    --warn-bd: rgba(210, 153, 34, 0.3);
+    --card-bg: #14171a;
+  }
+}
+
+* { box-sizing: border-box; }
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100vh;
+  width: 100vw;
+  overflow: hidden;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-size: 14px;
+  line-height: 1.45;
+  background-color: var(--bg);
+  color: var(--fg);
+  user-select: none;
+  display: flex;
+  flex-direction: column;
+  transition: background-color 0.2s, color 0.2s;
+}
+
+.mono {
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+}
+
+.icon {
+  width: 14px;
+  height: 14px;
+  vertical-align: middle;
+  display: inline-block;
+  flex-shrink: 0;
+}
+.icon-moon { display: inline-block; }
+.icon-sun { display: none; }
+.dark .icon-moon { display: none; }
+.dark .icon-sun { display: inline-block; }
+
+.text-ac { color: var(--ac); }
+.text-warn { color: var(--prog); }
+.text-success { color: var(--new); }
+
+/* Custom scrollbars */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(150, 160, 175, 0.4); border-radius: 3px; }
+
+/* Utilities */
+.flex { display: flex; }
+.inline-flex { display: inline-flex; }
+.flex-1 { flex: 1 1 0%; }
+.flex-col { flex-direction: column; }
+.flex-wrap { flex-wrap: wrap; }
+.items-center { align-items: center; }
+.justify-between { justify-content: space-between; }
+.justify-center { justify-content: center; }
+.justify-around { justify-content: space-around; }
+.gap-1 { gap: 4px; }
+.gap-1\.5 { gap: 6px; }
+.gap-2 { gap: 8px; }
+.gap-3 { gap: 12px; }
+.hidden { display: none !important; }
+.shrink-0 { flex-shrink: 0; }
+.relative { position: relative; }
+.absolute { position: absolute; }
+.inset-0 { top: 0; right: 0; bottom: 0; left: 0; }
+.bottom-4 { bottom: 16px; }
+.left-4 { left: 16px; }
+.top-3 { top: 12px; }
+.top-1\/2 { top: 50%; }
+.left-2\.5 { left: 10px; }
+.right-2 { right: 8px; }
+.-translate-y-1\/2 { transform: translateY(-50%); }
+.z-10 { z-index: 10; }
+.z-20 { z-index: 20; }
+.z-30 { z-index: 30; }
+.pointer-events-none { pointer-events: none; }
+.w-full { width: 100%; }
+.h-full { height: 100%; }
+.w-px { width: 1px; }
+.h-4 { height: 16px; }
+.h-3 { height: 12px; }
+.w-6 { width: 24px; }
+.h-6 { height: 24px; }
+.w-2\.5 { width: 10px; }
+.h-2\.5 { height: 10px; }
+.w-2 { width: 8px; }
+.h-2 { height: 8px; }
+.w-1\.5 { width: 6px; }
+.h-1\.5 { height: 6px; }
+.w-80 { width: 320px; }
+.max-w-md { max-width: 448px; }
+.min-w-\[200px\] { min-width: 200px; }
+.overflow-hidden { overflow: hidden; }
+.overflow-y-auto { overflow-y: auto; }
+.cursor-grab { cursor: grab; }
+.cursor-pointer { cursor: pointer; }
+.truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.break-all { word-break: break-all; }
+.uppercase { text-transform: uppercase; }
+
+/* Spacing */
+.p-1 { padding: 4px; }
+.p-1\.5 { padding: 6px; }
+.p-2 { padding: 8px; }
+.p-2\.5 { padding: 10px; }
+.p-3 { padding: 12px; }
+.p-4 { padding: 16px; }
+.px-1 { padding-left: 4px; padding-right: 4px; }
+.px-1\.5 { padding-left: 6px; padding-right: 6px; }
+.px-2 { padding-left: 8px; padding-right: 8px; }
+.px-2\.5 { padding-left: 10px; padding-right: 10px; }
+.px-3 { padding-left: 12px; padding-right: 12px; }
+.px-4 { padding-left: 16px; padding-right: 16px; }
+.py-0\.5 { padding-top: 2px; padding-bottom: 2px; }
+.py-1 { padding-top: 4px; padding-bottom: 4px; }
+.py-1\.5 { padding-top: 6px; padding-bottom: 6px; }
+.py-2 { padding-top: 8px; padding-bottom: 8px; }
+.py-2\.5 { padding-top: 10px; padding-bottom: 10px; }
+.pl-8 { padding-left: 32px; }
+.pr-7 { padding-right: 28px; }
+.pt-2 { padding-top: 8px; }
+.mx-1 { margin-left: 4px; margin-right: 4px; }
+.mr-1 { margin-right: 4px; }
+.mb-1 { margin-bottom: 4px; }
+.mb-2 { margin-bottom: 8px; }
+.mt-2 { margin-top: 8px; }
+.mt-3 { margin-top: 12px; }
+.space-y-1 > :not([hidden]) ~ :not([hidden]) { margin-top: 4px; }
+.space-y-2 > :not([hidden]) ~ :not([hidden]) { margin-top: 8px; }
+.space-y-3 > :not([hidden]) ~ :not([hidden]) { margin-top: 12px; }
+.space-y-4 > :not([hidden]) ~ :not([hidden]) { margin-top: 16px; }
+
+/* Typography */
+.text-\[10px\] { font-size: 10px; line-height: 14px; }
+.text-\[11px\] { font-size: 11px; line-height: 15px; }
+.text-\[9px\] { font-size: 9px; line-height: 12px; }
+.text-xs { font-size: 12px; line-height: 16px; }
+.text-sm { font-size: 14px; line-height: 20px; }
+.font-normal { font-weight: 400; }
+.font-medium { font-weight: 500; }
+.font-semibold { font-weight: 600; }
+.font-bold { font-weight: 700; }
+.tracking-tight { letter-spacing: -0.02em; }
+.tracking-wide { letter-spacing: 0.025em; }
+.tracking-wider { letter-spacing: 0.05em; }
+.leading-relaxed { line-height: 1.6; }
+.text-left { text-align: left; }
+
+/* Borders & Rounding */
+.border { border: 1px solid var(--bd); }
+.border-b { border-bottom: 1px solid var(--bd); }
+.border-l { border-left: 1px solid var(--bd); }
+.border-t { border-top: 1px solid var(--bd); }
+.border-dashed { border-style: dashed; }
+.rounded { border-radius: 4px; }
+.rounded-md { border-radius: 6px; }
+.rounded-lg { border-radius: 8px; }
+.rounded-full { border-radius: 9999px; }
+
+/* Colors & Components */
+header {
+  background-color: var(--sf);
+  border-bottom: 1px solid var(--bd);
+}
+input[type="text"], input[type="search"] {
+  background-color: var(--card-bg);
+  color: var(--fg);
+  border: 1px solid var(--bd);
+}
+input[type="text"]:focus, input[type="search"]:focus {
+  outline: none;
+  border-color: var(--ac);
+}
+button {
+  background-color: var(--card-bg);
+  color: var(--mut);
+  border: 1px solid var(--bd);
+  cursor: pointer;
+  font: inherit;
+}
+button:hover {
+  background-color: var(--sf);
+  color: var(--fg);
+}
+
+.bg-white { background-color: #ffffff; }
+.dark .bg-white { background-color: #14171a; }
+.bg-sf { background-color: var(--sf); }
+.bg-card { background-color: var(--card-bg); }
+.bg-black\/5 { background-color: rgba(0, 0, 0, 0.05); }
+.dark .dark\:bg-white\/10 { background-color: rgba(255, 255, 255, 0.1); }
+.bg-transparent { background-color: transparent; }
+
+.bg-\[\#0b5cad\] { background-color: #0b5cad; }
+.dark .dark\:bg-\[\#6cb0f5\] { background-color: #6cb0f5; }
+.bg-\[\#d9383a\] { background-color: var(--old); }
+.bg-\[\#1a7f37\] { background-color: var(--new); }
+.bg-\[\#bf8700\] { background-color: var(--prog); }
+
+.text-\[\#1b1f24\] { color: var(--fg); }
+.text-\[\#667788\] { color: var(--mut); }
+.text-\[\#0b5cad\] { color: var(--ac); }
+.text-white { color: #ffffff; }
+
+#emptyBanner {
+  background-color: var(--warn-bg);
+  color: var(--warn-fg);
+  border-bottom: 1px solid var(--warn-bd);
+}
+#detailsPanel {
+  background-color: var(--sf);
+  border-left: 1px solid var(--bd);
+}
+
+/* Responsive */
+@media (min-width: 768px) {
+  .md\:w-96 { width: 384px; }
+  .md\:shadow-none { box-shadow: none; }
+}
+@media (min-width: 1024px) {
+  .lg\:flex { display: flex !important; }
+  .lg\:hidden { display: none !important; }
+}
+@media (max-width: 1023px) {
+  .lg\:flex { display: none !important; }
+  .lg\:hidden { display: flex !important; }
+}
+@media (max-width: 640px) {
+  .sm\:block { display: none !important; }
+  #detailsPanel {
+    position: absolute;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    width: 100%;
+    max-width: 100vw;
+  }
+}
+
+.animate-pulse {
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+  </style>
+</head>
+<body class="bg-white text-[#1b1f24] h-screen w-screen overflow-hidden flex flex-col">
+
+<!-- Top Executive Header -->
+  <header class="border-b border-[#d0d7de] dark:border-[#2f363d] bg-[#f6f8fa] dark:bg-[#1d2227] px-4 py-2.5 flex flex-wrap items-center justify-between gap-3 z-30 shrink-0">
+    <div class="flex items-center gap-3">
+      <div class="flex items-center gap-2">
+        <span class="inline-flex items-center justify-center w-6 h-6 rounded bg-[#0b5cad] dark:bg-[#6cb0f5] text-white dark:text-[#14171a] text-xs font-bold tracking-tight">AI</span>
+        <h1 class="text-sm font-semibold tracking-tight text-[#1b1f24] dark:text-[#e6e8ea] flex items-center gap-2">
+          Alias Graph Explorer
+          <span class="text-[10px] font-mono font-normal px-1.5 py-0.5 rounded border border-[#d0d7de] dark:border-[#2f363d] bg-white dark:bg-[#14171a] text-[#667788] dark:text-[#9aa4ae]">SCREEN-901</span>
+        </h1>
+      </div>
+
+      <div class="h-4 w-px bg-[#d0d7de] dark:bg-[#2f363d] hidden sm:block"></div>
+
+      <!-- Counts badge -->
+      <div id="stat-counts" class="text-xs font-mono font-medium px-2 py-0.5 rounded bg-white dark:bg-[#14171a] border border-[#d0d7de] dark:border-[#2f363d] text-[#667788] dark:text-[#9aa4ae] flex items-center gap-1.5">
+        <svg class="icon" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM9 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2zM7 10v2a2 2 0 002 2h4a2 2 0 002-2v-2"/></svg>
+        <span id="aliasCountText">9 aliases, 1 scope</span>
+      </div>
+    </div>
+
+    <!-- Search + Filter Bar -->
+    <div class="flex items-center gap-2 flex-1 max-w-md min-w-[200px]">
+      <div class="relative w-full">
+        <svg class="icon" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+        <input 
+          id="searchInput" 
+          type="text" 
+          placeholder="Search by base name..." 
+          class="w-full text-xs pl-8 pr-7 py-1.5 rounded border border-[#d0d7de] dark:border-[#2f363d] bg-white dark:bg-[#14171a] text-[#1b1f24] dark:text-[#e6e8ea] placeholder-[#667788] dark:placeholder-[#9aa4ae] focus:outline-none focus:border-[#0b5cad] dark:focus:border-[#6cb0f5] mono transition"
+        />
+        <button id="clearSearchBtn" class="hidden absolute right-2 top-1/2 -translate-y-1/2 text-xs text-[#667788] hover:text-[#1b1f24] dark:hover:text-white">
+          <svg class="icon" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- Right Controls & Legend -->
+    <div class="flex items-center gap-3">
+      <!-- Legend with exactly the 3 specified labels -->
+      <div class="hidden lg:flex items-center gap-3 px-2.5 py-1 rounded bg-white dark:bg-[#14171a] border border-[#d0d7de] dark:border-[#2f363d] text-[11px]">
+        <div class="flex items-center gap-1.5">
+          <span class="w-2.5 h-2.5 rounded-full bg-[#d9383a] dark:bg-[#f85149] ring-1 ring-[#d9383a]/30"></span>
+          <span class="text-[#667788] dark:text-[#9aa4ae] font-medium">old name</span>
+        </div>
+        <div class="flex items-center gap-1.5">
+          <span class="w-2.5 h-2.5 rounded-full bg-[#1a7f37] dark:bg-[#3fb950] ring-1 ring-[#1a7f37]/30"></span>
+          <span class="text-[#667788] dark:text-[#9aa4ae] font-medium">new name</span>
+        </div>
+        <div class="flex items-center gap-1.5">
+          <span class="w-2.5 h-2.5 rounded-full bg-[#bf8700] dark:bg-[#d29922] animate-pulse ring-1 ring-[#bf8700]/30"></span>
+          <span class="text-[#667788] dark:text-[#9aa4ae] font-medium">renamed in progress</span>
+        </div>
+      </div>
+
+      <!-- Action Toggles -->
+      <div class="flex items-center gap-1">
+        <button id="toggleEmptyStateBtn" title="Simulate Empty / Banner State" class="px-2 py-1 text-xs font-mono rounded border border-[#d0d7de] dark:border-[#2f363d] bg-white dark:bg-[#14171a] hover:bg-[#f6f8fa] dark:hover:bg-[#1d2227] text-[#667788] dark:text-[#9aa4ae]">
+          <svg class="icon" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>Mock Empty
+        </button>
+        <button id="zoomResetBtn" title="Reset View" class="p-1.5 text-xs rounded border border-[#d0d7de] dark:border-[#2f363d] bg-white dark:bg-[#14171a] hover:bg-[#f6f8fa] dark:hover:bg-[#1d2227] text-[#667788] dark:text-[#9aa4ae]">
+          <svg class="icon" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+        </button>
+        <button id="themeToggleBtn" title="Toggle Dark/Light Mode" class="p-1.5 text-xs rounded border border-[#d0d7de] dark:border-[#2f363d] bg-white dark:bg-[#14171a] hover:bg-[#f6f8fa] dark:hover:bg-[#1d2227] text-[#667788] dark:text-[#9aa4ae]">
+          <svg class="icon icon-moon" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"/></svg>
+          <svg class="icon icon-sun" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"/></svg>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Mobile Legend bar (shown on small screens) -->
+  <div class="lg:hidden flex items-center justify-around px-3 py-1.5 border-b border-[#d0d7de] dark:border-[#2f363d] bg-[#f6f8fa] dark:bg-[#1d2227] text-[10px]">
+    <div class="flex items-center gap-1">
+      <span class="w-2 h-2 rounded-full bg-[#d9383a]"></span>
+      <span class="text-[#667788] dark:text-[#9aa4ae]">old name</span>
+    </div>
+    <div class="flex items-center gap-1">
+      <span class="w-2 h-2 rounded-full bg-[#1a7f37]"></span>
+      <span class="text-[#667788] dark:text-[#9aa4ae]">new name</span>
+    </div>
+    <div class="flex items-center gap-1">
+      <span class="w-2 h-2 rounded-full bg-[#bf8700]"></span>
+      <span class="text-[#667788] dark:text-[#9aa4ae]">renamed in progress</span>
+    </div>
+  </div>
+
+  <!-- Empty state banner message (Condition 1.5) -->
+  <div id="emptyBanner" class="hidden shrink-0 border-b border-[#bf8700]/30 bg-[#fff8c5] dark:bg-[#382800] text-[#734f00] dark:text-[#f8e3a1] px-4 py-2 text-xs flex items-center justify-between transition-all">
+    <div class="flex items-center gap-2">
+      <svg class="icon text-warn" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+      <span class="font-medium">No aliases: the project has not generated <code class="mono px-1 py-0.5 rounded bg-black/5 dark:bg-white/10 font-bold">.aidd/graphs/path-aliases.toon</code></span>
+    </div>
+    <button id="dismissBannerBtn" class="text-xs font-semibold px-2 py-0.5 rounded bg-black/5 dark:bg-white/10 hover:bg-black/10">Restore mock data</button>
+  </div>
+
+  <!-- Main Graph & Details Layout -->
+  <div class="flex-1 relative flex overflow-hidden">
+    
+    <!-- Canvas Graph Container -->
+    <div id="graphContainer" class="flex-1 h-full relative cursor-grab active:cursor-grabbing overflow-hidden bg-white dark:bg-[#14171a]">
+      <!-- Background Grid Canvas -->
+      <canvas id="graphCanvas" class="absolute inset-0 w-full h-full block"></canvas>
+
+      <!-- Graph Toolbar Overlay -->
+      <div class="absolute bottom-4 left-4 z-20 flex items-center gap-1 px-2 py-1 rounded-md border border-[#d0d7de] dark:border-[#2f363d] bg-white/90 dark:bg-[#14171a]/90 backdrop-blur shadow-sm text-xs mono">
+        <button id="zoomInBtn" class="p-1 hover:text-[#0b5cad] dark:hover:text-[#6cb0f5]"><svg class="icon" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg></button>
+        <div class="w-px h-3 bg-[#d0d7de] dark:bg-[#2f363d] mx-1"></div>
+        <button id="zoomOutBtn" class="p-1 hover:text-[#0b5cad] dark:hover:text-[#6cb0f5]"><svg class="icon" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M20 12H4"/></svg></button>
+        <div class="w-px h-3 bg-[#d0d7de] dark:bg-[#2f363d] mx-1"></div>
+        <span id="zoomLevelDisplay" class="text-[10px] text-[#667788] dark:text-[#9aa4ae] px-1">100%</span>
+        <div class="w-px h-3 bg-[#d0d7de] dark:bg-[#2f363d] mx-1"></div>
+        <button id="fitViewBtn" title="Fit all nodes" class="p-1 hover:text-[#0b5cad] dark:hover:text-[#6cb0f5] text-[10px]"><svg class="icon" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"/></svg> Fit</button>
+      </div>
+
+      <!-- Quick helper badge on top left of graph -->
+      <div class="absolute top-3 left-4 pointer-events-none z-10 flex flex-col gap-1">
+        <div class="flex items-center gap-1.5 px-2 py-1 rounded bg-[#f6f8fa]/80 dark:bg-[#1d2227]/80 backdrop-blur border border-[#d0d7de]/60 dark:border-[#2f363d]/60 text-[10px] text-[#667788] dark:text-[#9aa4ae]">
+          <span class="w-1.5 h-1.5 rounded-full bg-[#0b5cad] dark:bg-[#6cb0f5]"></span>
+          <span>Edge type: <strong class="mono text-[#1b1f24] dark:text-[#e6e8ea]">RENAMED_TO</strong></span>
+          <span class="mx-1">•</span>
+          <span>Click node to inspect metadata</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Details Panel (Condition 3: Opens on node click) -->
+    <aside id="detailsPanel" class="w-80 md:w-96 border-l border-[#d0d7de] dark:border-[#2f363d] bg-[#f6f8fa] dark:bg-[#1d2227] flex flex-col h-full z-20 shrink-0 transition-transform duration-200 ease-in-out shadow-lg md:shadow-none">
+      <!-- Panel Header -->
+      <div class="p-3 border-b border-[#d0d7de] dark:border-[#2f363d] flex items-center justify-between bg-white dark:bg-[#14171a]">
+        <div class="flex items-center gap-2">
+          <svg class="icon text-ac" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+          <h2 class="text-xs font-bold uppercase tracking-wider text-[#667788] dark:text-[#9aa4ae]">Node Details Card</h2>
+        </div>
+        <button id="closeDetailsBtn" class="text-xs p-1 text-[#667788] dark:text-[#9aa4ae] hover:text-[#1b1f24] dark:hover:text-white rounded">
+          <svg class="icon" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+        </button>
+      </div>
+
+      <!-- Panel Body Content -->
+      <div class="flex-1 overflow-y-auto p-4 space-y-4">
+        
+        <!-- Node Primary Name & Type -->
+        <div class="bg-white dark:bg-[#14171a] p-3 rounded-lg border border-[#d0d7de] dark:border-[#2f363d]">
+          <div class="text-[10px] uppercase font-mono text-[#667788] dark:text-[#9aa4ae] mb-1">Node Name</div>
+          <div id="detailNodeName" class="text-sm font-bold mono text-[#1b1f24] dark:text-[#e6e8ea] break-all">
+            ordr_table.dart
+          </div>
+          
+          <div class="mt-3 flex items-center justify-between">
+            <span class="text-xs text-[#667788] dark:text-[#9aa4ae]">Node Classification</span>
+            <span id="detailNodeTypeBadge" class="text-[11px] font-medium px-2 py-0.5 rounded-full border">
+              old name
+            </span>
+          </div>
+        </div>
+
+        <!-- Metadata fields: 'scope' and 'reason' -->
+        <div class="bg-white dark:bg-[#14171a] p-3 rounded-lg border border-[#d0d7de] dark:border-[#2f363d] space-y-3">
+          <div class="text-[10px] font-bold uppercase tracking-wide text-[#667788] dark:text-[#9aa4ae]">Metadata Fields</div>
+          
+          <div class="space-y-1">
+            <div class="text-xs font-medium text-[#667788] dark:text-[#9aa4ae] flex items-center justify-between">
+              <span>Scope:</span>
+              <span id="detailScope" class="mono text-xs font-semibold px-2 py-0.5 rounded bg-[#f6f8fa] dark:bg-[#1d2227] text-[#0b5cad] dark:text-[#6cb0f5] border border-[#d0d7de] dark:border-[#2f363d]">
+                mobile
+              </span>
+            </div>
+          </div>
+
+          <div class="border-t border-[#d0d7de]/50 dark:border-[#2f363d]/50 pt-2 space-y-1">
+            <div class="text-xs font-medium text-[#667788] dark:text-[#9aa4ae]">Reason:</div>
+            <p id="detailReason" class="text-xs text-[#1b1f24] dark:text-[#e6e8ea] bg-[#f6f8fa] dark:bg-[#1d2227] p-2.5 rounded border border-[#d0d7de] dark:border-[#2f363d] leading-relaxed mono">
+              F30 Enterprise migration table standardization schema
+            </p>
+          </div>
+        </div>
+
+        <!-- Connected rows / neighboring links showing 'RENAMED_TO' connections -->
+        <div class="bg-white dark:bg-[#14171a] p-3 rounded-lg border border-[#d0d7de] dark:border-[#2f363d]">
+          <div class="flex items-center justify-between mb-2">
+            <div class="text-[10px] font-bold uppercase tracking-wide text-[#667788] dark:text-[#9aa4ae]">
+              Connected Rows & Edges
+            </div>
+            <span class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-[#0b5cad]/10 text-[#0b5cad] dark:text-[#6cb0f5] font-semibold">
+              RENAMED_TO
+            </span>
+          </div>
+
+          <div id="detailConnectionsList" class="space-y-2 mt-2">
+            <!-- Dynamically populated links -->
+          </div>
+        </div>
+
+        <!-- Quick actions -->
+        <div class="p-3 rounded-lg border border-dashed border-[#d0d7de] dark:border-[#2f363d] bg-transparent text-[11px] text-[#667788] dark:text-[#9aa4ae] flex flex-col gap-2">
+          <div class="font-semibold text-[#1b1f24] dark:text-[#e6e8ea]">Actions</div>
+          <button id="copyNodeBtn" class="w-full text-left px-2.5 py-1.5 rounded border border-[#d0d7de] dark:border-[#2f363d] bg-white dark:bg-[#14171a] hover:bg-[#f6f8fa] dark:hover:bg-[#1d2227] text-xs flex items-center justify-between">
+            <span>Copy Base Path</span>
+            <svg class="icon" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
+          </button>
+          <button id="centerNodeBtn" class="w-full text-left px-2.5 py-1.5 rounded border border-[#d0d7de] dark:border-[#2f363d] bg-white dark:bg-[#14171a] hover:bg-[#f6f8fa] dark:hover:bg-[#1d2227] text-xs flex items-center justify-between">
+            <span>Focus in Graph</span>
+            <svg class="icon" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 2v3m0 14v3M2 12h3m14 0h3M12 8a4 4 0 100 8 4 4 0 000-8z"/></svg>
+          </button>
+        </div>
+
+      </div>
+
+      <!-- Panel Footer stats -->
+      <div class="p-3 border-t border-[#d0d7de] dark:border-[#2f363d] bg-white dark:bg-[#14171a] text-[11px] text-[#667788] dark:text-[#9aa4ae] flex items-center justify-between">
+        <span>AIDD Pipeline v4.12</span>
+        <span class="mono">SYNC: ACTIVE</span>
+      </div>
+    </aside>
+
+  </div>
+
+  <script>
+// Theme toggle setup
+    const themeToggleBtn = document.getElementById('themeToggleBtn');
+    function initTheme() {
+      if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+        document.documentElement.classList.add('dark');
+      } else {
+        document.documentElement.classList.remove('dark');
+      }
+    }
+    initTheme();
+    themeToggleBtn.addEventListener('click', () => {
+      document.documentElement.classList.toggle('dark');
+      drawGraph();
+    });
+
+    // Mockup dataset as specified literally:
+    // ordr_table.dart -> oped_table.dart [mobile] F30
+    // ocrd_table.dart -> opar_table.dart
+    // oitm_table.dart -> opro_table.dart
+    // rdr1_table.dart -> opel_table.dart
+    // orct_table.dart -> ocob_table.dart
+    // rct2_table.dart -> ocoa_table.dart
+    // orrr_table.dart -> odrq_table.dart
+    // otrk_table.dart -> omnc_table.dart
+    // odsc_table.dart -> odct_table.dart
+    // Task node example in 'renamed in progress' state.
+
+    const RAW_ALIASES = [
+      { oldName: 'ordr_table.dart', newName: 'oped_table.dart', scope: 'mobile', reason: 'F30 Enterprise table migration' },
+      { oldName: 'ocrd_table.dart', newName: 'opar_table.dart', scope: 'mobile', reason: 'Customer business partner entity normalization' },
+      { oldName: 'oitm_table.dart', newName: 'opro_table.dart', scope: 'mobile', reason: 'Item master product renaming conventions' },
+      { oldName: 'rdr1_table.dart', newName: 'opel_table.dart', scope: 'mobile', reason: 'Order lines sub-table alignment' },
+      { oldName: 'orct_table.dart', newName: 'ocob_table.dart', scope: 'mobile', reason: 'Incoming payment collections standard refactor' },
+      { oldName: 'rct2_table.dart', newName: 'ocoa_table.dart', scope: 'mobile', reason: 'Payment invoices junction mapping' },
+      { oldName: 'orrr_table.dart', newName: 'odrq_table.dart', scope: 'mobile', reason: 'Return requests domain shift' },
+      { oldName: 'otrk_table.dart', newName: 'omnc_table.dart', scope: 'mobile', reason: 'Delivery tracking manifest unification' },
+      { oldName: 'odsc_table.dart', newName: 'odct_table.dart', scope: 'mobile', reason: 'Discount tier calculations schema bump' }
+    ];
+
+    // Build Graph Data Structure
+    let graphData = {
+      nodes: [],
+      edges: []
+    };
+
+    function populateGraph() {
+      const nodesMap = new Map();
+      const edges = [];
+
+      RAW_ALIASES.forEach((item, index) => {
+        const oldId = 'old_' + item.oldName;
+        const newId = 'new_' + item.newName;
+
+        if (!nodesMap.has(oldId)) {
+          nodesMap.set(oldId, {
+            id: oldId,
+            name: item.oldName,
+            type: 'old name', // Legend tag 1
+            scope: item.scope,
+            reason: item.reason,
+            col: 0,
+            row: index,
+            x: 160,
+            y: 70 + index * 68,
+            vx: 0,
+            vy: 0,
+            radius: 20
+          });
+        }
+
+        if (!nodesMap.has(newId)) {
+          nodesMap.set(newId, {
+            id: newId,
+            name: item.newName,
+            type: 'new name', // Legend tag 2
+            scope: item.scope,
+            reason: item.reason,
+            col: 2,
+            row: index,
+            x: 680,
+            y: 70 + index * 68,
+            vx: 0,
+            vy: 0,
+            radius: 20
+          });
+        }
+
+        edges.push({
+          source: oldId,
+          target: newId,
+          type: 'RENAMED_TO',
+          scope: item.scope,
+          reason: item.reason
+        });
+      });
+
+      // Add Task node example in 'renamed in progress' state (Condition 4)
+      const taskNodeId = 'task_in_progress';
+      nodesMap.set(taskNodeId, {
+        id: taskNodeId,
+        name: 'task: migrate_odsc_worker.dart',
+        type: 'renamed in progress', // Legend tag 3
+        scope: 'mobile',
+        reason: 'Async pipeline worker currently executing rename dry-run & AST rewrites',
+        col: 1,
+        row: 8.5,
+        x: 420,
+        y: 610,
+        radius: 24,
+        isTask: true
+      });
+
+      // Edge from old odsc to the in-progress task node
+      edges.push({
+        source: 'old_odsc_table.dart',
+        target: taskNodeId,
+        type: 'RENAMED_TO',
+        scope: 'mobile',
+        reason: 'Active transformation pipeline execution step'
+      });
+
+      // Edge from in-progress task to final new node
+      edges.push({
+        source: taskNodeId,
+        target: 'new_odct_table.dart',
+        type: 'RENAMED_TO',
+        scope: 'mobile',
+        reason: 'Pending verification commit & hash registry update'
+      });
+
+      graphData.nodes = Array.from(nodesMap.values());
+      graphData.edges = edges;
+    }
+
+    populateGraph();
+
+    // Canvas & State Setup
+    const canvas = document.getElementById('graphCanvas');
+    const ctx = canvas.getContext('2d');
+    const container = document.getElementById('graphContainer');
+
+    let transform = {
+      x: 30,
+      y: 20,
+      k: 0.95
+    };
+
+    let isDragging = false;
+    let dragStart = { x: 0, y: 0 };
+    let selectedNode = graphData.nodes[0]; // ordr_table.dart selected by default
+    let hoveredNode = null;
+    let searchQuery = '';
+    let isMockEmpty = false;
+
+    // Responsive Canvas Resizing
+    function resizeCanvas() {
+      const rect = container.getBoundingClientRect();
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width = rect.width * dpr;
+      canvas.height = rect.height * dpr;
+      canvas.style.width = rect.width + 'px';
+      canvas.style.height = rect.height + 'px';
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      drawGraph();
+    }
+    window.addEventListener('resize', resizeCanvas);
+
+    // Color resolution based on dark mode & tokens
+    function getTokens() {
+      const isDark = document.documentElement.classList.contains('dark');
+      return {
+        isDark,
+        bg: isDark ? '#14171a' : '#ffffff',
+        grid: isDark ? '#1f2429' : '#f0f3f6',
+        fg: isDark ? '#e6e8ea' : '#1b1f24',
+        muted: isDark ? '#9aa4ae' : '#667788',
+        border: isDark ? '#2f363d' : '#d0d7de',
+        accent: isDark ? '#6cb0f5' : '#0b5cad',
+        surface: isDark ? '#1d2227' : '#f6f8fa',
+        oldColor: isDark ? '#f85149' : '#d9383a',
+        newColor: isDark ? '#3fb950' : '#1a7f37',
+        progressColor: isDark ? '#d29922' : '#bf8700'
+      };
+    }
+
+    // Drawing Routine
+    function drawGraph() {
+      const width = container.clientWidth;
+      const height = container.clientHeight;
+      const t = getTokens();
+
+      ctx.save();
+      ctx.clearRect(0, 0, width, height);
+
+      // Background
+      ctx.fillStyle = t.bg;
+      ctx.fillRect(0, 0, width, height);
+
+      // If empty mock is active, show empty state message inside canvas too
+      if (isMockEmpty) {
+        ctx.restore();
+        ctx.save();
+        ctx.fillStyle = t.muted;
+        ctx.font = '13px system-ui';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('No aliases: the project has not generated .aidd/graphs/path-aliases.toon', width / 2, height / 2);
+        ctx.restore();
+        return;
+      }
+
+      // Draw Grid Pattern with pan/zoom
+      ctx.save();
+      const gridSize = 32 * transform.k;
+      const offsetX = transform.x % gridSize;
+      const offsetY = transform.y % gridSize;
+
+      ctx.strokeStyle = t.grid;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      for (let x = offsetX; x < width; x += gridSize) {
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, height);
+      }
+      for (let y = offsetY; y < height; y += gridSize) {
+        ctx.moveTo(0, y);
+        ctx.lineTo(width, y);
+      }
+      ctx.stroke();
+      ctx.restore();
+
+      // Apply pan & zoom transform
+      ctx.save();
+      ctx.translate(transform.x, transform.y);
+      ctx.scale(transform.k, transform.k);
+
+      // Filter matches
+      const query = searchQuery.trim().toLowerCase();
+      const nodeMatches = (n) => {
+        if (!query) return true;
+        return n.name.toLowerCase().includes(query) || n.type.toLowerCase().includes(query) || (n.scope && n.scope.toLowerCase().includes(query));
+      };
+
+      // Draw column guide lanes
+      ctx.save();
+      ctx.strokeStyle = t.isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)';
+      ctx.fillStyle = t.isDark ? 'rgba(255,255,255,0.015)' : 'rgba(0,0,0,0.015)';
+      ctx.lineWidth = 1;
+      
+      // Lane 0: Old Files
+      ctx.strokeRect(40, 20, 260, 680);
+      ctx.fillRect(40, 20, 260, 680);
+      // Lane 2: New Files
+      ctx.strokeRect(560, 20, 260, 680);
+      ctx.fillRect(560, 20, 260, 680);
+
+      // Lane labels
+      ctx.fillStyle = t.muted;
+      ctx.font = '11px ui-monospace, SFMono-Regular, monospace';
+      ctx.textAlign = 'left';
+      ctx.fillText('SOURCE PATHS [LEGACY]', 50, 42);
+      ctx.fillText('TARGET PATHS [NORMALIZED]', 570, 42);
+      ctx.restore();
+
+      // Draw Directed Edges ('RENAMED_TO')
+      graphData.edges.forEach(edge => {
+        const sourceNode = graphData.nodes.find(n => n.id === edge.source);
+        const targetNode = graphData.nodes.find(n => n.id === edge.target);
+        if (!sourceNode || !targetNode) return;
+
+        const isConnectedToSelected = selectedNode && (selectedNode.id === sourceNode.id || selectedNode.id === targetNode.id);
+        const isConnectedToHover = hoveredNode && (hoveredNode.id === sourceNode.id || hoveredNode.id === targetNode.id);
+        const sourceMatched = nodeMatches(sourceNode);
+        const targetMatched = nodeMatches(targetNode);
+        const dimmed = query && (!sourceMatched && !targetMatched);
+
+        const isHighlighted = isConnectedToSelected || isConnectedToHover;
+
+        ctx.save();
+
+        let edgeColor = t.border;
+        let lineWidth = 1.6;
+
+        if (isHighlighted) {
+          edgeColor = t.accent;
+          lineWidth = 2.6;
+        } else if (dimmed) {
+          edgeColor = t.isDark ? 'rgba(47, 54, 61, 0.4)' : 'rgba(208, 215, 222, 0.4)';
+        }
+
+        ctx.strokeStyle = edgeColor;
+        ctx.fillStyle = edgeColor;
+        ctx.lineWidth = lineWidth;
+
+        // Cubic Bezier curve for clean diagram flow
+        const sx = sourceNode.x + 110;
+        const sy = sourceNode.y;
+        const tx = targetNode.x - 110;
+        const ty = targetNode.y;
+
+        const cp1x = sx + (tx - sx) * 0.45;
+        const cp1y = sy;
+        const cp2x = sx + (tx - sx) * 0.55;
+        const cp2y = ty;
+
+        ctx.beginPath();
+        ctx.moveTo(sx, sy);
+        ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, tx, ty);
+        ctx.stroke();
+
+        // Arrow head at target
+        const arrowSize = isHighlighted ? 7 : 5.5;
+        ctx.beginPath();
+        ctx.moveTo(tx, ty);
+        ctx.lineTo(tx - arrowSize * 1.5, ty - arrowSize);
+        ctx.lineTo(tx - arrowSize * 1.2, ty);
+        ctx.lineTo(tx - arrowSize * 1.5, ty + arrowSize);
+        ctx.closePath();
+        ctx.fill();
+
+        // Edge label: 'RENAMED_TO' badge on mid curve
+        if (isHighlighted || (!query && sourceNode.row === 0)) {
+          const midX = (sx + tx) / 2;
+          const midY = (sy + ty) / 2;
+
+          ctx.save();
+          ctx.fillStyle = t.surface;
+          ctx.strokeStyle = edgeColor;
+          ctx.lineWidth = 1;
+          const tagW = 86;
+          const tagH = 16;
+          roundRect(ctx, midX - tagW / 2, midY - tagH / 2, tagW, tagH, 3);
+          ctx.fill();
+          ctx.stroke();
+
+          ctx.fillStyle = isHighlighted ? t.accent : t.muted;
+          ctx.font = '9px ui-monospace, SFMono-Regular, monospace';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText('RENAMED_TO', midX, midY);
+          ctx.restore();
+        }
+
+        ctx.restore();
+      });
+
+      // Draw Nodes
+      graphData.nodes.forEach(node => {
+        const isSel = selectedNode && selectedNode.id === node.id;
+        const isHov = hoveredNode && hoveredNode.id === node.id;
+        const isMatched = nodeMatches(node);
+        const dimmed = query && !isMatched;
+
+        ctx.save();
+
+        let primaryColor;
+        let badgeBg;
+        if (node.type === 'old name') {
+          primaryColor = t.oldColor;
+          badgeBg = t.isDark ? '#3d1618' : '#ffebe9';
+        } else if (node.type === 'new name') {
+          primaryColor = t.newColor;
+          badgeBg = t.isDark ? '#14331e' : '#dafbe1';
+        } else {
+          // renamed in progress
+          primaryColor = t.progressColor;
+          badgeBg = t.isDark ? '#3d2e00' : '#fff8c5';
+        }
+
+        // Dimming opacity
+        if (dimmed) {
+          ctx.globalAlpha = 0.25;
+        }
+
+        const boxWidth = 210;
+        const boxHeight = 44;
+        const bx = node.x - boxWidth / 2;
+        const by = node.y - boxHeight / 2;
+
+        // Highlight ring if selected/hovered
+        if (isSel) {
+          ctx.save();
+          ctx.strokeStyle = t.accent;
+          ctx.lineWidth = 2.5;
+          roundRect(ctx, bx - 3, by - 3, boxWidth + 6, boxHeight + 6, 8);
+          ctx.stroke();
+          ctx.restore();
+        } else if (isHov) {
+          ctx.save();
+          ctx.strokeStyle = t.accent;
+          ctx.lineWidth = 1.5;
+          ctx.setLineDash([3, 3]);
+          roundRect(ctx, bx - 2, by - 2, boxWidth + 4, boxHeight + 4, 7);
+          ctx.stroke();
+          ctx.restore();
+        }
+
+        // Node card background
+        ctx.fillStyle = t.surface;
+        ctx.strokeStyle = isSel ? t.accent : t.border;
+        ctx.lineWidth = 1;
+        roundRect(ctx, bx, by, boxWidth, boxHeight, 6);
+        ctx.fill();
+        ctx.stroke();
+
+        // Left accent indicator stripe
+        ctx.fillStyle = primaryColor;
+        roundRect(ctx, bx, by, 4, boxHeight, 6);
+        ctx.fill();
+
+        // Icon dot
+        ctx.fillStyle = primaryColor;
+        ctx.beginPath();
+        ctx.arc(bx + 16, by + boxHeight / 2, 4.5, 0, Math.PI * 2);
+        ctx.fill();
+
+        // If in-progress, draw pulsating outer orbit ring
+        if (node.type === 'renamed in progress') {
+          ctx.save();
+          ctx.strokeStyle = primaryColor;
+          ctx.lineWidth = 1.2;
+          ctx.beginPath();
+          ctx.arc(bx + 16, by + boxHeight / 2, 7.5, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.restore();
+        }
+
+        // Node Name (File name)
+        ctx.fillStyle = t.fg;
+        ctx.font = 'bold 11px ui-monospace, SFMono-Regular, monospace';
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'top';
+
+        // Trim or display text
+        let displayText = node.name;
+        if (displayText.length > 22) {
+          displayText = displayText.substring(0, 20) + '..';
+        }
+        ctx.fillText(displayText, bx + 28, by + 10);
+
+        // Subtitle badge / Type description
+        ctx.font = '9px system-ui, sans-serif';
+        ctx.fillStyle = t.muted;
+        ctx.fillText(node.type, bx + 28, by + 26);
+
+        // Right side tag (e.g. [mobile] or F30)
+        if (node.scope) {
+          ctx.save();
+          ctx.font = '9px ui-monospace, monospace';
+          ctx.fillStyle = t.muted;
+          ctx.textAlign = 'right';
+          ctx.fillText(`[${node.scope}]`, bx + boxWidth - 10, by + 26);
+          ctx.restore();
+        }
+
+        ctx.restore();
+      });
+
+      ctx.restore();
+      ctx.restore();
+
+      // Update zoom level readout
+      document.getElementById('zoomLevelDisplay').innerText = Math.round(transform.k * 100) + '%';
+    }
+
+    // Helper for rounded rects on canvas
+    function roundRect(ctx, x, y, width, height, radius) {
+      ctx.beginPath();
+      ctx.moveTo(x + radius, y);
+      ctx.lineTo(x + width - radius, y);
+      ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
+      ctx.lineTo(x + width, y + height - radius);
+      ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
+      ctx.lineTo(x + radius, y + height);
+      ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
+      ctx.lineTo(x, y + radius);
+      ctx.quadraticCurveTo(x, y, x + radius, y);
+      ctx.closePath();
+    }
+
+    // Hit Testing
+    function getNodeAt(screenX, screenY) {
+      const graphX = (screenX - transform.x) / transform.k;
+      const graphY = (screenY - transform.y) / transform.k;
+      const boxWidth = 210;
+      const boxHeight = 44;
+
+      for (let i = graphData.nodes.length - 1; i >= 0; i--) {
+        const node = graphData.nodes[i];
+        const bx = node.x - boxWidth / 2;
+        const by = node.y - boxHeight / 2;
+        if (graphX >= bx && graphX <= bx + boxWidth && graphY >= by && graphY <= by + boxHeight) {
+          return node;
+        }
+      }
+      return null;
+    }
+
+    // Details Panel Updater
+    function updateDetailsPanel(node) {
+      if (!node) {
+        document.getElementById('detailsPanel').classList.add('translate-x-full', 'hidden');
+        return;
+      }
+
+      document.getElementById('detailsPanel').classList.remove('translate-x-full', 'hidden');
+      document.getElementById('detailNodeName').innerText = node.name;
+      
+      const badge = document.getElementById('detailNodeTypeBadge');
+      badge.innerText = node.type;
+
+      if (node.type === 'old name') {
+        badge.className = 'text-[11px] font-mono font-medium px-2 py-0.5 rounded-full border border-[#d9383a]/30 bg-[#ffebe9] dark:bg-[#3d1618] text-[#d9383a] dark:text-[#f85149]';
+      } else if (node.type === 'new name') {
+        badge.className = 'text-[11px] font-mono font-medium px-2 py-0.5 rounded-full border border-[#1a7f37]/30 bg-[#dafbe1] dark:bg-[#14331e] text-[#1a7f37] dark:text-[#3fb950]';
+      } else {
+        badge.className = 'text-[11px] font-mono font-medium px-2 py-0.5 rounded-full border border-[#bf8700]/30 bg-[#fff8c5] dark:bg-[#3d2e00] text-[#bf8700] dark:text-[#d29922]';
+      }
+
+      document.getElementById('detailScope').innerText = node.scope || 'universal';
+      document.getElementById('detailReason').innerText = node.reason || 'General path deduplication and standardization.';
+
+      // Connected rows / links
+      const connContainer = document.getElementById('detailConnectionsList');
+      connContainer.innerHTML = '';
+
+      const connectedEdges = graphData.edges.filter(e => e.source === node.id || e.target === node.id);
+
+      if (connectedEdges.length === 0) {
+        connContainer.innerHTML = `<div class="text-xs text-[#667788] italic">No active RENAMED_TO connections.</div>`;
+      } else {
+        connectedEdges.forEach(edge => {
+          const isSource = edge.source === node.id;
+          const otherNodeId = isSource ? edge.target : edge.source;
+          const otherNode = graphData.nodes.find(n => n.id === otherNodeId);
+          if (!otherNode) return;
+
+          const row = document.createElement('div');
+          row.className = 'p-2 rounded border border-[#d0d7de] dark:border-[#2f363d] bg-[#f6f8fa] dark:bg-[#1d2227] flex items-center justify-between text-xs cursor-pointer hover:border-[#0b5cad] dark:hover:border-[#6cb0f5] transition';
+          row.innerHTML = `
+            <div class="flex items-center gap-2 overflow-hidden">
+              <span class="text-[10px] font-bold ${isSource ? 'text-[#0b5cad] dark:text-[#6cb0f5]' : 'text-[#667788] dark:text-[#9aa4ae]'}">
+                ${isSource ? 'OUT ➔' : 'IN ⬅'}
+              </span>
+              <div class="truncate mono text-[11px] font-medium text-[#1b1f24] dark:text-[#e6e8ea]">
+                ${otherNode.name}
+              </div>
+            </div>
+            <span class="text-[9px] px-1.5 py-0.2 rounded bg-white dark:bg-[#14171a] border border-[#d0d7de] dark:border-[#2f363d] text-[#667788] dark:text-[#9aa4ae] shrink-0 font-mono">
+              ${otherNode.type}
+            </span>
+          `;
+          row.addEventListener('click', () => {
+            selectedNode = otherNode;
+            updateDetailsPanel(otherNode);
+            drawGraph();
+          });
+          connContainer.appendChild(row);
+        });
+      }
+    }
+
+    // Initial detail population
+    updateDetailsPanel(selectedNode);
+
+    // Event Handlers for Canvas Interaction (Pan, Zoom, Select)
+    container.addEventListener('mousedown', (e) => {
+      const rect = container.getBoundingClientRect();
+      const mouseX = e.clientX - rect.left;
+      const mouseY = e.clientY - rect.top;
+
+      const clicked = getNodeAt(mouseX, mouseY);
+      if (clicked) {
+        selectedNode = clicked;
+        updateDetailsPanel(clicked);
+        drawGraph();
+      } else {
+        isDragging = true;
+        dragStart = { x: mouseX - transform.x, y: mouseY - transform.y };
+      }
+    });
+
+    window.addEventListener('mousemove', (e) => {
+      const rect = container.getBoundingClientRect();
+      const mouseX = e.clientX - rect.left;
+      const mouseY = e.clientY - rect.top;
+
+      if (isDragging) {
+        transform.x = mouseX - dragStart.x;
+        transform.y = mouseY - dragStart.y;
+        drawGraph();
+      } else if (mouseX >= 0 && mouseX <= rect.width && mouseY >= 0 && mouseY <= rect.height) {
+        const prevHover = hoveredNode;
+        hoveredNode = getNodeAt(mouseX, mouseY);
+        if (prevHover !== hoveredNode) {
+          container.style.cursor = hoveredNode ? 'pointer' : 'grab';
+          drawGraph();
+        }
+      }
+    });
+
+    window.addEventListener('mouseup', () => {
+      isDragging = false;
+      container.style.cursor = hoveredNode ? 'pointer' : 'grab';
+    });
+
+    // Zooming with Wheel
+    container.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      const rect = container.getBoundingClientRect();
+      const mouseX = e.clientX - rect.left;
+      const mouseY = e.clientY - rect.top;
+
+      const zoomFactor = e.deltaY < 0 ? 1.1 : 0.9;
+      const newScale = Math.min(Math.max(transform.k * zoomFactor, 0.4), 2.5);
+
+      transform.x = mouseX - (mouseX - transform.x) * (newScale / transform.k);
+      transform.y = mouseY - (mouseY - transform.y) * (newScale / transform.k);
+      transform.k = newScale;
+      drawGraph();
+    }, { passive: false });
+
+    // Zoom buttons
+    document.getElementById('zoomInBtn').addEventListener('click', () => {
+      transform.k = Math.min(transform.k * 1.15, 2.5);
+      drawGraph();
+    });
+    document.getElementById('zoomOutBtn').addEventListener('click', () => {
+      transform.k = Math.max(transform.k / 1.15, 0.4);
+      drawGraph();
+    });
+    document.getElementById('zoomResetBtn').addEventListener('click', () => {
+      transform = { x: 30, y: 20, k: 0.95 };
+      drawGraph();
+    });
+    document.getElementById('fitViewBtn').addEventListener('click', () => {
+      const width = container.clientWidth;
+      const height = container.clientHeight;
+      transform = {
+        x: Math.max(20, (width - 860) / 2),
+        y: Math.max(20, (height - 720) / 2),
+        k: Math.min((width - 60) / 880, (height - 60) / 740, 1)
+      };
+      drawGraph();
+    });
+
+    // Center selected node button
+    document.getElementById('centerNodeBtn').addEventListener('click', () => {
+      if (!selectedNode) return;
+      const width = container.clientWidth;
+      const height = container.clientHeight;
+      transform.x = width / 2 - selectedNode.x * transform.k;
+      transform.y = height / 2 - selectedNode.y * transform.k;
+      drawGraph();
+    });
+
+    // Copy path
+    document.getElementById('copyNodeBtn').addEventListener('click', () => {
+      if (!selectedNode) return;
+      navigator.clipboard.writeText(selectedNode.name);
+      const originalText = document.getElementById('copyNodeBtn').innerHTML;
+      document.getElementById('copyNodeBtn').innerHTML = `<span style="color:#1a7f37;font-weight:bold">Copied!</span>`;
+      setTimeout(() => {
+        document.getElementById('copyNodeBtn').innerHTML = originalText;
+      }, 1500);
+    });
+
+    // Close Details
+    document.getElementById('closeDetailsBtn').addEventListener('click', () => {
+      document.getElementById('detailsPanel').classList.add('hidden');
+    });
+
+    // Search Box Listener (Condition 1: Search by base name...)
+    const searchInput = document.getElementById('searchInput');
+    const clearSearchBtn = document.getElementById('clearSearchBtn');
+
+    searchInput.addEventListener('input', (e) => {
+      searchQuery = e.target.value;
+      if (searchQuery) {
+        clearSearchBtn.classList.remove('hidden');
+      } else {
+        clearSearchBtn.classList.add('hidden');
+      }
+      drawGraph();
+    });
+
+    clearSearchBtn.addEventListener('click', () => {
+      searchInput.value = '';
+      searchQuery = '';
+      clearSearchBtn.classList.add('hidden');
+      drawGraph();
+    });
+
+    // Secondary / Empty state banner message toggle (Condition 1.5)
+    const toggleEmptyStateBtn = document.getElementById('toggleEmptyStateBtn');
+    const emptyBanner = document.getElementById('emptyBanner');
+    const dismissBannerBtn = document.getElementById('dismissBannerBtn');
+    const aliasCountText = document.getElementById('aliasCountText');
+
+    function setMockEmpty(state) {
+      isMockEmpty = state;
+      if (isMockEmpty) {
+        emptyBanner.classList.remove('hidden');
+        aliasCountText.innerText = '0 aliases, 0 scope';
+        toggleEmptyStateBtn.classList.add('border-[#bf8700]', 'text-[#bf8700]');
+      } else {
+        emptyBanner.classList.add('hidden');
+        aliasCountText.innerText = '9 aliases, 1 scope';
+        toggleEmptyStateBtn.classList.remove('border-[#bf8700]', 'text-[#bf8700]');
+      }
+      drawGraph();
+    }
+
+    toggleEmptyStateBtn.addEventListener('click', () => {
+      setMockEmpty(!isMockEmpty);
+    });
+    dismissBannerBtn.addEventListener('click', () => {
+      setMockEmpty(false);
+    });
+
+    // Setup initial render
+    setTimeout(resizeCanvas, 50);
+  
+  </script>
+</body>
+</html>

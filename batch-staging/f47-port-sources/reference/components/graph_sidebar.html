@@ -1,0 +1,146 @@
+<!-- COMP-904, COMP-905, COMP-906: Sidebar with Hierarchical Cascading Drill-down (Módulo -> Spec -> Tabla/Arista) -->
+<aside class="sidebar-panel" id="sidebar-panel">
+  <div class="sidebar-header">
+    <div class="sidebar-title">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/>
+      </svg>
+      <span>Filtros & Navegación</span>
+    </div>
+    <button id="btn-reset-filters" class="btn-text-xs" title="Restablecer todos los filtros y escala a su estado inicial">Restablecer</button>
+  </div>
+
+  <div class="sidebar-scrollable">
+    <!-- Navegación Jerárquica en Cascada (5 Niveles: Módulo -> Spec -> Tabla -> Objeto/Clase -> Demás objetos/Aristas) -->
+    <div class="filter-section filter-section-starter">
+      <div class="filter-section-title">
+        <span class="starter-heading">Navegación Jerárquica (5 Niveles)</span>
+        <span class="badge-count" id="badge-starter-status">Global</span>
+      </div>
+      
+      <!-- Nivel 1: Módulo de Negocio -->
+      <div class="select-group">
+        <label for="select-module" class="select-label">1. Módulo</label>
+        <select id="select-module" class="action-select-block">
+          <option value="">— Todos los Módulos —</option>
+        </select>
+      </div>
+
+      <!-- Nivel 2: Especificación AIDD (Filtrado por Módulo) -->
+      <div class="select-group" style="margin-top: 8px;">
+        <label for="select-spec" class="select-label">2. Especificación (Spec)</label>
+        <select id="select-spec" class="action-select-block">
+          <option value="">— Todas las Specs —</option>
+        </select>
+      </div>
+
+      <!-- Nivel 3: Tabla de Base de Datos -->
+      <div class="select-group" style="margin-top: 8px;">
+        <label for="select-table" class="select-label">3. Tabla</label>
+        <select id="select-table" class="action-select-block" disabled>
+          <option value="">— Seleccionar Tabla —</option>
+        </select>
+      </div>
+
+      <!-- Nivel 4: Objeto (Entidad o Clase) -->
+      <div class="select-group" style="margin-top: 8px;">
+        <label for="select-entity" class="select-label">4. Objeto (Entidad / Clase)</label>
+        <select id="select-entity" class="action-select-block" disabled>
+          <option value="">— Seleccionar Entidad o Clase —</option>
+        </select>
+      </div>
+
+      <!-- Nivel 5: Demás objetos o Aristas -->
+      <div class="select-group" style="margin-top: 8px;">
+        <label for="select-object" class="select-label">5. Demás objetos / Aristas</label>
+        <select id="select-object" class="action-select-block" disabled>
+          <option value="">— Seleccionar Objeto / Arista —</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- Capas Multi-Dominio -->
+    <div class="filter-section">
+      <div class="filter-section-title">
+        <span>Capas del Monorepositorio</span>
+        <span class="badge-count" id="count-active-layers">4/4</span>
+      </div>
+      <div class="layer-checkbox-group">
+        <label class="layer-cb-item cb-db">
+          <input type="checkbox" id="layer-cb-db" checked value="db">
+          <span class="custom-cb cb-indicator-db"></span>
+          <span class="layer-name">Base de Datos</span>
+          <span class="layer-badge" id="badge-db-count">0</span>
+        </label>
+        <label class="layer-cb-item cb-code">
+          <input type="checkbox" id="layer-cb-code" checked value="code">
+          <span class="custom-cb cb-indicator-code"></span>
+          <span class="layer-name">Código AST Python</span>
+          <span class="layer-badge" id="badge-code-count">0</span>
+        </label>
+        <label class="layer-cb-item cb-spec">
+          <input type="checkbox" id="layer-cb-spec" checked value="spec">
+          <span class="custom-cb cb-indicator-spec"></span>
+          <span class="layer-name">Specs AIDD</span>
+          <span class="layer-badge" id="badge-spec-count">0</span>
+        </label>
+        <label class="layer-cb-item cb-ui">
+          <input type="checkbox" id="layer-cb-ui" checked value="ui">
+          <span class="custom-cb cb-indicator-ui"></span>
+          <span class="layer-name">Componentes UI</span>
+          <span class="layer-badge" id="badge-ui-count">0</span>
+        </label>
+      </div>
+    </div>
+
+    <!-- Radio de Saltos (Hop Radius) -->
+    <div class="filter-section">
+      <div class="filter-section-title">
+        <span>Radio de Vecindario</span>
+        <span class="badge-count" id="lbl-hop-value">2 saltos</span>
+      </div>
+      <div class="hop-slider-container">
+        <div class="hop-slider-marks">
+          <span>1</span><span>2</span><span>3</span><span>4</span><span>5</span>
+        </div>
+        <input type="range" id="hop-radius-slider" min="1" max="5" value="2" step="1">
+        <div class="slider-hint">Limita los nodos visibles a N saltos del nodo focal seleccionado.</div>
+      </div>
+    </div>
+
+    <!-- Modo Análisis de Impacto -->
+    <div class="filter-section">
+      <label class="toggle-control-row">
+        <div class="toggle-label-wrapper">
+          <span class="toggle-main-label">Modo Cascada de Impacto</span>
+          <span class="toggle-sub-label">Resalta la cadena de dependencias críticas</span>
+        </div>
+        <div class="switch">
+          <input type="checkbox" id="toggle-impact-mode">
+          <span class="slider round"></span>
+        </div>
+      </label>
+    </div>
+
+    <!-- Dominios de Negocio -->
+    <div class="filter-section">
+      <div class="filter-section-title">
+        <span>Dominios de Negocio</span>
+        <button id="btn-toggle-all-domains" class="btn-text-xs">Todos</button>
+      </div>
+      <div class="domain-chips-container" id="domain-chips-list">
+        <!-- Generado dinámicamente -->
+      </div>
+    </div>
+
+    <!-- Accesos Rápidos (Hubs F28 / Núcleo) -->
+    <div class="filter-section">
+      <div class="filter-section-title">
+        <span>Nodos Núcleo / Hubs F28</span>
+      </div>
+      <div class="quick-hubs-list" id="quick-hubs-container">
+        <!-- Enlaces rápidos generados dinámicamente -->
+      </div>
+    </div>
+  </div>
+</aside>

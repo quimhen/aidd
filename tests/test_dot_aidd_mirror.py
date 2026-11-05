@@ -96,6 +96,9 @@ VERBATIM_SCRIPTS = [
     "aidd_triage.py",
     "aidd_tools.py",
     "component_graph.py",
+    "unified_graph.py",
+    "aidd_coverage.py",
+    "alias_graph.py",
 ]
 
 # Graph-first scripts (spec 004) that must import with stdlib only.
@@ -108,6 +111,7 @@ GRAPH_FIRST_SCRIPTS = [
     "aidd_triage.py",
     "aidd_tools.py",
     "component_graph.py",
+    "unified_graph.py",
 ]
 
 # Docs that must name the graph-first vocabulary (spec 004, FR-022 / AC-015).

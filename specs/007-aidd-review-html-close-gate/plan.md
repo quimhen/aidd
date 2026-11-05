@@ -298,3 +298,67 @@ Names are exact and frozen (copied from the amendment drafts); owners may add pr
 | FR-231, FR-232, FR-233, FR-234 | `aidd_progress.py` `task_state`, `_renumbered`, `_alias_target`, `_load_aliases`, `ALIAS_FILE`; `skill/SKILL.md` | `tests/test_progress_resolution.py`, `tests/test_aidd_progress.py` | T-26, T-27, T-28, T-29 |
 
 Waves: amendment 03 and 04 run after wave 7 as waves 8 (T-22, T-26), 9 (T-23, T-25, T-27) and 10 (T-24, T-28, T-29); the two `skill/SKILL.md` edits (T-25, T-29) are in different waves, so no file has two owners in one wave.
+
+## Amendment 05 (2026-11-03) — naming contract (T-30..T-34, T-43, T-44)
+
+Names are exact and frozen (copied from `amendment-05-coverage-derive.draft.md`); owners may add private helpers, never rename these. Python stdlib only; mirrors are byte copies made by `cp`.
+
+| Item | Contract |
+|---|---|
+| File (production, new) | `skill/scripts/aidd_coverage.py` (T-31); byte mirror `adapters/dot-aidd/scripts/aidd_coverage.py` (T-33) |
+| File (production, changed) | `skill/scripts/aidd_status.py` and `skill/scripts/aidd_unit_audit.py` (T-44, same owner as T-23 for `aidd_status.py`); byte mirrors `adapters/dot-aidd/scripts/aidd_status.py`, `adapters/dot-aidd/scripts/aidd_unit_audit.py` (T-33); `aidd/cli.py` (T-32); `skill/SKILL.md` paragraph `**Incremental verification and reusable checks.**` (T-34, same owner as T-25) |
+| File (tests) | new `tests/test_aidd_coverage.py` (T-30), new `tests/test_verify_changed_policy.py` (T-43); `tests/test_dot_aidd_mirror.py` list entry `"aidd_coverage.py"` in `VERBATIM_SCRIPTS` (T-33, same owner as T-40) |
+| `aidd_coverage` constants | `REVIEW_MARK = '[Proposed — unconfirmed]'`, `PROPOSAL_MARK = '<!-- coverage_derive proposal: not part of any spec; review and copy by hand -->'`, `METADATA = ('spec.md', 'tasks.md', 'plan.md', 'contracts.md', 'mockup-audit.md')`, `DB_RE`, `SUITE_RE`, `RANGE_RE`, `T_RANGE_RE`, `MAX_RANGE = 400` |
+| `aidd_coverage` functions | `codes_in(text) -> dict[str, str]`, `tasks_in(text, known=None) -> set[str]`, `raw_task_codes(tasks_text) -> dict[str, set[str]]`, `derive(spec_dir) -> dict`, `simulate_changed(result, changed) -> dict`, `render_text(result) -> str`, `render_proposal(result) -> str`, `safe_target(spec_dir, target) -> str \| None`, `main(argv=None) -> int`; private `_resolve_target(root, p) -> str \| None`, `_exists(root, pattern) -> bool`, `_matcher(globs)` |
+| `derive` result | keys `spec, root, rows, uncovered_tasks, missing_targets, summary`; row keys `n, cmd, kind, tasks, covers, inputs, database, reuse, needs_review, notes, covers_before, inputs_before`; kinds `cites-tasks`, `via-fr-ac-api`, `whole-suite`, `unresolved` |
+| `simulate_changed` result | keys `status, reason, selected_tasks, always_rows, rows_run, rows_skipped, warnings` |
+| `aidd_status` new | `_changed_selection(root, spec, base=None) -> tuple[list[str], list[str], list[str]]`, `_changed_selection_fingerprint(tasks_text, spec_text, task_ids, always_rows) -> str`, `_known_task_ids(tasks_text) -> set[str]`, `_covers_task_refs(covers, known) -> set[str]` |
+| `aidd_status` changed (signature) | `cmd_verify(spec_arg, full=False, bail=False, wave=None, result_sink=None, wave_cache=None, task_ids=None, always_rows=None)`; `_changed_task_selection(root, spec, base=None)` unchanged, returns `_changed_selection(...)[0]` |
+| Output texts | `warning: verification row <n> declares no Inputs or no task Covers; it always runs`; `warning: task <T> is covered by no verification row; whole-suite rows run`; `always-run row <n>`; `Refused: always_rows requires --changed; nothing was executed.`; event `task_verify_run` field `always_rows` |
+| `aidd_unit_audit` new | `resolve_base(root, base) -> str` (`git rev-parse --verify --end-of-options <base>^{commit}`, timeout 30 s; `ValueError('base is not a uniquely resolvable commit')`); used by `git_changed_paths(root, base=None)` and `administrative_only_task_paths(root, changed_paths, rules, base=None)` |
+| CLI | tuple `("coverage", "aidd_coverage.py", [], "Propose task Covers and Inputs for a spec's Verification rows (dry-run; never writes the spec) (aidd_coverage.py)")` in the forwarded-script loop of `aidd/cli.py` |
+| Test classes | `AiddCoverage` (16 methods) and `CoverageWiring` (`test_cli_registers_coverage`, `test_skill_documents_coverage`) in `tests/test_aidd_coverage.py`; `VerifyChangedPolicy` (7 methods) and `BaseRevision` (2 methods) in `tests/test_verify_changed_policy.py`; exact method names in tasks.md T-30 and T-43 |
+| Untouched | `--tasks` and `--wave` selection, contract store, `_round_*`, `aidd_progress.py` (only called), `tests/test_verify_git_contract.py` |
+
+### Requirement -> file map (amendment 05)
+
+| FR | File / function | Test file | Task |
+|---|---|---|---|
+| FR-240..FR-249 | `aidd_coverage.py` (all functions above); `aidd/cli.py`; `skill/SKILL.md` | `tests/test_aidd_coverage.py` | T-30, T-31, T-32, T-33, T-34 |
+| FR-259, FR-260 | `aidd_status.py` `_changed_selection`, `_changed_selection_fingerprint`, `_known_task_ids`, `_covers_task_refs`, `_changed_task_selection`, `cmd_verify`, `--changed` CLI branch | `tests/test_verify_changed_policy.py`, `tests/test_verify_git_contract.py` | T-43, T-44, T-33 |
+| FR-261 | `aidd_unit_audit.py` `resolve_base`, `git_changed_paths`, `administrative_only_task_paths` | `tests/test_verify_changed_policy.py`, `tests/test_aidd_unit_audit_incremental.py` | T-43, T-44, T-33 |
+
+Waves: amendment 05 shares waves 11-13 with amendment 06 — 11 (T-30, T-43), 12 (T-31, T-44), 13 (T-32, T-33, T-34); no file has two owners in one wave. Amendment 05 has no dependency on spec 004.
+
+## Amendment 06 (2026-11-03) — naming contract (T-35..T-41)
+
+Names are exact and frozen (copied from `amendment-06-alias-graph.draft.md`, re-based on `specs/004-aidd-graph-first/amendment-unified-explorer.draft.md`). UI rule: T-38 builds a NEW view faithful to the approved SCREEN-901 mockup (`prototypes/alias-graph-explorer/alias-graph-explorer.html`); it does not reuse legacy presentation.
+
+**Cross-spec dependency (note, not a task dependency):** T-35..T-41 run after wave 10 of the 004 amendment (`specs/004-aidd-graph-first/amendment-unified-explorer.draft.md`), whose tasks T-74..T-76, T-83 and T-84 provide the unified explorer, `unified_graph.TOON_READERS`, the `--graph/--kind/--layer/--root` flags, the registry-generated layer ids (`metric-<name>`, `layer-cb-<name>`, `--layer-<name>`) and the adopted controls. Spec 004 carries those tasks; if they are not built, T-35's explorer tests stay red and T-38 must not start.
+
+| Item | Contract |
+|---|---|
+| File (production, new) | `skill/scripts/alias_graph.py` (T-36); byte mirror `adapters/dot-aidd/scripts/alias_graph.py` (T-40) |
+| File (production, changed) | `skill/scripts/aidd_graphs.py` (T-37), `skill/scripts/graph_explorer.py` + `skill/scripts/unified_graph.py` (T-38), `skill/scripts/aidd_progress.py` (T-39, same owner as T-27); byte mirrors of all five under `adapters/dot-aidd/scripts/` (T-40); `skill/SKILL.md` (T-41, same owner as T-25) |
+| File (tests) | new `tests/test_alias_graph.py` (T-35); `tests/test_dot_aidd_mirror.py` list entry `"alias_graph.py"` in `VERBATIM_SCRIPTS` (T-40, same owner as T-33) |
+| `alias_graph` | `SECTION_RE = re.compile(r'^aliases\[(\d+)\]\{old,new,scope,reason\}:\s*$')`; `parse_aliases(text) -> list[dict]` (keys `old`, `new`, `scope`, `reason`), `load_aliases(path) -> list[dict]`, `to_graph(rows) -> dict`, `show_aliases(root, query, limit=25) -> str`, `is_alias_toon(text) -> bool` |
+| Graph shape | node `{"id": "old:<base>"\|"new:<base>", "label", "type": "alias_old"\|"alias_new", "scope", "reason"}`; edge `{"source", "target", "type": "RENAMED_TO"}` |
+| Registry row (`aidd_graphs.py`) | `{"name": "aliases", "kind": "aliases", "output": ".aidd/graphs/path-aliases.toon", "refresh": "", "watch": [".aidd/graphs/path-aliases.toon"]}` only when the file exists and the charter declares no `aliases` graph; `show` branch for `e["kind"] == "aliases"` via `_module("alias_graph")`; message `alias_graph module not found` |
+| Messages (`show_aliases`) | `old -> new [scope] reason`; `No alias matching '<query>'.`; `Graph 'aliases' is missing; the project must generate .aidd/graphs/path-aliases.toon` |
+| `unified_graph.py` | `_read_aliases_toon(text)` (via `_sibling("alias_graph")`; `ValueError` when missing) and `TOON_READERS["aliases"] = _read_aliases_toon` |
+| `graph_explorer.py` (alias view) | `ALIAS_LEGEND = ("old name", "new name", "renamed in progress")`; JS `renderAliasView()`; CSS `--alias-old`, `--alias-new`, `--alias-prog` (dark `#f85149`, `#3fb950`, `#d29922` in `:root`; light `#d9383a`, `#1a7f37`, `#bf8700` in `:root.light`); ids `legend-aliases`, `insp-scope`, `insp-reason`, `aliases-empty-banner`; text `Edge type: RENAMED_TO`; empty text `No aliases: the project has not generated .aidd/graphs/path-aliases.toon`. Registry-generated, not created here: `metric-aliases`, `layer-cb-aliases`, `--layer-aliases` |
+| `aidd_progress.py` | task node key `state` (`renamed`, `deleted`) only when resolved that way; `_load_aliases(root)` same `{old: new}` result, built from `alias_graph.load_aliases` |
+| Test class | `AliasGraph(unittest.TestCase)`: `test_parse_and_load_rows`, `test_bad_file_gives_empty`, `test_to_graph_nodes_edges`, `test_show_prints_neighbours`, `test_registry_has_aliases_only_when_file_exists`, `test_explorer_accepts_toon`, `test_explorer_html_is_self_contained`, `test_unified_explorer_has_alias_layer`, `test_progress_graph_task_state` |
+| SKILL.md tokens | graph `aliases`, kind `aliases`, file `.aidd/graphs/path-aliases.toon`, commands `aidd graphs show aliases <name>`, `aidd graphs explorer aliases`, `aidd graphs explorer`, node types `alias_old`, `alias_new`, edge `RENAMED_TO` |
+| Untouched | the `explorer` subcommand branch of `aidd_graphs.py`, the explorer JSON path, every control and the layer machinery of the 004 amendment, `task_state` results, the printed output of `aidd progress` |
+
+### Requirement -> file map (amendment 06)
+
+| FR | File / function | Test file | Task |
+|---|---|---|---|
+| FR-250, FR-251 | `aidd_graphs.py` registry builder, `show` | `tests/test_alias_graph.py` | T-35, T-37, T-40 |
+| FR-252, FR-254 | `alias_graph.py` | `tests/test_alias_graph.py` | T-35, T-36, T-40 |
+| FR-253, FR-255 | `unified_graph.py` `_read_aliases_toon`, `TOON_READERS`; `graph_explorer.py` alias view (SCREEN-901) | `tests/test_alias_graph.py`, `tests/test_unified_*.py`, `tests/test_explorer_controls*.py` | T-35, T-38, T-40, T-41 |
+| FR-256, FR-257 | `aidd_progress.py` graph writer, `_load_aliases` | `tests/test_alias_graph.py`, `tests/test_aidd_progress.py`, `tests/test_progress_resolution.py` | T-35, T-39, T-40 |
+
+Waves: amendment 06 runs in waves 11 (T-35), 12 (T-36), 13 (T-37, T-38, T-39) and 14 (T-40, T-41), shared with amendment 05; the `skill/SKILL.md` edits T-34 (wave 13) and T-41 (wave 14) and the `tests/test_dot_aidd_mirror.py` edits T-33 (wave 13) and T-40 (wave 14) are in different waves.

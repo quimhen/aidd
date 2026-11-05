@@ -31,6 +31,8 @@ the agent itself dumped whole event logs and files to answer one question. `spec
 - **Risks:** static call resolution is name-based (ambiguous edges are kept and marked, not dropped); the profiler must never affect normal runs (off by default); a hash baseline over a very large tree costs one `git hash-object` pass (about 1 s per 7k files).
 - **Open decisions:** none.
 - **Amendment 2026-10-27 (third, Semantic UI Component Graph uiltin:ui & Mechanical CDD Gates):** Lifts the former exclusion of client-project UI languages. Implements skill/scripts/component_graph.py (mirrored in dapters/dot-aidd/scripts/component_graph.py), generating .aidd/graphs/ui.toon with exact physical disk paths, props and slots from .tsx, .jsx, .dart, .vue, components-index.md and spec artifacts. Integrates uiltin:ui into idd_graphs.py, idd component CLI subcommand in idd/cli.py, subagent micro-context prompt injection (--inject), and mechanical CDD gates G7 & G8 in check_spec.py. Verified in 	ests/test_component_graph.py (implemented in companion spec specs/013-aidd-component-graph-cdd).
+- **Amendment 2026-11-03 (fourth, tool-first nudge):** FR-049..FR-054, AC-041..AC-046. A non-blocking `PostToolUse` hook `tool_first_hint.py` advises a script after 4 edits of the same shape or to the same file within 15 minutes, or 4 shell commands in a row of the same shape; only an agent `aidd tools` query silences it for 300 s; `aidd status` prints `tool-first: N advisories / M edits this session`. Owner: "tenemos una regla de siempre utilizar herramientas pero en claude no siempre se cumple". Cost: 7 tasks (T-60..T-66), about 80 min and 410k tokens.
+- **Amendment 2026-11-03 (fifth, unified knowledge-graph explorer):** FR-060..FR-077, AC-050..AC-066. Ports the b1SycLink F47 explorer into AIDD as `skill/scripts/unified_graph.py` (registry-driven model, every registered graph is a layer) and `skill/scripts/graph_explorer.py` (F47 Canvas 2D view unchanged plus the 8 controls of the approved spec 007 alias mockup); `aidd graphs explorer` with no name writes `docs/graphs/explorer.html` (versioned, 25 MB ceiling). Owner: "yo pedi que ese explorador se implemente en aidd al parecer no lo hizo, esa es una funcionalidad que debemos implementar y la complementas con el nuevo grafo" and "si adicionamos un grafo en aidd este tambien se debe poder leer con el explorer". Cost: 16 tasks (T-70..T-85; T-85 is the T-VISUAL gate), about 230 min and 1330k tokens. Both amendments run in parallel in waves 11-20 (250 min, 1740k tokens).
 - **Amendment 2026-10-24 (second, optimization of the residuals of the closing audit):** FR-044..FR-048. Split the 160 s verification row into four parallel rows, a scoped read cache for `status`/`progress` (203 of 240 reads were re-reads), `aidd status` explains why an auditor does not count plus one close sequence in the docs (the close ran four audit rounds), `find_spec` timeout inside the hook timeout, and `aidd job` id validation, secret redaction and `.gitignore`. Cost: 13 tasks (T-47..T-59) in 2 waves (9-10), about 80 min critical path and 740k tokens. The re-approval and the next closing audit are not in these numbers.
 
 ## Pipeline route
@@ -38,16 +40,23 @@ the agent itself dumped whole event logs and files to answer one question. `spec
 | Step | Status | Reason | Confirmation |
 |---|---|---|---|
 | -1 | run | find_spec found 002 as nearest; distinct area, new spec 004 | repo — specs/003-aidd-interaction-evidence/spec.md:1 |
-| 0 | waived | no visual surface | user — "Confirmar tal cual" |
-| 1 | waived | no mockup | user — "Confirmar tal cual" |
-| 1.5 | waived | no flows to draw | user — "Confirmar tal cual" |
+| 0 | run | amendment 2026-11-03: the explorer is a visual surface; sources = F47 Stitch prototype snapshot and the approved spec 007 alias mockup (`mockup-audit.md` Provenance) | user — "Fila resuelta + comparación medida (Recommended)" |
+| 1 | run | `mockup-audit.md` (element inventory by id and measured value) | user — "Fila resuelta + comparación medida (Recommended)" |
+| 1.5 | run | `mockup-audit.md` `## Flows` | user — "Fila resuelta + comparación medida (Recommended)" |
 | 2 | run | | |
 | 3 | run | | |
 | 4 | run | | |
 
 ## Visual debt
 
-No `SCREEN-nn` codes appear in this spec's files; no debt.
+Until 2026-11-03 no `SCREEN-nn` code appeared in this spec. The unified-explorer amendment adds two, both resolved (owner decision: user — "Fila resuelta + comparación medida (Recommended)"); T-VISUAL measures the page against both sources.
+
+| Codes | Blocks spec | Status | Mockup source |
+|---|---|---|---|
+| SCREEN-95 (b1SycLink F47 code, view base) | 004-aidd-graph-first | resolved | `batch-staging/f47-port-sources/f47-spec/prototype/stitch-SCREEN-95.html` |
+| SCREEN-901 (spec 007, adopted controls) | 004-aidd-graph-first | resolved | `specs/007-aidd-review-html-close-gate/prototypes/alias-graph-explorer/alias-graph-explorer.html` |
+
+Hashes (R4 accepts only the path in the Mockup source cell, so they are recorded here): SCREEN-95 prototype sha256 in the sibling `stitch-SCREEN-95.html.sha256` (`71777db5…6b25`; same bytes as b1SycLink `specs/F47-Unified-Knowledge-Graph-Explorer/prototype/`); SCREEN-901 sha256 `33bd7fb7…d8d7` in `alias-graph-explorer.sha256`.
 
 ## Scope
 
@@ -58,6 +67,8 @@ Amendment 2026-10-24 (owner: the graph is the source of truth for code and for b
 exclusion "reading source code into the graph" is LIFTED for AIDD's own built-in generators: `builtin:code` (Python via stdlib
 `ast`), `builtin:method` (SKILL.md, AIDD.md, commands, templates), runtime trace overlay, and tamper-evident snapshots and diffs
 (FR-014..FR-024). Client-project languages TS/JS and Dart stay out of this amendment; SQL is in (FR-028..FR-030), and so is the graph-first hook (FR-025..FR-027).
+
+Amendments 2026-11-03. In: the tool-first nudge hook (FR-049..FR-054) and the unified knowledge-graph explorer (FR-060..FR-077: registry-driven model, the F47 view ported unchanged, the 8 adopted controls, the versioned `docs/graphs/explorer.html` with a 25 MB ceiling, a measured visual comparison). Out: blocking an agent for manual work; any project domain map; translating the Spanish explorer strings (owner: "Mantener español, traducir después (Recommended)"); the 20 controls that exist only in the F47 generator (owner: "Archivo de 1.371 líneas + 3 bloques (Recommended)"); the alias layer view (spec 007 amendment 06); building or refreshing any graph. Size note: at b1SycLink scale the explorer is 19.0 MB measured for the 4 F47 layers (1.0 MB compressed added to git history per regeneration); b1SycLink runs it with `--skip code-graphify` (owner: "Tope 25 MB, omitiendo code-graphify (Recommended)").
 
 ## Functional requirements
 
@@ -111,6 +122,30 @@ exclusion "reading source code into the graph" is LIFTED for AIDD's own built-in
 | FR-046 | The close flow is one path and says why a gate does not count an auditor (owner, 2026-10-24: "debes optimizar esa parte, los auditores que te faltaban por que no se lanzaron desde el inicio, creo que las instrucciones al agente no son claras"). (a) `aidd_rules.closing_audit_diagnosis(spec_dir, root)` returns one line per problem for the spec (required domain with no counting auditor after the last code edit and the last `verify_run`, an auditor excluded as haiku, a `[tasks:<h8>]` or `[verify:<v8>]` that does not match, a final report shorter than `CLOSING_AUDIT_MIN_RESULT`, an auditor older than `code_since`); `aidd status` prints those lines under the spec and, when it lists missing domains, the single command to run: dispatch one auditor per missing domain in ONE message. (b) `SKILL.md` and `AIDD.md` state the close sequence once: freeze code (host sync, fixes) -> `aidd verify` once -> ONE message with one auditor per required domain (description names the domain, sonnet or opus, read-only) -> write `qa-audit.md` -> approve -> `aidd rules close`; any code edit after the dispatch voids those auditors | AC-038 |
 | FR-047 | Hook latency (residual P1): the `find_spec` subprocess of `prompt_trigger.py` times out at 8 s, so it always ends inside the 10 s hook timeout that `install_hooks.py` registers | AC-039 |
 | FR-048 | `aidd job` hygiene (security audit of 2026-10-24, L8 and L9): the job id of `wait`, `last` and `_exec` must match `[A-Za-z0-9_.-]+` with no `..` and resolve under `.aidd/jobs/`, otherwise exit 2 `refused`; the command stored in `job.json` and `verdict.json` passes through `aidd_evidence.redact_secrets`; `.gitignore` ignores `.aidd/jobs/` | AC-040 |
+| FR-049 | Amendment 2026-11-03 (owner: "tenemos una regla de siempre utilizar herramientas pero en claude no siempre se cumple"; observed: 14 identical Status edits in one session). A `PostToolUse` hook on `Edit`, `Write`, `MultiEdit`, `NotebookEdit`, `Bash` and `PowerShell` counts repetition per session and emits ONE advisory line when any trigger fires: (a) N or more `Edit`/`MultiEdit` calls whose normalized change is the same within 15 minutes; (b) N or more `Edit` calls to one file within 15 minutes; (c) N or more consecutive `Bash`/`PowerShell` commands with the same normalized text, excluding read-only `git status/log/diff`. N = 4 (owner: "N = 4 (Recommended)"); edits and shell commands, not `Grep` loops (owner: "Ediciones y comandos de shell (Recommended)"). It only advises, never blocks | AC-041, AC-042 |
+| FR-050 | The advice says: run `aidd tools <keywords>`; if no tool fits, write a script with dry-run, apply and check, and save it under `tools/` so the catalog indexes it. Keywords come from the file extension and directory of the repeated change (owner: "opencode y agy utiliza siempre scripts para optimizar tiempos y gestión") | AC-046 |
+| FR-051 | Only an `aidd tools` query run BY THE AGENT silences the advice, for 300 s, recorded as a `tool_query` event (same rule as FR-026). Running a script does not silence it | AC-043 |
+| FR-052 | Evidence, not trust: each advisory is a session event `tool_miss{kind,target,count}` and `aidd status` prints `tool-first: N advisories / M edits this session` (FR-027 pattern) | AC-045 |
+| FR-053 | Fail open: any error in the hook (state file unreadable, malformed payload) emits nothing and exits 0. State lives in the per-session evidence directory, never in the project tree | AC-044 |
+| FR-054 | Shape normalisation. `_shape(text)`, in this order: (1) every backtick-, double- or single-quoted literal on one line becomes `<Q>`; (2) every remaining token that contains `/` or `\` becomes `<P>`; (3) every run of digits becomes `<N>`; (4) whitespace runs become one space, stripped. An `Edit` shape is the file extension plus `_shape(old_string)` plus `_shape(new_string)` (file name and directory are not part of it); a `MultiEdit` shape joins the shapes of its `edits` in order; a shell shape is `_shape(command)`. The owner's 14 Status edits normalise to `\| T-<N> \| FR-<N> \| <Q> \| LOGIC \| \| done \|`; `python tools/gen_f36_tests.py --apply specs/F36` normalises to `python <P> --apply <P>` | AC-046 |
+| FR-060 | Amendment 2026-11-03 (owner: "yo pedi que ese explorador se implemente en aidd al parecer no lo hizo, esa es una funcionalidad que debemos implementar y la complementas con el nuevo grafo"; "si adicionamos un grafo en aidd este tambien se debe poder leer con el explorer"). New stdlib module `skill/scripts/unified_graph.py`, a port of the LOGIC (never the view) of b1SycLink `docs/db-graph/unified_graph_model.py` (snapshot `batch-staging/f47-port-sources/model/unified_graph_model.py`, provenance in its docstring). It reads the graphs from `aidd_graphs.load_registry(root)`, never from fixed paths: each registry entry with an `output` becomes one layer named after the entry | AC-050 |
+| FR-061 | Readers: `.json` with `nodes` and `edges` or `links`; `.toon` through `TOON_READERS[kind]` (`spec` → `find_spec.loads_index`, `ui` → `component_graph.parse_toon`); any other `.toon` through the generic section reader (one node per row, first column = id). Unsupported suffix or invalid content raises `ValueError` inside the reader only | AC-052 |
+| FR-062 | Normalised payload, deterministic (nodes sorted by `id`, edges by `source`, `target`, `relation`): node keys `id`, `raw_id`, `label`, `layer`, `kind`, `type`, `domain`, `purpose`, `metadata`, `codes`, `refs`; edge keys `source`, `target`, `relation`, `layer`, `cross_layer`. Node ids are `<layer>:<raw id>` in the unified payload and the raw id in the single-graph payload. Domain = the first non-empty field the graph itself declares among `domain`, `origin`, `community`, `group`, else `Core`; AIDD names no project domain (owner: "Campos genéricos de dominio (Recommended)") | AC-050, AC-055 |
+| FR-063 | Generic cross-layer links: `references` from a node's `consumers`, `consumes` or `refs` value to the node of ANOTHER layer whose raw id or `codes` entry equals it; `mentions` from a `spec`-kind node to `db`-kind tables, views and functions whose label appears as a word in its `spec.md`, `plan.md`, `tasks.md` or `data-model.md`, and to `code`-kind nodes whose path appears there. Cross edges carry `layer` `cross` and `cross_layer` true; duplicates collapse | AC-053 |
+| FR-064 | Layer style from the registry order: an entry whose name equals its kind and is `db`, `code`, `spec` or `ui` keeps the F47 colour and labels; every other entry takes the next colour of `EXTRA_COLOURS` and its name as pill label and checkbox title | AC-051 |
+| FR-065 | `compute_neighborhood(graph, focal_node_id, hop_radius=2)` and `filter_graph(graph, active_layers=None, active_domains=None)` keep the F47 signatures and return shapes | AC-054, AC-055 |
+| FR-066 | Fail open: a missing output gives a layer with `missing` true and the warning `<name>: output missing (<path>)`; an unreadable one gives `error` true and `<name>: unreadable (<exception class>)`; `load_unified` never raises | AC-056 |
+| FR-067 | `skill/scripts/graph_explorer.py` becomes the 1371-line F47 explorer with its view unchanged (owner: "Archivo de 1.371 líneas + 3 bloques (Recommended)"), plus: layer pills, checkboxes, CSS colours and JS layer sets generated from the payload `layers`; working checkbox listeners; the technical-properties block (`insp-tech-details`) of the verified F47 generator, filled with `textContent`; trace rows built with `textContent`; `--root` mode through `unified_graph.load_unified`; `--graph` accepts `.toon` with `--kind` and `--layer`; non-object JSON exits 2. The Spanish strings stay (owner: "Mantener español, traducir después (Recommended)") | AC-058, AC-059, AC-060 |
+| FR-068 | `aidd graphs explorer` without a name runs the explorer with `--root` and writes `<root>/docs/graphs/explorer.html` (or `--out FILE`), a versioned file (owner: "docs/graphs/explorer.html versionado"); with a name it behaves as today and also passes `--kind` and `--layer`; `--skip` and `--max-mb` pass through; an unknown name still exits 1 | AC-057 |
+| FR-069 | The generated HTML is self-contained: no `http://`, `https://`, `//cdn`, `<script src`, `<link`, `@import` or `url(` outside the embedded data | AC-058 |
+| FR-070 | Mirrors in `adapters/dot-aidd/scripts/` are byte copies made by `cp`; `unified_graph.py` joins the mirror guard lists; `skill/SKILL.md` G1 and the `aidd graphs` help describe the no-name form, the output path and the size options | AC-061 |
+| FR-071 | The explorer adopts, for every layer, the 8 controls of the approved alias mockup with the mockup's ids (owner: "Sí, adoptar todos los controles"): `zoomInBtn`, `zoomOutBtn`, `zoomResetBtn` (the three F47 toolbar buttons re-identified, same place and class), `zoomLevelDisplay` and `fitViewBtn` (same toolbar), `centerNodeBtn` and `copyNodeBtn` (inspector, after the purpose card), `themeToggleBtn` (header, after the PNG export button) | AC-062, AC-063 |
+| FR-072 | Theme: dark (the F47 tokens, owner: "Conservar la paleta de F47 (Recommended)") by default; `themeToggleBtn` toggles the class `light` on `<html>`; `:root.light` redefines 10 tokens with the mockup's light palette (`--bg-dark`, `--bg-card` `#ffffff`; `--bg-surface`, `--bg-card-hover`, `--bg-input` `#f6f8fa`; `--border-subtle`, `--border-strong` `#d0d7de`; `--text-main` `#1b1f24`; `--text-muted`, `--text-faint` `#667788`); 4 inline `color:#fff` become `var(--text-main)`; canvas edge and label colours follow the theme. The choice is remembered in `localStorage` key `aidd-explorer-theme`, every access inside try/catch; with storage blocked the page behaves identically except that the choice is not remembered (owner: "Sí, guardarla en el navegador (Recommended)") | AC-062, AC-063 |
+| FR-073 | Copy node writes the focal node as JSON (`id`, `label`, `layer`, `kind`, `type`, `domain`, `metadata`) with `navigator.clipboard.writeText`, falling back to a hidden textarea and `document.execCommand("copy")`; the button shows `Copiado` for 1500 ms (`textContent`); no focal node does nothing | AC-063 |
+| FR-074 | Zoom keeps the F47 factors (owner: "Los de F47: x1,25, rango 0,2-4,0 (Recommended)"): in ×1.25 up to 4.0, out ×0.8 down to 0.2, reset k = 1, x = y = 0; `zoomLevelDisplay` shows `Math.round(k * 100) + "%"` after every render, wheel included; fit places every displayed node inside the canvas with a 40 px margin, k clamped to [0.2, 4.0]; centre puts the focal node at the canvas centre | AC-063 |
+| FR-075 | Test hook: `window.aiddExplorer = {getTransform, getFocalId, selectNode}` (read-only copies; `selectNode(id)` calls the existing `setFocalNode`) | AC-063 |
+| FR-076 | Size guard: `graph_explorer.py` gets `--max-mb` (default `25`, owner: "Tope 25 MB, omitiendo code-graphify (Recommended)") and `--skip NAME[,NAME]`; when the HTML would exceed the ceiling it writes nothing, prints the size and the node and edge count per layer, and exits 3. Default unified output: `docs/graphs/explorer.html` | AC-064, AC-065 |
+| FR-077 | Measured visual comparison (T-VISUAL, owner: "Fila resuelta + comparación medida (Recommended)"): a script compares the generated page with the F47 Stitch prototype and the approved alias mockup by selectors, CSS tokens, counts and computed values only; each check is `match`, `differ`, `accepted-differ` (a difference the owner accepted, such as the F47 dark palette and zoom) or `not-comparable` with a reason; nothing is judged by eye | AC-066 |
 
 ## Acceptance cases
 
@@ -156,12 +191,35 @@ exclusion "reading source code into the graph" is LIFTED for AIDD's own built-in
 | AC-038 | a temp spec: (1) verify passed, no auditor; (2) a closing auditor whose `[tasks:<h8>]` differs; (3) the right auditor but a haiku model; (4) a code edit after the auditors | `aidd status` prints, for each case, the line naming the domain and the reason (missing, tag mismatch, haiku, older than the last code edit) and, for (1), the single instruction to dispatch one auditor per missing domain in ONE message; with every domain covered it prints no such line | yes |
 | AC-039 | `skill/hooks/prompt_trigger.py` and `skill/scripts/install_hooks.py` | the `find_spec` subprocess timeout is at most 8 s and below the registered hook timeout (10 s) | no |
 | AC-040 | a temp project: `aidd job wait ../x`, `aidd job last "a/b"`, `aidd job run -- python -c "pass" --token=abc123` then read `job.json`; `.gitignore` | both ids exit 2 with `refused` and read nothing outside `.aidd/jobs/`; `job.json` and `verdict.json` hold `--token=[redacted]`; `.gitignore` has `.aidd/jobs/` | yes |
+| AC-041 | temp project, 4 identical-shape `Edit` calls on different files | exactly one advisory, on the 4th call | no |
+| AC-042 | 4 edits with unrelated shapes | no advisory | yes |
+| AC-043 | `aidd tools <kw>` run by the agent, then repeated edits within 300 s | no advisory; after 300 s it fires again | yes |
+| AC-044 | corrupt or missing tool-first state file | exit 0, no output, no exception | yes |
+| AC-045 | `aidd status` after two advisories | prints `tool-first: 2 advisories / M edits this session` | no |
+| AC-046 | the owner's shape: 4 `Edit` calls on `specs/F36-eDoc-Purchasing/tasks.md`, `specs/F37-eDoc-Supplier-Invoice/tasks.md`, `specs/F38-eDoc-Import-Costing/tasks.md`, `specs/F39-eDoc-X/tasks.md` (temp project), each setting `done` in the Status cell of a row that differs only in the task id, the FR number and the backticked migration path | calls 1-3 print nothing; call 4 prints one advisory containing `aidd tools md` and `4 edits with the same shape`; one `tool_miss` with `kind == 'same_shape'` and `count == 4`; a 5th call of the same shape prints nothing | yes |
+| AC-050 | synthetic project whose charter declares `db`, `spec`, `ui`, `code` | layer names equal the names of `load_registry(root)`, in that order; `by_layer` = db 3, spec 1, ui 1, code 1 | no |
+| AC-051 | the same project plus a charter row `widgets` (kind `widgets`, JSON output with one node) | layer `widgets` with 1 node, colour `EXTRA_COLOURS[0]`; the HTML has `metric-widgets`, `layer-cb-widgets` and `--layer-widgets`; no code change | yes |
+| AC-052 | the same project plus a charter row `notes` with a `.toon` of an unknown kind (2 rows) | layer `notes` with 2 nodes whose labels are the `title` column | yes |
+| AC-053 | cross links on the fixture | `ui:COMP-001 -> spec:001-orders references`, `spec:001-orders -> db:table:ORDR mentions`, `spec:001-orders -> code:app/orders.py mentions`; no edge to the column `status` nor to the table `OCRD` | no |
+| AC-054 | neighbourhood from `db:table:ORDR` | radius 1 = 3 nodes, radius 2 = 5 nodes and contains radius 1; focal `zzz` gives no nodes and focal `None` | yes |
+| AC-055 | filters on the fixture | layer `db` only gives 3 nodes all in `db`; domain `sales` gives 2 nodes; edges only between kept nodes | no |
+| AC-056 | `code.json` deleted and `db.json` = `{not json` | no exception; `code` layer `missing`, `db` layer `error`, both warnings present, other layers loaded | yes |
+| AC-057 | `aidd_graphs.main(["--root", R, "explorer"])` | exit 0, `R/docs/graphs/explorer.html` exists; `explorer db` writes `R/.aidd/graphs/db.html` with one layer `db`; `explorer nope` exits 1 | yes |
+| AC-058 | generated HTML | FR-069 holds; no `innerHTML` assigned from a template literal built from data | no |
+| AC-059 | generated HTML for the four F47 layers | the 32 static F47 element ids, `insp-tech-details`, and the pill and checkbox markup of `db` byte-equal to the F47 lines 394 and 441; checkbox listeners call `activeLayers.add(` and `activeLayers.delete(` | no |
+| AC-060 | `tests/test_graph_explorer.py` | 9 passed after only the id or key updates listed in T-74 | no |
+| AC-061 | mirrors | `tests/test_dot_aidd_mirror.py` green with `unified_graph.py` in both lists | no |
+| AC-062 | generated HTML, unified (4 layers) and single-graph | each of the 8 control ids of FR-071 appears exactly once; `:root.light` defines the 10 FR-072 tokens with those values; `btn-zoom-in`, `btn-zoom-out`, `btn-zoom-reset` no longer appear | no |
+| AC-063 | headless browser on the synthetic page (skipped when Playwright or Chromium is absent) | zoom in 100% → 125%; zoom out from 100% → 80%; reset → 100%; fit → display between 20% and 400%; after `selectNode` and centre the focal node is within 1 px of the canvas centre; copy → clipboard JSON with the focal `id`; theme → computed `--bg-dark` `#ffffff`, then `#091016`; after choosing light and reloading the page opens light; with `localStorage` blocked the toggle still works, no page error, and a reload opens dark; 0 requests to a non-`file:` URL | yes |
+| AC-064 | `--max-mb 0.001` on the fixture | exit 3, no file written, message with bytes and per-layer counts; `--skip db` removes layer `db`; the default ceiling is 25 MB | yes |
+| AC-065 | `graph_explorer.main(["--root", R])` without `--out` | writes `R/docs/graphs/explorer.html` | no |
+| AC-066 | T-VISUAL report | JSON with every check `match`, `differ`, `accepted-differ` or `not-comparable`; 0 `differ` among the required checks; the dark-palette and zoom differences are `accepted-differ`; every other difference listed with its measured values | no |
 
 ## Verification
 
 Scope: auto
 
-Generated: .aidd/graphs/snapshots/**, .aidd/graphs/code.json, .aidd/graphs/method.json
+Generated: .aidd/graphs/snapshots/**, .aidd/graphs/code.json, .aidd/graphs/method.json, docs/graphs/explorer.html
 
 Jobs: 4
 
@@ -179,6 +237,19 @@ Jobs: 4
 | V-7 | python -m unittest tests.test_perf_budget tests.test_prompt_trigger | exit 0 | FR-031, FR-032, FR-033, FR-034, FR-045, FR-047 |
 | V-8 | python -m unittest tests.test_aidd_job tests.test_aidd_triage | exit 0 | FR-035, FR-036, FR-037, FR-038, FR-048 |
 | V-9 | python -m unittest tests.test_aidd_tools | exit 0 | FR-039, FR-040, FR-041, FR-042, FR-043 |
+| V-13 | python -m unittest discover -s tests -p "test_tool_first_hint.py" -v | exit 0 | FR-049, FR-050, FR-051, FR-052, FR-053, FR-054 |
+| V-14 | python -m unittest tests.test_install_hooks tests.test_read_hint | exit 0 | FR-049, FR-053 |
+| V-15 | python -m unittest discover -s tests -p "test_unified_graph.py" -v | exit 0 | FR-060, FR-061, FR-062, FR-063, FR-064, FR-065, FR-066 |
+| V-16 | python -m unittest discover -s tests -p "test_unified_explorer.py" -v | exit 0 | FR-067, FR-068, FR-069, FR-076 |
+| V-17 | python -m pytest tests/test_graph_explorer.py -q | contains: 9 passed | FR-067 |
+| V-18 | python -m unittest discover -s tests -p "test_explorer_controls*.py" -v | exit 0 | FR-071, FR-072, FR-073, FR-074, FR-075 |
+| V-19 | python -m pytest tests/test_aidd_graphs.py tests/test_graphs_auto.py -q | exit 0 | FR-068 |
+| V-21 | python skill/scripts/aidd_graphs.py explorer | exit 0 | FR-068, FR-076 |
+| V-22 | python -m unittest discover -s tests -p "test_visual_compare_explorer.py" -v | exit 0 | FR-077 |
+
+Rows V-18 and V-22: the browser-based tests skip visibly when no Chromium is installed and never fail for that reason.
+
+The mirror rows of both 2026-11-03 amendments (FR-052, FR-053 mirror, FR-070) are covered by V-4, which already runs `tests.test_dot_aidd_mirror`; no second row runs it (rule E9).
 
 ## Optimization brief
 
@@ -195,6 +266,8 @@ Owner pick: A. The owner chose "Scripts + hooks + metodología AIDD (Recommended
 Second amendment (FR-044..FR-048): options considered were A all four improvements (about 740k tokens / 80 min, low-medium risk: it touches `aidd_rules.py`, a gate file, class L), B speed only (about 300k / 45 min), C close and security only (about 330k / 45 min). The owner answered "optimicemos lo que falta" and then, on how to take it through the pipeline, "es enmienda no otro spec"; the recommended option A (all four) was the one offered and the scope above is that option, inside this spec.
 
 Second amendment 2026-10-24 (optimize what the closing audit left open). The owner asked "optimicemos lo que falta" and, asked how to take it through the pipeline, answered "es enmienda no otro spec": FR-044..FR-048 are added to this spec, not to a new one. In scope: the four parallel verification rows, the scoped read cache, the auditor diagnosis in `aidd status` and the single close sequence in `SKILL.md`/`AIDD.md`, the `find_spec` timeout of the prompt hook, and the `aidd job` hygiene items. Out of scope, left as open exceptions of the closing audit: L2 (a `--key` that matches 0 files), L3 (`graph_miss` target scrubbing), L4, L6, the code graph no-op refresh (2.7-3.6 s) and a persistent (cross-process) cache.
+
+Amendments 2026-11-03. Tool-first nudge: owner answers "N = 4 (Recommended)" and "Ediciones y comandos de shell (Recommended)". Unified explorer: owner answers "Archivo de 1.371 líneas + 3 bloques (Recommended)", "Mantener español, traducir después (Recommended)", "docs/graphs/explorer.html versionado", "Fila resuelta + comparación medida (Recommended)", "Campos genéricos de dominio (Recommended)", "Sí, adoptar todos los controles", "Tope 25 MB, omitiendo code-graphify (Recommended)", "Los de F47: x1,25, rango 0,2-4,0 (Recommended)", "Conservar la paleta de F47 (Recommended)", "Sí, guardarla en el navegador (Recommended)". Automation: the explorer and the model tests run on synthetic temporary projects; the explorer copy, the old-assertion mapping, the 26 `.layer` replacements and the mirrors are done by script (dry-run, apply, post-check); the two amendments share waves 11-20 (disjoint files per wave).
 
 ## Optional Align questions
 
