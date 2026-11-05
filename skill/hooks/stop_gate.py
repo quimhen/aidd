@@ -86,7 +86,7 @@ def _closing_header(ev, rules, root, spec, d):
     """aidd:FR-206 the exact FIRST line the closing auditor's prompt needs. Never raises."""
     try:
         doms = ', '.join(sorted(rules.required_domains(d)))
-        tasks = (d / 'tasks.md').read_text(encoding='utf-8', errors='replace')
+        tasks = rules.with_batches(d, (d / 'tasks.md').read_text(encoding='utf-8', errors='replace'))
         h = f'CLOSING AUDIT [domains: {doms}] [tasks:{rules.approval_hash(tasks)[:8]}]'
         try:
             if rules._is_gate2(ev, root, d):
@@ -114,7 +114,7 @@ def _obligations(ev, rules, roots):
         for spec in ev.open_specs(root):
             d = Path(root) / 'specs' / spec
             try:
-                tasks = (d / 'tasks.md').read_text(encoding='utf-8', errors='replace')
+                tasks = rules.with_batches(d, (d / 'tasks.md').read_text(encoding='utf-8', errors='replace'))
             except OSError:
                 continue
             if not rules.approval_valid(tasks):

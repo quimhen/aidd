@@ -30,6 +30,17 @@ CODE_RE = re.compile(r'\b(SCREEN-\d+(?:-F\d+)?|CTL-\d+|COMP-\d+|API-\d+|US-\d+)\
 TABLE_ROW_RE = re.compile(r'^\|(.+)\|\s*$')
 
 
+def read_tasks(spec_dir):
+    """tasks.md plus its `tasks-<name>.md` batch files as ONE text (same combination as aidd_rules.with_batches)."""
+    text = read(Path(spec_dir) / 'tasks.md')
+    try:
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        import aidd_rules
+        return aidd_rules.with_batches(spec_dir, text)
+    except Exception:
+        return text
+
+
 def read(path):
     return path.read_text(encoding='utf-8') if path.exists() else ''
 
@@ -478,7 +489,7 @@ def main():
 
     mockup_audit = read(spec_dir / 'mockup-audit.md')
     plan = read(spec_dir / 'plan.md')
-    tasks = read(spec_dir / 'tasks.md')
+    tasks = read_tasks(spec_dir)
     qa_audit = read(spec_dir / 'qa-audit.md')
     contracts = read(spec_dir / 'contracts.md')
     spec_text = read(spec_dir / 'spec.md')
@@ -672,6 +683,12 @@ def main():
     except Exception:
         pass
     print(_banner)
+    # amendment 09 FR-299 / B6: informational spec-size warning (never a gap, never affects the exit code)
+    for _fname, _ftext in (('spec.md', spec_text), ('plan.md', plan), ('tasks.md', tasks),
+                           ('mockup-audit.md', mockup_audit), ('contracts.md', contracts)):
+        if 300_000 < len(_ftext) <= 400_000:
+            print(f"WARNING: {_fname} is {len(_ftext)} chars (warning at 300000, limit 400000 for `aidd review`): "
+                  f"split the spec by amendment batches before the limit refuses it.")
     # FR-008: informational plan totals (never a gap, never affects the exit code)
     try:
         if tasks:

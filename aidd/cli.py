@@ -428,7 +428,7 @@ def build_parser():
     p_progress.set_defaults(func=cmd_progress)
 
     p_rules = sub.add_parser(
-        "rules", help="Hard rules: check <spec_dir> | approve <spec_dir> | close <spec_id> | abandon <spec_id> [--reason TEXT]",
+        "rules", help="Hard rules: check <spec_dir> | approve <spec_dir> | close <spec_id> [--check] | abandon <spec_id> [--reason TEXT]",
         add_help=False)
     p_rules.add_argument("rules_args", nargs=argparse.REMAINDER, help="forwarded to aidd_status.py (try: aidd rules check specs/001-x)")
     p_rules.set_defaults(func=cmd_rules)
@@ -468,6 +468,16 @@ def build_parser():
     p_review.add_argument("review_flags", nargs=argparse.REMAINDER,
                           help="forwarded to aidd_review.py: --open, --check (ONE status line; exit 0 complete / 2 pending / 3 stale, legacy, too many items), --wait (poll, then ONE status line; exit 0 complete / 2 timeout / 3 cannot help), --comments (<CODE>: <comment> lines), --summary (mechanical summary, writes nothing), --full (long page with heading keys), --timeout S, --interval S")
     p_review.set_defaults(func=cmd_review)
+
+    p_cl = sub.add_parser(
+        "close-ledger", help="aidd close-ledger <spec> [--check-fresh] [--json] [--domains a,b] [--verify-hash hex]: read-only draft of the closing audit (heading, verification table from evidence/verify-*.txt, R10 freshness)")
+    p_cl.add_argument("cl_args", nargs=argparse.REMAINDER)
+    p_cl.set_defaults(func=lambda a: _run("aidd_close_ledger.py", a.cl_args))
+
+    p_red = sub.add_parser(
+        "red", help="aidd red <test-cmd...> --task T-nn [--spec id] | aidd red --check <spec>: run a test that must FAIL and store the RED receipt in specs/<id>/evidence/red-T-nn.txt")
+    p_red.add_argument("red_args", nargs=argparse.REMAINDER)
+    p_red.set_defaults(func=lambda a: _run("aidd_red.py", a.red_args))
 
     p_verify = sub.add_parser(
         "verify", help="Run the spec's ## Verification commands and record the evidence (verify <spec>)",
@@ -647,6 +657,9 @@ def main(argv=None):
         sys.exit(_run(_script, (["size"] if argv[0] == "size" else []) + argv[1:]))
     if argv and argv[0] == "sqlcheck":
         sys.exit(_run("aidd_sqlcheck.py", argv[1:]))
+    if argv and argv[0] in ("close-ledger", "red"):
+        # amendment 09 B12 / B5 - each script owns its parsing (`aidd red` forwards the test command verbatim).
+        sys.exit(_run({"close-ledger": "aidd_close_ledger.py", "red": "aidd_red.py"}[argv[0]], argv[1:]))
     if argv and argv[0] == "review":
         # aidd:FR-313 — aidd_review.py owns the parsing, so the flags work in any order
         # (`aidd review --summary <spec>` as well as `aidd review <spec> --summary`); the

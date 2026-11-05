@@ -335,6 +335,11 @@ def measure(root, spec_dir):
     d = Path(spec_dir)
     tasks_md = d / 'tasks.md'
     text = tasks_md.read_text(encoding='utf-8', errors='replace') if tasks_md.is_file() else ''
+    try:   # tasks.md + its tasks-<name>.md batch files
+        import aidd_rules
+        text = aidd_rules.with_batches(d, text)
+    except Exception:
+        pass
     rows = []
     for t in parse_tasks(text):
         rows.append({**t, 'state': task_state(t, root), 'declared_done': bool(DONE_RE.search(t['status']))})

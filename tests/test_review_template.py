@@ -691,5 +691,150 @@ class PathForms(unittest.TestCase):
             os.chdir(cwd)
 
 
+FIXED_RESULT_STRINGS = ["~35 min", "Ahorro", "68%", "DAG READY", "100% Cobertura", "0 Deuda Visual",
+                        "R1 - R6 PASS", "R1-R6 PASS", "Zero-Regression", "0 Desalineados",
+                        "Executive Precision"]
+PLAYWRIGHT_DIR = Path(os.environ.get("AIDD_PLAYWRIGHT_DIR",
+                                     r"D:\Fuentes\b1SycLink\eDoc\web\node_modules\playwright"))
+
+
+class TestKpiHonesty(unittest.TestCase):
+    """A KPI on an approval page is measured by the generator or it does not exist."""
+
+    def setUp(self):
+        self.text = COMPACT.read_text(encoding="utf-8")
+
+    def test_no_fixed_result_text(self):
+        for s in FIXED_RESULT_STRINGS:
+            self.assertNotIn(s, self.text, f"fixed result text in the template: {s!r}")
+
+    def test_kpi_slots_are_empty_placeholders(self):
+        slots = re.findall(r'<div class="kpi-(?:val|sub)[^"]*" id="kpi-(?:val|sub)-(\w+)">(.*?)</div>', self.text)
+        self.assertEqual(sorted({s[0] for s in slots}), ["effort", "mockups", "tasks", "verif"])
+        for _id, content in slots:
+            self.assertEqual(content, "\u2014", f"kpi-{_id} must be a placeholder until measured")
+        self.assertEqual(len(slots), 8)
+
+    def test_kpis_filled_from_generator_data(self):
+        js = SCRIPT_RE.search(self.text).group(1)
+        self.assertIn("data.kpis", js)
+        self.assertNotIn("Reglas R1-R6", js)
+
+    def test_zoom_controls(self):
+        for cid in ("vp-zoom-out", "vp-zoom-reset", "vp-zoom-in"):
+            self.assertIn(f'id="{cid}"', self.text)
+        js = SCRIPT_RE.search(self.text).group(1)
+        self.assertIn("vp-zoom-reset", js)
+
+    def test_kpi_layout_cannot_force_overflow(self):
+        self.assertRegex(self.text, r"\.kpi-card\{[^}]*min-width:0")
+        self.assertIn("@media (max-width:", self.text)
+
+
+PROBE_JS = r"""
+const { chromium } = require(process.argv[2]);
+(async () => {
+  const url = process.argv[3];
+  const out = { widths: {}, zoom: {} };
+  const browser = await chromium.launch();
+  for (const w of [375, 768, 1440]) {
+    const page = await browser.newPage({ viewport: { width: w, height: 900 } });
+    await page.goto(url);
+    out.widths[w] = await page.evaluate(() => {
+      const iw = window.innerWidth, off = [];
+      document.querySelectorAll('.kpi-row, .kpi-row *').forEach(e => {
+        const r = e.getBoundingClientRect();
+        if (r.width && r.right > iw + 0.5) off.push((e.className || e.tagName) + ':' + Math.round(r.right - iw));
+      });
+      const row = document.querySelector('.kpi-row');
+      return { doc: document.documentElement.scrollWidth - iw, body: document.body.scrollWidth - iw,
+               row: row.scrollWidth - row.clientWidth, offenders: off,
+               kpi: Array.from(document.querySelectorAll('.kpi-card')).map(c => c.innerText.replace(/\s+/g, ' ')) };
+    });
+    if (w === 1440) {
+      const label = () => page.textContent('#vp-zoom-reset');
+      out.zoom.start = (await label()).trim();
+      await page.click('#vp-zoom-in');
+      out.zoom.in = (await label()).trim();
+      out.zoom.imgWidth = await page.evaluate(() => document.getElementById('mockup-img').style.width);
+      await page.click('#vp-zoom-out'); await page.click('#vp-zoom-out');
+      out.zoom.out = (await label()).trim();
+      await page.click('#vp-zoom-reset');
+      out.zoom.reset = (await label()).trim();
+    }
+    await page.close();
+  }
+  await browser.close();
+  console.log(JSON.stringify(out));
+})().catch(e => { console.error(String(e)); process.exit(1); });
+"""
+PNG_1PX = bytes.fromhex("89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c489"
+                        "0000000d49444154789c6360f8ffff3f0005fe02fea7d6a2540000000049454e44ae426082")
+AUDIT_MD = """# Mockup audit
+
+## Screen inventory
+| Screen | Route | Name | Type | Uses | Source | Purpose |
+|---|---|---|---|---|---|---|
+| SCREEN-01 | / | Home | view | COMP-01 | mockup | The home |
+"""
+
+
+@unittest.skipUnless(NODE and (PLAYWRIGHT_DIR / "package.json").is_file(),
+                     "node or playwright (AIDD_PLAYWRIGHT_DIR) not available")
+class TestPortalBrowser(unittest.TestCase):
+    """Measured in a real browser on a page generated from a COPY of a fixture spec."""
+
+    @classmethod
+    def setUpClass(cls):
+        sys.path.insert(0, str(ROOT / "skill" / "scripts"))
+        import aidd_review
+        cls.tmp = tempfile.TemporaryDirectory()
+        d = Path(cls.tmp.name) / "specs" / "999-kpi-fixture"
+        (d / "prototype").mkdir(parents=True)
+        (d / "spec.md").write_text(
+            "# Spec\n\n## Requirements\n| Code | Requirement |\n|---|---|\n| FR-001 | Do X. |\n\n"
+            "## Visual debt\n| Item | Status |\n|---|---|\n| Header | open |\n", encoding="utf-8")
+        (d / "plan.md").write_text("# Plan\n\nNames.\n", encoding="utf-8")
+        (d / "tasks.md").write_text(
+            "# Tasks\n\nApproved: PENDING\n\n| Task | Codes satisfied | Target file | Status |\n|---|---|---|---|\n"
+            "| T-01 | FR-001 | a.py | |\n\n## Waves\n| Wave | Tasks | Agent time (min) | Human ref (h) |\n"
+            "|---|---|---|---|\n| 1 | T-01 | 7 | 1 |\n\nTotal agent time (critical path): 7 min\n", encoding="utf-8")
+        (d / "mockup-audit.md").write_text(AUDIT_MD, encoding="utf-8")
+        (d / "prototype" / "SCREEN-01.png").write_bytes(PNG_1PX)
+        page, _ = aidd_review.generate(d)
+        script = Path(cls.tmp.name) / "probe.js"
+        script.write_text(PROBE_JS, encoding="utf-8")
+        r = subprocess.run([NODE, str(script), str(PLAYWRIGHT_DIR), page.resolve().as_uri()],
+                           capture_output=True, text=True, encoding="utf-8", timeout=180)
+        cls.err = r.stderr
+        cls.out = json.loads(r.stdout) if r.returncode == 0 else None
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.tmp.cleanup()
+
+    def test_probe_ran(self):
+        self.assertIsNotNone(self.out, self.err)
+
+    def test_no_horizontal_overflow_at_375_768_1440(self):
+        for w in ("375", "768", "1440"):
+            m = self.out["widths"][w]
+            self.assertEqual((m["doc"], m["body"], m["row"], m["offenders"]), (0, 0, 0, []), f"{w}px: {m}")
+
+    def test_kpi_cards_show_measured_values(self):
+        text = " | ".join(self.out["widths"]["1440"]["kpi"])
+        self.assertIn("7 min", text)
+        self.assertIn("1 tarea", text)
+        self.assertIn("1 ola", text)
+        self.assertIn("Deuda visual abierta: 1", text)
+        for s in FIXED_RESULT_STRINGS:
+            self.assertNotIn(s, text)
+
+    def test_zoom_and_reset(self):
+        z = self.out["zoom"]
+        self.assertEqual((z["start"], z["in"], z["out"], z["reset"]), ("100%", "125%", "75%", "100%"))
+        self.assertEqual(z["imgWidth"], "125%")
+
+
 if __name__ == "__main__":
     unittest.main()

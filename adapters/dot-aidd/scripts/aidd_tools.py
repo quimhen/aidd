@@ -217,7 +217,15 @@ def catalog(root, keywords, as_json):
 def _targets_of(path):
     """[(task_id, [files])] from the Target file column of a tasks.md."""
     out = []
-    for ln in _read(path).splitlines():
+    texts = [_read(path)]
+    if os.path.basename(path) == 'tasks.md':   # + the tasks-<name>.md batch files of the same spec
+        try:
+            folder = os.path.dirname(path)
+            texts += [_read(os.path.join(folder, n)) for n in sorted(os.listdir(folder))
+                      if re.fullmatch(r'tasks-[A-Za-z0-9_-]+\.md', n)]
+        except OSError:
+            pass
+    for ln in '\n'.join(texts).splitlines():
         cells = [c.strip() for c in ln.strip().strip('|').split('|')]
         if len(cells) < 3 or not re.match(r'^T-\d+', cells[0]):
             continue

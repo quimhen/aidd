@@ -59,6 +59,8 @@ import aidd.cli as aidd_cli  # noqa: E402
 # verbatim except extension_registry.py (deliberate adaptation, checked
 # separately below).
 VERBATIM_SCRIPTS = [
+    "aidd_close_ledger.py",
+    "aidd_red.py",
     "check_spec.py",
     "check_charter.py",
     "flowmap.py",

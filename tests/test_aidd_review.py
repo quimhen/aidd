@@ -1433,5 +1433,88 @@ class TestRealModules(_Tmp):
             self.assertEqual(_page_data(page.read_text(encoding="utf-8"))["carry"]["pending"], ["T-17"])
 
 
+KPI_SPEC = SPEC_MD + """
+## Visual debt
+| Item | Status |
+|---|---|
+| Header differs from the mockup | open |
+| Footer spacing | closed |
+"""
+KPI_TASKS = """# Tasks
+
+Approved: PENDING
+
+| Task | Codes satisfied | Target file | Status |
+|---|---|---|---|
+| T-01 | FR-001 | a.py | |
+| T-02 | FR-002 | b.py | |
+| T-03 | FR-002 | c.py | |
+
+## Waves
+| Wave | Tasks | Agent time (min) | Human ref (h) |
+|---|---|---|---|
+| 1 | T-01, T-02 | 10 | 1 |
+| 2 | T-03 | 15 | 1 |
+
+Total agent time (critical path): 25 min
+"""
+
+
+def _kpis(page_text):
+    return {k["id"]: k for k in _page_data(page_text)["kpis"]}
+
+
+class TestKpisFakes(_Faked):
+    """The KPI strip carries MEASURED values only (generator-computed, never template text)."""
+
+    def test_kpis_measured_from_the_spec(self):
+        d = _make_spec(self.root, IDS[0])
+        k = _kpis(aidd_review.build_html(d, template_text=TEMPLATE))
+        self.assertEqual(list(k), ["effort", "tasks", "mockups", "verif"])
+        self.assertEqual(k["effort"]["value"], "10 min")
+        self.assertIn("5k tokens", k["effort"]["sub"])
+        self.assertEqual(k["tasks"]["value"], "2 tareas")
+        self.assertIn("1 ola", k["tasks"]["sub"])
+        self.assertEqual(k["mockups"]["value"], "0 pantallas")
+        self.assertIn("sin tabla Visual debt", k["mockups"]["sub"])
+
+    def test_kpis_never_assert_pass_or_full_coverage(self):
+        d = _make_spec(self.root, IDS[0])
+        blob = json.dumps(_page_data(aidd_review.build_html(d, template_text=TEMPLATE))["kpis"])
+        for fixed in ("PASS", "100%", "Zero-Regression", "DAG READY", "Ahorro", "~35 min"):
+            self.assertNotIn(fixed, blob)
+
+
+@unittest.skipIf(FAKES_ONLY, "AIDD_REVIEW_FAKES_ONLY=1: the main agent runs this with the real modules")
+class TestKpisReal(_Tmp):
+    def test_kpis_computed_from_real_sources(self):
+        d = _make_spec(self.root, IDS[0], spec=KPI_SPEC, tasks=KPI_TASKS)
+        page, _ = aidd_review.generate(d, template_text=TEMPLATE)
+        data = _page_data(page.read_text(encoding="utf-8"))
+        k = {x["id"]: x for x in data["kpis"]}
+        self.assertEqual(k["effort"]["value"], "25 min")
+        self.assertEqual(k["tasks"]["value"], "3 tareas")
+        self.assertIn("2 olas", k["tasks"]["sub"])
+        self.assertIn("Deuda visual abierta: 1", k["mockups"]["sub"])
+        self.assertEqual(k["verif"]["value"], "1 verificación")
+        n = len(data["verification_problems"])
+        self.assertIn(f"{n} problema" if n == 1 else f"{n} problemas", k["verif"]["sub"])
+
+    def test_kpis_say_unknown_when_not_measurable(self):
+        d = _make_spec(self.root, IDS[1])           # TASKS_MD: no Waves table, no total, no debt table
+        page, _ = aidd_review.generate(d, template_text=TEMPLATE)
+        k = {x["id"]: x for x in _page_data(page.read_text(encoding="utf-8"))["kpis"]}
+        self.assertEqual(k["effort"]["value"], "sin estimar")
+        self.assertIn("sin tabla Waves", k["tasks"]["sub"])
+        self.assertIn("sin tabla Visual debt", k["mockups"]["sub"])
+
+    def test_visual_debt_counts_only_open_rows(self):
+        self.assertIsNone(aidd_review._visual_debt_open_count("# S\n\n## Other\n| A | Status |\n|---|---|\n| x | open |\n"))
+        self.assertEqual(aidd_review._visual_debt_open_count(KPI_SPEC), 1)
+        self.assertEqual(aidd_review._visual_debt_open_count(
+            "## Visual debt\n| Item | Status |\n|---|---|\n| a | Open |\n| b | open |\n| c | closed |\n"), 2)
+        self.assertEqual(aidd_review._visual_debt_open_count("## Visual debt\n\nNone.\n"), 0)
+
+
 if __name__ == "__main__":
     unittest.main()

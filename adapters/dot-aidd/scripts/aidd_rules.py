@@ -497,6 +497,28 @@ def plan_totals(tasks_text):
 
 
 def _check_tasks(text):
+    """R1 over a tasks text. With batch files (combined text) EACH file is checked on its own (own Waves
+    table, own totals; violations of a batch carry its file name) and a task id defined in two files is reported."""
+    segs = split_tasks_segments(text)
+    legacy_ok = _is_legacy_tasks(text)
+    if len(segs) == 1:
+        return _check_tasks_one(text, legacy_ok)
+    out, seen = [], {}
+    for name, seg in segs:
+        vs = _check_tasks_one(seg, legacy_ok)
+        if name != 'tasks.md':
+            for v in vs:
+                v['message'] = f'[{name}] ' + v['message']
+        out += vs
+        for tid in _task_blocks(_clean(seg)):
+            if tid in seen and seen[tid] != name:
+                out.append(_v('R1', f'{tid} has a task block in more than one tasks file ({seen[tid]} and {name}).',
+                              f'Keep the "### {tid}" block in ONE file (a pointer row in the base is fine, a second block is not).'))
+            seen.setdefault(tid, name)
+    return out
+
+
+def _check_tasks_one(text, legacy_ok):
     out = []
     t = _clean(text)
     fix_w = (f'Add a "## Waves" section with the table {_NEW_WAVES_HDR} '
@@ -506,7 +528,7 @@ def _check_tasks(text):
     waves = []
     variant = 'legacy'
     # FR-009: ONLY an approved tasks.md (approval_valid) with no tokens column is legacy and exempt
-    legacy_ok = _is_legacy_tasks(text)
+    # (legacy_ok is computed once over the whole combined text by _check_tasks)
     if tbl is None:
         out.append(_v('R1', 'tasks.md has no "## Waves" table.', fix_w))
     else:
@@ -1524,6 +1546,54 @@ def unit_consent_question(package):
     return f"Aprobar unidad? [unit:{data['unit']}:{data['digest']}]\n{package}"
 
 
+# ------------------------------------------------- tasks split over batch files
+# A spec keeps `tasks.md` (the base, holds the single `Approved:` line) and may add batch files named
+# `tasks-<name>.md` (e.g. one per amendment batch). Drafts (`tasks-x.draft.md`, a dot in the name) are not
+# batches. Everything that hashes, checks, gates or reviews the tasks reads the COMBINED text: the base text
+# followed, in sorted file-name order, by `<!-- aidd-batch: <name> -->` + the batch text. A spec with no batch
+# file yields the base text unchanged, so its approval hash is byte-for-byte the historical one.
+_BATCH_FILE_RE = re.compile(r'tasks-[A-Za-z0-9_-]+\.md')
+_BATCH_MARK_RE = re.compile(r'^<!-- aidd-batch: (tasks-[A-Za-z0-9_-]+\.md) -->[ \t]*\r?$', re.M)
+
+
+def tasks_batch_names(spec_dir):
+    """Sorted names of the batch task files (`tasks-<name>.md`) of a spec folder; [] when none."""
+    try:
+        return sorted(p.name for p in Path(spec_dir).iterdir() if _BATCH_FILE_RE.fullmatch(p.name) and p.is_file())
+    except OSError:
+        return []
+
+
+def combine_tasks(base_text, batches):
+    """base text + `<!-- aidd-batch: name -->` + text for each (name, text) of `batches` (given in order)."""
+    out = base_text
+    for name, text in batches:
+        out += ('' if out.endswith('\n') else '\n') + f'\n<!-- aidd-batch: {name} -->\n' + text
+    return out
+
+
+def with_batches(spec_dir, base_text):
+    """The combined tasks text of a spec: `base_text` (tasks.md) plus its batch files. Returns `base_text`
+    itself when it is empty/None (no tasks.md) or the spec has no batch file."""
+    if not base_text:
+        return base_text
+    names = tasks_batch_names(spec_dir)
+    if not names:
+        return base_text
+    return combine_tasks(base_text, [(n, _read(Path(spec_dir) / n)) for n in names])
+
+
+def read_tasks(spec_dir):
+    """Combined tasks text of a spec folder ('' when tasks.md is missing)."""
+    return with_batches(spec_dir, _read(Path(spec_dir) / 'tasks.md'))
+
+
+def split_tasks_segments(text):
+    """[(file name, text)] of a combined tasks text; the first is always ('tasks.md', base)."""
+    parts = _BATCH_MARK_RE.split(text if isinstance(text, str) else '')
+    return [('tasks.md', parts[0])] + [(parts[i], parts[i + 1]) for i in range(1, len(parts) - 1, 2)]
+
+
 def approval_projection(tasks_text):
     """Semantic task text shared by legacy approval and incremental scope hashes."""
     t = _norm_nl(tasks_text)
@@ -1597,7 +1667,7 @@ def required_domains(spec_dir):
     doms = {'security', 'functional'}
     try:
         d = Path(spec_dir)
-        tasks = _read(d / 'tasks.md')
+        tasks = read_tasks(d)
         if re.search(r'\b(SCREEN|CTL|COMP)-\d+', tasks):
             doms.add('ui')
         if re.search(r'\bAPI-\d+', tasks):
@@ -1637,7 +1707,7 @@ def impact_summary(spec_dir):
     when a target path names an auth/secret/permission surface; `performance` only for a large change or a
     database change that is not small. A suggestion, never a gate. Never raises."""
     try:
-        files = task_targets(_read(Path(spec_dir) / 'tasks.md'))
+        files = task_targets(read_tasks(spec_dir))
         n = len(files)
         mag = 'small' if n <= 2 else ('medium' if n <= 8 else 'large')
         doms = {'functional'}
@@ -1895,6 +1965,11 @@ def check_spec_dir(spec_dir, root=None, session=None, static_only=False):
         proj = _proj_root(d, root)
         spec_big, tasks_big = _big(spec_p), _big(tasks_p)
         spec_t, tasks_t = ('' if spec_big else _read(spec_p)), ('' if tasks_big else _read(tasks_p))
+        if not tasks_big:
+            for bn in tasks_batch_names(d):
+                if _big(d / bn):
+                    out.append(_v('R1', f'{bn} file too large (> 2 MB): it is not scanned.', f'Shrink {bn} below 2 MB.'))
+            tasks_t = with_batches(d, tasks_t)
         if not spec_p.exists():
             out.append(_v('R2', f'{d.name}/spec.md does not exist.', 'Create spec.md (templates/spec.md) first.'))
         elif spec_big:
@@ -2858,7 +2933,7 @@ def _current_approved(ev, root, spec_dir):
     if not callable(f):
         return None
     try:
-        tasks = _read(d / 'tasks.md')
+        tasks = read_tasks(d)
         a = f(root, d.name, approval_hash(tasks)) if tasks.strip() else None
         return a if a is not None else f(root, d.name)
     except Exception:
@@ -2998,7 +3073,7 @@ def _run_problems(ev, root, spec_dir, spec_text, run, fingerprint=None):
                 return True
             except (ValueError, re.error):
                 return False
-        current_scope = verification_scope(spec_text, _read(d / 'tasks.md'))
+        current_scope = verification_scope(spec_text, read_tasks(d))
         recorded_generated = [str(x) for x in (run.get('code_generated') or [])]
         legacy_fp = run.get('code_fp_end')
         legacy_safe = (not algorithm and isinstance(legacy_fp, str)
@@ -3033,7 +3108,7 @@ def _run_problems(ev, root, spec_dir, spec_text, run, fingerprint=None):
             cnow = (g(root, scope=scope, exclude=excl, **kw) if (scope or excl) else g(root, **kw)) if callable(g) else None
         except Exception:
             cnow = None
-        if verification_scope(spec_text, _read(d / 'tasks.md')) != sorted(scope):
+        if verification_scope(spec_text, read_tasks(d)) != sorted(scope):
             out.append(('stale', _v('R10', 'The Verification `Scope:` line changed after the last verify_run.', rerun)))
         if cnow != cfp_end:
             out.append(('stale', _v('R10', 'A code or data file changed since the last verify_run (documentation edits and commits do not count).',
@@ -3225,7 +3300,7 @@ def _closing_audit_reason(event, spec_dir, domains, gate2, ev, root):
         if not want <= h['domains']:
             return 'its header lacks the required domain(s): ' + ', '.join(sorted(want - h['domains']))
         d = Path(spec_dir)
-        tasks = _read(d / 'tasks.md')
+        tasks = read_tasks(d)
         if not tasks.strip():
             return 'tasks.md is missing or empty (no [tasks:<h8>] to match)'
         h8 = approval_hash(tasks)[:8]

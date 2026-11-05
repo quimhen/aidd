@@ -287,6 +287,18 @@ def _safe_list(fn):
         return []
 
 
+def _read_tasks_small(d):
+    """tasks.md + its tasks-<name>.md batch files (None/'' stay as they are)."""
+    text = _read_small(Path(d) / 'tasks.md')
+    if not text:
+        return text
+    try:
+        import aidd_rules
+        return aidd_rules.with_batches(d, text)
+    except Exception:
+        return text
+
+
 def _read_small(p):
     """Text of `p`, or None when it is missing, unreadable or larger than MAX_QA_READ."""
     try:
@@ -426,7 +438,7 @@ def _staged_hash(root, path):
 def _partial_passes(root, d, code, status, ev, rules, full_ts):
     """Read the latest relevant runner receipt; unknown coverage cannot bypass verify."""
     try:
-        tasks_text, spec_text = _read_small(d / 'tasks.md'), _read_small(d / 'spec.md')
+        tasks_text, spec_text = _read_tasks_small(d), _read_small(d / 'spec.md')
         if tasks_text is None or spec_text is None:
             return False
         owners = _task_owners(tasks_text)
@@ -499,7 +511,7 @@ def _latest_partial_failure(root, d, code, evidence):
                     return float('inf')
                 if set(values) & staged_ids:
                     return float('inf')
-        owners = _task_owners(_read_small(d / 'tasks.md') or '')
+        owners = _task_owners(_read_tasks_small(d) or '')
         affected = {task for task, paths in owners.items() if set(paths) & set(code)}
         latest = 0.0
         provider_events = evidence.events(root, kind='provider_verify_run')
@@ -565,7 +577,7 @@ def _owning_specs(root, code):
     owners = []
     for spec in _safe_list(lambda: ev.open_specs(root)):
         d = root / 'specs' / str(spec)
-        text = _read_small(d / 'tasks.md')
+        text = _read_tasks_small(d)
         if not text:
             continue
         targets = set(_target_files(text))
@@ -603,7 +615,7 @@ def _light_status(root, d, ev, rules, approved):
     if not tasks_p.exists():
         ap = 'no-tasks'
     else:
-        text = _read_small(tasks_p)
+        text = _read_tasks_small(d)
         if text is None:
             return {'spec': d.name, 'unparseable': True}
         if rules.approval_line(text) is None:

@@ -47,6 +47,7 @@ from pathlib import Path
 
 SOURCES = ('spec.md', 'plan.md', 'tasks.md', 'mockup-audit.md', 'contracts.md')
 MAX_REVIEW_SOURCE_CHARS = 400_000
+WARN_REVIEW_SOURCE_CHARS = 300_000   # early warning (amendment 09 FR-299): split before the limit refuses
 REVIEW_HTML = 'review.html'
 REVIEW_MD = 'review.md'
 TEMPLATE_COMPACT = 'review.html'
@@ -192,13 +193,39 @@ def _load_sources(spec_dir):
                 text = _read_text(p)
         except OSError:
             text = None
+        if name == 'tasks.md' and text is not None:
+            try:   # tasks.md + its tasks-<name>.md batch files, one combined text (hash, items, headings)
+                text = _rules().with_batches(d, text)
+            except ImportError:
+                pass
         out.append((name, text))
     return out
 
 
 def _oversize(sources):
-    """[(name, chars)] of the sources over MAX_REVIEW_SOURCE_CHARS (aidd:FR-202 fail closed)."""
-    return [(n, len(t)) for n, t in sources if t is not None and len(t) > MAX_REVIEW_SOURCE_CHARS]
+    """[(name, chars)] of the sources over MAX_REVIEW_SOURCE_CHARS (aidd:FR-202 fail closed). The limit is
+    per FILE: the combined tasks text is split back into tasks.md and each `tasks-<name>.md` batch file."""
+    out = []
+    for n, t in sources:
+        if t is None:
+            continue
+        parts = [(n, t)]
+        if n == 'tasks.md':
+            try:
+                parts = _rules().split_tasks_segments(t)
+            except ImportError:
+                pass
+        out += [(pn, len(pt)) for pn, pt in parts if len(pt) > MAX_REVIEW_SOURCE_CHARS]
+    return out
+
+
+def size_warnings(sources):
+    """[sentence] for each source in the warning band (WARN_REVIEW_SOURCE_CHARS < chars <= MAX_REVIEW_SOURCE_CHARS):
+    still reviewable, but the spec should be split by amendment batches before the limit refuses it."""
+    return [f'{n} is {len(t)} chars (warning at {WARN_REVIEW_SOURCE_CHARS}, limit {MAX_REVIEW_SOURCE_CHARS}): '
+            'split the spec by amendment batches (one amendment file per batch) before the limit refuses it'
+            for n, t in sources
+            if t is not None and WARN_REVIEW_SOURCE_CHARS < len(t) <= MAX_REVIEW_SOURCE_CHARS]
 
 
 def _stem(source):
@@ -993,6 +1020,93 @@ def _explicit_prior(prior, order):
     return kept, carry
 
 
+# ---------------------------------------------------------------------------
+# KPI strip: every figure is MEASURED here from the spec's own files (never template text)
+# ---------------------------------------------------------------------------
+
+def _plural(n, one, many):
+    return f'{n} {one if n == 1 else many}'
+
+
+def _visual_debt_open_count(spec_text):
+    """Open rows of the spec's `## Visual debt` table (Status column == open); None when the spec
+    has no such section (nothing was measured), 0 when the section has no open row."""
+    if not spec_text:
+        return None
+    lines, fence, inside, found, header, n = str(spec_text).replace('\r\n', '\n').split('\n'), False, False, False, None, 0
+    for line in lines:
+        s = line.strip()
+        if s.startswith('```') or s.startswith('~~~'):
+            fence = not fence
+            continue
+        if fence:
+            continue
+        h = re.match(r'^ {0,3}#{1,6}[ \t]+(.*?)[ \t#]*$', line)
+        if h:
+            inside = h.group(1).strip().lower().startswith('visual debt')
+            found = found or inside
+            header = None
+            continue
+        if not inside or not s.startswith('|'):
+            continue
+        cells = [c.strip() for c in s.strip('|').split('|')]
+        if header is None:
+            header = [c.lower() for c in cells]
+            continue
+        if all(re.fullmatch(r':?-{1,}:?', c) for c in cells if c):
+            continue
+        if 'status' in header:
+            si = header.index('status')
+            if si < len(cells) and cells[si].lower() == 'open' and cells[0]:
+                n += 1
+    return n if found else None
+
+
+def _kpis(texts, order, summary, waves, problems, lint_ok):
+    """The four KPI cards as [{'id','value','sub'}]: counts of the page's own items, the plan totals
+    of tasks.md, the open rows of `## Visual debt` and the `check_verification` lint result. What
+    cannot be measured says so ('sin estimar', 'sin tabla ...'); nothing is ever a fixed PASS/100%."""
+    summary = summary if isinstance(summary, dict) else {}
+    minutes, tokens = summary.get('minutes'), summary.get('tokens_k')
+    n_tasks = sum(1 for c in order if c.startswith('T-'))
+    n_screens = sum(1 for c in order if c.startswith('SCREEN-'))
+    n_verif = sum(1 for c in order if c.startswith('V-'))
+    debt = _visual_debt_open_count(texts.get('spec.md'))
+    if minutes is not None:
+        effort = (f'{minutes} min', f'{tokens}k tokens (tasks.md)' if tokens is not None
+                  else 'tokens no declarados en tasks.md')
+    else:
+        effort = ('sin estimar', 'tasks.md no declara minutos')
+    if not lint_ok:
+        lint = 'lint de verificaci\u00f3n no disponible'
+    elif problems:
+        lint = _plural(len(problems), 'problema', 'problemas') + ' de lint (bloquean la aprobaci\u00f3n)'
+    else:
+        lint = '0 problemas de lint de verificaci\u00f3n'
+    return [
+        {'id': 'effort', 'value': effort[0], 'sub': effort[1]},
+        {'id': 'tasks', 'value': _plural(n_tasks, 'tarea', 'tareas'),
+         'sub': _plural(waves, 'ola', 'olas') if waves else 'sin tabla Waves'},
+        {'id': 'mockups', 'value': _plural(n_screens, 'pantalla', 'pantallas'),
+         'sub': f'Deuda visual abierta: {debt}' if debt is not None else 'sin tabla Visual debt'},
+        {'id': 'verif', 'value': _plural(n_verif, 'verificaci\u00f3n', 'verificaciones'), 'sub': lint},
+    ]
+
+
+def _lint_available():
+    try:
+        return getattr(_rules(), 'check_verification', None) is not None
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def _wave_total(it, tasks_text):
+    try:
+        return int(it.wave_count(tasks_text or ''))
+    except Exception:  # noqa: BLE001 — informative only
+        return 0
+
+
 def _compact_page(d, texts, prior, problems):
     """(body, blob fields) of the compact page. ValueError over MAX_ITEMS (nothing written).
     aidd:FR-301 aidd:FR-303 aidd:FR-312"""
@@ -1044,6 +1158,8 @@ def _compact_page(d, texts, prior, problems):
         'summary': summary if isinstance(summary, dict) else {},
         'verification_problems': problems,
         'mockups': _extract_mockups(d, texts.get('mockup-audit.md')),
+        'kpis': _kpis(texts, order, summary, _wave_total(it, texts.get('tasks.md')), problems,
+                      _lint_available()),
     }
     return _compact_body(tabs, items, warnings, texts, problems), data
 
@@ -1330,6 +1446,10 @@ def _approval_tag(spec_dir):
     except OSError:
         return None
     try:
+        text = _rules().with_batches(spec_dir, text)
+    except ImportError:
+        pass
+    try:
         _script_dir_on_path()
         import aidd_status  # noqa: E402 — lazy: a heavy module, needed only for the tag
         tag = aidd_status.approval_tag(text)
@@ -1559,6 +1679,8 @@ def main(argv=None):
             return 0
         if a.visual:
             p.error('--visual requires --unit')
+        for w in size_warnings(_load_sources(d)):
+            print(f'warning: {w}', file=sys.stderr)
         if a.check or a.wait or a.comments or a.summary:
             _items()
             sm = _state()

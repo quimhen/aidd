@@ -26,6 +26,9 @@ Usage:
                                                 qa-audit.md, every required domain audited (spec 007 specs:
                                                 plus a fresh passing verify_run) and the user's
                                                 affirmative answer to a "close/finish" question
+    aidd_status.py rules close <spec_id> --check  dry run of `rules close`: runs the SAME gates (R6/R7 gaps and the
+                                                "Yes, close" answer), lists everything that is missing, records nothing;
+                                                exit 0 only when `rules close` would be accepted now
     aidd_status.py rules abandon <spec_id> [--reason TEXT]
                                                 record spec_closed(abandoned): needs the user's affirmative
                                                 answer to an "abandon/discard" question (no qa-audit needed)
@@ -101,6 +104,20 @@ def _read(p):
         return Path(p).read_text(encoding='utf-8', errors='replace')
     except Exception:
         return ''
+
+
+def _read_tasks(d):
+    """Combined tasks text of a spec folder: tasks.md plus its `tasks-<name>.md` batch files ('' without tasks.md).
+    Without batch files this is exactly the text of tasks.md."""
+    return rules.with_batches(d, _read(Path(d).joinpath('tasks.md')))
+
+
+def _tasks_mtime(d):
+    """Newest mtime over tasks.md and its batch files (None when tasks.md is missing)."""
+    base = _mtime(Path(d).joinpath('tasks.md'))
+    if base is None:
+        return None
+    return max([base] + [m for m in (_mtime(Path(d) / n) for n in rules.tasks_batch_names(d)) if m])
 
 
 def _mtime(p):
@@ -375,7 +392,7 @@ def _unit_audit_states(root, spec_id):
 def _build_status(spec_dir, root=None, named=False, fingerprint=None):
     d = Path(spec_dir).resolve()
     root = Path(root) if root else ev.find_root(d)
-    spec_text, tasks_text = _read(d / 'spec.md'), _read(d / 'tasks.md')
+    spec_text, tasks_text = _read(d / 'spec.md'), _read_tasks(d)
     st = {'spec': d.name, 'root': str(root)}
     since = rules.spec_first_edit_ts(ev, root, d.name)
 
@@ -1067,7 +1084,7 @@ def _derived_facts(root, focus=None, fingerprint=None):
     untracked_specs = facts['git'].get('untracked_specs') or {}
     for d in _spec_dirs(root)[:500]:
         try:
-            t = _read(d / 'tasks.md')
+            t = _read_tasks(d)
             ap = _approval_state(root, d, t)
             counts[ap] = counts.get(ap, 0) + 1
             if d.name not in listed:
@@ -1158,7 +1175,7 @@ def cmd_check(spec_arg):
     for v in vs:
         print(f"FAIL {v['rule']} {v['message']} → {v['fix']}")
     try:
-        for note in rules.wave_agent_advice(_read(d / 'tasks.md')):
+        for note in rules.wave_agent_advice(_read_tasks(d)):
             print(f'NOTE {note}')          # advice only: never changes the exit code
     except Exception:
         pass
@@ -1211,7 +1228,7 @@ def _consent(ev, root, sess, d, tag, rs, tty=None):
     Returns (kind, ts) with kind 'answer' | 'prompt' | 'tty', or None. `tty` replaces _tty_confirm
     (tests). Never raises."""
     try:
-        since = max(_mtime(Path(d) / 'tasks.md') or 0.0, float((rs or {}).get('mtime') or 0.0))
+        since = max(_tasks_mtime(d) or 0.0, float((rs or {}).get('mtime') or 0.0))
     except Exception:
         since = time.time()          # fail closed: nothing recorded before now counts
     try:
@@ -1257,7 +1274,7 @@ def _review_approval(d, root, text):
         return {'page_current': page.is_file(), 'complete': False,
                 'reason': f'review state unavailable ({type(e).__name__})'}
     try:
-        if rs.get('complete') and rules.approval_hash(_read(Path(d) / 'tasks.md')) != rules.approval_hash(text):
+        if rs.get('complete') and rules.approval_hash(_read_tasks(d)) != rules.approval_hash(text):
             rs['complete'] = False
             rs['reason'] = 'tasks.md changed while the approval ran: run the command again'
     except Exception:
@@ -1430,6 +1447,8 @@ def cmd_approve(spec_arg):
     root = ev.find_root(d)
     raw = tasks_p.read_bytes()
     text = raw.decode('utf-8', errors='replace')
+    base_text = text
+    text = rules.with_batches(d, base_text)   # the approval covers tasks.md + its tasks-<name>.md batch files
     bad = rules.check_content('tasks', text)
     if bad:
         for v in bad[:8]:
@@ -1446,7 +1465,7 @@ def cmd_approve(spec_arg):
         print('Refused: spec.md has no valid "## Verification" table, so the tasks cannot be approved (the close '
               'gate runs those commands). Fix the rows above, then ask for approval again.')
         return 1
-    tm = _mtime(tasks_p) or 0.0
+    tm = _tasks_mtime(d) or 0.0
     sess = _current_session(root)
     tag = approval_tag(text)
     rs = _review_approval(d, root, text)
@@ -1506,7 +1525,7 @@ def cmd_approve(spec_arg):
     eol = _detect_eol(raw)
     h = rules.approval_hash(text)
     line = f'Approved: {date.today().isoformat()} hash:{h}'
-    lines = text.replace('\r\n', '\n').replace('\r', '\n').split('\n')
+    lines = base_text.replace('\r\n', '\n').replace('\r', '\n').split('\n')
     idx = [i for i, ln in enumerate(lines) if re.match(r'^\s*approved\s*:', ln, re.I)]
     if idx:
         lines[idx[-1]] = line
@@ -1517,7 +1536,7 @@ def cmd_approve(spec_arg):
             lines.pop()
         lines += ['', line, '']
     tasks_p.write_bytes('\n'.join(lines).encode('utf-8').replace(b'\n', eol))
-    new = _read(tasks_p)
+    new = rules.with_batches(d, _read(tasks_p))
     if not rules.approval_valid(new):  # pragma: no cover - defensive
         print('Wrote the Approved line but it does not validate; please report this.')
         return 1
@@ -1966,7 +1985,7 @@ def cmd_verify_many(spec_args, full=False, bail=False, wave=None, result_sink=No
                 return 1
             root = ev.find_root(d)
             try:
-                rows = _wave_rows(_read(d / 'tasks.md'), rules.parse_verification(_read(d / 'spec.md')), wave)
+                rows = _wave_rows(_read_tasks(d), rules.parse_verification(_read(d / 'spec.md')), wave)
                 if any(row.get('inputs') and not rules.row_input_fingerprint(root, row['inputs']) for row in rows):
                     raise ValueError('missing or invalid Inputs')
             except ValueError as exc:
@@ -2157,7 +2176,7 @@ def _changed_selection(root, spec, base=None):
     if any(path.replace('\\', '/').lower() in metadata for path in paths):
         raise ValueError('spec policy changed; affected tasks cannot be determined from declared Inputs')
     d = Path(root) / 'specs' / spec_id
-    tasks_text = _read(d / 'tasks.md')
+    tasks_text = _read_tasks(d)
     rows = rules.parse_verification(_read(d / 'spec.md'))
     known = _known_task_ids(tasks_text)
     if not rows or not known:
@@ -2283,7 +2302,7 @@ def cmd_verify(spec_arg, full=False, bail=False, wave=None, result_sink=None, wa
             print('Refused: --tasks cannot be combined with --wave, --full or --bail; nothing was executed.')
             return 1
         try:
-            tasks_text_start = _read(d / 'tasks.md')
+            tasks_text_start = _read_tasks(d)
             if always_rows is not None:
                 # aidd:FR-260 --changed: task rows plus the always-run rows, in table order, no duplicates
                 selection_fp_start = _changed_selection_fingerprint(tasks_text_start, spec_text, task_ids, always_rows)
@@ -2312,7 +2331,7 @@ def cmd_verify(spec_arg, full=False, bail=False, wave=None, result_sink=None, wa
             print('Refused: --bail cannot verify a complete wave.')
             return 1
         try:
-            rows = _wave_rows(_read(d / 'tasks.md'), rows, wave)
+            rows = _wave_rows(_read_tasks(d), rows, wave)
         except ValueError as e:
             print(f'Refused: {e}; nothing was executed.')
             return 1
@@ -2354,7 +2373,7 @@ def cmd_verify(spec_arg, full=False, bail=False, wave=None, result_sink=None, wa
     sess = _current_session(root)
     started = time.time()
     fp_start = ev.worktree_fingerprint(root)
-    scope = rules.verification_scope(spec_text, _read(d / 'tasks.md'))   # [] = whole tree; else only these files count
+    scope = rules.verification_scope(spec_text, _read_tasks(d))   # [] = whole tree; else only these files count
     if task_ids is not None and all(row.get('inputs') for row in rows):
         scope = sorted({pattern for row in rows for pattern in row['inputs']})
         print('task scope uses declared Inputs only; transitive completeness is not attested.', flush=True)
@@ -2367,10 +2386,10 @@ def cmd_verify(spec_arg, full=False, bail=False, wave=None, result_sink=None, wa
     except (ValueError, re.error):
         print('Refused: invalid Scope or Generated pattern; no verification commands were run.', flush=True)
         return 1
-    st_start = ev.code_state(root, scope=scope)
+    st_start = ev.code_state(root, budget_s=_fingerprint_budget(), scope=scope)
     if st_start is None:
         print('Refused: cannot fingerprint the verification inputs; no verification commands were run. '
-              'Check the scope and fingerprint budget before retrying.', flush=True)
+              'Check the scope, or raise the budget with AIDD_FINGERPRINT_BUDGET=<seconds> (default 8), before retrying.', flush=True)
         return 1
     prior = None if task_ids is not None else ((_latest_wave_run(root, d.name, wave) if wave is not None else None) or ev.latest_verify_run(root, d.name))
     from glob import escape as escape_glob
@@ -2627,7 +2646,7 @@ def cmd_verify(spec_arg, full=False, bail=False, wave=None, result_sink=None, wa
               + ('; add `Jobs: N` under ## Verification to run independent rows in parallel' if jobs == 1 and len(rows) > 1 else ''),
               flush=True)
     fp_end = ev.worktree_fingerprint(root)
-    st_end = ev.code_state(root, scope=scope)
+    st_end = ev.code_state(root, budget_s=_fingerprint_budget(), scope=scope)
     # Files a command rewrote (a graph.json with a timestamp, a report): outputs, not code. Declared in `Generated:`
     # they are fine; undeclared they fail THIS run, but the file list is recorded so adding the `Generated:` line
     # later makes the gate accept the very same run (no re-execution, no edit of the generator).
@@ -2658,7 +2677,7 @@ def cmd_verify(spec_arg, full=False, bail=False, wave=None, result_sink=None, wa
     if task_ids is not None:
         try:
             spec_text_end = _read(d / 'spec.md')
-            tasks_text_end = _read(d / 'tasks.md')
+            tasks_text_end = _read_tasks(d)
             if always_rows is not None:
                 selection_fp_end = _changed_selection_fingerprint(tasks_text_end, spec_text_end, task_ids, always_rows)
             else:
@@ -2825,7 +2844,7 @@ def _write_redacted_diagnostics(text):
 def _json_pass_evidence_problem(root, d, spec_text, rows, run):
     """Revalidate this invocation's evidence immediately before emitting PASS."""
     try:
-        scope = rules.verification_scope(spec_text, _read(d / 'tasks.md'))
+        scope = rules.verification_scope(spec_text, _read_tasks(d))
         try:
             ev._scope_re(rules.verification_generated(spec_text))
             ev._scope_re(run.get('code_generated') or [])
@@ -2835,7 +2854,7 @@ def _json_pass_evidence_problem(root, d, spec_text, rows, run):
             return 'code fingerprint algorithm unavailable or changed'
         if scope != (run.get('code_scope') or []):
             return 'verification scope changed'
-        state = ev.code_state(root, scope=scope)
+        state = ev.code_state(root, budget_s=_fingerprint_budget(), scope=scope)
         from glob import escape as escape_glob
         exclude = list(run.get('code_generated') or []) + [escape_glob(x) for x in (run.get('code_changed') or [])]
         fingerprint = ev.fingerprint_of(state, scope, exclude=exclude) if state else None
@@ -2895,7 +2914,7 @@ def cmd_verify_json(spec_arg, full=False, bail=False, wave=None, *, recorded_run
             return _verify_json_error('verification manifest changed during execution', d.name, wave, elapsed)
         rows = rules.parse_verification(spec_text)
         if wave is not None:
-            rows = _wave_rows(_read(d / 'tasks.md'), rows, wave)
+            rows = _wave_rows(_read_tasks(d), rows, wave)
         results = run.get('results')
         ids = [str(r.get('n') or i) for i, r in enumerate(rows, 1)]
         if (not rows or not isinstance(results, list) or len(results) != len(rows)
@@ -2966,7 +2985,7 @@ def _tasks_hash(d):
     """approval_hash of the current tasks.md ('' when missing) - lets Status-only edits keep a spec closed."""
     if d is None or not (d / 'tasks.md').exists():
         return ''
-    return rules.approval_hash(_read(d / 'tasks.md'))
+    return rules.approval_hash(_read_tasks(d))
 
 
 def _fmt_violation(v):
@@ -2998,7 +3017,7 @@ def _close_gaps(d, root):
                                 f"{result.get('reason')} → review this unit and domain.")
     except (OSError, ValueError, TypeError) as exc:
         gaps.append(f'R7 unit audit evidence cannot be verified ({exc}).')
-    tasks_t = _read(d / 'tasks.md')
+    tasks_t = _read_tasks(d)
     if not (d / 'tasks.md').exists() or not rules.approval_valid(tasks_t):
         gaps.append('R6 tasks.md has no valid approval → ask the user, then `aidd rules approve <spec_dir>`.')
     elif not _approval_recorded(root, d.name, tasks_t):
@@ -3072,7 +3091,24 @@ def _clear_pointer(root, spec_id):
     return False
 
 
-def cmd_close(spec_arg):
+FINGERPRINT_BUDGET_DEFAULT = 8.0
+
+
+def _fingerprint_budget():
+    """Seconds allowed to fingerprint the verification inputs: env AIDD_FINGERPRINT_BUDGET (positive finite
+    number), else 8. A bad value falls back to the default."""
+    try:
+        v = float(os.environ.get('AIDD_FINGERPRINT_BUDGET', ''))
+        if v > 0 and v != float('inf'):
+            return v
+    except ValueError:
+        pass
+    return FINGERPRINT_BUDGET_DEFAULT
+
+
+def cmd_close(spec_arg, check=False):
+    """`rules close`; with check=True a dry run with no side effects that runs the same gates and lists ALL that
+    is missing (exit 0 only when the real close would be accepted now)."""
     root = ev.find_root()
     d = _resolve_spec(spec_arg, root)
     if d is None:
@@ -3085,10 +3121,13 @@ def cmd_close(spec_arg):
         return 1
     gaps = _close_gaps(d, root)
     if gaps:
+        if check:
+            print('close --check applies the gates of `aidd rules close` (not those of `aidd rules check`):')
         for g in gaps:
             print(f'FAIL {g}')
-        print(f'Refused: {d.name} stays open until these gaps are closed.')
-        return 1
+        if not check:
+            print(f'Refused: {d.name} stays open until these gaps are closed.')
+            return 1
     sess = _current_session(root)
     # the answer must postdate qa-audit.md (a stale "yes" from before the audit does not count)
     ans = ev.affirmative_answer(root, sess, CLOSE_TOPIC, _mtime(d / 'qa-audit.md') or 0.0, label_re=CLOSE_LABEL,
@@ -3096,12 +3135,22 @@ def cmd_close(spec_arg):
     if ans is None:     # the click may have been recorded under another window's session: the tag binds it
         ans = ev.tagged_answer_any_session(root, sess, CLOSE_TOPIC, _mtime(d / 'qa-audit.md') or 0.0,
                                            label_re=CLOSE_LABEL, must_contain=f'[spec:{d.name}]')
-    if ans is None:
+    if ans is None and check:
+        gaps.append('close no recorded user answer "Yes, close" to a close question asked after qa-audit.md '
+                    '(ask it last, after the final qa-audit.md and fresh evidence).')
+        print('FAIL ' + gaps[-1])
+    elif ans is None:
         print('Refused: no recorded user answer "Yes, close" to a close question (asked after qa-audit.md).\n'
               'Fix: ' + _ASK_FIX.format(opt='Yes, close', what='closing the spec (e.g. "Close spec X as '
                                                          'completed?")')
               + _session_note(sess))
         return 1
+    if check:
+        if gaps:
+            print(f'close --check: {d.name} would be REFUSED by `aidd rules close` ({len(gaps)} missing).')
+            return 1
+        print(f'close --check: PASS - `aidd rules close {d.name}` would be accepted now (dry run, nothing recorded).')
+        return 0
     ev.append_spec_closed(root, sess, d.name, reason='completed', hash=_tasks_hash(d))
     cleared = _clear_pointer(root, d.name)
     print(f'{d.name} closed as completed' + (' (active-spec pointer cleared).' if cleared else '.'))
@@ -3148,7 +3197,7 @@ def _abandon_since(root, spec_id, d, session=None):
         pass
     try:
         if d is not None:
-            return max(_mtime(d / 'tasks.md') or 0.0, keep)
+            return max(_tasks_mtime(d) or 0.0, keep)
     except Exception:
         pass
     return keep
@@ -3197,6 +3246,8 @@ def main(argv=None):
         if (len(argv) == 5 and argv[:2] == ['rules', 'approve']
                 and argv[3] == '--unit'):
             return cmd_approve_unit(argv[2], argv[4])
+        if len(argv) == 4 and argv[:2] == ['rules', 'close'] and argv[3] == '--check':
+            return cmd_close(argv[2], check=True)
         if len(argv) == 3 and argv[0] == 'rules' and argv[1] in ('check', 'approve', 'close', 'activate'):
             return {'check': cmd_check, 'approve': cmd_approve, 'close': cmd_close,
                     'activate': cmd_activate}[argv[1]](argv[2])

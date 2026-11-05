@@ -12,6 +12,7 @@ most recent code-file edit this session (legacy marker) and the AIDD evidence:
 but record nothing here: a shell command's file writes cannot be attributed reliably (documented limit).
 Always exits 0 — non-dict payloads / non-string fields are tolerated (hook_error recorded).
 """
+import re
 import sys
 from pathlib import Path
 
@@ -19,6 +20,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 from _common import read_event, write_timestamp, is_code_file, is_r6_gated  # noqa: E402
 
 SPEC_FILES = {'spec.md', 'plan.md', 'tasks.md', 'mockup-audit.md', 'contracts.md', 'data-model.md'}
+_BATCH_NAME_RE = re.compile(r'tasks-[a-z0-9_-]+\.md')   # tasks-<name>.md batch task files of a spec
 MAX_TASKS_BYTES = 2 * 1024 * 1024
 
 event = read_event()
@@ -83,7 +85,7 @@ try:  # evidence recorder
         _real = _ev.real_path(_p)
         _base = _real.name.lower()
         _hits = []
-        if _base in SPEC_FILES:
+        if _base in SPEC_FILES or _BATCH_NAME_RE.fullmatch(_base):
             for _r in _roots:
                 try:
                     _parts = _real.relative_to(_ev.real_path(_r)).parts
@@ -99,7 +101,7 @@ try:  # evidence recorder
                 try:
                     import aidd_rules as _rules
                     if _real.stat().st_size <= MAX_TASKS_BYTES:
-                        _extra['hash'] = _rules.approval_hash(_real.read_text(encoding='utf-8', errors='replace'))
+                        _extra['hash'] = _rules.approval_hash(_rules.with_batches(_real.parent, _real.read_text(encoding='utf-8', errors='replace')))
                 except Exception:
                     pass
             for _r, _sp in _hits:

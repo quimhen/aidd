@@ -316,11 +316,13 @@ def _r5_tasks(ev, d, root, session):
 
 def _tasks_last_change(ev, root, d, spec_dir_name):
     """Last content change of tasks.md: the later of its mtime and the newest recorded tasks.md edit."""
-    t = _mtime(d / 'tasks.md') or 0.0
+    _, rules = _libs()
+    t = max([_mtime(d / 'tasks.md') or 0.0] + [_mtime(d / n) or 0.0 for n in rules.tasks_batch_names(d)])
     try:
         for e in ev.events(root, None, 'spec_edit'):
             dd = e.get('detail') or {}
-            if str(dd.get('spec', '')).lower() == spec_dir_name.lower() and str(dd.get('file', '')).lower() == 'tasks.md':
+            fn = str(dd.get('file', '')).lower()
+            if str(dd.get('spec', '')).lower() == spec_dir_name.lower() and (fn == 'tasks.md' or rules._BATCH_FILE_RE.fullmatch(fn)):
                 t = max(t, e['ts'])
     except Exception:
         pass
@@ -361,8 +363,8 @@ def _approval_gate(ev, rules, d, root, session, new_text, cur_text):
         return [_v('R6', 'An Approved: line cannot be written together with a brand-new tasks.md.',
                    'Write tasks.md with "Approved: PENDING", present it to the user (AskUserQuestion: approve '
                    'the tasks? with an "Approve" option), then add the approval line by editing tasks.md.')]
-    h_new = rules.approval_hash(new_text)
-    if rules.approval_hash(cur_text) != h_new:
+    h_new = rules.approval_hash(rules.with_batches(d, new_text))   # tasks.md + its tasks-<name>.md batch files
+    if rules.approval_hash(rules.with_batches(d, cur_text)) != h_new:
         return [_v('R6', 'This edit changes tasks.md content AND the Approved: line. An approval edit must change '
                          'nothing else (the hash of the current file and of the result differ).',
                    'First edit the tasks (without an Approved: line), present the result to the user, and only '
@@ -588,7 +590,7 @@ def _ambiguous_violation(ev, root):
 def _target_violation(ev, rules, root, sid, how):
     """aidd:FR-201 at most ONE R6 violation for the gate target `sid`, naming it, `how` and the unblock path."""
     d = root / 'specs' / sid
-    tasks = _read(d / 'tasks.md', rules.MAX_CHARS * 2)
+    tasks = rules.with_batches(d, _read(d / 'tasks.md', rules.MAX_CHARS * 2))
     why = _HOW_TEXT.get(how, how or 'gate target')
     unblock = (f'Unblock: `aidd review specs/{sid}`, then `aidd review specs/{sid} --wait` in the background (the '
                f'owner presses `Aprobar y guardar` on the page, which saves review.md); ask ONE tagged question, then '
