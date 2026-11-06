@@ -509,6 +509,56 @@ Status of item O: implemented on branch `am10/verify-round` of the AIDD repo (no
 
 ---
 
+### P. Same-spec reuse inside `aidd verify --round` (2026-11-06)
+
+**Measured (2026-11-06, b1SycLink).** `aidd verify --all-open --round` over 9 open specs executed EVERY row (105
+groups, ~2600 s) although several specs had a recent PASS `verify_run` on unchanged Scope, files and environment.
+Item O left it explicitly out of scope ("same-spec reuse inside a round"; FR-422 bypassed every reuse path).
+
+**Facts.**
+- [fact] A plain `aidd verify <spec>` reuses a previous PASS only through the offline hermetic contract
+  (`_reusable_input_rows`: `Reuse: hermetic` + `Inputs` + `Environment: contract:offline;...`, never DB/docker
+  runners); the legacy code-fingerprint reuse (`_reusable_rows`) exists but is not wired (`reuse = {}` since 1cef7ed,
+  "a file fingerprint alone does not describe a database"). So "a single verify reuses unchanged rows" holds only for
+  hermetic Python rows.
+- [fact] Item O already computes, for a round, the observable environment a file fingerprint does not cover:
+  `docker exec` container id + start time, `Round-identity:` output, declared variables (`aidd_round.env_fingerprint`).
+  Item P reuses that identity per row (`env_id`) so a DB row is reused only on the same container and declared
+  identity, not on files alone.
+
+| Code | Requirement |
+|---|---|
+| FR-427 | `aidd verify --round` / `--all-open --round` decide, per spec, BEFORE grouping and on the code state taken at the start of the round (the same state the per-spec stability check uses), which functional rows are reused from that spec's latest `verify_run`; reused rows are not executed and never enter a group. |
+| FR-428 | A row is reused only when ALL hold (fail closed on any doubt): previous run `stable`; `code_algorithm` current and `code_fp_end` present; `Scope:` equal to the recorded `code_scope`; the code fingerprint of that scope now (excluding the run's `code_generated` + `code_changed`) equals `code_fp_end`; same row `#`, same `normalize_command`, same Expected; previous result `ok` and exit 0; no lint problem today; same `Inputs` declaration, `input_algorithm` and `row_input_fingerprint`; environment identity (FR-430) equal; evidence inside the spec folder, full sha1 equal, `_cached_pass_valid` true; the row is not `Reuse: never`. `--full` reuses nothing. `Tier: perf` rows stay out of the round (FR-420). |
+| FR-429 | A reused row is recorded in that spec's own `verify_run` with `reused: true`, `reuse_kind: round-same-spec`, `reused_from{spec, n, date, code_fp, verify_hash, secs}`, `secs: 0`; its evidence keeps the original line 1 and gets line 2 `REUSED: PASS del verify_run de <spec> fila <n> del <ISO date>, huella <code fp>, verify hash <hash>; Scope, Inputs, codigo y entorno sin cambios (no ejecutado en esta ronda)` (a previous REUSED line is replaced; a chain keeps the origin of the run that really executed the row). It never carries `round_shared`. Each spec still records ONE complete `verify_run` (executed + reused rows); stability compares the state before the round with the state after it, so R7/R10/close work unchanged. |
+| FR-430 | Environment identity `env_id` of a row: '' when the row names no `docker exec` container and its spec declares no `Round-identity:` and no variables (`Round-vars:`, `vars=`); else 16 hex of the container identities, identity-command outputs and variable values; None (not reusable) when one is unavailable. Recorded on every executed row by a round and by a plain full `aidd verify <spec>` only when equal before and after the run; a non-empty current `env_id` must equal the recorded one. |
+| FR-431 | `--dry-run` prints per spec `reuse <spec>: k row(s) reused, m to execute`, one line per row (`REUSED <n>: PASS of <date>, huella <fp>, verify hash <h> (~s saved)` or `run <n>: <reason>`), then the plan of the remaining rows and `estimated savings versus running every row: ~S s (k reused row(s) ~R s + g grouped execution(s) ~G s)`; it executes no row and records nothing (only the read-only identity probes run). The round summary adds `<k> row(s) REUSED from the previous verify_run of their own spec`. |
+| FR-432 | Row value `Reuse: never` (existing `Reuse` column, no new parser) opts a row out of this reuse; documented in AIDD.md E12, SKILL.md E12 and the AGENTS snippet. `verification_hash` is unchanged for tables that do not add it. |
+
+**Acceptance (P).**
+| Code | Scenario | Command | Expected |
+|---|---|---|---|
+| AC-485 | second round with nothing changed | `python -m unittest tests.test_verify_round_reuse -v` | 0 executions; 2 rows REUSED; complete PASS stable verify_run |
+| AC-486 | a file in Scope changed | same | the row runs; reason `code in Scope changed` |
+| AC-487 | previous result FAIL | same | the failed row runs again; the passed one is reused |
+| AC-488 | new row / changed command | same | the new or changed row runs; the others are reused |
+| AC-489 | `--full` | same | every row runs; nothing reused |
+| AC-490 | evidence of a reused row; reused row next to an identical row of another spec that must run | same | line 2 `REUSED: PASS del verify_run de A fila V-1 del ...`; the reused row has no `round_shared`; the other spec runs alone |
+| AC-491 | `--dry-run` after a PASS | same | no execution, no event, evidence unchanged; per-spec reuse lines and the savings line |
+| AC-492 | code fingerprint not computable | same | the row runs (`fail closed`) |
+| AC-493 | `Round-identity:` output changed / unavailable | same | the row runs |
+| AC-494 | reused and executed rows in the same spec | same | one verify_run with both kinds; overall result from all rows |
+| AC-495 | a plain `aidd verify A` feeds the next round | same | `env_id` recorded; the round reuses the row |
+| AC-496 | regression | `python -m unittest tests.test_verify_round tests.test_dot_aidd_mirror tests.test_cli_rules tests.test_aidd_status tests.test_aidd_rules_r10 tests.test_verify_tiers` (module by module) | exit 0 |
+
+| Task | Item | Target file(s) | Wave | Deps | Agent min | Explicitly out of scope |
+|---|---|---|---|---|---|---|
+| T-21 | P | `skill/scripts/aidd_round.py`, `skill/scripts/aidd_status.py` (`cmd_verify(round_reused, round_env)`, `env_id` on plain runs), mirrors in `adapters/dot-aidd/scripts/` (copied by script), `skill/AIDD.md` + `adapters/dot-aidd/AIDD.md` (E12), `skill/SKILL.md` (E12), `adapters/AGENTS.md.snippet`, `tests/test_verify_round_reuse.py` | 1 | T-20 | 120 | same-spec reuse in a plain `aidd verify <spec>` (still only the hermetic contract); cross-spec reuse across invocations; re-enabling `round_on`; installing into `~/.claude` or a project |
+
+Status of item P: implemented on branch `am10/round-reuse` of the AIDD repo (not installed, not pushed).
+
+---
+
 ## Cross-cutting acceptance
 
 | Code | Requirement | Command | Expected |

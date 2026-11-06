@@ -17,6 +17,13 @@ over several specs (amendment 10, item O, spec 007).
    failure, never as a pass: each row's own Expected is evaluated on the shared output.
 6. `--dry-run` prints the plan (groups vs rows, saved executions, estimated seconds from the previous verify_run)
    and executes nothing.
+7. aidd:FR-427..FR-432 (item P) Same-spec reuse BEFORE grouping: a row that the spec's previous `verify_run` passed
+   on the same code (same `Scope:`, same code fingerprint, same `Inputs` fingerprint, same environment identity
+   when the row names a `docker exec` container or its spec declares `Round-identity:`/variables, intact evidence
+   that still satisfies today's PASS rules) is NOT executed: it is recorded `REUSED` in that spec's own
+   `verify_run`, its evidence gets a `REUSED:` second line citing the original run. Never a FAIL, never without a
+   computable fingerprint (fail closed), never with `--full`, never a `Reuse: never` row; a reused row is never
+   a shared execution and never enters a group.
 
 Never imported at module level by aidd_status (lazy, both directions), stdlib only."""
 import hashlib
@@ -205,7 +212,7 @@ def _pending(st, root, d):
 
 def collect(st, root, spec_args):
     """(specs, rows, notes). specs = [{name, dir, text, scope, generated, identity, vars, jobs}];
-    rows = [{spec, n, i, cmd, expected, inputs, key, heavy}] of the functional tier."""
+    rows = [{spec, n, i, cmd, expected, inputs, reuse, key, heavy}] of the functional tier."""
     specs, rows, notes = [], [], []
     seen = set()
     for arg in spec_args:
@@ -237,7 +244,8 @@ def collect(st, root, spec_args):
         for i, r in enumerate(func, 1):
             expected = r.get('expected') or 'exit 0'
             rows.append({'spec': d.name, 'n': str(r.get('n') or i), 'i': i, 'cmd': r['cmd'], 'expected': expected,
-                         'inputs': r.get('inputs') or [], 'key': group_key(root, r['cmd']), 'heavy': heavy(r['cmd'])})
+                         'inputs': r.get('inputs') or [], 'reuse': str(r.get('reuse') or '').strip().lower(),
+                         'key': group_key(root, r['cmd']), 'heavy': heavy(r['cmd'])})
     return specs, rows, notes
 
 
@@ -278,11 +286,21 @@ def savings(st, root, specs, groups):
     return n_rows, len(groups), n_rows - len(groups), (round(saved_s, 1) if known else None)
 
 
-def print_plan(st, root, specs, groups):
+def print_plan(st, root, specs, groups, reuse=None):
     est = estimates(st, root, specs)
     n_rows, n_exec, saved, saved_s = savings(st, root, specs, groups)
-    print(f'round plan: {len(specs)} spec(s), {n_rows} functional row(s), {n_exec} execution(s); '
+    if reuse is not None:
+        print_reuse(specs, reuse)
+    k_reused = len(reuse['reused']) if reuse is not None else 0
+    print(f'round plan: {len(specs)} spec(s), {n_rows} functional row(s)'
+          + (f' to execute (+{k_reused} reused)' if k_reused else '') + f', {n_exec} execution(s); '
           f'{saved} execution(s) saved' + (f' (~{saved_s:g} s from the previous verify_run)' if saved_s else ''))
+    if reuse is not None:
+        r_n = len(reuse['reused'])
+        r_s = round(sum(float(e.get('secs') or 0.0) for e in reuse['reused'].values()), 1)
+        total_s = round(r_s + (saved_s or 0.0), 1)
+        print(f'estimated savings versus running every row: ~{total_s:g} s ({r_n} reused row(s) ~{r_s:g} s'
+              f' + {saved} grouped execution(s) ~{saved_s or 0:g} s)')
     total = 0.0
     for k, g in enumerate(groups, 1):
         secs = est.get(g['key'])
@@ -293,6 +311,202 @@ def print_plan(st, root, specs, groups):
         print(f'      rows: {who}')
     if total:
         print(f'estimated round time: ~{round(total, 1):g} s (one execution per group)')
+
+
+# --- same-spec reuse before grouping (aidd:FR-427..FR-432, amendment 10 item P) -------------------------------
+
+REUSE_FORMAT = 'round-same-spec-v1'
+
+
+def env_parts(st, root, spec_info, cmds, cache=None):
+    """Observable environment of ONE spec now: {'containers': {name: id|None}, 'identity': {cmd: sha|None},
+    'vars': {name: sha|'<unset>'}}. `cache` (a dict) shares the container/identity probes inside one call site."""
+    cache = {} if cache is None else cache
+    containers = {}
+    for cmd in cmds:
+        for c in docker_containers(cmd):
+            if ('docker', c) not in cache:
+                cache[('docker', c)] = _docker_identity(c)
+            containers[c] = cache[('docker', c)]
+    identity = {}
+    for c in spec_info.get('identity') or []:
+        if ('identity', c) not in cache:
+            cache[('identity', c)] = _identity_output(root, c)
+        identity[c] = cache[('identity', c)]
+    env = {v: (hashlib.sha256(os.environ[v].encode('utf-8', 'replace')).hexdigest() if v in os.environ else '<unset>')
+           for v in spec_info.get('vars') or []}
+    return {'containers': containers, 'identity': identity, 'vars': env}
+
+
+def row_env_id(parts, cmd):
+    """'' when the row names no container and its spec declares no `Round-identity:` nor variables (nothing
+    external to identify); None when one identity is unavailable (fail closed); else 16 hex of their hash."""
+    try:
+        if parts is None:
+            return None
+        names = docker_containers(cmd)
+        if not names and not parts['identity'] and not parts['vars']:
+            return ''
+        sub = {'containers': {n: parts['containers'].get(n) for n in names}, 'identity': parts['identity'],
+               'vars': parts['vars']}
+        if any(v is None for v in sub['containers'].values()) or any(v is None for v in sub['identity'].values()):
+            return None
+        return hashlib.sha256(json.dumps(sub, sort_keys=True, ensure_ascii=True).encode('ascii')).hexdigest()[:16]
+    except Exception:
+        return None
+
+
+def _code_fp_now(st, state, prior):
+    """Code fingerprint of `state` computed exactly like the prior run's `code_fp_end` (its Scope, its Generated
+    and its rewritten files excluded), or None."""
+    try:
+        from glob import escape as escape_glob
+        scope = list(prior.get('code_scope') or [])
+        excl = list(prior.get('code_generated') or []) + [escape_glob(x) for x in (prior.get('code_changed') or [])]
+        return st.ev.fingerprint_of(state, scope or None, exclude=excl) if state else None
+    except Exception:
+        return None
+
+
+def _iso(ts):
+    try:
+        return datetime.fromtimestamp(float(ts)).isoformat(timespec='seconds')
+    except Exception:
+        return '?'
+
+
+def reused_line(origin):
+    """The `REUSED:` second line of a reused row's evidence file."""
+    return (f"REUSED: PASS del verify_run de {origin['spec']} fila {origin['n']} del {origin['date']}, "
+            f"huella {origin['code_fp']}, verify hash {origin['verify_hash'] or '?'}; "
+            f"Scope, Inputs, codigo y entorno sin cambios (no ejecutado en esta ronda)")
+
+
+def reused_evidence(data, origin):
+    """Prior evidence bytes with the `REUSED:` line as line 2 (a previous REUSED line is replaced)."""
+    lines = data.decode('utf-8', 'replace').split('\n')
+    if len(lines) > 1 and lines[1].startswith('REUSED:'):
+        del lines[1]
+    lines.insert(1, reused_line(origin))
+    return '\n'.join(lines).encode('utf-8')
+
+
+def reuse_plan(st, root, spec, spec_rows, state, parts, full=False):
+    """({n: entry}, {n: reason}) for the rows of ONE spec. entry = {data, origin, secs, env_id, input_fp, result}:
+    the prior PASS is reused only when EVERY condition holds; any doubt (missing data, unreadable evidence, a
+    fingerprint that cannot be computed) means the row runs. Never raises."""
+    reused, why = {}, {}
+
+    def no(reason):
+        for r in spec_rows:
+            why.setdefault(r['n'], reason)
+        return reused, why
+    try:
+        if full:
+            return no('--full: every row runs')
+        try:
+            prior = st.ev.latest_verify_run(root, spec['name'])
+        except Exception:
+            prior = None
+        if not prior:
+            return no('no previous verify_run of this spec')
+        if prior.get('stable') is not True:
+            return no('previous verify_run was not stable')
+        if prior.get('code_algorithm') != st.ev.EVIDENCE_ALGORITHM or not prior.get('code_fp_end'):
+            return no('previous verify_run has no comparable code fingerprint')
+        if sorted(prior.get('code_scope') or []) != sorted(spec['scope'] or []):
+            return no('Scope changed since the previous verify_run')
+        now_fp = _code_fp_now(st, state, prior)
+        if now_fp is None:
+            return no('code fingerprint cannot be computed now (fail closed)')
+        if now_fp != prior.get('code_fp_end'):
+            return no('code in Scope changed since the previous verify_run')
+        base = Path(spec['dir']).resolve()
+        results = [x for x in (prior.get('results') or []) if isinstance(x, dict)]
+        for r in spec_rows:
+            n = r['n']
+            if r.get('reuse') == 'never':
+                why[n] = '`Reuse: never`'
+                continue
+            res = next((x for x in results if str(x.get('n')) == n), None)
+            if res is None:
+                why[n] = 'new row (not in the previous verify_run)'
+                continue
+            if normalize_command(res.get('cmd') or '') != normalize_command(r['cmd']):
+                why[n] = 'command changed'
+                continue
+            if str(res.get('expected') or '').strip() != str(r['expected'] or '').strip():
+                why[n] = 'Expected changed'
+                continue
+            if res.get('ok') is not True or res.get('exit') != 0:
+                why[n] = 'previous result was not a PASS'
+                continue
+            if st.rules.verification_command_problem(r['cmd'], r['expected'], root):
+                why[n] = 'the command has a lint problem today'
+                continue
+            input_fp = None
+            if r['inputs']:
+                if (list(res.get('input_globs') or []) != list(r['inputs'])
+                        or res.get('input_algorithm') != st.ev.EVIDENCE_ALGORITHM):
+                    why[n] = 'Inputs declaration changed'
+                    continue
+                input_fp = st.rules.row_input_fingerprint(root, r['inputs'])
+                if not input_fp:
+                    why[n] = 'Inputs cannot be fingerprinted (fail closed)'
+                    continue
+                if input_fp != res.get('input_fp'):
+                    why[n] = 'Inputs changed'
+                    continue
+            elif res.get('input_globs'):
+                why[n] = 'Inputs declaration changed'
+                continue
+            env_id = row_env_id(parts, r['cmd'])
+            if env_id is None:
+                why[n] = 'environment identity unavailable (fail closed)'
+                continue
+            if env_id and res.get('env_id') != env_id:
+                why[n] = 'environment identity changed or not recorded by the previous run'
+                continue
+            try:
+                p = (base / str(res.get('evidence') or '')).resolve()
+                p.relative_to(base)
+                data = p.read_bytes()
+            except Exception:
+                why[n] = 'previous evidence file unreadable'
+                continue
+            want = str(res.get('sha1') or '').lower()
+            if len(want) < 40 or hashlib.sha1(data).hexdigest() != want:
+                why[n] = 'previous evidence file missing or changed'
+                continue
+            if not st._cached_pass_valid(data, res, r['expected']):
+                why[n] = "previous evidence does not satisfy today's PASS rules"
+                continue
+            origin = dict(res['reused_from']) if isinstance(res.get('reused_from'), dict) else {
+                'spec': spec['name'], 'n': n, 'date': _iso(prior.get('started')),
+                'code_fp': prior.get('code_fp_end'), 'verify_hash': prior.get('verify_hash') or '',
+                'secs': float(res.get('secs') or 0.0)}
+            reused[n] = {'data': reused_evidence(data, origin), 'origin': origin,
+                         'secs': float(origin.get('secs') or 0.0), 'env_id': env_id, 'input_fp': input_fp,
+                         'result': res}
+        return reused, why
+    except Exception as e:
+        return {}, {r['n']: f'reuse check failed ({type(e).__name__}); the row runs' for r in spec_rows}
+
+
+def print_reuse(specs, reuse):
+    """Per spec: reused rows (origin), rows to execute (reason)."""
+    for s in specs:
+        rows = reuse['rows'].get(s['name']) or []
+        got = [r for r in rows if (s['name'], r['n']) in reuse['reused']]
+        print(f"reuse {s['name']}: {len(got)} row(s) reused, {len(rows) - len(got)} to execute")
+        for r in rows:
+            k = (s['name'], r['n'])
+            if k in reuse['reused']:
+                o = reuse['reused'][k]['origin']
+                print(f"  REUSED {r['n']}: PASS of {o['date']}, huella {o['code_fp']}, verify hash "
+                      f"{o['verify_hash'] or '?'} (~{float(o.get('secs') or 0):g} s saved)")
+            else:
+                print(f"  run    {r['n']}: {reuse['reasons'].get(k, 'not reusable')}")
 
 
 # --- execution ------------------------------------------------------------------------------------------------
@@ -392,20 +606,31 @@ def run_round(st, spec_args, dry_run=False, full=False):
     if not specs:
         print('Refused: no spec with functional Verification rows; nothing was executed.')
         return 1
-    groups = plan(rows)
-    print_plan(st, root, specs, groups)
-    if dry_run:
-        print('dry run: nothing was executed and nothing was recorded.')
-        return 0
     by_name = {s['name']: s for s in specs}
-    # Code state of each spec BEFORE the first execution: the per-spec stability check covers the whole round.
-    starts = {}
+    rows_by_spec = {}
+    for r in rows:
+        rows_by_spec.setdefault(r['spec'], []).append(r)
+    # Code state and environment of each spec BEFORE the first execution: the per-spec stability check covers the
+    # whole round, and the same-spec reuse decision (aidd:FR-427) is taken on exactly this state.
+    starts, parts_start, probe = {}, {}, {}
     for s in specs:
         st_start = st.ev.code_state(root, budget_s=st._fingerprint_budget(), scope=s['scope'])
-        if st_start is None:
+        if st_start is None and not dry_run:
             print(f"Refused: cannot fingerprint the verification inputs of {s['name']}; nothing was executed.")
             return 1
         starts[s['name']] = {'started': time.time(), 'fp_start': st.ev.worktree_fingerprint(root), 'st_start': st_start}
+        parts_start[s['name']] = env_parts(st, root, s, [r['cmd'] for r in rows_by_spec.get(s['name'], [])], probe)
+    reused, reasons = {}, {}
+    for s in specs:
+        got, why = reuse_plan(st, root, s, rows_by_spec.get(s['name'], []), starts[s['name']]['st_start'],
+                              parts_start[s['name']], full=full)
+        reused.update({(s['name'], n): e for n, e in got.items()})
+        reasons.update({(s['name'], n): w for n, w in why.items()})
+    groups = plan([r for r in rows if (r['spec'], r['n']) not in reused])   # a reused row never enters a group
+    print_plan(st, root, specs, groups, reuse={'reused': reused, 'reasons': reasons, 'rows': rows_by_spec})
+    if dry_run:
+        print('dry run: nothing was executed and nothing was recorded.')
+        return 0
     timeout = st._verify_timeout()
     jobs = round_jobs(specs)
     shared = {}
@@ -424,15 +649,29 @@ def run_round(st, spec_args, dry_run=False, full=False):
                   f"{g['cmd'][:100]}" + (f" - {e['invalid']}" if e['invalid'] else ''), flush=True)
             for m in g['members']:
                 shared[(m['spec'], m['n'])] = e
+    # Environment identity of every EXECUTED row, recorded only when it is the same before and after the round,
+    # so a later round can reuse the row (aidd:FR-430); a reused row keeps the identity it was checked against.
+    env_ids, probe_end = {}, {}
+    for s in specs:
+        mine = [r for r in rows_by_spec.get(s['name'], []) if (s['name'], r['n']) not in reused]
+        if not mine:
+            continue
+        end = env_parts(st, root, s, [r['cmd'] for r in mine], probe_end)
+        for r in mine:
+            a, b = row_env_id(parts_start[s['name']], r['cmd']), row_env_id(end, r['cmd'])
+            if a is not None and a == b:
+                env_ids[(s['name'], r['n'])] = a
     worst, out = 0, []
     for s in specs:
         print(f"\n=== aidd verify {s['name']} (round) ===", flush=True)
-        rc = st.cmd_verify(str(s['dir']), full=full, round_shared=shared, round_start=starts[s['name']])
+        rc = st.cmd_verify(str(s['dir']), full=full, round_shared=shared, round_start=starts[s['name']],
+                           round_reused=reused, round_env=env_ids)
         out.append((s['name'], rc))
         worst = max(worst, rc)
     print('\n=== round summary ===')
     n_rows, n_exec, saved, _ = savings(st, root, specs, groups)
-    print(f'{n_exec} execution(s) for {n_rows} row(s) ({saved} saved)')
+    print(f'{n_exec} execution(s) for {n_rows} executed row(s) ({saved} saved); {len(reused)} row(s) REUSED '
+          f'from the previous verify_run of their own spec')
     for name, rc in out:
         print(f"{'PASS' if rc == 0 else 'FAIL'}  {name}")
     return worst

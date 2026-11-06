@@ -2291,7 +2291,7 @@ def _tier_select(rows, perf, spec_name):
 
 
 def cmd_verify(spec_arg, full=False, bail=False, wave=None, result_sink=None, wave_cache=None, task_ids=None,
-               always_rows=None, perf=False, round_shared=None, round_start=None):
+               always_rows=None, perf=False, round_shared=None, round_start=None, round_reused=None, round_env=None):
     """aidd:FR-205 aidd:AC-209 aidd:AC-216 aidd:AC-218 `aidd verify <spec>`: run every `## Verification` row
     (shell, project root, AIDD_VERIFY_TIMEOUT per row), save `evidence/verify-<n>.txt` (header line
     `# <cmd> | exit <code> | <ISO ts>` + combined output), mark zero-test / too-short output failed,
@@ -2456,6 +2456,17 @@ def cmd_verify(spec_arg, full=False, bail=False, wave=None, result_sink=None, wa
     if task_ids is not None:
         import uuid
         task_run_id = uuid.uuid4().hex
+    # aidd:FR-430 a plain full run records each row's environment identity (docker exec containers, Round-identity,
+    # declared vars) when it is the same before and after the run, so a later round may reuse the row.
+    env_track = round_shared is None and wave is None and task_ids is None and not perf
+    env_start, env_spec = None, None
+    if env_track:
+        try:
+            _rm = _round_mod()
+            env_spec = {'identity': _rm.identity_commands(spec_text), 'vars': _rm.declared_vars(sys.modules[__name__], spec_text, rows)}
+            env_start = _rm.env_parts(sys.modules[__name__], root, env_spec, [x['cmd'] for x in rows])
+        except Exception:
+            env_start = None
 
     def _one(i, r):
         cmd, expected = r['cmd'], (r.get('expected') or 'exit 0')
@@ -2472,6 +2483,34 @@ def cmd_verify(spec_arg, full=False, bail=False, wave=None, result_sink=None, wa
         env_id = (_contract_environment_id(cmd, env_decl)
                   if r.get('reuse') == 'hermetic' and inputs and not full else None)
         key = (_verification_key(cmd), _verification_key(expected))
+        reused_ent = (round_reused or {}).get((d.name, str(n))) if round_shared is not None else None
+        if reused_ent is not None:
+            # aidd:FR-427 aidd:FR-429 same-spec reuse decided by the round on the state taken BEFORE it: not executed,
+            # never a shared execution; the round's stability check still covers it.
+            try:
+                data = reused_ent['data']
+                final.write_bytes(data)
+                o = reused_ent['origin']
+                res = {'n': str(n), 'cmd': cmd, 'expected': expected, 'exit': 0, 'ok': True, 'evidence': rel,
+                       'sha1': hashlib.sha1(data).hexdigest(), 'secs': 0.0, 'reused': True,
+                       'reuse_kind': 'round-same-spec', 'reused_from': dict(o)}
+                if inputs:
+                    res.update(input_globs=inputs, input_fp=reused_ent.get('input_fp'),
+                               input_algorithm=ev.EVIDENCE_ALGORITHM)
+                    if r.get('reuse') == 'hermetic':
+                        res['reuse_policy'] = 'hermetic'
+                if reused_ent.get('env_id') is not None:
+                    res['env_id'] = reused_ent['env_id']
+                one_line = re.sub(r'[\r\n]+', ' ', cmd).strip()
+                print(f"REUSED row {n}: {one_line[:100]} (PASS of {o['spec']} row {o['n']}, {o['date']}, huella "
+                      f"{o['code_fp']}, verify hash {o['verify_hash'] or '?'}) → {rel}", flush=True)
+                return res
+            except Exception as e:
+                one_line = re.sub(r'[\r\n]+', ' ', cmd).strip()
+                print(f'FAIL row {n}: {one_line[:100]} (reused evidence not written: {type(e).__name__}) → {rel}',
+                      flush=True)
+                return {'n': str(n), 'cmd': cmd, 'expected': expected, 'exit': -1, 'ok': False, 'evidence': rel,
+                        'sha1': '', 'secs': 0.0, 'problem': f'reused evidence not written ({type(e).__name__})'}
         # For this one multi-spec wave, share exact checks only on identical
         # declared inputs (or the whole code tree when Inputs are absent).
         wave_key = ((str(root), _verification_key(cmd), _verification_key(expected), tuple(inputs),
@@ -2624,6 +2663,8 @@ def cmd_verify(spec_arg, full=False, bail=False, wave=None, result_sink=None, wa
             ent = round_shared[(d.name, str(n))]
             res['round_shared'] = {'source_spec': ent['source_spec'], 'source_n': str(ent['source_n']),
                                    'fingerprint': ent['fp'], 'ts': ent['ts']}
+        if round_shared is not None and (round_env or {}).get((d.name, str(n))) is not None:
+            res['env_id'] = round_env[(d.name, str(n))]
         print(f"{'PASS' if ok else 'FAIL'} row {n}: {one_line[:100]} (exit {code}, {secs} s)"
               + (f' - {why}' if why and not ok else '') + f' → {rel}', flush=True)
         return res
@@ -2707,6 +2748,18 @@ def cmd_verify(spec_arg, full=False, bail=False, wave=None, result_sink=None, wa
         print(f'verify wall time {round(time.monotonic() - t_all, 1)} s; slowest row: {timed[-1][1]} ({timed[-1][0]} s)'
               + ('; add `Jobs: N` under ## Verification to run independent rows in parallel' if jobs == 1 and len(rows) > 1 else ''),
               flush=True)
+    if env_track and env_start is not None:
+        try:
+            _rm = _round_mod()
+            env_end = _rm.env_parts(sys.modules[__name__], root, env_spec, [x['cmd'] for x in rows])
+            for result in results:
+                if result.get('reused'):
+                    continue
+                a, b = _rm.row_env_id(env_start, result['cmd']), _rm.row_env_id(env_end, result['cmd'])
+                if a is not None and a == b:
+                    result['env_id'] = a
+        except Exception:
+            pass
     fp_end = ev.worktree_fingerprint(root)
     st_end = ev.code_state(root, budget_s=_fingerprint_budget(), scope=scope)
     # Files a command rewrote (a graph.json with a timestamp, a report): outputs, not code. Declared in `Generated:`
