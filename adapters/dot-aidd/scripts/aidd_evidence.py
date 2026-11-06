@@ -1130,7 +1130,8 @@ def latest_approved(root, spec, hash=None):
 
 
 _VERIFY_EXTRA = ('code_fp_start', 'code_fp_end', 'code_since', 'verify_lineage', 'code_scope',
-                 'code_changed', 'code_generated', 'code_algorithm')
+                 'code_changed', 'code_generated', 'code_algorithm',
+                 'amendment', 'amendment_files')      # aidd:FR-453 amendment 11 (`aidd verify --amendment NN`)
 
 
 def append_verify_run(root, session, spec, ok, verify_hash, results, started, fingerprint_start,

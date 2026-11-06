@@ -2371,6 +2371,7 @@ def parse_verification(spec_text):
         ni, ci, ei, vi = col('#', 'n', 'no', 'no.'), col('command', 'cmd'), col('expected'), col('covers')
         ii, ri, envi = col('inputs'), col('reuse'), col('environment')
         ti = col('tier')
+        gi = col('regression')          # aidd:FR-455 amendment 11: `always` or empty; never part of verification_hash
         if ci is None:
             return []
         out = []
@@ -2391,6 +2392,8 @@ def parse_verification(spec_text):
                 item['environment'] = _strip_ticks(r[envi]).strip()
             if ti is not None:
                 item['tier'] = _strip_ticks(r[ti]).strip().lower()
+            if gi is not None:
+                item['regression'] = _strip_ticks(r[gi]).strip().lower()
             out.append(item)
         return out
     except Exception:
@@ -3234,6 +3237,10 @@ def check_verification(spec_text, root=None):
             if r.get('tier') and r['tier'] not in VERIFY_TIERS:
                 out.append(_v('R10', f'Verification row {n}: Tier "{r["tier"][:20]}" is not `functional` or `perf`.',
                               f'Write `functional` (every round) or `perf` (once per spec, before close) in row {n}.'))
+            if r.get('regression') and r['regression'] != 'always':
+                out.append(_v('R10', f'Verification row {n}: Regression "{r["regression"][:20]}" is not `always`.',
+                              f'Write `always` (the row runs in every `aidd verify --amendment NN`) or leave the '
+                              f'Regression cell of row {n} empty.'))
         if perf_required(spec_text) and not any(row_tier(r) == 'perf' for r in rows):
             out.append(_v('R10', '`Perf: required` is declared but no Verification row has `Tier: perf`.',
                           'Add the perf row(s) with `Tier` = `perf`, or remove the `Perf: required` line.'))
@@ -3394,6 +3401,14 @@ def _run_problems(ev, root, spec_dir, spec_text, run, fingerprint=None):
             fp = row_input_fingerprint(root, result['input_globs'])
             if not fp or fp != result.get('input_fp'):
                 out.append(('stale', _v('R10', 'Verification row inputs changed or are unavailable.', rerun)))
+        # aidd:FR-456 amendment 11: a row reused by `--amendment` counts only with the proof it was reused on
+        if isinstance(result, dict) and result.get('reused'):
+            kind = result.get('reuse_kind')
+            origin = result.get('reused_from') if isinstance(result.get('reused_from'), dict) else {}
+            if ((kind == 'amendment-inputs' and not (result.get('input_globs') and result.get('input_fp')))
+                    or (kind == 'amendment-scope' and not origin.get('code_fp'))):
+                out.append(('stale', _v('R10', f"Verification row {str(result.get('n', '?'))[:20]} was reused "
+                                               'without a recorded fingerprint proof.', rerun)))
     rows_ok = bool(res0) and all(isinstance(r, dict) and r.get('ok') is True for r in res0)
     # files the run rewrote are outputs when the spec now declares them `Generated:`: THIS run is accepted
     # as it is (no re-execution, no code edit); the only fix for the old "tree changed" failure is that line.

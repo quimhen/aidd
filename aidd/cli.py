@@ -532,7 +532,9 @@ def build_parser():
     p_red.set_defaults(func=lambda a: _run("aidd_red.py", a.red_args))
 
     p_verify = sub.add_parser(
-        "verify", help="Run the spec's ## Verification commands and record the evidence (verify <spec>)",
+        "verify", help="Run the spec's ## Verification commands and record the evidence (verify <spec>; "
+                       "--amendment NN runs only the rows an amendment touches and reuses proven PASS rows; "
+                       "--dry-run plans only; `aidd verify --help` for every form)",
         add_help=False)
     p_verify.add_argument("verify_args", nargs=argparse.REMAINDER, help="forwarded to aidd_status.py verify")
     p_verify.set_defaults(func=cmd_verify)

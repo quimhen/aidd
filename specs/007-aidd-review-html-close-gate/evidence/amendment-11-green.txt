@@ -1,0 +1,23 @@
+# amendment 11 GREEN, 2026-11-06, branch am11/amendment-scoped-verify (each module run alone, BelowNormal priority)
+tests.test_verify_amendment          exit 0  Ran 15 tests  OK
+tests.test_verify_round              exit 0  Ran 18 tests  OK
+tests.test_verify_round_reuse        exit 0  Ran 14 tests  OK
+tests.test_aidd_rules_r10            exit 0  Ran 55 tests  OK
+tests.test_verify_tiers              exit 0  Ran 10 tests  OK
+tests.test_dot_aidd_mirror           exit 0  Ran 13 tests  OK
+tests.test_cli_rules                 exit 0  Ran 15 tests  OK
+tests.test_aidd_task_verify          exit 0  Ran 10 tests  OK
+tests.test_verify_regressions        exit 0  Ran 6 tests   OK
+tests.test_verify_changed_policy     exit 0  Ran 11 tests  OK
+tests.test_session_lessons           exit 0  Ran 11 tests  OK
+tests.test_aidd_rules                exit 0  Ran 245 tests OK
+tests.test_aidd_status               exit 0  Ran 150 tests OK
+tests.test_check_spec                exit 0  Ran 42 tests  OK
+tests.test_evidence                  exit 0  Ran 156 tests OK
+tests.test_contract_store            exit 0  Ran 8 tests   OK
+tests.test_verify_git_contract       exit 0  Ran 6 tests   OK
+tests.test_aidd_guard_partial        exit 0  Ran 5 tests   OK
+tests.test_aidd_declared_hermetic    exit 0  Ran 1 test    OK
+tests.test_wave_verification         exit 1  Ran 20 tests  FAILED (failures=1)
+  test_explicit_inputs_do_not_trigger_round_global_scan: PRE-EXISTING, fails identically on HEAD a7b603d
+  (checked in a temporary detached worktree of HEAD); not caused by this amendment.

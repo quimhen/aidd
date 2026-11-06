@@ -2301,7 +2301,8 @@ def _tier_select(rows, perf, spec_name):
 
 
 def cmd_verify(spec_arg, full=False, bail=False, wave=None, result_sink=None, wave_cache=None, task_ids=None,
-               always_rows=None, perf=False, round_shared=None, round_start=None, round_reused=None, round_env=None):
+               always_rows=None, perf=False, round_shared=None, round_start=None, round_reused=None, round_env=None,
+               amendment=None):
     """aidd:FR-205 aidd:AC-209 aidd:AC-216 aidd:AC-218 `aidd verify <spec>`: run every `## Verification` row
     (shell, project root, AIDD_VERIFY_TIMEOUT per row), save `evidence/verify-<n>.txt` (header line
     `# <cmd> | exit <code> | <ISO ts>` + combined output), mark zero-test / too-short output failed,
@@ -2377,7 +2378,12 @@ def cmd_verify(spec_arg, full=False, bail=False, wave=None, result_sink=None, wa
     if had_rows and not rows:
         print('Refused: the selection has no row of this tier; nothing was executed.')
         return 1
-    if round_shared is None and wave is None and task_ids is None and not perf:
+    if amendment is not None and (round_shared is not None or wave is not None or task_ids is not None or perf
+                                  or full or round_start is None):
+        print('Refused: --amendment is a complete run of its own (no --tasks, --wave, --perf, --full or round); '
+              'nothing was executed.')
+        return 1
+    if round_shared is None and wave is None and task_ids is None and not perf and amendment is None:
         _round_hint(root, d.name)   # aidd:FR-425 suggest the one-pass round when other open specs share rows
     if perf:
         full = True        # FR-399: a perf run never reuses, carries or stores a result
@@ -2496,6 +2502,9 @@ def cmd_verify(spec_arg, full=False, bail=False, wave=None, result_sink=None, wa
                   if r.get('reuse') == 'hermetic' and inputs and not full else None)
         key = (_verification_key(cmd), _verification_key(expected))
         reused_ent = (round_reused or {}).get((d.name, str(n))) if round_shared is not None else None
+        if amendment is not None:
+            # aidd:FR-452 amendment 11: reuse proven by aidd_amendment_verify.plan on the state taken before this run
+            reused_ent = (amendment.get('reused') or {}).get(str(n))
         if reused_ent is not None:
             # aidd:FR-427 aidd:FR-429 same-spec reuse decided by the round on the state taken BEFORE it: not executed,
             # never a shared execution; the round's stability check still covers it.
@@ -2505,7 +2514,7 @@ def cmd_verify(spec_arg, full=False, bail=False, wave=None, result_sink=None, wa
                 o = reused_ent['origin']
                 res = {'n': str(n), 'cmd': cmd, 'expected': expected, 'exit': 0, 'ok': True, 'evidence': rel,
                        'sha1': hashlib.sha1(data).hexdigest(), 'secs': 0.0, 'reused': True,
-                       'reuse_kind': 'round-same-spec', 'reused_from': dict(o)}
+                       'reuse_kind': reused_ent.get('kind') or 'round-same-spec', 'reused_from': dict(o)}
                 if inputs:
                     res.update(input_globs=inputs, input_fp=reused_ent.get('input_fp'),
                                input_algorithm=ev.EVIDENCE_ALGORITHM)
@@ -2514,8 +2523,9 @@ def cmd_verify(spec_arg, full=False, bail=False, wave=None, result_sink=None, wa
                 if reused_ent.get('env_id') is not None:
                     res['env_id'] = reused_ent['env_id']
                 one_line = re.sub(r'[\r\n]+', ' ', cmd).strip()
-                print(f"REUSED row {n}: {one_line[:100]} (PASS of {o['spec']} row {o['n']}, {o['date']}, huella "
-                      f"{o['code_fp']}, verify hash {o['verify_hash'] or '?'}) → {rel}", flush=True)
+                why_reused = f"{reused_ent['why']}; " if reused_ent.get('why') else ''
+                print(f"REUSED row {n}: {one_line[:100]} ({why_reused}PASS of {o['spec']} row {o['n']}, {o['date']}, "
+                      f"huella {o['code_fp']}, verify hash {o['verify_hash'] or '?'}) → {rel}", flush=True)
                 return res
             except Exception as e:
                 one_line = re.sub(r'[\r\n]+', ' ', cmd).strip()
@@ -2951,7 +2961,15 @@ def cmd_verify(spec_arg, full=False, bail=False, wave=None, result_sink=None, wa
                                     code_fp_start=code_start, code_fp_end=code_end,
                                     code_since=code_since, verify_lineage=lineage, code_scope=scope or None,
                                     code_changed=changed[:200] or None, code_generated=gen or None,
-                                    code_algorithm=ev.EVIDENCE_ALGORITHM)
+                                    code_algorithm=ev.EVIDENCE_ALGORITHM,
+                                    amendment=(str(amendment['id']) if amendment is not None else None),
+                                    amendment_files=(list(amendment['files'])[:200] if amendment is not None else None))
+    if amendment is not None:
+        n_reused = sum(1 for x in results if x.get('reused'))
+        saved = round(sum(float((amendment.get('reused') or {}).get(x['n'], {}).get('secs') or 0.0)
+                          for x in results if x.get('reused')), 1)
+        print(f"amendment {amendment['id']}: {len(results) - n_reused} row(s) executed, {n_reused} REUSED "
+              f"(~{saved:g} s saved)")
     if scope:
         print(f'scope: {", ".join(scope)} (edits outside it, e.g. other specs, do not invalidate this verification)')
     # aidd:FR-434 declared outputs are no longer hashed, so they are not in `changed`: list the ones written during
@@ -2995,6 +3013,15 @@ def _round_mod():
         from . import aidd_round as mod
     except ImportError:
         import aidd_round as mod
+    return mod
+
+
+def _amendment_mod():
+    """aidd:FR-450 lazy import of the amendment-scoped verification (amendment 11)."""
+    try:
+        from . import aidd_amendment_verify as mod
+    except ImportError:
+        import aidd_amendment_verify as mod
     return mod
 
 
@@ -3637,6 +3664,15 @@ def main(argv=None):
             print('       aidd verify --all-open --round [--dry-run] [--full]')
             print('A round runs each identical row command ONCE for all the specs (environment fingerprint checked')
             print('before and after it) and records every spec\'s own verify_run; --dry-run shows the plan only.')
+            print('       aidd verify <spec> --amendment NN [--dry-run]')
+            print('       aidd verify <spec> --dry-run   (plan only: one RUN/REUSED/PERF line per row; executes nothing)')
+            print('--amendment NN reads the files declared by specs/<spec>/tasks-amendment-NN.md (`Files to change:`')
+            print('lines, the `Target file` column or an ```aidd-files block) and runs only the rows whose `Inputs` or')
+            print('command name one of them, the `Regression: always` rows and every row whose previous PASS cannot be')
+            print('proven still valid (Inputs fingerprint for rows with `Inputs`, whole-Scope fingerprint for rows')
+            print('without, same command/Expected, env_id, intact evidence). The rest is REUSED with the evidence of')
+            print('its last PASS. It records ONE complete verify_run, so `aidd rules close` judges it as usual.')
+            print('Unknown options are refused before anything runs.')
             return 0
         if len(argv) >= 2 and argv[0] == 'verify' and '--round' in argv[1:]:
             # aidd:FR-419 one verification pass over several specs
@@ -3659,6 +3695,25 @@ def main(argv=None):
             return _round_mod().run_round(sys.modules[__name__], names, dry_run='--dry-run' in flags,
                                           full='--full' in flags)
         if len(argv) >= 2 and argv[0] == 'verify':
+            # aidd:FR-458 amendment 11: an unknown option is refused BEFORE anything runs (it used to be taken as
+            # a spec name: `aidd verify A --dry-run` executed A for real through cmd_verify_many).
+            valued = {'--wave', '--tasks', '--base', '--amendment'}
+            plain = {'--full', '--bail', '--json', '--changed', '--perf', '--dry-run'}
+            unknown, k = [], 1
+            while k < len(argv):
+                a = argv[k]
+                if a in valued:
+                    k += 2
+                    continue
+                if a.startswith('-') and a not in plain:
+                    unknown.append(a)
+                k += 1
+            if unknown:
+                print(f'Refused: unknown option(s) for aidd verify: {", ".join(unknown)} (see `aidd verify --help`); '
+                      'nothing was executed.')
+                return 1
+            if '--amendment' in argv[1:] or '--dry-run' in argv[1:]:
+                return _amendment_mod().main(sys.modules[__name__], argv[1:])
             if '--perf' in argv[1:]:
                 rest = [a for a in argv[1:] if a != '--perf']
                 if argv[1:].count('--perf') != 1 or len(rest) != 1 or rest[0].startswith('-'):

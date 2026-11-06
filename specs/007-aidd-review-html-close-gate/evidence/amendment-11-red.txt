@@ -1,0 +1,17 @@
+# python -m unittest tests.test_verify_amendment | exit 1 | 2026-11-06 (RED, before implementation, branch am11/amendment-scoped-verify)
+Ran 15 tests in 10.824s
+FAILED (failures=15)
+Failing: test_command_naming_a_declared_file_runs, test_nothing_changed_reuses_everything,
+test_only_rows_touched_by_the_amendment_run, test_regression_always_runs,
+test_undeclared_input_change_runs_with_warning, test_forged_reused_result_is_stale,
+test_gate_accepts_then_stales_on_reused_inputs, test_amendment_dry_run_executes_nothing,
+test_plain_dry_run_does_not_execute, test_unprovable_env_runs_with_reason, test_fingerprint_budget_refusal,
+test_machine_block_is_read, test_missing_or_empty_amendment_file, test_unknown_option_and_bad_combinations,
+test_lint_and_hash.
+Bug reproduced (test_plain_dry_run_does_not_execute and every `--amendment` test): the unknown tokens were taken as
+spec names and spec A was EXECUTED for real:
+  === aidd verify A ===
+  PASS row V-1: ... ok.py ... → evidence/verify-V-1.txt
+  verify_run recorded for A: PASSED (1/1 rows, ...)
+  === aidd verify --amendment ===
+  Not a spec directory: --amendment
