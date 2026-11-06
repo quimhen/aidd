@@ -25,9 +25,10 @@ F47_STATIC_IDS = (
 
 
 def payload_of(html):
-    m = re.search(r'<script id="graph-data" type="application/json">(.*?)</script>', html, flags=re.S)
-    assert m
-    return json.loads(m.group(1))
+    import graph_explorer
+    data = graph_explorer.embedded_payload(html)   # gzip+base64 by default (amendment 10 FR-409) or plain
+    assert data is not None
+    return data
 
 
 def _quiet(fn, *a):

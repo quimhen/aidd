@@ -22,6 +22,10 @@ Usage:
         Output ends with the apply manifest: every file in natural order, i.e. the exact input of the single
         database pass. Run the DB pass only when the exit code is 0.
 
+psql metacommands (`\\set`, `\\gset`, `\\i`, `\\if`, ...) and `:var` interpolation are not SQL: the postgres adapter
+blanks those lines (line numbers kept) and prints a `note:`; what they do is checked only by the DB pass. A `--cmd`
+checker receives the file unchanged.
+
 Exit codes: 0 all files compile, 1 at least one file does not compile,
             2 usage, unreadable path, empty selection or missing checker.
 Optional dependency for the postgres adapter: pip install pglast. Never prints a traceback.
@@ -74,8 +78,44 @@ def _line_of(text, location):
     return text.count('\n', 0, max(0, location)) + 1
 
 
+_PSQL_META_LINE = re.compile(r'^\s*\\[A-Za-z!?]')
+_PSQL_TRAILING_G = re.compile(r'\\g(?:set|exec|x)?\b[^\n]*$')
+_PSQL_VAR = re.compile(r"(?<![:\w]):(?:'([A-Za-z_]\w*)'|\"([A-Za-z_]\w*)\"|([A-Za-z_]\w*))")
+
+
+def strip_psql_meta(text):
+    """aidd:FR-407 (text, n) with psql metacommands neutralised for a static parser, line count kept: lines that
+    start with a backslash metacommand become blank, a trailing \\gset/\\gexec/\\g becomes `;`, and, only when the
+    file had a metacommand, :'v' -> 'v', :"v" -> "v", :v -> 0. n = number of lines changed. The DB pass (psql)
+    still checks what the metacommands do."""
+    lines = text.split('\n')
+    n = 0
+    for i, ln in enumerate(lines):
+        if _PSQL_META_LINE.match(ln):
+            lines[i], n = '', n + 1
+        elif _PSQL_TRAILING_G.search(ln) and not ln.lstrip().startswith('--'):
+            lines[i], n = _PSQL_TRAILING_G.sub(';', ln), n + 1
+    if not n:
+        return text, 0
+
+    def sub(m):
+        if m.group(1):
+            return f"'{m.group(1)}'"
+        if m.group(2):
+            return f'"{m.group(2)}"'
+        return '0'
+    out = []
+    for ln in lines:
+        new = _PSQL_VAR.sub(sub, ln)
+        if new != ln:
+            n += 1
+        out.append(new)
+    return '\n'.join(out), n
+
+
 def compile_text(text, parser):
     """None when the text compiles, else 'line N: message'. `parser` is the pglast.parser module."""
+    text, _n = strip_psql_meta(text)
     try:
         parser.parse_sql(text)
     except Exception as exc:
@@ -192,7 +232,13 @@ def main(argv=None):
         except Exception:
             print('ERROR: pglast is not installed (pip install pglast): static SQL check not performed.')
             return 2
-        check, tag = (lambda _p, text: compile_text(text, parser)), '|postgres'
+        def check(path, text):
+            n = strip_psql_meta(text)[1]
+            if n:
+                print(f'note: {path}: psql metacommands ignored by the static compile ({n} line(s)); '
+                      'the DB pass checks them', file=sys.stderr)
+            return compile_text(text, parser)
+        tag = '|postgres'
     else:
         print(f'no built-in static checker for engine "{engine}": pass its own compiler/linter with '
               f'--cmd "<command with {{file}}>". Static check not performed.')

@@ -1571,7 +1571,7 @@ class TestReviewApproval(Spec007Base):
         tmp, root, d = self.project("F23-eDoc-POS")
         with tmp:
             self.page(d)                                   # a page from before the padding
-            (d / "plan.md").write_text(PLAN_MD + "x" * 450_000, encoding="utf-8")
+            (d / "plan.md").write_text(PLAN_MD + "x" * 2_050_000, encoding="utf-8")
             backdate(d / "plan.md", 100)
             with self.assertRaises(ValueError):
                 aidd_review.generate(d, template_text=REVIEW_TEMPLATE)
@@ -1749,7 +1749,7 @@ class TestOverCapNeverApprovedByAnAnswer(Spec007Base):
     def test_source_too_large_keeps_its_answer_only_route(self):
         tmp, root, d = self.project("F23-eDoc-POS")
         with tmp:
-            (d / "plan.md").write_text(PLAN_MD + "x" * 450_000, encoding="utf-8")
+            (d / "plan.md").write_text(PLAN_MD + "x" * 2_050_000, encoding="utf-8")
             backdate(d / "plan.md", 100)
             self.assertTrue(aidd_review.review_state(d)["reason"].startswith("source too large"))
             self.answer(root, self.aq(d), "Approve")

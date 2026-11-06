@@ -61,6 +61,8 @@ import aidd.cli as aidd_cli  # noqa: E402
 VERBATIM_SCRIPTS = [
     "aidd_close_ledger.py",
     "aidd_red.py",
+    "aidd_embed.py",        # amendment 10 FR-409/FR-410
+    "aidd_gitignore.py",    # amendment 10 FR-412
     "check_spec.py",
     "check_charter.py",
     "flowmap.py",

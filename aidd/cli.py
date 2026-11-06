@@ -282,6 +282,18 @@ def cmd_ci_install(args):
     return _run("install_ci.py", ci_args)
 
 
+def _ensure_gitignore(project_root, scripts_dir):
+    """aidd:FR-412 append AIDD's generated-file patterns to the project's .gitignore (idempotent). Never fails init."""
+    try:
+        sys.path.insert(0, str(scripts_dir))
+        import aidd_gitignore
+        added = aidd_gitignore.ensure(project_root)
+        print(f".gitignore: added {len(added)} AIDD generated pattern(s)" if added else
+              ".gitignore: AIDD generated patterns already present")
+    except Exception as exc:  # noqa: BLE001 - advisory step
+        print(f".gitignore not updated ({type(exc).__name__}); add templates/gitignore.aidd by hand", file=sys.stderr)
+
+
 def cmd_init(args):
     """Copy the tool-agnostic .aidd/ bundle (methodology + templates +
     scripts, no Claude-specific pieces) into a target project. This is
@@ -306,6 +318,7 @@ def cmd_init(args):
         shutil.rmtree(target)
     shutil.copytree(source, target, ignore=shutil.ignore_patterns("__pycache__"))
     print(f"Installed AIDD's methodology + scripts to {target}")
+    _ensure_gitignore(target.parent, target / "scripts")
     print("Next: add AGENTS.md's AIDD section (see adapters/AGENTS.md.snippet) so your")
     print("agent tool actually reads it — `aidd init` alone doesn't wire that up.")
     print("For Gemini CLI, Cursor, Windsurf, Cline, or GitHub Copilot, also run:")

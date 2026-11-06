@@ -148,35 +148,40 @@ class TestFingerprintBudget(tas.Spec007Base):
 class TestSpecSizeWarning(unittest.TestCase):
     """B6."""
 
+    W, M = 1_500_000, 2_000_000     # amendment 10 FR-411 (was 300 000 / 400 000 before the measurement)
+
     def test_constants_and_band(self):
-        self.assertEqual(aidd_review.WARN_REVIEW_SOURCE_CHARS, 300_000)
-        self.assertEqual(aidd_review.MAX_REVIEW_SOURCE_CHARS, 400_000)
-        src = [("spec.md", "x" * 300_000), ("plan.md", "x" * 300_001), ("tasks.md", "x" * 400_000),
-               ("mockup-audit.md", "x" * 400_001), ("contracts.md", None)]
+        W, M = self.W, self.M
+        self.assertEqual(aidd_review.WARN_REVIEW_SOURCE_CHARS, W)
+        self.assertEqual(aidd_review.MAX_REVIEW_SOURCE_CHARS, M)
+        src = [("spec.md", "x" * W), ("plan.md", "x" * (W + 1)), ("tasks.md", "x" * M),
+               ("mockup-audit.md", "x" * (M + 1)), ("contracts.md", None)]
         w = aidd_review.size_warnings(src)
         self.assertEqual(len(w), 2)                                  # plan.md and tasks.md only
-        self.assertTrue(w[0].startswith("plan.md is 300001 chars"))
+        self.assertTrue(w[0].startswith(f"plan.md is {W + 1} chars"))
         self.assertIn("split the spec by amendment batches", w[0])
-        self.assertTrue(w[1].startswith("tasks.md is 400000 chars"))
+        self.assertTrue(w[1].startswith(f"tasks.md is {M} chars"))
         self.assertEqual(aidd_review.size_warnings([("spec.md", "x" * 1000)]), [])
 
     def test_limit_still_refuses(self):
-        self.assertEqual(aidd_review._oversize([("plan.md", "x" * 400_001)]), [("plan.md", 400_001)])
-        self.assertEqual(aidd_review._oversize([("plan.md", "x" * 400_000)]), [])
+        M = self.M
+        self.assertEqual(aidd_review._oversize([("plan.md", "x" * (M + 1))]), [("plan.md", M + 1)])
+        self.assertEqual(aidd_review._oversize([("plan.md", "x" * M)]), [])
+        self.assertEqual(aidd_review._oversize([("tasks.md", "x" * 400_001)]), [])   # no forced split any more
 
     def test_aidd_review_main_warns_on_stderr_and_still_works(self):
         with tempfile.TemporaryDirectory() as t:
             d = Path(t) / "specs" / "001-x"
             d.mkdir(parents=True)
             (d / "spec.md").write_text("# s\n", encoding="utf-8")
-            (d / "plan.md").write_text("x" * 350_000, encoding="utf-8")
+            (d / "plan.md").write_text("x" * 1_600_000, encoding="utf-8")
             (d / "tasks.md").write_text("# t\n", encoding="utf-8")
             err, out = io.StringIO(), io.StringIO()
             with mock.patch.object(aidd_review, "generate", return_value=(d / "review.html", True)), \
                     contextlib.redirect_stderr(err), contextlib.redirect_stdout(out):
                 rc = aidd_review.main([str(d)])
             self.assertEqual(rc, 0, err.getvalue())
-            self.assertIn("warning: plan.md is 350000 chars", err.getvalue())
+            self.assertIn("warning: plan.md is 1600000 chars", err.getvalue())
 
     def test_aidd_review_main_silent_below_threshold(self):
         with tempfile.TemporaryDirectory() as t:
@@ -201,7 +206,7 @@ class TestSpecSizeWarning(unittest.TestCase):
 
     def test_check_spec_warns_without_changing_the_exit_code(self):
         small = self.check_spec_out(1000)
-        big = self.check_spec_out(350_000)
+        big = self.check_spec_out(1_600_000)      # amendment 10 FR-411 band: 1 500 000 < n <= 2 000 000
         self.assertIn("WARNING: plan.md is", big.stdout)
         self.assertNotIn("WARNING: plan.md", small.stdout)
         self.assertEqual(big.returncode, small.returncode)

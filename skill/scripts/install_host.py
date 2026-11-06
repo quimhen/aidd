@@ -688,6 +688,14 @@ def main(argv=None) -> int:
 
     installer = HostInstaller(args.host, project_root, args.force, repo_root)
     installer.run()
+    try:                                        # aidd:FR-412 generated files never get versioned
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        import aidd_gitignore
+        added = aidd_gitignore.ensure(project_root)
+        installer.results.append({"path": ".gitignore", "status": "written" if added else "unchanged",
+                                  "reason": f"{len(added)} AIDD generated pattern(s) added" if added else ""})
+    except Exception as exc:  # noqa: BLE001 - advisory step, never fails the install
+        installer.results.append({"path": ".gitignore", "status": "skipped", "reason": type(exc).__name__})
     if args.githooks:
         installer.install_githooks()
     label = args.host if args.host else "githooks"

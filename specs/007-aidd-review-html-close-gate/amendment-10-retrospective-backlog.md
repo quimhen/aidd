@@ -315,6 +315,119 @@ owner decision (it is a commit to the AIDD repo).
 
 ---
 
+## Extension 2026-11-05 (b): test tiers, capacity budget, light seeding, perf-risk template, psql metacommands
+
+Source: b1SycLink F38, measured by the orchestrator on 2026-11-05 [measured]: seeding 38 000 lines for a load test took
+~40 min (the seed goes through the business logic document by document, ~2 min per 2 000 lines, worse with volume);
+`aidd verify` of F38 took ~600 s per round (V-2 full `db_verify` 315 s, V-18 Playwright 132 s) and was repeated every
+round. The load measurement found a real defect no small functional test sees: plpgsql switches to a generic plan from
+the 6th execution and `fe_rpt_import_buildup` goes from ~80 ms to ~950 ms; with `SET plan_cache_mode =
+force_custom_plan` it stays at 68-109 ms. That risk is detectable with small data (7 calls in a row, or
+`force_generic_plan` and an EXPLAIN check, or an assertion on `pg_proc.proconfig`), as `imc_lock_plan` already does with
+20 000 rows. Owner decision (2026-11-05): tests must confirm functionality; load tests exist but not all alike and not in
+every round; the machine has no capacity (WSL 3 GB, one heavy run at a time), so the spec's analysis must consider it.
+
+FR numbering continues in the free block: **FR-397..FR-412** (FR-409..412 = item M, compression); acceptance
+**AC-453..AC-466** (`grep -rhoE "FR-(39[7-9]|4[0-4][0-9])" specs/ skill/ adapters/ docs/` found only the FR-399
+mention of the range note before this extension).
+Name check: `grep -rniE "\btier\b|--perf|capacity" skill/scripts/*.py skill/AIDD.md` = no verification-tier concept
+exists (`Model tier` of R13 is a different thing; `test_perf_budget.py` measures tool runtime). The new column is `Tier`.
+
+### H. Two test tiers: `functional` (every round) and `perf` (once per spec, before close)
+
+| Code | Requirement |
+|---|---|
+| FR-397 | Optional Verification column `Tier` with values `functional` (default when empty or absent) or `perf`; any other value is an R10 violation of `check_verification`. Optional line `Perf: required` under `## Verification`. `verification_hash` appends `\|tier:<v>` only when the cell is non-empty and `\nperf:required` only when the line is present, so every existing hash is byte-identical. |
+| FR-398 | `aidd verify <spec>` (full, `--tasks`, `--changed`, `--wave`, `--json`) runs only `functional` rows; each `perf` row prints `PERF row n: not run (Tier: perf runs once per spec before close: aidd verify <spec> --perf)`. The recorded `verify_run` keeps the whole-table `verify_hash`, so it still satisfies the close gate for the functional rows. A table with only `perf` rows refuses without `--perf`. |
+| FR-399 | `aidd verify <spec> --perf` runs only the `perf` rows (evidence `evidence/verify-perf-<n>.txt`), never reuses or carries a result, and records `perf_verify_run{spec, ok, stable, results, started, verify_hash, code_fp_end, code_scope}`; it never records `verify_run`. Cannot be combined with `--tasks`, `--changed`, `--wave`, `--json` or several specs. No perf row = refuse, nothing executed. |
+| FR-400 | Close (`aidd rules close` and `--check`, via `verification_gaps`) requires current perf evidence ONLY when the spec declares `Perf: required`: newest `perf_verify_run` of the spec exists, is ok and stable, its `verify_hash` equals the current table hash, every evidence file has its recorded sha1, and no code edit inside its scope happened after its `started`. Otherwise one R10 gap with the fix `aidd verify <spec> --perf`. `Perf: required` with no `perf` row is an R10 violation. Specs without the line are unaffected. |
+
+### I. Capacity & test budget in the spec analysis
+
+| Code | Requirement |
+|---|---|
+| FR-401 | Section `## Capacity & test budget` in `spec.md` (template in `templates/spec.md`, mirrored) with lines `RAM: <n> GB\|MB`, `Heavy runs at a time: <n>`, `Round budget: <seconds> s` (sum of functional rows), `Not verified: <what stays unmeasured, or none>`, and a table `\| # \| Tier \| Est. s \| Budget s \| Data scale \| Scale justification \|` with one row per Verification row. |
+| FR-402 | The section is REQUIRED (R10 violations in `check_verification`, so `aidd rules check`, approval and close see them) when the spec opts in: a `Tier` column, a `Perf:` line, or the section heading itself. Violations: missing section or line; a Verification row without a budget row; `Est. s` missing or above `Budget s`; the sum of functional `Est. s` above `Round budget`; a `Data scale` of 1 000 or more, or any `perf` row, with an empty justification; a `Tier` that differs from the Verification row's. Legacy specs (no opt-in) get only a non-blocking `check_spec.py` WARNING line. |
+| FR-403 | `check_spec.py` prints non-blocking WARNING lines (`capacity_warnings`): no section in a spec with a Verification table; a functional row whose `Est. s` is over half the round budget ("consider `Tier: perf`"); `Heavy runs at a time: 1` together with `Jobs:` > 1. |
+| FR-404 | Scale rule (AIDD.md E8/E9 text): the data scale of a row is justified by the risk, not by production volume. A behaviour proven linear with its plan shown at a small N (EXPLAIN without Seq Scan on the hot table, custom/generic plan checked) does not require 200 000 rows; what is not measured is declared under `Not verified:` and reported `not-verified`, never claimed. |
+
+### J. Light seeding
+
+| Code | Requirement |
+|---|---|
+| FR-405 | Guide + template `templates/perf/seed-generate-series.sql`: seed volume with set-based SQL (`INSERT ... SELECT ... FROM generate_series(1, :n)`), bypassing the business logic per document, inside one transaction, followed by `ANALYZE`; optional reuse of the seeded database as a template (`CREATE DATABASE ... TEMPLATE`) only through the project's DB-pass tool (one-test-DB rule, E8 (d')). The per-document business path stays for the functional tier with minimal data. |
+
+### K. Functional test of a performance risk without volume
+
+| Code | Requirement |
+|---|---|
+| FR-406 | Template `templates/perf/plan-risk.test.sql` (pgTAP): (1) the hot function declares `plan_cache_mode=force_custom_plan` in `pg_proc.proconfig`, or (2) the function is called N > 5 times in a row (generic-plan switch happens at the 6th execution) and the last call stays within a factor of the first; (3) under `SET plan_cache_mode = force_generic_plan` the EXPLAIN of the hot query has no `Seq Scan` on the hot table; (4) at small scale (`SET enable_seqscan = off` is NOT used) the plan uses the expected index. Each check is a functional-tier row (seconds, not minutes). |
+
+### L. `aidd sqlcheck` and psql metacommands
+
+| Code | Requirement |
+|---|---|
+| FR-407 | [fact] `pglast` cannot parse psql metacommands (`\set`, `\gset`, `\i`, `\if`, ...) nor `:var` / `:'var'` interpolation; pgTAP files that use them failed as "does not compile". `aidd_sqlcheck.py` (postgres adapter only) blanks backslash metacommand lines, turns a trailing `\gset`/`\gexec`/`\g` into `;`, and, only in files that contain a metacommand, replaces `:'v'` with `'v'`, `:"v"` with `"v"` and `:v` with `0`; line numbers are kept. Prints `note: <file>: psql metacommands ignored (n lines)`. `--cmd` checkers receive the file unchanged. |
+| FR-408 | AIDD.md E8 states the limitation: the static compile skips psql metacommands; what they do (variables, includes, conditionals) is checked only by the DB pass. |
+
+### M. AIDD compresses what it embeds (owner order 2026-11-05)
+
+**Measured (2026-11-05, this branch).** `docs/graphs/explorer.html` of the AIDD repo: 10 817 300 bytes with the graph
+as plain JSON in `<script id="graph-data">` (gzip -9: 626 KB); regenerated with compression: 903 078 bytes (7 397
+nodes; base64 adds ~33 % over gzip). It was TRACKED in git (commit `b559962`). Review page: the compact page (default
+since 008) does NOT embed the source files; it embeds extracted items (cap `MAX_ITEMS` = 2000) as rendered HTML plus a
+data blob. b1SycLink F36 (1 027 224 source chars) -> 378 921-byte page in 0.2 s; F38 (699 456) -> 340 685 bytes (data
+blob 135 776); `--full` page F36 1 451 196 bytes. So the 400 000-char per-file cap [fact: spec 007 FR-202, written
+when the page embedded whole files] protected nothing on the compact page and only forced F38 to split tasks.md.
+With the data blob compressed: F38 page 342 235 -> 236 049 bytes; a synthetic 1 MB tasks.md -> 102 999 bytes.
+
+| Code | Requirement |
+|---|---|
+| FR-409 | Shared helper `skill/scripts/aidd_embed.py`: `pack(text)` = base64(gzip level 9, mtime 0) (deterministic), `unpack` its exact inverse (ValueError on a damaged payload), `JS_INFLATE` = the browser decoder (`DecompressionStream('gzip')`). `graph_explorer.py` embeds the graph as `<script id="graph-data" type="application/gzip+base64">` by default and decodes it in an async start-up; without `DecompressionStream` (or on a damaged payload) the page shows a readable alert naming the browsers that work and `--no-compress`; `--no-compress` writes the old plain JSON; `embedded_payload(page)` reads either form. |
+| FR-410 | `aidd review` compact page: the `aidd-data` blob keeps the plain header keys (`spec`, `tasks_hash`, `sources_digest`, `tasks_hash8`, `generated`, `picker_id`, `format`, read by the folder check and old readers) plus `encoding: gzip+base64` and `gz` (the whole blob). The page script (still ONE constant script, so the CSP sha256 still covers it) decodes `gz` before wiring; on failure it shows a readable message, leaves the rendered content visible and wires nothing (nothing can be checked or saved by mistake). The rendered body stays plain HTML: compressing it would need HTML-string injection, which FR-202 forbids (data reaches the page through textContent only). `_page_blob` decodes the compressed blob, so carry-over, idempotence and `--check` read both forms. `--no-compress` keeps the plain blob. `--full` keeps the plain blob. |
+| FR-411 | `MAX_REVIEW_SOURCE_CHARS` = 2 000 000 per file (below the rules parser's `MAX_CHARS` = 2 MiB, which stays the real ceiling), `WARN_REVIEW_SOURCE_CHARS` = 1 500 000; `check_spec.py` reads both from `aidd_review` (no duplicated literal). Batch files `tasks-<name>.md` stay supported (combined hash unchanged), as an option, not an obligation. AIDD.md/SKILL.md E10(f) and the Step 4 review paragraph state the measured limit. |
+| FR-412 | Generated files are never versioned: `templates/gitignore.aidd` (explorer pages, `specs/index.toon`, `specs/*/review.html`, `.aidd/evidence/`, `.aidd/jobs/`, `.aidd/sqlcheck-cache.json`, `graphify-out/`) is appended (missing lines only, idempotent, never untracking) to the project `.gitignore` by `aidd init` and `aidd install` through `aidd_gitignore.py`; the AIDD repo's own `.gitignore` gets the same lines and `docs/graphs/explorer.html` is untracked (`git rm --cached`, file kept on disk). |
+
+**Acceptance (M).**
+| Code | Scenario | Command | Expected |
+|---|---|---|---|
+| AC-463 | `pack`/`unpack` round trip of '', unicode, `</script>`, 1 MB, JSON; same input = same bytes; damaged payload; browser decoder in node | `python -m unittest tests.test_embed_compression -v` | equal byte for byte; ValueError; node output identical |
+| AC-464 | spec with a 1 MB tasks.md: compact page builds (no split), compressed blob == plain blob, `_page_blob` decodes it, page smaller | same | pass |
+| AC-465 | explorer default compressed, `--no-compress` plain, both payloads equal; browser smoke | `python -m pytest tests/test_graph_explorer.py tests/test_explorer_controls_browser.py` | pass |
+| AC-466 | `.gitignore` helper idempotent, keeps lines, dry run writes nothing; repo ignores the generated pages | `python -m unittest tests.test_embed_compression -v` | pass |
+
+| Task | Item | Target file(s) | Wave | Deps | Agent min | Explicitly out of scope |
+|---|---|---|---|---|---|---|
+| T-18 | M | `skill/scripts/aidd_embed.py`, `skill/scripts/graph_explorer.py`, `skill/scripts/aidd_review.py`, `skill/templates/review.html`, `skill/scripts/aidd_gitignore.py`, `skill/templates/gitignore.aidd`, `aidd/cli.py`, `skill/scripts/install_host.py`, `tests/test_embed_compression.py` (+ adapted fixtures in `tests/test_aidd_review.py`, `tests/test_b10_b11_b6.py`, `tests/test_aidd_status.py`, `tests/test_tasks_batch_coverage.py`, `tests/test_graph_explorer.py`, `tests/test_unified_explorer.py`) | 1 | none | 60 | compressing the rendered review body; `--full` page; untracking files in client projects |
+
+**Acceptance.**
+| Code | Scenario | Command | Expected |
+|---|---|---|---|
+| AC-453 | table with rows 1 functional, 2 perf; `cmd_verify` | `python -m unittest tests.test_verify_tiers -v` | only row 1 runs, `PERF row 2` printed, `verify_run` recorded |
+| AC-454 | same, `--perf` | same | only row 2 runs, `perf_verify_run` recorded, no `verify_run` |
+| AC-455 | `--perf` with `--tasks` / no perf row | same | refused, nothing executed |
+| AC-456 | `Perf: required`, no / stale / valid `perf_verify_run` | same | R10 gap / gap / no gap; without the line: never a gap |
+| AC-457 | hash of tables without `Tier` and without `Perf:` | same + `tests.test_aidd_rules` | equal to the pre-change hash |
+| AC-458 | capacity: missing section with Tier, est > budget, sum > round, unjustified 38 000 seed, tier mismatch | `python -m unittest tests.test_capacity_budget -v` | one violation each; a complete section: none |
+| AC-459 | legacy spec without opt-in | same | no violation; one warning |
+| AC-460 | pgTAP file with `\set n 7`, `select :n;`, `select 1 \gset` | `python -m unittest tests.test_aidd_sqlcheck -v` | compiles (when `pglast` is installed); helper output keeps line count |
+| AC-461 | templates exist and mirror | `python -m unittest tests.test_dot_aidd_mirror -v` | exit 0 |
+| AC-462 | owner-run measurement of the light seed in b1SycLink (slot 2) | `python eDoc/tools/db_verify.py --slot 2 ...` | figure reported, or `not-verified` declared |
+
+**Tasks.**
+| Task | Item | Target file(s) | Wave | Deps | Agent min | Explicitly out of scope |
+|---|---|---|---|---|---|---|
+| T-13 | H | `skill/scripts/aidd_rules.py`, `skill/scripts/aidd_status.py`, `tests/test_verify_tiers.py` | 1 | none | 60 | carry/reuse of perf rows |
+| T-14 | I | `skill/scripts/aidd_rules.py`, `skill/scripts/check_spec.py`, `skill/templates/spec.md`, `tests/test_capacity_budget.py` | 1 | T-13 (same owner as T-13 for aidd_rules.py) | 45 | estimating costs automatically |
+| T-15 | J, K | `skill/templates/perf/seed-generate-series.sql`, `skill/templates/perf/plan-risk.test.sql`, `skill/templates/perf/README.md` | 1 | none | 25 | running them against a database |
+| T-16 | L | `skill/scripts/aidd_sqlcheck.py`, `tests/test_aidd_sqlcheck.py` | 1 | none | 20 | executing metacommands |
+| T-17 | text | `skill/AIDD.md`, `skill/SKILL.md`, `adapters/dot-aidd/CORE.md`, mirrors under `adapters/dot-aidd/` (copied by script) | 2 | T-13..T-16 | 20 | rewording other sections |
+
+Status of this extension: implemented on branch `am10/test-tiers-capacity` of the AIDD repo (not installed, not pushed);
+see the branch commit for the file list. AC-462 is `not-verified` unless the owner runs it.
+
+---
+
 ## Cross-cutting acceptance
 
 | Code | Requirement | Command | Expected |

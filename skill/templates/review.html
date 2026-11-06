@@ -342,6 +342,16 @@ var TAB_LABELS = { summary: 'Resumen', questions: 'Preguntas', fr: 'Requisitos',
 var PREFIX_TAB = { Q: 'questions', D: 'questions', FR: 'fr', AC: 'ac', SCREEN: 'screens', COMP: 'screens', CTL: 'screens',
   API: 'api', T: 'tasks', V: 'verification' };
 var DATA_TAG = '<scr' + 'ipt type="application/json" id="aidd-data">';
+/* aidd:FR-410 the page data is embedded as gzip+base64 ({encoding, gz} next to the plain header keys);
+   decoded by the browser's DecompressionStream (same decoder as aidd_embed.JS_INFLATE) */
+async function aiddInflate(b64) {
+  if (typeof DecompressionStream === 'undefined') throw new Error('no-decompression-stream');
+  var bin = atob(String(b64 || '').replace(/\s+/g, ''));
+  var bytes = new Uint8Array(bin.length);
+  for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  var stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip'));
+  return await new Response(stream).text();
+}
 
 function isCode(c) { return typeof c === 'string' && CODE_RX.test(c); }
 function oneLine(v) {
@@ -596,11 +606,22 @@ if (typeof module !== 'undefined' && module.exports) {
 
 /* ---- DOM wiring: only in a browser ---- */
 if (typeof document !== 'undefined' && typeof window !== 'undefined') {
-  (function () {
+  (async function () {
     var root = document.getElementById('aidd-root');
     var A = function (n) { return (root && root.getAttribute(n)) || ''; };
     var data = {};
     try { data = JSON.parse(document.getElementById('aidd-data').textContent || '{}') || {}; } catch (e) { data = {}; }
+    if (data && data.encoding === 'gzip+base64' && typeof data.gz === 'string') {
+      var head = data;
+      try { data = JSON.parse(await aiddInflate(head.gz)) || {}; } catch (e) {
+        /* readable fallback: the rendered content below stays visible; only checking and saving need the data */
+        var al = document.getElementById('aidd-alert');
+        if (al) al.textContent = (String(e && e.message) === 'no-decompression-stream')
+          ? 'Este navegador no puede descomprimir los datos de la página (falta DecompressionStream). El contenido se puede leer abajo; para marcar y guardar use Chrome/Edge 80+, Firefox 113+ o Safari 16.4+, o regenere con `aidd review <spec> --no-compress`.'
+          : 'No se pudieron leer los datos incrustados de la página; regenere con `aidd review <spec>`.';
+        return;   /* no wiring without the data: nothing can be checked or saved by mistake */
+      }
+    }
     if (typeof data !== 'object' || Array.isArray(data)) data = {};
     var meta = { spec: A('data-spec'), tasks_hash: A('data-tasks-hash'), hash8: A('data-tasks-hash8'),
       sources_digest: A('data-sources-digest'), generated: A('data-generated') };

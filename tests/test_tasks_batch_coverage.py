@@ -157,7 +157,7 @@ class TestStatusAndReview(unittest.TestCase):
 
     def test_review_loads_batches_and_checks_size_per_file(self):
         big_a = BASE + "x" * 300_000
-        big_b = BATCH + "y" * 300_000   # 600k together, each file under the 400k limit
+        big_b = BATCH + "y" * 300_000   # 600k together, each file under the per-file limit
         with tempfile.TemporaryDirectory() as t:
             d = make_spec(t, {"tasks-a.md": big_b}, base=big_a)
             sources = RV._load_sources(d)
@@ -166,7 +166,7 @@ class TestStatusAndReview(unittest.TestCase):
 
     def test_review_refuses_one_oversized_batch_file_naming_it(self):
         with tempfile.TemporaryDirectory() as t:
-            d = make_spec(t, {"tasks-a.md": BATCH + "y" * 401_000})
+            d = make_spec(t, {"tasks-a.md": BATCH + "y" * 2_001_000})
             big = RV._oversize(RV._load_sources(d))
             self.assertEqual([n for n, _ in big], ["tasks-a.md"])
 

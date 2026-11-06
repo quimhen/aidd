@@ -17,6 +17,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import unified_graph  # noqa: E402
+import aidd_embed  # noqa: E402
 
 DEFAULT_TITLE = "AIDD :: Unified Knowledge Graph Explorer"
 DEFAULT_UNIFIED_OUT = "docs/graphs/explorer.html"
@@ -66,9 +67,27 @@ def _extra_layer_css(layers):
     return "\n".join(out)
 
 
-def build_html(graph_data, title=DEFAULT_TITLE):
+def _js_inflate():
+    return aidd_embed.JS_INFLATE.strip()
+
+
+def embedded_payload(page):
+    """aidd:FR-409 The graph dict embedded in a generated page (gzip+base64 or plain JSON); None if absent."""
+    m = re.search(r'<script id="graph-data" type="([^"]+)">(.*?)</script>', page, flags=re.S)
+    if not m:
+        return None
+    text = aidd_embed.unpack(m.group(2)) if m.group(1) == "application/gzip+base64" else m.group(2)
+    return json.loads(text)
+
+
+def build_html(graph_data, title=DEFAULT_TITLE, compress=True):
+    """aidd:FR-409 compress=True (default) embeds the graph as gzip+base64 (decoded in the browser by
+    DecompressionStream); compress=False keeps the plain JSON blob (`--no-compress`)."""
     payload = build_unified_payload(graph_data)
     embedded_data = embed_json(payload)
+    data_type = "application/json"
+    if compress:
+        embedded_data, data_type = aidd_embed.pack(embedded_data), "application/gzip+base64"
     safe_title = _html.escape(title, quote=True)
     layers = payload.get("layers") or []
     metric_pills_html = _metric_pills(layers)
@@ -519,12 +538,27 @@ body {{
   </aside>
 </div>
 
-<script id="graph-data" type="application/json">{embedded_data}</script>
+<script id="graph-data" type="{data_type}">{embedded_data}</script>
 
 <script>
-(function() {{
+{_js_inflate()}
+(async function() {{
   "use strict";
-  const rawData = JSON.parse(document.getElementById("graph-data").textContent);
+  const dataEl = document.getElementById("graph-data");
+  let rawData;
+  try {{
+    const text = dataEl.type === "application/gzip+base64" ? await aiddInflate(dataEl.textContent) : dataEl.textContent;
+    rawData = JSON.parse(text);
+  }} catch (err) {{
+    const msg = document.createElement("div");
+    msg.setAttribute("role", "alert");
+    msg.style.cssText = "position:fixed;top:0;left:0;right:0;z-index:9999;padding:16px;background:#7f1d1d;color:#fff;font:15px sans-serif";
+    msg.textContent = (String(err && err.message) === "no-decompression-stream"
+      ? "Este navegador no puede descomprimir el grafo (falta DecompressionStream). Abra la pagina en Chrome/Edge 80+, Firefox 113+ o Safari 16.4+, o regenere el explorador con --no-compress."
+      : "No se pudo leer el grafo incrustado (" + String(err && err.message) + "). Regenere el explorador.");
+    document.body.prepend(msg);
+    return;
+  }}
   const nodes = rawData.nodes || [];
   const edges = rawData.edges || [];
   const domains = rawData.domains || [];
@@ -1567,6 +1601,8 @@ def main(argv=None):
     ap.add_argument("--max-mb", type=float, default=DEFAULT_MAX_MB,
                     help="Tope del HTML en MB (default %(default)s); por encima no se escribe nada (exit 3)")
     ap.add_argument("--skip", default="", help="Grafos a omitir en modo --root, separados por coma")
+    ap.add_argument("--no-compress", action="store_true",
+                    help="Incrusta el JSON sin comprimir (por defecto: gzip+base64, aidd:FR-409)")
     a = ap.parse_args(argv)
     skip = [s.strip() for s in (a.skip or "").split(",") if s.strip()]
 
@@ -1584,14 +1620,14 @@ def main(argv=None):
             print(f"graph_explorer: cannot read {gp}: {ex}", file=sys.stderr)
             return 2
         out = Path(a.out) if a.out else gp.with_suffix(".html")
-        html_page = build_html(raw_data, a.title)
+        html_page = build_html(raw_data, a.title, compress=not a.no_compress)
     else:
         root = Path(a.root) if a.root else Path.cwd()
         raw_data = unified_graph.load_unified(root, skip=skip)
         for w in raw_data.get("warnings", []):
             print(f"graph_explorer: {w}", file=sys.stderr)
         out = Path(a.out) if a.out else (root / DEFAULT_UNIFIED_OUT)
-        html_page = build_html(raw_data, a.title)
+        html_page = build_html(raw_data, a.title, compress=not a.no_compress)
 
     nbytes = len(html_page.encode("utf-8"))
     if nbytes > a.max_mb * 1_000_000:

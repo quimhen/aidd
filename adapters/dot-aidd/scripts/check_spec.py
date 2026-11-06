@@ -684,11 +684,23 @@ def main():
         pass
     print(_banner)
     # amendment 09 FR-299 / B6: informational spec-size warning (never a gap, never affects the exit code)
+    try:                                   # amendment 10 FR-411: one source of truth for the limits
+        import aidd_review as _rv
+        _warn, _max = _rv.WARN_REVIEW_SOURCE_CHARS, _rv.MAX_REVIEW_SOURCE_CHARS
+    except Exception:
+        _warn, _max = 1_500_000, 2_000_000
     for _fname, _ftext in (('spec.md', spec_text), ('plan.md', plan), ('tasks.md', tasks),
                            ('mockup-audit.md', mockup_audit), ('contracts.md', contracts)):
-        if 300_000 < len(_ftext) <= 400_000:
-            print(f"WARNING: {_fname} is {len(_ftext)} chars (warning at 300000, limit 400000 for `aidd review`): "
+        if _warn < len(_ftext) <= _max:
+            print(f"WARNING: {_fname} is {len(_ftext)} chars (warning at {_warn}, limit {_max} for `aidd review`): "
                   f"split the spec by amendment batches before the limit refuses it.")
+    # amendment 10 FR-403: capacity & test budget advice (never a gap; the blocking part is R10 above)
+    try:
+        import aidd_rules as _cr
+        for _w in _cr.capacity_warnings(spec_text):
+            print(f"WARNING: {_w}")
+    except Exception:
+        pass
     # FR-008: informational plan totals (never a gap, never affects the exit code)
     try:
         if tasks:

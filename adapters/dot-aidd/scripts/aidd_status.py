@@ -2273,8 +2273,22 @@ def _latest_wave_run(root, spec, wave):
         return None
 
 
+def _tier_select(rows, perf, spec_name):
+    """aidd:FR-398 aidd:FR-399 The rows of the requested tier; prints one PERF line per skipped perf row."""
+    if perf:
+        return [r for r in rows if rules.row_tier(r) == 'perf']
+    keep = []
+    for i, r in enumerate(rows, 1):
+        if rules.row_tier(r) == 'perf':
+            print(f"PERF row {r.get('n') or i}: not run (Tier: perf runs once per spec before close: "
+                  f"aidd verify {spec_name} --perf)", flush=True)
+        else:
+            keep.append(r)
+    return keep
+
+
 def cmd_verify(spec_arg, full=False, bail=False, wave=None, result_sink=None, wave_cache=None, task_ids=None,
-               always_rows=None):
+               always_rows=None, perf=False):
     """aidd:FR-205 aidd:AC-209 aidd:AC-216 aidd:AC-218 `aidd verify <spec>`: run every `## Verification` row
     (shell, project root, AIDD_VERIFY_TIMEOUT per row), save `evidence/verify-<n>.txt` (header line
     `# <cmd> | exit <code> | <ISO ts>` + combined output), mark zero-test / too-short output failed,
@@ -2296,6 +2310,16 @@ def cmd_verify(spec_arg, full=False, bail=False, wave=None, result_sink=None, wa
         return 1
     if always_rows is not None and task_ids is None:
         print('Refused: always_rows requires --changed; nothing was executed.')
+        return 1
+    if perf and (task_ids is not None or wave is not None or always_rows is not None):
+        print('Refused: --perf cannot be combined with --tasks, --changed or --wave; nothing was executed.')
+        return 1
+    if perf and not any(rules.row_tier(r) == 'perf' for r in rows):
+        print(f'Refused: {d.name} has no Verification row with `Tier: perf`; nothing was executed.')
+        return 1
+    if not perf and all(rules.row_tier(r) == 'perf' for r in rows):
+        print(f'Refused: every Verification row of {d.name} is `Tier: perf`; run `aidd verify {d.name} --perf` '
+              'or add functional rows. Nothing was executed.')
         return 1
     if task_ids is not None:
         if wave is not None or full or bail:
@@ -2335,6 +2359,14 @@ def cmd_verify(spec_arg, full=False, bail=False, wave=None, result_sink=None, wa
         except ValueError as e:
             print(f'Refused: {e}; nothing was executed.')
             return 1
+    had_rows = bool(rows)
+    rows = _tier_select(rows, perf, d.name)   # aidd:FR-398 functional rows by default, perf rows only with --perf
+    if had_rows and not rows:
+        print('Refused: the selection has no row of this tier; nothing was executed.')
+        return 1
+    if perf:
+        full = True        # FR-399: a perf run never reuses, carries or stores a result
+        print(f'perf tier: {len(rows)} row(s); run alone (one heavy run at a time); recorded as perf_verify_run.', flush=True)
     # Validate the complete selected manifest before starting any expensive
     # command. Each row is fingerprinted again immediately before execution.
     for row in rows:
@@ -2391,7 +2423,7 @@ def cmd_verify(spec_arg, full=False, bail=False, wave=None, result_sink=None, wa
         print('Refused: cannot fingerprint the verification inputs; no verification commands were run. '
               'Check the scope, or raise the budget with AIDD_FINGERPRINT_BUDGET=<seconds> (default 8), before retrying.', flush=True)
         return 1
-    prior = None if task_ids is not None else ((_latest_wave_run(root, d.name, wave) if wave is not None else None) or ev.latest_verify_run(root, d.name))
+    prior = None if (task_ids is not None or perf) else ((_latest_wave_run(root, d.name, wave) if wave is not None else None) or ev.latest_verify_run(root, d.name))
     from glob import escape as escape_glob
     pexcl = (list(prior.get('code_generated') or []) +
              [escape_glob(x) for x in (prior.get('code_changed') or [])]) if prior else []
@@ -2422,7 +2454,8 @@ def cmd_verify(spec_arg, full=False, bail=False, wave=None, result_sink=None, wa
         n = r.get('n') or str(i)
         fid = _row_file_id(n, i)
         rel = (f'evidence/verify-tasks-{task_run_id}-{fid}.txt' if task_ids is not None else
-               (f'evidence/verify-wave-{wave}-{fid}.txt' if wave is not None else f'evidence/verify-{fid}.txt'))
+               (f'evidence/verify-wave-{wave}-{fid}.txt' if wave is not None else
+                (f'evidence/verify-perf-{fid}.txt' if perf else f'evidence/verify-{fid}.txt')))
         final = d / rel
         tmp = evid / f'.verify-{fid}.{os.getpid()}.out'
         inputs = r.get('inputs') or []
@@ -2799,6 +2832,19 @@ def cmd_verify(spec_arg, full=False, bail=False, wave=None, result_sink=None, wa
                                code_generated=gen, code_changed=changed[:200], code_algorithm=ev.EVIDENCE_ALGORITHM)
         print(f"wave {wave}: {'PASSED' if all_ok else 'FAILED'} ({sum(1 for x in results if x['ok'])}/{len(results)} rows)")
         return 0 if all_ok else 1
+    if perf:
+        # aidd:FR-399 the perf tier has its own event; it never replaces the functional verify_run
+        clean_results = [{k: (ev.redact_secrets(v, limit=500)[0] if isinstance(v, str) else v)
+                          for k, v in result.items()} for result in results]
+        recorded = ev.append(root, sess, 'perf_verify_run', spec=d.name, ok=all_ok, stable=stable,
+                             results=clean_results, started=started, verify_hash=vhash, code_fp_end=code_end,
+                             code_scope=scope, code_algorithm=ev.EVIDENCE_ALGORITHM)
+        if not recorded:
+            print('FAIL: perf verification evidence could not be recorded.')
+            return 1
+        print(f"perf_verify_run recorded for {d.name}: {'PASSED' if all_ok else 'FAILED'} "
+              f"({sum(1 for x in results if x['ok'])}/{len(results)} rows, verify hash {vhash})")
+        return 0 if all_ok else 1
     recorded = ev.append_verify_run(root, sess, d.name, all_ok, vhash, results, started, fp_start, fp_end, stable,
                                     code_fp_start=code_start, code_fp_end=code_end,
                                     code_since=code_since, verify_lineage=lineage, code_scope=scope or None,
@@ -2915,6 +2961,7 @@ def cmd_verify_json(spec_arg, full=False, bail=False, wave=None, *, recorded_run
         rows = rules.parse_verification(spec_text)
         if wave is not None:
             rows = _wave_rows(_read_tasks(d), rows, wave)
+        rows = [r for r in rows if rules.row_tier(r) != 'perf']   # aidd:FR-398 the functional run's manifest
         results = run.get('results')
         ids = [str(r.get('n') or i) for i, r in enumerate(rows, 1)]
         if (not rows or not isinstance(results, list) or len(results) != len(rows)
@@ -3255,9 +3302,18 @@ def main(argv=None):
             print('Usage: aidd verify <spec> [<spec> ...] [--full] [--bail] [--json] [--wave ID]')
             print('       aidd verify <spec> --tasks T-01,T-02')
             print('       aidd verify <spec> --changed [--base COMMIT]')
+            print('       aidd verify <spec> --perf   (only the `Tier: perf` rows; once per spec, before close)')
             print('Task selection runs matching verification rows and records partial evidence; it does not close a spec.')
+            print('Rows with `Tier: perf` are skipped by every other form.')
             return 0
         if len(argv) >= 2 and argv[0] == 'verify':
+            if '--perf' in argv[1:]:
+                rest = [a for a in argv[1:] if a != '--perf']
+                if argv[1:].count('--perf') != 1 or len(rest) != 1 or rest[0].startswith('-'):
+                    print('Refused: --perf takes exactly one spec and no other option (--tasks, --changed, --wave, '
+                          '--json, --full, --bail); nothing was executed.')
+                    return 1
+                return cmd_verify(rest[0], perf=True)
             full = '--full' in argv[1:]
             bail = '--bail' in argv[1:]                          # stop a spec's rows at its first failure
             as_json = '--json' in argv[1:]

@@ -46,8 +46,12 @@ import urllib.parse
 from pathlib import Path
 
 SOURCES = ('spec.md', 'plan.md', 'tasks.md', 'mockup-audit.md', 'contracts.md')
-MAX_REVIEW_SOURCE_CHARS = 400_000
-WARN_REVIEW_SOURCE_CHARS = 300_000   # early warning (amendment 09 FR-299): split before the limit refuses
+# amendment 10 FR-411: measured 2026-11-05, the compact page does not embed the sources (it extracts items, capped by
+# MAX_ITEMS): F36 (1 027 224 source chars) -> 378 921-byte page in 0.2 s. The old 400 000 per-file cap (spec 007
+# FR-202, when the page embedded whole files) no longer protects anything; the real cap is the rules parser's
+# MAX_CHARS (2 MiB per file). Batch files tasks-<name>.md stay an option, not an obligation.
+MAX_REVIEW_SOURCE_CHARS = 2_000_000
+WARN_REVIEW_SOURCE_CHARS = 1_500_000   # early warning (amendment 09 FR-299)
 REVIEW_HTML = 'review.html'
 REVIEW_MD = 'review.md'
 TEMPLATE_COMPACT = 'review.html'
@@ -1164,9 +1168,23 @@ def _compact_page(d, texts, prior, problems):
     return _compact_body(tabs, items, warnings, texts, problems), data
 
 
-def build_html(spec_dir, prior=None, template_text=None, full=False):
+_BLOB_HEAD_KEYS = ('spec', 'tasks_hash', 'sources_digest', 'tasks_hash8', 'generated', 'picker_id', 'format')
+
+
+def _compressed_blob(data):
+    """aidd:FR-410 The compact page blob: the plain header keys (read by folder checks and old readers) plus
+    `encoding: gzip+base64` and `gz` = the whole data blob compressed with aidd_embed.pack."""
+    import aidd_embed
+    head = {k: data[k] for k in _BLOB_HEAD_KEYS if k in data}
+    head.update(encoding=aidd_embed.ENCODING, gz=aidd_embed.pack(json.dumps(data, ensure_ascii=True)))
+    return head
+
+
+def build_html(spec_dir, prior=None, template_text=None, full=False, compress=True):
     """The filled page (compact by default, the 007 page with `full=True`). `template_text`
-    exists ONLY for tests (never exposed by CLI or env). aidd:FR-303"""
+    exists ONLY for tests (never exposed by CLI or env). aidd:FR-303
+    aidd:FR-410 the compact page embeds its data blob compressed unless compress=False (`--no-compress`);
+    the rendered body stays plain HTML (readable without JavaScript; no HTML string injection)."""
     d = Path(spec_dir)
     sources = _load_sources(d)
     texts = _checked_texts(d, sources)
@@ -1201,7 +1219,7 @@ def build_html(spec_dir, prior=None, template_text=None, full=False):
         '{{SOURCES_DIGEST}}': digest,
         '{{GENERATED}}': generated,
         '{{BODY}}': body,
-        '{{DATA_JSON}}': _json_blob(data),
+        '{{DATA_JSON}}': _json_blob(_compressed_blob(data) if (compress and not full) else data),
         '{{SCRIPT_SHA256}}': script_sha,
     }
     # single pass: substituted values (spec text may mention {{TOKENS}}) are never rescanned
@@ -1215,8 +1233,11 @@ def _page_blob(page_path):
         if not m:
             return None
         data = json.loads(m.group(1))
+        if isinstance(data, dict) and data.get('encoding') == 'gzip+base64' and isinstance(data.get('gz'), str):
+            import aidd_embed                                       # aidd:FR-410 compressed compact blob
+            data = json.loads(aidd_embed.unpack(data['gz']))
         return data if isinstance(data, dict) else None
-    except (OSError, ValueError, AttributeError, TypeError, RecursionError):
+    except (OSError, ValueError, AttributeError, TypeError, RecursionError, ImportError):
         return None
 
 
@@ -1310,7 +1331,7 @@ def _full_prior(d, tasks_hash, digest):
     return None
 
 
-def generate(spec_dir, template_text=None, full=False):
+def generate(spec_dir, template_text=None, full=False, compress=True):
     """Write `specs/<id>/review.html` atomically; (path, wrote). Untouched when the existing page
     carries the same sources_digest, tasks_hash AND format (a 007 page without `format` is a
     headings-v1 page). Raises ValueError without tasks.md, over MAX_REVIEW_SOURCE_CHARS or, for
@@ -1328,7 +1349,7 @@ def generate(spec_dir, template_text=None, full=False):
         return page, False
     prior = _full_prior(d, tasks_hash, digest) if full else None
     # compact: build_html runs _carry_over (reads the OLD review.md/review.html) before the write
-    _atomic_write(page, build_html(d, prior=prior, template_text=template_text, full=full))
+    _atomic_write(page, build_html(d, prior=prior, template_text=template_text, full=full, compress=compress))
     return page, True
 
 
@@ -1606,6 +1627,8 @@ def _parser():
     p.add_argument('--open', action='store_true', help='open the page in the default browser')
     p.add_argument('--full', action='store_true',
                    help='generate the long page with heading keys (templates/review-full.html)')
+    p.add_argument('--no-compress', action='store_true',
+                   help='embed the page data as plain JSON (default: gzip+base64, amendment 10 FR-410)')
     p.add_argument('--unit', metavar='ID',
                    help='select an amendment unit for --summary or optional --visual review')
     mode = p.add_mutually_exclusive_group()
@@ -1702,7 +1725,7 @@ def main(argv=None):
                 print(line)
             return 0
         try:
-            path, wrote = generate(d, full=a.full)
+            path, wrote = generate(d, full=a.full, compress=not a.no_compress)
         except ValueError as e:
             print(f'aidd review: {e}', file=sys.stderr)
             return 1

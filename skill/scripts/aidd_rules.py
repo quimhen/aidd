@@ -2307,6 +2307,7 @@ def parse_verification(spec_text):
             return next((i for i, h in enumerate(hn) if h in names), None)
         ni, ci, ei, vi = col('#', 'n', 'no', 'no.'), col('command', 'cmd'), col('expected'), col('covers')
         ii, ri, envi = col('inputs'), col('reuse'), col('environment')
+        ti = col('tier')
         if ci is None:
             return []
         out = []
@@ -2325,6 +2326,8 @@ def parse_verification(spec_text):
                 item['reuse'] = r[ri].strip().lower()
             if envi is not None:
                 item['environment'] = _strip_ticks(r[envi]).strip()
+            if ti is not None:
+                item['tier'] = _strip_ticks(r[ti]).strip().lower()
             out.append(item)
         return out
     except Exception:
@@ -2456,6 +2459,240 @@ def verification_generated(spec_text):
     return _verification_globs(spec_text, 'generated')
 
 
+# --- amendment 10 (extension b): test tiers and the capacity & test budget (aidd:FR-397..FR-404)
+
+VERIFY_TIERS = ('functional', 'perf')
+
+
+def row_tier(row):
+    """aidd:FR-397 'functional' (default: empty or absent cell) or the row's Tier value as written."""
+    return str((row or {}).get('tier') or '').strip().lower() or 'functional'
+
+
+def perf_required(spec_text):
+    """aidd:FR-400 True when `## Verification` declares the line `Perf: required`."""
+    return any(v.strip().lower() == 'required' for v in _verification_globs(spec_text, 'perf'))
+
+
+def _has_tier_column(spec_text):
+    try:
+        tb = _table(_clean(spec_text if isinstance(spec_text, str) else ''), _VERIF_HEADING)
+        return bool(tb) and any(_hdr(tb[0], i) == 'tier' for i in range(len(tb[0])))
+    except Exception:
+        return False
+
+
+_CAPACITY_HEADING = r'capacity\b'
+CAPACITY_SEED_JUSTIFY_MIN = 1000
+
+
+def _capacity_section(spec_text):
+    """Text of the `## Capacity ...` section (heading excluded), or None."""
+    t = _clean(spec_text if isinstance(spec_text, str) else '')
+    m = re.search(r'^#{2,3}[ \t]+capacity\b[^\n]*$', t, re.I | re.M)
+    if not m:
+        return None
+    rest = t[m.end():]
+    nxt = re.search(r'^#{1,3}[ \t]+\S', rest, re.M)
+    return rest[:nxt.start()] if nxt else rest
+
+
+def _num(cell):
+    """First number of a cell; `2 min` -> 120, `1.5 h` -> 5400, `38 000` / `38,000` / `20k` -> int. None if none."""
+    s = _strip_ticks(str(cell or '')).strip().lower()
+    m = re.search(r'(\d[\d  ,._]*\d|\d)\s*(k|m(?:in)?|h|ms|s(?:ec)?)?\b', s)
+    if not m:
+        return None
+    digits = re.sub(r'[  ,_]', '', m.group(1))
+    if digits.count('.') == 1 and len(digits.split('.')[1]) != 3:
+        val = float(digits)
+    else:
+        val = float(digits.replace('.', ''))
+    unit = m.group(2) or ''
+    return val * {'k': 1000, 'm': 60, 'min': 60, 'h': 3600, 'ms': 0.001}.get(unit, 1)
+
+
+def parse_capacity(spec_text):
+    """aidd:FR-401 {ram_mb, heavy, round_s, not_verified, rows: {n: {tier, est, budget, scale, why}}} of the
+    `## Capacity & test budget` section; None when the section is absent. Never raises."""
+    try:
+        sec = _capacity_section(spec_text)
+        if sec is None:
+            return None
+
+        def line(key):
+            m = re.search(r'^[ \t>*_-]*' + key + r'\s*:\s*(.*?)\s*$', sec, re.I | re.M)
+            return m.group(1).strip() if m else None
+        out = {'ram_mb': None, 'heavy': None, 'round_s': None, 'not_verified': line('not[ -]verified'), 'rows': {}}
+        ram = line('ram')
+        m = re.search(r'(\d+(?:[.,]\d+)?)\s*(gb|mb|g|m)\b', ram or '', re.I)
+        if m:
+            out['ram_mb'] = float(m.group(1).replace(',', '.')) * (1024 if m.group(2).lower().startswith('g') else 1)
+        hv = line(r'heavy runs? at a time')
+        if hv and re.match(r'\d+', hv):
+            out['heavy'] = int(re.match(r'\d+', hv).group(0))
+        rb = line('round budget')
+        out['round_s'] = _num(rb) if rb else None
+        tb = _table('## capacity\n' + sec, _CAPACITY_HEADING)
+        if tb:
+            hn = [_hdr(tb[0], i) for i in range(len(tb[0]))]
+
+            def col(pred):
+                return next((i for i, h in enumerate(hn) if pred(h)), None)
+            ni = col(lambda h: h in ('#', 'n', 'no', 'no.', 'row'))
+            ti = col(lambda h: h == 'tier')
+            ei = col(lambda h: h.startswith('est'))
+            bi = col(lambda h: h.startswith('budget'))
+            si = col(lambda h: 'scale' in h and 'justif' not in h)
+            ji = col(lambda h: 'justif' in h or h == 'why')
+            for r in tb[1]:
+                r = r + [''] * (len(tb[0]) - len(r))
+                n = r[ni].strip() if ni is not None else ''
+                if not n or n.startswith('<'):
+                    continue
+                g = (lambda i: r[i].strip() if i is not None else '')
+                out['rows'][_row_key(n)] = {'n': n, 'tier': g(ti).lower(), 'est': _num(g(ei)) if g(ei) else None,
+                                            'budget': _num(g(bi)) if g(bi) else None, 'scale_text': g(si),
+                                            'scale': _num(g(si)) if g(si) else None, 'why': g(ji)}
+        return out
+    except Exception:
+        return None
+
+
+def _row_key(n):
+    return re.sub(r'^v-', '', str(n or '').strip().lower())
+
+
+def capacity_required(spec_text):
+    """aidd:FR-402 The spec opted in: a `Tier` column, a `Perf:` line or the capacity heading."""
+    return (_has_tier_column(spec_text) or bool(_verification_globs(spec_text, 'perf'))
+            or _capacity_section(spec_text) is not None)
+
+
+def capacity_problems(spec_text):
+    """aidd:FR-402 R10 violations of the capacity & test budget (only when capacity_required). Never raises."""
+    fix = ('Fill `## Capacity & test budget` in spec.md (templates/spec.md): RAM, Heavy runs at a time, Round budget, '
+           'Not verified, and one budget row per Verification row.')
+    try:
+        if not capacity_required(spec_text):
+            return []
+        cap = parse_capacity(spec_text)
+        if cap is None:
+            return [_v('R10', 'The Verification table declares tiers/perf but spec.md has no "## Capacity & test '
+                              'budget" section.', fix)]
+        out = []
+        for key, label in (('ram_mb', 'RAM: <n> GB'), ('heavy', 'Heavy runs at a time: <n>'),
+                           ('round_s', 'Round budget: <seconds> s')):
+            if cap.get(key) is None:
+                out.append(_v('R10', f'Capacity & test budget: line `{label}` is missing or has no number.', fix))
+        if cap.get('not_verified') is None or not cap['not_verified'].strip():
+            out.append(_v('R10', 'Capacity & test budget: line `Not verified:` is missing (write `none` if all is measured).', fix))
+        total = 0.0
+        for r in parse_verification(spec_text):
+            n = r.get('n') or '?'
+            b = cap['rows'].get(_row_key(n))
+            tier = row_tier(r)
+            if b is None:
+                out.append(_v('R10', f'Capacity & test budget: Verification row {n} has no budget row.',
+                              f'Add `| {n} | {tier} | <Est. s> | <Budget s> | <Data scale> | <justification> |`.'))
+                continue
+            if b['tier'] and b['tier'] != tier:
+                out.append(_v('R10', f'Capacity & test budget: row {n} is `{b["tier"]}` there but `{tier}` in Verification.',
+                              'Make both Tier cells equal.'))
+            if b['est'] is None or b['budget'] is None:
+                out.append(_v('R10', f'Capacity & test budget: row {n} needs a number in `Est. s` and `Budget s`.', fix))
+            elif b['est'] > b['budget']:
+                out.append(_v('R10', f'Capacity & test budget: row {n} is estimated at {b["est"]:g} s, over its budget '
+                                     f'of {b["budget"]:g} s.',
+                              'Reduce the data scale (see FR-404), split the row, or move it to `Tier: perf`.'))
+            if tier == 'functional' and b['est'] is not None:
+                total += b['est']
+            big = b['scale'] is not None and b['scale'] >= CAPACITY_SEED_JUSTIFY_MIN
+            if (big or tier == 'perf') and (not b['why'] or b['why'] in ('-', '—')):
+                out.append(_v('R10', f'Capacity & test budget: row {n} seeds `{b["scale_text"] or "?"}` without a scale '
+                                     'justification.',
+                              'Justify the scale by the risk (e.g. "plan shown linear at N=2 000; above: not-verified") '
+                              'or reduce it to the minimal functional data.'))
+        if cap.get('round_s') is not None and total > cap['round_s']:
+            out.append(_v('R10', f'Capacity & test budget: functional rows add up to {total:g} s, over the round budget '
+                                 f'of {cap["round_s"]:g} s.',
+                          'Move heavy rows to `Tier: perf` (run once before close) or reduce their data.'))
+        return out
+    except Exception as e:  # pragma: no cover - defensive
+        return [_v('R10', f'Could not parse "## Capacity & test budget" ({e}).', fix)]
+
+
+def capacity_warnings(spec_text):
+    """aidd:FR-403 Non-blocking advice lines for check_spec.py. Never raises."""
+    out = []
+    try:
+        rows = parse_verification(spec_text)
+        if not rows:
+            return out
+        cap = parse_capacity(spec_text)
+        if cap is None:
+            if not capacity_required(spec_text):
+                out.append('spec.md has no "## Capacity & test budget" section: declare the machine capacity, the '
+                           'time budget per Verification row and the justified data scale (templates/spec.md).')
+            return out
+        rb = cap.get('round_s')
+        for r in rows:
+            b = cap['rows'].get(_row_key(r.get('n')))
+            if b and rb and row_tier(r) == 'functional' and b['est'] is not None and b['est'] > rb / 2:
+                out.append(f"Verification row {r.get('n')}: estimated {b['est']:g} s is over half the round budget "
+                           f"({rb:g} s); consider `Tier: perf` (runs once per spec, before close).")
+        try:
+            jobs = int(float((_verification_globs(spec_text, 'jobs') or ['1'])[0]))
+        except ValueError:
+            jobs = 1
+        if cap.get('heavy') == 1 and jobs > 1:
+            out.append(f'`Heavy runs at a time: 1` but `Jobs: {jobs}`: heavy rows must not run in parallel.')
+    except Exception:
+        return out
+    return out
+
+
+def perf_gaps(ev, root, spec_dir, spec_text):
+    """aidd:FR-400 R10 close gaps for a spec that declares `Perf: required`; [] otherwise. Fail closed."""
+    try:
+        if not perf_required(spec_text):
+            return []
+        d = Path(spec_dir)
+        spec = d.name
+        if not any(row_tier(r) == 'perf' for r in parse_verification(spec_text)):
+            return []                                     # check_verification reports the missing perf row
+        fix = f'Run `aidd verify {spec} --perf` once (alone: one heavy run at a time), then close.'
+        evs = getattr(ev, 'events', None)
+        runs = [e for e in (evs(root, kind='perf_verify_run') if callable(evs) else [])
+                if str((e.get('detail') or {}).get('spec') or '') == spec]
+        if not runs:
+            return [_v('R10', f'{spec} declares `Perf: required` but has no perf run (`perf_verify_run`).', fix)]
+        best = max(runs, key=lambda e: float(e.get('ts') or 0.0))
+        det = best.get('detail') or {}
+        if det.get('ok') is not True or det.get('stable') is not True:
+            return [_v('R10', f'The last perf run of {spec} failed or was not stable.', fix)]
+        if str(det.get('verify_hash') or '') != verification_hash(spec_text):
+            return [_v('R10', f'The Verification table of {spec} changed after the last perf run.', fix)]
+        for res in det.get('results') or []:
+            try:
+                data = (d / str(res.get('evidence') or '')).read_bytes()
+                if not res.get('sha1') or hashlib.sha1(data).hexdigest() != res['sha1']:
+                    raise ValueError
+            except Exception:
+                return [_v('R10', f'Perf evidence of {spec} is missing or changed ({res.get("evidence")}).', fix)]
+        f = getattr(ev, 'last_code_edit_ts', None)
+        scope = [str(x) for x in (det.get('code_scope') or [])]
+        try:
+            last = float(f(root, scope) if scope else f(root)) if callable(f) else 0.0
+        except Exception:
+            last = None
+        if last is None or last > float(det.get('started') or 0.0):
+            return [_v('R10', f'Code changed after the last perf run of {spec}: the perf evidence is stale.', fix)]
+        return []
+    except Exception as e:  # pragma: no cover - defensive
+        return [_v('R10', f'Perf evidence check failed internally ({e}).', f'Run `aidd verify {Path(spec_dir).name} --perf`.')]
+
+
 def _norm_cell(s):
     return re.sub(r'\s+', ' ', str(s or '')).strip()
 
@@ -2509,7 +2746,10 @@ def verification_hash(spec_text):
         body = '\n'.join(f"{_norm_cell(r['n'])}|{r['cmd'].strip()}|{r['expected'].strip()}"
                          + ('|inputs:' + ','.join(r['inputs']) if r.get('inputs') else '')
                          + ('|reuse:' + r['reuse'] if r.get('reuse') else '')
-                         + ('|environment:' + r['environment'] if r.get('environment') else '') for r in rows)
+                         + ('|environment:' + r['environment'] if r.get('environment') else '')
+                         + ('|tier:' + r['tier'] if r.get('tier') else '') for r in rows)
+        if perf_required(spec_text):
+            body += '\nperf:required'          # amendment 10 FR-397: only when declared, so old hashes are unchanged
         return hashlib.sha1(body.encode('utf-8')).hexdigest()[:12]
     except Exception:
         return ''
@@ -2874,6 +3114,13 @@ def check_verification(spec_text, root=None):
                 out.append(_v('R10', f'Verification row {n}: {p}: `{r["cmd"][:80]}`.',
                               f'Replace the command of row {n} with one that runs real tests of this change '
                               '(a test runner of the project or an existing test file/script).'))
+            if r.get('tier') and r['tier'] not in VERIFY_TIERS:
+                out.append(_v('R10', f'Verification row {n}: Tier "{r["tier"][:20]}" is not `functional` or `perf`.',
+                              f'Write `functional` (every round) or `perf` (once per spec, before close) in row {n}.'))
+        if perf_required(spec_text) and not any(row_tier(r) == 'perf' for r in rows):
+            out.append(_v('R10', '`Perf: required` is declared but no Verification row has `Tier: perf`.',
+                          'Add the perf row(s) with `Tier` = `perf`, or remove the `Perf: required` line.'))
+        out += capacity_problems(spec_text)
         return out
     except Exception as e:  # pragma: no cover - defensive
         return [_v('R10', f'Could not parse "## Verification" ({e}).', fix_add)]
@@ -3005,7 +3252,7 @@ def _rows_already_executed(spec_text, run):
     try:
         if run.get('code_fp_end') is None:
             return False
-        rows = parse_verification(spec_text)
+        rows = [r for r in parse_verification(spec_text) if row_tier(r) != 'perf']   # perf rows: perf_verify_run
         if not rows:
             return False
         done = {(str(r.get('cmd') or '').strip(), str(r.get('expected') or '').strip(), tuple(r.get('input_globs') or []), str(r.get('reuse_policy') or '')) for r in (run.get('results') or [])
@@ -3208,6 +3455,7 @@ def verification_gaps(ev, root, spec_dir):
                           f'Regenerate the review (`aidd review specs/{spec}`), run `aidd review specs/{spec} --wait` in '
                           'the background (the owner presses `Aprobar y guardar` on the page, which saves review.md), '
                           f'ask ONE tagged question and approve again, then run `aidd verify {spec}`.'))
+        out += perf_gaps(ev, root, d, spec_text)
         return _dedup(out)
     except Exception as e:  # pragma: no cover - defensive
         return [_v('R10', f'Verification check failed internally ({e}).', 'Report this to the AIDD maintainers.')]

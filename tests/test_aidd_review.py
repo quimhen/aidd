@@ -163,8 +163,13 @@ def _age(path, seconds):
 
 
 def _page_data(text):
+    """The page data blob, decoded when compressed (amendment 10 FR-410: gzip+base64 by default)."""
     m = re.search(r'<script type="application/json" id="aidd-data">(.*?)</script>', text, re.S)
-    return json.loads(m.group(1))
+    data = json.loads(m.group(1))
+    if isinstance(data, dict) and data.get("encoding") == "gzip+base64":
+        import aidd_embed
+        data = json.loads(aidd_embed.unpack(data["gz"]))
+    return data
 
 
 def _body(text):
@@ -581,13 +586,13 @@ class TestGenerateFull(_Faked):
         self.assertFalse((d / "review.html").exists())
         for name in ("tasks.md", "plan.md"):
             d = _make_spec(self.root / name.replace(".", "_"), IDS[0])
-            (d / name).write_text(TASKS_MD + "x" * 450_000 if name == "tasks.md" else "x" * 450_000,
+            (d / name).write_text(TASKS_MD + "x" * 2_050_000 if name == "tasks.md" else "x" * 2_050_000,
                                   encoding="utf-8")
             for full in (False, True):
                 with self.assertRaises(ValueError) as cm:
                     aidd_review.generate(d, template_text=TEMPLATE, full=full)
                 self.assertIn(name, str(cm.exception))
-                self.assertIn("limit 400000", str(cm.exception))
+                self.assertIn("limit 2000000", str(cm.exception))
             self.assertFalse((d / "review.html").exists())
             self.assertEqual(list(d.glob("*.tmp")), [])
             self.assertEqual(list(d.glob(".*.tmp")), [])
@@ -859,7 +864,7 @@ class TestReviewStateIO(_Faked):
 
     def test_relative_path_and_oversize(self):
         d = _make_spec(self.root, IDS[0])
-        (d / "plan.md").write_text("x" * 450_000, encoding="utf-8")
+        (d / "plan.md").write_text("x" * 2_050_000, encoding="utf-8")
         cwd = os.getcwd()
         try:
             os.chdir(self.root)
@@ -1149,10 +1154,10 @@ class TestCliSubprocess(_Tmp):
         self.assertIn("tasks.md", r.stderr)
         self.assertNotIn("Traceback", r.stderr)
         d2 = _make_spec(self.root / "big", IDS[0])
-        (d2 / "tasks.md").write_text(TASKS_MD + "x" * 450_000, encoding="utf-8")
+        (d2 / "tasks.md").write_text(TASKS_MD + "x" * 2_050_000, encoding="utf-8")
         r = self._run(f"big/specs/{IDS[0]}")
         self.assertEqual(r.returncode, 1)
-        self.assertIn("limit 400000", r.stderr)
+        self.assertIn("limit 2000000", r.stderr)
         self.assertFalse((d2 / "review.html").exists())
         self.assertEqual(self._run(str(self.root / "specs" / "nope")).returncode, 1)
         self.assertEqual(self._run().returncode, 1)             # usage error is 1, never 2

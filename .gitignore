@@ -11,3 +11,10 @@ specs/index.toon
 .aidd/
 .aidd/evidence/
 .aidd/jobs/
+
+# AIDD generated files (rebuilt automatically; never version them) -- amendment 10 FR-412
+docs/graphs/explorer.html
+docs/graphs/*.html
+specs/*/review.html
+.aidd/sqlcheck-cache.json
+graphify-out/

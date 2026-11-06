@@ -23,9 +23,19 @@ G_LINKS = {"nodes": NODES, "links": EDGES}
 
 
 def data_of(html):
-    m = re.search(r'<script id="graph-data" type="application/json">(.*?)</script>', html, flags=re.S)
+    """The embedded JSON text: decoded from gzip+base64 (default since amendment 10 FR-409) or plain."""
+    m = re.search(r'<script id="graph-data" type="(application/json|application/gzip\+base64)">(.*?)</script>',
+                  html, flags=re.S)
     assert m
-    return m.group(1)
+    return g.aidd_embed.unpack(m.group(2)) if m.group(1) != "application/json" else m.group(2)
+
+
+def test_default_is_compressed_and_round_trips():
+    h = g.build_html(G_EDGES, "T")
+    plain = g.build_html(G_EDGES, "T", compress=False)
+    assert 'type="application/gzip+base64"' in h and "aiddInflate" in h
+    assert data_of(h) == data_of(plain)
+    assert g.embedded_payload(h) == g.embedded_payload(plain)
 
 
 def test_edges_and_links_equivalent():

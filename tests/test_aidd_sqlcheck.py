@@ -107,5 +107,32 @@ class SqlCheckTests(unittest.TestCase):
         self.assertIn("Apply manifest", out)
 
 
+PSQL_SQL = ("\\set ON_ERROR_STOP 1\n\\set n 7\nSELECT :n AS n, :'n' AS s, 1::int AS c;\n"
+            "SELECT 1 AS one \\gset\nDO $$ DECLARE x int; BEGIN x := 1; END $$;\n")
+
+
+class PsqlMetaTests(unittest.TestCase):
+    """aidd:FR-407 / AC-460 psql metacommands are neutralised for the static compile."""
+
+    def test_strip_keeps_lines_and_neutralises(self):
+        out, n = sc.strip_psql_meta(PSQL_SQL)
+        self.assertEqual(out.count("\n"), PSQL_SQL.count("\n"))
+        self.assertGreaterEqual(n, 4)
+        self.assertNotIn("\\", out)
+        self.assertIn("SELECT 0 AS n, 'n' AS s, 1::int AS c;", out)
+        self.assertIn("x := 1", out)
+
+    def test_plain_sql_untouched(self):
+        text = "SELECT '10:30'::time, ':x';\n"
+        self.assertEqual(sc.strip_psql_meta(text), (text, 0))
+
+    def test_compiles_with_pglast(self):
+        try:
+            import pglast.parser as parser
+        except Exception:
+            self.skipTest("pglast not installed")
+        self.assertIsNone(sc.compile_text(PSQL_SQL, parser))
+
+
 if __name__ == "__main__":
     unittest.main()

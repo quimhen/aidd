@@ -109,9 +109,24 @@ Generated: <files or globs the commands rewrite on purpose, e.g. `docs/db-graph/
 
 `Scope:` (optional) limits what can make this verification stale: only edits to files inside it count, so another spec can be built in parallel while this one verifies. Without it the whole project tree counts. Documentation edits (`.md`) and commits never count either way.
 
-| # | Command | Expected | Covers |
-|---|---|---|---|
-| V-1 | | exit 0 | FR-001 |
+`Tier` (optional column): `functional` (default; minimal data, runs in every `aidd verify`) or `perf` (volume/load; skipped by `aidd verify`, run ONCE per spec before close with `aidd verify <spec> --perf`). Add the line `Perf: required` only when the close must have current perf evidence. Most performance risks are checked in the functional tier without volume (`templates/perf/plan-risk.test.sql`: generic plan after the 6th call, `proconfig`, plan without Seq Scan at small N).
+
+| # | Command | Expected | Covers | Tier |
+|---|---|---|---|---|
+| V-1 | | exit 0 | FR-001 | functional |
+
+## Capacity & test budget
+
+Required when the table above has a `Tier` column or a `Perf:` line (R10, checked by `aidd rules check` / `check_spec.py`). The machine is the limit, not production volume: budget every row and justify every seed by the risk it covers. A behaviour proven linear with its plan shown at a small N needs no 200 000-row seed; what is not measured is listed under `Not verified:` and reported `not-verified`.
+
+RAM: <e.g. 3 GB (WSL2)>
+Heavy runs at a time: <e.g. 1>
+Round budget: <seconds for all functional rows, e.g. 300 s>
+Not verified: <what stays unmeasured and why, or `none`>
+
+| # | Tier | Est. s | Budget s | Data scale | Scale justification |
+|---|---|---|---|---|---|
+| <V-1> | functional | | | minimal | |
 
 ## Optimization brief
 

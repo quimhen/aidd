@@ -101,6 +101,11 @@ anything works. `aidd verify specs/<id>` is what executes the spec's `## Verific
 - **Mockups are requirements** (global rule): walk the mockup screen by screen; "reuse X" means
   reuse the logic/data and build a NEW view faithful to the mockup unless the task says
   `Kind: VIEW-legacy`.
+- **Two test tiers, one capacity budget.** `Tier: functional` rows (minimal data) run in every
+  `aidd verify`; `Tier: perf` rows run once per spec before close with `aidd verify <spec> --perf`,
+  alone (`Perf: required` makes the close need them). Fill `## Capacity & test budget` (RAM, heavy runs
+  at a time, round budget, per-row budget and justified data scale); seed volume with set-based SQL
+  (`templates/perf/`), and test plan risks without volume (generic plan after 6 calls, Seq Scan).
 - Never copy a secret into a file, spec, memory entry or command; refer to it by variable name.
 
 ## 6. Reading AIDD.md without truncation
