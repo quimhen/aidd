@@ -426,6 +426,44 @@ With the data blob compressed: F38 page 342 235 -> 236 049 bytes; a synthetic 1 
 Status of this extension: implemented on branch `am10/test-tiers-capacity` of the AIDD repo (not installed, not pushed);
 see the branch commit for the file list. AC-462 is `not-verified` unless the owner runs it.
 
+### N. `aidd sync`: installed bundle = source, checked and applied by a tool (2026-11-05)
+
+**Measured (2026-11-05).** Syncing the AIDD source with what is installed (profile `~/.claude/skills/aidd`, each
+project's `.aidd/`) needed an ad hoc script every time. A home-made comparator using relative paths after `cd` reported
+116 false "differs" with 0 real differences. `tools/aidd_selective_update.py` accepts only `AIDD.md`, `SKILL.md`,
+`hooks/*.py`, `scripts/*.py`, `templates/navigator.html` and requires `--baseline` for an existing changed file, so
+templates (`templates/**`), `CORE.md` and similar were copied apart by hand. A fixed file list omitted new files
+(`aidd_coverage.py`, `unified_graph.py`, `alias_graph.py`) and would have left mixed versions. Extends H0/FR-370 (which
+asked for a report only) with a reusable command. Numbering: next free block FR-413..FR-418, AC-467..AC-474, T-19
+(`grep -rhoE "FR-41[3-9]|AC-46[7-9]|AC-47[0-9]" specs/ skill/ adapters/ docs/` = none before this item).
+
+| Code | Requirement |
+|---|---|
+| FR-413 | `aidd sync` (CLI passthrough to `skill/scripts/aidd_sync.py`, mirrored byte-identical in `adapters/dot-aidd/scripts/`). The CLI injects `--source` = the checkout/wheel it runs from when not given, and runs the script from `<source>/skill/scripts/` first, then its own checkout, then the installed scripts, so `aidd sync --source <repo>` works when the installed CLI predates the command. |
+| FR-414 | `--check [--target skill\|<.aidd folder or project root>]... [--profile DIR] [--json]` compares the WHOLE tree, never a fixed list: `skill` (default) = `<source>/skill/` vs `$AIDD_HOME` or `~/.claude/skills/aidd`; a path = `<source>/adapters/dot-aidd/` vs that `.aidd`. Paths are resolved to absolute once at start-up and the working directory is never changed. Equality = equal bytes after CRLF->LF normalisation. Never compared or reported: `evidence`, `memory`, `active_spec`, `gate_spec`, `calibration.toon`, `graphs`, `sqlcheck-cache.json`, `__pycache__`, `*.bak`, `*.pyc`. Output per target: `missing`, `differs`, `local-only` (informative, never deleted); exit 0 when no missing/differs, 1 otherwise, 2 on usage/refusal. |
+| FR-415 | `--apply` is a dry run (plan printed, nothing written) unless `--yes`; `--dry-run` always wins. With `--yes`: a backup session `<--backup-dir or ~/.aidd-sync/backups>/<YYYYmmdd-HHMMSS>-<pid>/` outside every target (refused otherwise) holds a hash-verified copy of every file to be replaced. |
+| FR-416 | Files `aidd_selective_update` accepts (list derived from the diff, never fixed; parent folder present) go through one `make_plan`/`apply_transaction` with `--baseline` = the backup; every other file (templates/**, `CORE.md`, `extensions/**`, new folders) is copied directly (temp file + replace) and its sha256 verified. The tool is loaded from `<source>/tools/aidd_selective_update.py`; absent = apply refused. |
+| FR-417 | `sync-journal.json` in the session records state (`prepared`/`applying`/`committed`/`rolled_back`), the selective journal and, per direct copy, before/after sha256, backup and created folders. Any failure rolls back everything written (direct copies + `recover_transaction`). `aidd sync --recover <session>` validates every file first (a file edited after the sync = refusal, nothing restored), restores, removes created empty folders; idempotent. |
+| FR-418 | `--apply --yes` ends by running `--check`; its exit code is the command's (must be 0; otherwise it prints the `--recover` command). AIDD.md E11 states the rule: no ad hoc sync scripts or fixed lists. |
+
+**Acceptance (N).**
+| Code | Scenario | Command | Expected |
+|---|---|---|---|
+| AC-467 | identical trees; one file missing; one file differs | `python -m unittest tests.test_aidd_sync -v` | exit 0; exit 1 with the path under `missing`; exit 1 under `differs` |
+| AC-468 | CRLF-only difference | same | exit 0 |
+| AC-469 | local state (evidence, memory, graphs, active_spec, gate_spec, calibration.toon, sqlcheck-cache.json, __pycache__, *.bak) ignored; extra file listed as `local-only` | same | exit 0, only the extra file listed |
+| AC-470 | relative `--source`/`--target` from another cwd, and a later `chdir` | same | exit 0, `differs=0` (no false differences) |
+| AC-471 | apply in a temp tree: dry run writes nothing; `--yes` updates selective + direct files, local state untouched, check 0; `--recover` restores the exact bytes and removes created folders; recover twice = no-op | same | pass |
+| AC-472 | template-only change copied and verified; simulated write failure rolls everything back; foreign edit after sync blocks recover; backup inside a target refused | same | pass |
+| AC-473 | `python -m aidd.cli sync --check --source <tmp>` from a CLI whose installed profile lacks the script | same | runs the checkout's script; exit 0 / 1 |
+| AC-474 | mirror byte-identical | `python -m unittest tests.test_dot_aidd_mirror -v` | exit 0 |
+
+| Task | Item | Target file(s) | Wave | Deps | Agent min | Explicitly out of scope |
+|---|---|---|---|---|---|---|
+| T-19 | N | `skill/scripts/aidd_sync.py`, `adapters/dot-aidd/scripts/aidd_sync.py` (mirror, copied by script), `aidd/cli.py`, `skill/AIDD.md` + `adapters/dot-aidd/AIDD.md` (E11), `tests/test_aidd_sync.py`, `tests/test_dot_aidd_mirror.py` | 1 | none | 90 | installing into `~/.claude` or any project; deleting `local-only` files; updating the pip-installed package (`cli.py`/`RECORD`, see `aidd_selective_update.py package-plan`) |
+
+Status of item N: implemented on branch `am10/aidd-sync` of the AIDD repo (not installed, not pushed).
+
 ---
 
 ## Cross-cutting acceptance

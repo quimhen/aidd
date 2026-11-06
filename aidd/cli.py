@@ -103,6 +103,39 @@ def cmd_mem(args):
     return _run("aidd_memory.py", args.mem_args)
 
 
+def _sync_source(argv):
+    """The AIDD tree `aidd sync` compares against: --source if given, else the checkout/wheel this CLI runs from."""
+    if "--source" in argv or any(a.startswith("--source=") for a in argv):
+        return None
+    here = Path(__file__).resolve()
+    for root in (here.parent.parent, here.parent / "_data"):
+        if (root / "skill").is_dir() and (root / "adapters" / "dot-aidd").is_dir():
+            return root
+    return None
+
+
+def cmd_sync(argv):
+    """aidd:FR-413 — passthrough to aidd_sync.py. The script is taken from the SOURCE tree first (the installed
+    skill may predate it), so `aidd sync --source <repo>` works even when the installed CLI is older."""
+    argv = list(argv)
+    source = _sync_source(argv)
+    if source is not None:
+        argv = ["--source", str(source), *argv]
+    explicit = None
+    for i, a in enumerate(argv):
+        if a == "--source" and i + 1 < len(argv):
+            explicit = Path(argv[i + 1]).expanduser().resolve()
+        elif a.startswith("--source="):
+            explicit = Path(a.split("=", 1)[1]).expanduser().resolve()
+    here = Path(__file__).resolve()
+    candidates = [explicit / "skill" / "scripts"] if explicit else []
+    candidates += [here.parent.parent / "skill" / "scripts", here.parent / "_data" / "skill" / "scripts"]
+    script = next((c / "aidd_sync.py" for c in candidates if (c / "aidd_sync.py").is_file()), None)
+    if script is None:
+        script = _find_scripts_dir() / "aidd_sync.py"
+    return subprocess.run([sys.executable, str(script), *argv]).returncode
+
+
 def cmd_status(args):
     # Pure passthrough to aidd_status.py (`status [spec_dir] [--json]`).
     return _run("aidd_status.py", ["status", *args.status_args])
@@ -446,6 +479,12 @@ def build_parser():
     p_rules.add_argument("rules_args", nargs=argparse.REMAINDER, help="forwarded to aidd_status.py (try: aidd rules check specs/001-x)")
     p_rules.set_defaults(func=cmd_rules)
 
+    p_sync = sub.add_parser(
+        "sync", help="Compare/update an installed AIDD bundle with the source tree: --check | --apply [--yes] | --recover <session>",
+        add_help=False)
+    p_sync.add_argument("sync_args", nargs=argparse.REMAINDER, help="forwarded to aidd_sync.py (try: aidd sync --check)")
+    p_sync.set_defaults(func=lambda a: cmd_sync(a.sync_args))
+
     p_graphs = sub.add_parser(
         "graphs", help="Project graphs registry: list | status | refresh <name|all> | show <name> <query> | explorer [name]",
         add_help=False)
@@ -668,6 +707,8 @@ def main(argv=None):
         _script = {"job": "aidd_job.py", "triage": "aidd_triage.py",
                    "tools": "aidd_tools.py", "size": "aidd_tools.py"}[argv[0]]
         sys.exit(_run(_script, (["size"] if argv[0] == "size" else []) + argv[1:]))
+    if argv and argv[0] == "sync":
+        sys.exit(cmd_sync(argv[1:]))
     if argv and argv[0] == "sqlcheck":
         sys.exit(_run("aidd_sqlcheck.py", argv[1:]))
     if argv and argv[0] in ("close-ledger", "red"):
