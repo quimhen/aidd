@@ -419,6 +419,11 @@ def _build_status(spec_dir, root=None, named=False, fingerprint=None):
     pt = rules.plan_totals(tasks_text)
     st['tasks'] = {'approval': approval, 'waves': waves, 'critical_path_min': critical,
                    'tokens_k': pt.get('tokens_k')}
+    if approval == 'invalid':      # aidd:FR-440 name the task file that broke the approval hash
+        try:
+            st['tasks']['approval_changed'] = rules.approval_change_hint(d, ev.latest_approved(root, d.name))
+        except Exception:
+            pass
 
     # Rev 2 (D1): a code edit carries no spec attribution - it applies to every open spec.
     edits = ev.events(root, kind='code_edit')
@@ -658,7 +663,8 @@ def format_status(st, glob=None):
         tk = ('approved ✔ (hash ok, approval recorded)' if t.get('approval_recorded')
               else 'approval line valid but NOT recorded ✘ (no `approved` event)')
     elif t['approval'] == 'invalid':
-        tk = 'approval VOID ✘ (tasks changed after approval)'
+        tk = ('approval VOID ✘ (tasks changed after approval'
+              + (f": {t['approval_changed']}" if t.get('approval_changed') else '') + ')')
     elif t['approval'] == 'pending':
         tk = 'approval pending ✘'
     elif t['approval'] == 'unparseable':
@@ -1504,9 +1510,12 @@ def cmd_approve(spec_arg):
         c = _consent(ev, root, sess, d, tag, rs)
         if c is None:
             print(f'Refused: review.md is complete; the owner must confirm: answer the question tagged `{tag}` '
-                  f'or type `approve {tag}`.\nFix: run `aidd review specs/{d.name} --wait` in the background; when '
+                  f'or type `approve {tag}`.\n' + '\n'.join(approve_refusal_detail(root, sess, d, tag, rs)) +
+                  f'\nFix: run `aidd review specs/{d.name} --wait` in the background; when '
                   f'it returns, ask the owner ONE question with the tag `{tag}` (option Approve): that single '
-                  f'click is the consent.' + _session_note(sess))
+                  f'click is the consent. Alternative that records at once without the page: ask ONE question '
+                  f'with the tag `{tag}` offering the option `{SUMMARY_LABEL}` (the owner waives the page).'
+                  + _session_note(sess))
             return 1
         kind, consent_ts = c
         source = 'review+' + kind
@@ -1545,6 +1554,7 @@ def cmd_approve(spec_arg):
         return 1
     extra = rules.approval_evidence(spec_text, source, review_sha1=review_sha1, consent_ts=consent_ts)
     extra['visual_snapshot'] = rs.get('visual_snapshot')
+    extra['segments'] = rules.approval_segment_hashes(new) or None   # aidd:FR-440 per-file hashes (diagnostic only)
     if not ev.append_approved(root, sess, d.name, h, **extra):
         print(line)
         print('Warning: the `approved` event could not be recorded (evidence log not writable); code edits stay '
@@ -2424,11 +2434,10 @@ def cmd_verify(spec_arg, full=False, bail=False, wave=None, result_sink=None, wa
         print('Refused: invalid Scope or Generated pattern; no verification commands were run.', flush=True)
         return 1
     # aidd:FR-422 in a round the state was taken BEFORE the first shared execution, so stability covers the round
-    st_start = (ev.code_state(root, budget_s=_fingerprint_budget(), scope=scope) if round_start is None
+    st_start = (ev.code_state(root, budget_s=_fingerprint_budget(), scope=scope, skip=gen) if round_start is None
                 else round_start['st_start'])
     if st_start is None:
-        print('Refused: cannot fingerprint the verification inputs; no verification commands were run. '
-              'Check the scope, or raise the budget with AIDD_FINGERPRINT_BUDGET=<seconds> (default 8), before retrying.', flush=True)
+        print(fingerprint_refusal(), flush=True)
         return 1
     prior = None if (task_ids is not None or perf) else ((_latest_wave_run(root, d.name, wave) if wave is not None else None) or ev.latest_verify_run(root, d.name))
     from glob import escape as escape_glob
@@ -2467,6 +2476,9 @@ def cmd_verify(spec_arg, full=False, bail=False, wave=None, result_sink=None, wa
             env_start = _rm.env_parts(sys.modules[__name__], root, env_spec, [x['cmd'] for x in rows])
         except Exception:
             env_start = None
+    # aidd:FR-438 wall-clock window of every executed row (n, cmd, start, end): a file rewritten during the run is
+    # attributed to the row whose window holds its mtime, or to another process when no row was running.
+    row_windows = []
 
     def _one(i, r):
         cmd, expected = r['cmd'], (r.get('expected') or 'exit 0')
@@ -2608,10 +2620,18 @@ def cmd_verify(spec_arg, full=False, bail=False, wave=None, result_sink=None, wa
                 own = ent['source_spec'] == d.name and str(ent['source_n']) == str(n)
                 secs = ent['secs'] if own else 0.0
                 round_line = _round_mod().evidence_line(ent)
+            if ent is not None:
+                try:
+                    w0 = datetime.fromisoformat(str(ent.get('ts'))).timestamp()
+                    row_windows.append((str(n), cmd, w0, w0 + float(ent.get('secs') or 0.0) + 1.0))
+                except Exception:
+                    pass
         else:
             t_row = time.monotonic()
+            w0 = time.time()
             code, note = _run_row(cmd, root, tmp, timeout)
             secs = round(time.monotonic() - t_row, 1)
+            row_windows.append((str(n), cmd, w0, time.time()))
             try:
                 body = tmp.read_bytes().decode('utf-8', errors='replace')
             except Exception:
@@ -2761,7 +2781,7 @@ def cmd_verify(spec_arg, full=False, bail=False, wave=None, result_sink=None, wa
         except Exception:
             pass
     fp_end = ev.worktree_fingerprint(root)
-    st_end = ev.code_state(root, budget_s=_fingerprint_budget(), scope=scope)
+    st_end = ev.code_state(root, budget_s=_fingerprint_budget(), scope=scope, skip=gen)
     # Files a command rewrote (a graph.json with a timestamp, a report): outputs, not code. Declared in `Generated:`
     # they are fine; undeclared they fail THIS run, but the file list is recorded so adding the `Generated:` line
     # later makes the gate accept the very same run (no re-execution, no edit of the generator).
@@ -2934,13 +2954,25 @@ def cmd_verify(spec_arg, full=False, bail=False, wave=None, result_sink=None, wa
                                     code_algorithm=ev.EVIDENCE_ALGORITHM)
     if scope:
         print(f'scope: {", ".join(scope)} (edits outside it, e.g. other specs, do not invalidate this verification)')
-    if changed and not unexplained:
-        print(f'rewritten by the verification and declared Generated: {", ".join(changed[:6])}')
+    # aidd:FR-434 declared outputs are no longer hashed, so they are not in `changed`: list the ones written during
+    # the run by mtime only (stat, no hashing, time-capped) so the informational line stays.
+    gen_touched = [x for x in _generated_touched(root, gen, started) if x not in changed] if gen else []
+    if (changed or gen_touched) and not unexplained:
+        print(f'rewritten by the verification and declared Generated: {", ".join((changed + gen_touched)[:6])}')
     if not stable and unexplained:
         print(f'FAIL the verification rewrote files: {", ".join(unexplained[:6])}'
               + (f' (+{len(unexplained) - 6} more)' if len(unexplained) > 6 else '') + '.')
-        print(f'  They are outputs, not code. Add `Generated: {", ".join(unexplained[:6])}` (globs allowed) under '
-              f'`## Verification` in {d.name}/spec.md and the gate accepts THIS run: do NOT re-run it and do NOT edit the generator.')
+        who = rewrite_attribution(root, unexplained[:6], row_windows, started, time.time())
+        for _rel, _kind, line in who:
+            print(f'  who: {line}')
+        if who and all(k == 'other' for _r, k, _l in who):
+            print('  No row was running when these files were written: another process or agent changed them during '
+                  f'the run. They are NOT outputs of this verification: do not add them to `Generated:`; re-run '
+                  f'`aidd verify {d.name}` when that work has stopped.')
+        else:
+            print(f'  They are outputs, not code. Add `Generated: {", ".join(unexplained[:6])}` (globs allowed) under '
+                  f'`## Verification` in {d.name}/spec.md and the gate accepts THIS run: do NOT re-run it and do NOT '
+                  f'edit the generator.')
     elif not stable:
         print('FAIL the working tree changed while verification ran (a command wrote a file outside specs/); '
               're-run `aidd verify ' + d.name + '`.')
@@ -3000,7 +3032,8 @@ def _json_pass_evidence_problem(root, d, spec_text, rows, run):
             return 'code fingerprint algorithm unavailable or changed'
         if scope != (run.get('code_scope') or []):
             return 'verification scope changed'
-        state = ev.code_state(root, budget_s=_fingerprint_budget(), scope=scope)
+        state = ev.code_state(root, budget_s=_fingerprint_budget(), scope=scope,
+                              skip=list(run.get('code_generated') or []) or None)
         from glob import escape as escape_glob
         exclude = list(run.get('code_generated') or []) + [escape_glob(x) for x in (run.get('code_changed') or [])]
         fingerprint = ev.fingerprint_of(state, scope, exclude=exclude) if state else None
@@ -3253,6 +3286,197 @@ def _fingerprint_budget():
     return FINGERPRINT_BUDGET_DEFAULT
 
 
+def _generated_touched(root, globs, since, budget_s=2.0, limit=50):
+    """aidd:FR-434 Root-relative files matching the `Generated:` globs whose mtime is >= `since` (stat only, walk
+    limited to each glob's literal prefix, `budget_s` seconds, at most `limit` paths). Never raises."""
+    out = []
+    try:
+        rx = ev._scope_re(globs)
+        if rx is None:
+            return out
+        deadline = time.monotonic() + budget_s
+        base = Path(root)
+        for g in globs:
+            parts = str(g).strip().strip('`').replace('\\', '/').split('/')
+            prefix = []
+            for p in parts:
+                if any(c in p for c in '*?['):
+                    break
+                prefix.append(p)
+            start = base.joinpath(*prefix) if prefix else base
+            if start.is_file():
+                walker = [(str(start.parent), [], [start.name])]
+            elif start.is_dir():
+                walker = os.walk(start)
+            else:
+                start = start.parent if prefix else base     # a pattern in the last segment (report[0-9].bin)
+                walker = os.walk(start) if start.is_dir() else []
+            for cur, dirs, files in walker:
+                if time.monotonic() > deadline or len(out) >= limit:
+                    return out
+                dirs[:] = [x for x in dirs if x not in ('.git', 'node_modules')]
+                for f in files:
+                    full = Path(cur) / f
+                    rel = full.relative_to(base).as_posix()
+                    if rel in out or not ev.in_scope(rel, rx):
+                        continue
+                    try:
+                        if full.stat().st_mtime >= since - 1.0:
+                            out.append(rel)
+                    except OSError:
+                        continue
+    except Exception:
+        return out
+    return out
+
+
+def _iso_ts(ts):
+    try:
+        return datetime.fromtimestamp(float(ts)).isoformat(timespec='seconds') if ts else 'none'
+    except Exception:
+        return '?'
+
+
+def last_topic_answer(root, topic_re, prefer=None):
+    """aidd:FR-436 The newest recorded AskUserQuestion pair (any session) whose QUESTION matches `topic_re`,
+    preferring one whose question contains `prefer` (a spec id or tag): {ts, question, answer, session} or None.
+    Diagnostic only (never consent). Never raises."""
+    try:
+        best, best_pref = None, None
+        for e in ev.events(root, kind='answer'):
+            for p in (e.get('detail') or {}).get('pairs') or []:
+                if not (isinstance(p, (list, tuple)) and len(p) == 2 and topic_re.search(str(p[0]))):
+                    continue
+                item = {'ts': float(e.get('ts') or 0.0), 'question': str(p[0]), 'answer': str(p[1]),
+                        'session': e.get('session')}
+                if best is None or item['ts'] >= best['ts']:
+                    best = item
+                if prefer and prefer.lower() in str(p[0]).lower() and (best_pref is None or item['ts'] >= best_pref['ts']):
+                    best_pref = item
+        return best_pref or best
+    except Exception:
+        return None
+
+
+def approve_refusal_detail(root, sess, d, tag, rs):
+    """aidd:FR-437 Lines that make the approval comparison visible: since = max(tasks mtime, review.md mtime), the
+    newest consent found for the tag at ANY time (answer or typed prompt) and why it does not count (typically:
+    older than review.md because the open page saved review.md again after the click)."""
+    tm = _tasks_mtime(d) or 0.0
+    try:
+        rm = float((rs or {}).get('mtime') or 0.0)
+    except Exception:
+        rm = 0.0
+    since = max(tm, rm)
+    lines = [f'Compared: since = max(tasks {_iso_ts(tm)}, review.md {_iso_ts(rm)}) = {_iso_ts(since)}; a consent '
+             f'counts only when it is newer than that.']
+    found = None
+    try:
+        found = (ev.affirmative_answer(root, sess, APPROVE_TOPIC, 0.0, label_re=APPROVE_LABEL, must_contain=tag)
+                 or ev.tagged_answer_any_session(root, sess, APPROVE_TOPIC, 0.0, label_re=APPROVE_LABEL,
+                                                 must_contain=tag))
+    except Exception:
+        found = None
+    rv = _review_mod()
+    if found is None and rv is not None:
+        try:
+            found = rv.prompt_consent(ev, root, sess, tag, 0.0)
+        except Exception:
+            found = None
+    if not found:
+        lines.append(f'Last consent found for `{tag}`: none (no tagged Approve answer and no typed '
+                     f'`approve {tag}` recorded at any time).')
+        return lines
+    ts = float(found.get('ts') or 0.0)
+    kind = 'typed prompt' if found.get('kind') == 'prompt' else 'answer'
+    if ts <= since:
+        cause = ('older than review.md: the review page still open in the browser saved review.md again after the '
+                 'click (autosave); close the page, then ask again' if rm >= tm and ts <= rm
+                 else 'older than the last tasks change: ask again')
+    else:
+        cause = 'newer than both, but not usable (another session without the tag binding, or a later "No")'
+    lines.append(f'Last consent found for `{tag}`: {kind} at {_iso_ts(ts)} - {cause}.')
+    return lines
+
+
+def close_refusal_detail(root, d):
+    """aidd:FR-435 aidd:FR-436 Lines that say EXACTLY what the close gate wants and what it saw: the required tag,
+    question shape and option, the qa-audit.md time it compares against, and the last close question recorded
+    (text, time, answer) with the reason it does not count."""
+    tag = f'[spec:{d.name}]'
+    qa = _mtime(d / 'qa-audit.md')
+    lines = [f'Required: an AskUserQuestion whose question text contains EXACTLY `{tag}` and mentions closing '
+             f'(e.g. "Close spec {d.name} as completed? {tag}"), offering the option `Yes, close` (or `Cerrar`), '
+             f'answered AFTER qa-audit.md; typing the one line `Yes, close {tag}` also counts.',
+             f'Compared against: qa-audit.md modified {_iso_ts(qa)}'
+             + ('' if qa else ' (no qa-audit.md: any time counts)') + '.']
+    last = last_topic_answer(root, CLOSE_TOPIC, prefer=d.name)
+    if last is None:
+        lines.append('Last close question seen: none recorded (no AskUserQuestion about closing reached the evidence '
+                     'log; was it asked in this project?).')
+        return lines
+    why = []
+    if tag.lower() not in re.sub(r'\s+', ' ', last['question']).lower():
+        why.append(f'its text lacks the tag `{tag}`')
+    if qa and last['ts'] <= qa:
+        why.append('it is older than qa-audit.md')
+    if not CLOSE_LABEL.search(last['answer'].strip()):
+        why.append('the answer is not `Yes, close`')
+    lines.append(f'Last close question seen: "{last["question"][:200]}" at {_iso_ts(last["ts"])}, answer '
+                 f'"{last["answer"][:60]}"' + (f' - does not count: {"; ".join(why)}.' if why else '.'))
+    return lines
+
+
+def rewrite_attribution(root, files, windows, started, ended, slack=1.0):
+    """aidd:FR-438 [(rel, kind, line)] saying WHO most likely wrote each file the verification saw change.
+    kind 'row' = its mtime falls inside the execution window of a row (that row's command wrote it; stronger when
+    the command names the file or its folder); 'other' = written while the verification ran but when NO row was
+    executing (another process or agent); 'unknown' = removed, unreadable, or an mtime outside the run (a writer
+    that preserves times: copy, checkout). `windows` = [(n, cmd, start, end)] wall-clock. Never raises."""
+    out = []
+    try:
+        for rel in files or []:
+            p = Path(root) / rel
+            try:
+                mt = p.stat().st_mtime
+            except OSError:
+                out.append((rel, 'unknown', f'{rel}: removed or unreadable after the run; writer not determinable'))
+                continue
+            at = datetime.fromtimestamp(mt).isoformat(timespec='seconds')
+            hits = ([w for w in windows or [] if w[2] <= mt <= w[3]]
+                    or [w for w in windows or [] if w[2] - slack <= mt <= w[3] + slack])
+            if hits:
+                low = rel.replace('\\', '/').lower()
+                base, parent = low.rsplit('/', 1)[-1], (low.rsplit('/', 1)[0] if '/' in low else '')
+                named = [w for w in hits if base in str(w[1]).lower().replace('\\', '/')
+                         or (parent and parent in str(w[1]).lower().replace('\\', '/'))]
+                w = (named or hits)[0]
+                glob = (parent + '/**') if parent else rel
+                out.append((rel, 'row', f'{rel}: written at {at}, while row {w[0]} ran (`{str(w[1])[:90]}`)'
+                            + (' - the command names it' if named else '')
+                            + f'; if it is an output of that row declare `Generated: {glob}`'))
+            elif started - slack <= mt <= ended + slack:
+                out.append((rel, 'other', f'{rel}: written at {at}, while the verification ran but between rows '
+                                          f'(no row was executing): another process or agent wrote it'))
+            else:
+                out.append((rel, 'unknown', f'{rel}: mtime {at} is outside the run window (a copy/checkout that '
+                                            f'keeps times); writer not determinable'))
+    except Exception:
+        return out
+    return out
+
+
+def fingerprint_refusal(spec_name=None, what='no verification commands were run'):
+    """aidd:FR-433 The ONE refusal text when the verification inputs cannot be fingerprinted (plain `aidd verify`
+    and `aidd verify --round` print the same advice): Scope, `Generated:` and AIDD_FINGERPRINT_BUDGET."""
+    of = f' of {spec_name}' if spec_name else ''
+    return (f'Refused: cannot fingerprint the verification inputs{of}; {what}. '
+            f'Check the `Scope:` line, declare generated artifacts (screenshots, reports) in `Generated:` under '
+            f'`## Verification` (they are skipped before hashing; node_modules/, test-results/ and .aidd/evidence/ '
+            f'always are), or raise the budget with AIDD_FINGERPRINT_BUDGET=<seconds> (default '
+            f'{FINGERPRINT_BUDGET_DEFAULT:g}, now {_fingerprint_budget():g}), before retrying.')
+
+
 def cmd_close(spec_arg, check=False):
     """`rules close`; with check=True a dry run with no side effects that runs the same gates and lists ALL that
     is missing (exit 0 only when the real close would be accepted now)."""
@@ -3283,13 +3507,17 @@ def cmd_close(spec_arg, check=False):
         ans = ev.tagged_answer_any_session(root, sess, CLOSE_TOPIC, _mtime(d / 'qa-audit.md') or 0.0,
                                            label_re=CLOSE_LABEL, must_contain=f'[spec:{d.name}]')
     if ans is None and check:
-        gaps.append('close no recorded user answer "Yes, close" to a close question asked after qa-audit.md '
-                    '(ask it last, after the final qa-audit.md and fresh evidence).')
+        gaps.append(f'close no recorded user answer "Yes, close" to a close question tagged `[spec:{d.name}]` '
+                    'asked after qa-audit.md (ask it last, after the final qa-audit.md and fresh evidence).')
         print('FAIL ' + gaps[-1])
+        for line in close_refusal_detail(root, d):
+            print('  ' + line)
     elif ans is None:
-        print('Refused: no recorded user answer "Yes, close" to a close question (asked after qa-audit.md).\n'
-              'Fix: ' + _ASK_FIX.format(opt='Yes, close', what='closing the spec (e.g. "Close spec X as '
-                                                         'completed?")')
+        print(f'Refused: no recorded user answer "Yes, close" to a close question tagged `[spec:{d.name}]` '
+              '(asked after qa-audit.md).\n'
+              + '\n'.join(close_refusal_detail(root, d)) + '\n'
+              'Fix: ' + _ASK_FIX.format(opt='Yes, close', what=f'closing the spec and contain EXACTLY the tag '
+                                        f'[spec:{d.name}] (e.g. "Close spec {d.name} as completed? [spec:{d.name}]")')
               + _session_note(sess))
         return 1
     if check:

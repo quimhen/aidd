@@ -165,6 +165,25 @@ class SameSpecReuse(ReuseBase):
         self.assertEqual(len(self.runs), 1, out)
         self.assertIn('environment identity unavailable (fail closed)', out)
 
+    def test_rows_without_previous_env_id_are_listed_with_the_first_round_note(self):  # amendment 10 FR-439
+        self.spec('A', [('V-1', f'{PY} ok.py', 'exit 0', '')], extra=f'Round-identity: {PY} ident.py\n')
+        self.round('A')
+        for r in self.store['A']['results']:
+            r.pop('env_id', None)                       # a verify_run recorded before env_id existed
+        rc, out = self.round('A', extra=('--dry-run',))
+        self.assertEqual((rc, self.runs), (0, []), out)
+        self.assertIn('environment identity not recorded by the previous verify_run (no env_id)', out)
+        tail = out.split('not reusable for lack of a previous env_id', 1)
+        self.assertEqual(len(tail), 2, out)
+        self.assertIn('(1 row(s)): A:V-1', tail[1])
+        self.assertIn('first round after installing', tail[1])
+        rc, out = self.round('A')                       # the real round lists them at the end too
+        self.assertEqual((rc, len(self.runs)), (0, 1), out)
+        self.assertIn('first round after installing', out.split('=== round summary ===', 1)[1])
+        rc, out = self.round('A')                       # it recorded env_id: now reused, no note
+        self.assertEqual((rc, self.runs), (0, []), out)
+        self.assertNotIn('lack of a previous env_id', out)
+
     def test_reuse_never_row_always_runs(self):
         d = self.root / 'specs' / 'A'
         d.mkdir(parents=True)

@@ -559,6 +559,58 @@ Status of item P: implemented on branch `am10/round-reuse` of the AIDD repo (not
 
 ---
 
+### Q. Session lessons: refusals that say what they compared, artifacts out of the fingerprint (2026-11-06)
+
+**Measured (2026-11-06, b1SycLink).** (1) `aidd verify --round` refused with "cannot fingerprint the verification inputs
+of <spec>; nothing was executed." because 289 MB of Playwright captures (`eDoc/web/e2e/__screens__`, declared
+`Generated:`) spent the 8 s budget, and unlike plain `aidd verify` the message did not name `AIDD_FINGERPRINT_BUDGET`.
+(2) `aidd rules close` refused four times ("no recorded user answer \"Yes, close\"") because the question lacked the
+`[spec:<id>]` tag that the code requires (`must_contain`), and the message did not name it. (3) A page-route
+`aidd rules approve` was refused repeatedly ("review.md is complete; the owner must confirm") after the owner clicked and
+typed `approve [tasks:..]`; the probable cause (consent older than review.md, which the open page autosaves) was not
+visible. (4) Any text edit of a `tasks-<batch>.md` voids the approval (the hash covers batches), but status said only
+"tasks changed after approval". (5) `aidd pending` read only tasks.md and called a task done because its Target
+(`router.tsx`, shared) existed. (6) "the verification rewrote files" did not say who wrote them. (7) The first round
+after installing reused no DB row, silently (no previous `env_id`). (8) A row with `--slot 1` reset the seeded
+`edoc_verify_w1` that another spec's perf row needed.
+
+| Code | Requirement |
+|---|---|
+| FR-433 | `aidd_evidence.code_state(..., skip=globs)` drops files matching `skip` BEFORE hashing (git and mtime modes); paths with a `node_modules` or `test-results` segment and `.aidd/evidence/**` are always dropped. `aidd verify` and `aidd verify --round` pass the spec's `Generated:` as `skip`; fingerprints computed with `exclude=` the same globs are unchanged. Both commands print ONE refusal text (`aidd_status.fingerprint_refusal`) naming `Scope:`, `Generated:` and `AIDD_FINGERPRINT_BUDGET=<seconds>` (default and current value); a `--dry-run` prints it as a note. |
+| FR-434 | Declared `Generated:` outputs written during a run are still reported (`rewritten by the verification and declared Generated:`) by mtime only (stat, walk limited to each glob's literal prefix, 2 s cap). |
+| FR-435 | A refused `aidd rules close` (and `close --check`) names the exact tag `[spec:<id>]`, the question shape and the option `Yes, close`, and the typed fallback `Yes, close [spec:<id>]`. |
+| FR-436 | It also prints `Compared against: qa-audit.md modified <time>` and `Last close question seen: "<text>" at <time>, answer "<a>"` (any session, preferring one naming the spec) with the reason it does not count (missing tag, older than qa-audit.md, other label). Diagnostic only: never consent. |
+| FR-437 | A refused page-route `aidd rules approve` prints `since = max(tasks <t>, review.md <t>)`, the newest tagged consent found at any time (answer or typed prompt, with time) and why it does not count (older than review.md: the open page autosaved; older than tasks), and names the `Aprobar con resumen` alternative. |
+| FR-438 | When a verification sees files change, each one gets a `who:` line: the row whose wall-clock execution window holds its mtime (stronger when the command names it; suggests the `Generated:` glob), or `another process or agent` when no row was running (then the advice is to re-run, NOT to declare it), or not determinable. |
+| FR-439 | Reuse reason `environment identity not recorded by the previous verify_run (no env_id)` is distinct from `changed`; `--round --dry-run` and the round summary end with the list of such rows and the note that the first round after installing does not reuse database/docker rows. |
+| FR-440 | New `approved` events record `segments` (sha1[:12] of the approval projection of tasks.md and each batch file; never part of `approval_hash`). `aidd status` (`approval VOID ✘ (...: <file> (modified <time>))`) and R6 name the changed file; for older events, the task files modified after the approval, by mtime. |
+| FR-441 | `aidd pending` reads tasks.md + `tasks-*.md` and reports `unverified` (never `done`) a task whose existing Target is cited by another task, whose Status cell is not done, or that git shows existed before the spec's tasks.md; JSON adds `unverified`, `unverified_why`, `files`. |
+| FR-442 | `check_spec.py` prints a WARNING (never a gap) when a row of the spec runs `--slot N` while another spec declares `Protected-slot: N` under `## Verification` (opt-in) or has a `Tier: perf` row with `--slot N` / `_wN`. |
+
+**Acceptance (Q).**
+| Code | Scenario | Command | Expected |
+|---|---|---|---|
+| AC-497 | round refusal names the budget like plain verify | `python -m unittest tests.test_verify_round -v` | both texts contain `AIDD_FINGERPRINT_BUDGET=<seconds>` and `Generated:` |
+| AC-498 | 12 screenshots over the file cap: refused without `Generated:`, PASS with it; fingerprint equal | same | rc 1 then rc 0; equal `fingerprint_of` |
+| AC-499 | git mode: skipped and artifact files never reach `git hash-object` | `python -m unittest tests.test_session_lessons -v` | only code files hashed |
+| AC-500 | close refusal with an untagged question | `python -m unittest tests.test_aidd_status -v` | tag, option, last question, answer, qa-audit time; `--check` too |
+| AC-501 | close question older than qa-audit.md | same | `it is older than qa-audit.md` |
+| AC-502 | approve consent older than an autosaved review.md | same | `since = max(`, `Last consent found`, `older than review.md`, `Aprobar con resumen` |
+| AC-503 | declared Generated output still reported | same | `declared Generated` on a PASS run |
+| AC-504 | rewritten file attributed to its row / another process / unknown | `tests.test_session_lessons`, `tests.test_verify_round` | `while row V-2 ran`; `another process or agent` |
+| AC-505 | rows without previous env_id listed, then reused | `python -m unittest tests.test_verify_round_reuse -v` | list + first-round note; next round reuses, no note |
+| AC-506 | void approval names the batch file | `tests.test_session_lessons` | per-file hash and mtime fallback; status line |
+| AC-507 | pending reads batches, shared targets unverified | same | done T-01, pending T-11, unverified T-02,T-10,T-12 |
+| AC-508 | slot warning | same | perf heuristic + `Protected-slot`; check_spec WARNING |
+
+| Task | Item | Target file(s) | Wave | Deps | Agent min | Explicitly out of scope |
+|---|---|---|---|---|---|---|
+| T-22 | Q | `skill/scripts/aidd_evidence.py`, `skill/scripts/aidd_status.py`, `skill/scripts/aidd_round.py`, `skill/scripts/aidd_rules.py`, `skill/scripts/aidd_pending.py`, `skill/scripts/check_spec.py`, mirrors in `adapters/dot-aidd/scripts/` (copied by script), `skill/AIDD.md` + `adapters/dot-aidd/AIDD.md` (E13), `skill/SKILL.md` (E13), `tests/test_session_lessons.py`, `tests/test_verify_round.py`, `tests/test_verify_round_reuse.py`, `tests/test_aidd_status.py` | 1 | T-21 | 180 | a preflight command for slots; a process-level writer trace (only mtime vs row windows); changing `approval_hash`; installing into `~/.claude` or a project |
+
+Status of item Q: implemented on branch `am10/session-lessons` of the AIDD repo (not installed, not pushed).
+
+---
+
 ## Cross-cutting acceptance
 
 | Code | Requirement | Command | Expected |

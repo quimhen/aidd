@@ -2095,16 +2095,32 @@ def in_scope(rel, scope_rx):
     return scope_rx is None or bool(scope_rx.match(str(rel).replace('\\', '/')))
 
 
-def _code_state_git(root, deadline, srx):
+# aidd:FR-433 artifact folders are never code: a path with one of these segments is left out of the code state
+# BEFORE hashing (also when tracked), and so is `.aidd/evidence/**`. Callers (aidd verify, aidd verify --round)
+# also pass the spec's `Generated:` globs as `skip`, so hundreds of MB of screenshots never spend the budget.
+_FP_ARTIFACT_DIRS = frozenset({'node_modules', 'test-results'})
+
+
+def _fp_artifact(rel, xrx=None):
+    """True when `rel` is a test/build artifact (an artifact folder segment, `.aidd/evidence/**`) or matches the
+    caller's compiled `skip` globs."""
+    parts = str(rel).replace('\\', '/').split('/')
+    if any(p in _FP_ARTIFACT_DIRS for p in parts[:-1]) or parts[:2] == ['.aidd', 'evidence']:
+        return True
+    return xrx is not None and in_scope(rel, xrx)
+
+
+def _code_state_git(root, deadline, srx, xrx=None):
     """{rel: chunk} for every tracked or untracked non-ignored file outside specs/ and the AIDD bundle dir
     that is not documentation and is in scope; chunk = `rel\\0<blob sha of the WORKING-TREE content>\\0`.
-    No HEAD and no index state: a commit, an amend or a `git add` of the same content changes nothing."""
+    No HEAD and no index state: a commit, an amend or a `git add` of the same content changes nothing.
+    Artifacts and the `skip` globs (`xrx`) are dropped before any file is hashed (aidd:FR-433)."""
     excl = ['--', '.', ':(exclude)specs', ':(exclude).aidd']
     raw = _fp_git(root, ['ls-files', '-c', '-o', '--exclude-standard', '-z', *excl], deadline)
     paths = sorted({p for p in raw.decode('utf-8', errors='surrogateescape').split('\0') if p})
     keep = []
     for rel in paths:
-        if _fp_is_doc(rel) or not _fp_outside(rel) or not in_scope(rel, srx):
+        if _fp_is_doc(rel) or not _fp_outside(rel) or not in_scope(rel, srx) or _fp_artifact(rel, xrx):
             continue
         if '\n' in rel:
             if rel.lower().endswith('.sql'):
@@ -2169,7 +2185,7 @@ def blob_shas(root, rels, budget_s=8.0):
         return {}
 
 
-def _code_state_mtimes(root, deadline, srx):
+def _code_state_mtimes(root, deadline, srx, xrx=None):
     state = {}
     base = os.path.abspath(str(root))
     def unsafe_walk(error):
@@ -2177,13 +2193,14 @@ def _code_state_mtimes(root, deadline, srx):
     for cur, dirs, files in os.walk(base, onerror=unsafe_walk):
         _fp_left(deadline)
         top = os.path.normcase(os.path.abspath(cur)) == os.path.normcase(base)
-        dirs[:] = sorted(d for d in dirs if d not in _FP_SKIP_ANY and not (top and d in _FP_SKIP_TOP))
+        dirs[:] = sorted(d for d in dirs if d not in _FP_SKIP_ANY and d not in _FP_ARTIFACT_DIRS
+                         and not (top and d in _FP_SKIP_TOP))
         for f in files:
             if _fp_is_doc(f):
                 continue
             full = os.path.join(cur, f)
             rel = os.path.relpath(full, base).replace('\\', '/')
-            if not in_scope(rel, srx):
+            if not in_scope(rel, srx) or (xrx is not None and in_scope(rel, xrx)):
                 continue
             try:
                 st = os.stat(full)
@@ -2203,17 +2220,25 @@ _CODE_STATE_TTL = 600.0      # `reuse=True` callers are read-only reports that a
 _CODE_STATE_FULL = {}          # str(root) -> (taken_monotonic, (kind, {rel: chunk}))
 
 
-def _code_state_scan(root, budget_s, srx):
+def _code_state_scan(root, budget_s, srx, xrx=None):
     deadline = time.monotonic() + float(budget_s)
+    if xrx is None:      # keep the historical call shape (tests patch these with 3 positional args)
+        try:
+            return _code_state_git(Path(root), deadline, srx)
+        except _FpUnavailable:
+            return _code_state_mtimes(Path(root), deadline, srx)
     try:
-        return _code_state_git(Path(root), deadline, srx)
+        return _code_state_git(Path(root), deadline, srx, xrx)
     except _FpUnavailable:
-        return _code_state_mtimes(Path(root), deadline, srx)
+        return _code_state_mtimes(Path(root), deadline, srx, xrx)
 
 
-def code_state(root, budget_s=8.0, scope=None, reuse=False):
+def code_state(root, budget_s=8.0, scope=None, reuse=False, skip=None):
     """(kind, {rel: chunk}) of the project's CODE files (see _code_state_git), limited to `scope` globs, or None
     over budget / on error. The per-file view lets `aidd verify` say WHICH files a command rewrote.
+    aidd:FR-433 `skip` (root-relative globs: the spec's `Generated:` line) drops those files BEFORE hashing, so
+    generated artifacts never spend the budget; the fingerprints callers compute with `exclude=` the same
+    globs are unchanged (those files were excluded from the hash anyway).
 
     Always reads the disk NOW unless the caller passes `reuse=True`, which accepts the whole-tree scan this
     process took in the last _CODE_STATE_TTL seconds and applies the scope by filtering it in memory. Only a
@@ -2224,24 +2249,26 @@ def code_state(root, budget_s=8.0, scope=None, reuse=False):
         if root is None or not Path(root).is_dir():
             return None
         srx = _scope_re([str(g).strip() for g in (scope or []) if str(g).strip()])
-        key = str(root)
+        skip_globs = tuple(sorted({str(g).strip() for g in (skip or []) if str(g).strip()}))
+        xrx = _scope_re(list(skip_globs)) if skip_globs else None
+        key = str(root) if not skip_globs else (str(root), skip_globs)
         hit = _CODE_STATE_FULL.get(key)
         full = None
         if hit is not None and reuse and time.monotonic() - hit[0] <= _CODE_STATE_TTL:
             full = hit[1]
         elif srx is not None and not reuse:
             # Avoid hashing the whole monorepo before checking a declared scope.
-            return _code_state_scan(root, budget_s, srx)
+            return _code_state_scan(root, budget_s, srx, xrx)
         else:
             try:
-                full = _code_state_scan(root, budget_s, None)
+                full = _code_state_scan(root, budget_s, None, xrx)
             except _FpOverBudget:
                 full = None
             if full is not None:
                 _CODE_STATE_FULL[key] = (time.monotonic(), full)
         if full is None:
             # the whole tree is over budget or unreadable: a scoped scan may still fit (the old behaviour)
-            return _code_state_scan(root, budget_s, srx) if srx is not None else None
+            return _code_state_scan(root, budget_s, srx, xrx) if srx is not None else None
         if srx is None:
             return full
         kind, items = full

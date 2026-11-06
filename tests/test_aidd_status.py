@@ -929,6 +929,37 @@ class TestRulesClose(EvBase):
             self.assertEqual(run_script("rules", "close", "001-x", cwd=root).returncode, 1)
             self.assertEqual(ev.open_specs(root), ["001-x"])
 
+    def test_close_refusal_names_the_tag_and_shows_the_last_question(self):     # amendment 10 FR-435/FR-436
+        tmp, root, d = self._approved_project()
+        with tmp:
+            self._ready_to_close(root, d)
+            self.answer(root, "Close spec 001-x as completed?", "Yes, close")   # no tag: the measured failure
+            r = run_script("rules", "close", "001-x", cwd=root)
+            self.assertEqual(r.returncode, 1, r.stdout)
+            self.assertIn("tagged `[spec:001-x]`", r.stdout)
+            self.assertIn("contains EXACTLY `[spec:001-x]`", r.stdout)
+            self.assertIn("`Yes, close`", r.stdout)
+            self.assertIn('Last close question seen: "Close spec 001-x as completed?"', r.stdout)
+            self.assertIn('answer "Yes, close"', r.stdout)
+            self.assertIn("its text lacks the tag `[spec:001-x]`", r.stdout)
+            self.assertIn("Compared against: qa-audit.md modified 20", r.stdout)
+            c = run_script("rules", "close", "001-x", "--check", cwd=root)
+            self.assertEqual(c.returncode, 1, c.stdout)
+            self.assertIn("tagged `[spec:001-x]`", c.stdout)
+            self.assertIn("Last close question seen:", c.stdout)
+
+    def test_close_refusal_says_the_question_is_older_than_qa_audit(self):
+        tmp, root, d = self._approved_project()
+        with tmp:
+            self.answer(root, "Close this spec? [spec:001-x]", "Yes, close")
+            self._ready_to_close(root, d)
+            t = time.time() + 30
+            os.utime(d / "qa-audit.md", (t, t))
+            r = run_script("rules", "close", "001-x", cwd=root)
+            self.assertEqual(r.returncode, 1, r.stdout)
+            self.assertIn("it is older than qa-audit.md", r.stdout)
+            self.assertNotIn("lacks the tag", r.stdout)
+
     def test_unknown_spec(self):
         with tempfile.TemporaryDirectory() as t:
             r = run_script("rules", "close", "999-nope", cwd=t)
@@ -1437,6 +1468,19 @@ class Spec007Base(EvBase):
 
 class TestReviewApproval(Spec007Base):
     """FR-204 / AC-205 / AC-206 / AC-217: review content + one owner consent act."""
+
+    def test_refusal_shows_review_time_consent_time_and_summary_route(self):      # amendment 10 FR-437
+        tmp, root, d = self.reviewed("001-x")
+        with tmp:
+            tag = self.tag(d)
+            self.answer(root, f"Approve these tasks? {tag}", "Approve")
+            t = time.time() + 5                     # the open page autosaves review.md AFTER the click
+            os.utime(d / "review.md", (t, t))
+            self.assertTrue(aidd_review.review_state(d)["complete"])
+            r = self.assert_refused(root, d, "the owner must confirm", "since = max(tasks ", "review.md ",
+                                    f"Last consent found for `{tag}`: answer at ", "older than review.md",
+                                    "Aprobar con resumen")
+            self.assertEqual(ev.events(root, kind="approved"), [], r.stdout)
 
     def test_ac205_complete_review_without_consent_is_refused(self):
         for sid in IDS:

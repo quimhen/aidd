@@ -699,6 +699,9 @@ def main():
         import aidd_rules as _cr
         for _w in _cr.capacity_warnings(spec_text):
             print(f"WARNING: {_w}")
+        # amendment 10 FR-442: a row that resets a work-DB slot another spec protects (never a gap)
+        for _w in _cr.slot_warnings(spec_dir):
+            print(f"WARNING: {_w}")
     except Exception:
         pass
     # FR-008: informational plan totals (never a gap, never affects the exit code)

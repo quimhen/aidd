@@ -172,6 +172,47 @@ class Round(RoundBase):
         self.assertNotIn('other.py', ' '.join(self.runs))
         self.assertIn('`Tier: perf` row(s) excluded', out)
 
+    def test_fingerprint_refusal_names_the_budget_like_plain_verify(self):          # amendment 10 FR-433
+        self.spec('A', [('V-1', f'{PY} ok.py', 'exit 0', '')])
+        with patch.object(status.ev, 'code_state', return_value=None):
+            rc, out = self.main('verify', '--round', 'A')
+            rc2, out2 = self.main('verify', 'A')
+        self.assertEqual((rc, rc2, self.runs), (1, 1, []), out + out2)
+        self.assertIn('Refused: cannot fingerprint the verification inputs of A; nothing was executed.', out)
+        for text in (out, out2):
+            self.assertIn('AIDD_FINGERPRINT_BUDGET=<seconds>', text)
+            self.assertIn('`Generated:`', text)
+
+    def test_generated_artifacts_are_skipped_before_hashing(self):                 # amendment 10 FR-433/FR-434
+        shots = self.root / 'src' / 'shots'
+        shots.mkdir()
+        for k in range(12):
+            (shots / f's{k}.png').write_bytes(b'png' * 10)
+        (self.root / 'src' / 'test-results').mkdir()
+        (self.root / 'src' / 'test-results' / 'r.json').write_text('{}', encoding='utf-8')
+        self.spec('A', [('V-1', f'{PY} ok.py', 'exit 0', '')])
+        self.spec('B', [('V-1', f'{PY} other.py', 'exit 0', '')], extra='Generated: src/shots/**\n')
+        with patch.object(status.ev, '_FP_MAX_FILES', 5):          # 12 screenshots exceed the cap, 1 code file does not
+            rc, out = self.main('verify', '--round', 'A')
+            self.assertEqual((rc, self.runs), (1, []), out)        # without Generated: refused, nothing ran
+            self.assertIn('AIDD_FINGERPRINT_BUDGET', out)
+            rc, out = self.main('verify', '--round', 'B')
+            self.assertEqual(rc, 0, out)                           # with Generated: the shots are never hashed
+            state = status.ev.code_state(self.root, scope=['src/**'], skip=['src/shots/**'])
+        self.assertEqual(sorted(state[1]), ['src/a.py'])           # test-results/ is always an artifact
+        full = status.ev.code_state(self.root, scope=['src/**'])
+        self.assertEqual(status.ev.fingerprint_of(state, ['src/**'], exclude=['src/shots/**']),
+                         status.ev.fingerprint_of(full, ['src/**'], exclude=['src/shots/**']))
+
+    def test_rewrite_names_the_row_that_wrote_the_file(self):                      # amendment 10 FR-438
+        self.spec('A', [('V-1', f'{PY} ok.py', 'exit 0', ''), ('V-2', f'{PY} mutate.py', 'exit 0', '')])
+        rc, out = self.main('verify', 'A')
+        self.assertEqual(rc, 1, out)
+        self.assertIn('FAIL the verification rewrote files: src/a.py', out)
+        self.assertIn('who: src/a.py: written at ', out)
+        self.assertIn('while row V-2 ran', out)
+        self.assertIn('declare `Generated: src/**`', out)
+
     def test_refused_options(self):
         self.spec('A', [('V-1', f'{PY} ok.py', 'exit 0', '')])
         for extra in (['--tasks', 'T-01'], ['--perf'], ['--wave', 'w1'], ['--json'], ['--bail']):

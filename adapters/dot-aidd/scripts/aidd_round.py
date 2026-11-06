@@ -167,7 +167,7 @@ def declared_vars(st, spec_text, rows):
 def env_fingerprint(st, root, scope, exclude, cmds, identity_cmds, var_names):
     """(16-hex fingerprint, None) or (None, reason). `scope` None = whole code tree."""
     budget = st._fingerprint_budget() if scope else WHOLE_TREE_BUDGET
-    state = st.ev.code_state(root, budget_s=budget, scope=scope or None)
+    state = st.ev.code_state(root, budget_s=budget, scope=scope or None, skip=exclude or None)
     files = st.ev.fingerprint_of(state, scope or None, exclude=exclude) if state else None
     if files is None:
         return None, 'files in scope could not be fingerprinted'
@@ -311,11 +311,36 @@ def print_plan(st, root, specs, groups, reuse=None):
         print(f'      rows: {who}')
     if total:
         print(f'estimated round time: ~{round(total, 1):g} s (one execution per group)')
+    if reuse is not None:
+        print_no_env_id(reuse)
 
 
 # --- same-spec reuse before grouping (aidd:FR-427..FR-432, amendment 10 item P) -------------------------------
 
 REUSE_FORMAT = 'round-same-spec-v1'
+NO_ENV_ID_REASON = 'environment identity not recorded by the previous verify_run (no env_id)'
+
+
+def no_env_id_rows(reuse):
+    """aidd:FR-439 Sorted 'spec:n' of the rows that could not be reused ONLY because their previous run recorded
+    no environment identity (env_id)."""
+    try:
+        return sorted(f'{s}:{n}' for (s, n), why in (reuse or {}).get('reasons', {}).items()
+                      if why == NO_ENV_ID_REASON)
+    except Exception:
+        return []
+
+
+def print_no_env_id(reuse):
+    """aidd:FR-439 The closing list of rows not reusable for lack of a previous env_id, with the first-round note."""
+    rows = no_env_id_rows(reuse)
+    if not rows:
+        return
+    print(f'not reusable for lack of a previous env_id ({len(rows)} row(s)): {", ".join(rows)}')
+    print('note: the first round after installing an AIDD version that records env_id does NOT reuse database/'
+          'docker rows (or rows of a spec with `Round-identity:`/`Round-vars:`): their previous verify_run has no '
+          'environment identity. This round records it; the next round on unchanged code and environment reuses '
+          'them.')
 
 
 def env_parts(st, root, spec_info, cmds, cache=None):
@@ -465,7 +490,9 @@ def reuse_plan(st, root, spec, spec_rows, state, parts, full=False):
                 why[n] = 'environment identity unavailable (fail closed)'
                 continue
             if env_id and res.get('env_id') != env_id:
-                why[n] = 'environment identity changed or not recorded by the previous run'
+                # aidd:FR-439 say which one: a run recorded before env_id existed never reuses a DB/docker row
+                why[n] = (NO_ENV_ID_REASON if not res.get('env_id')
+                          else 'environment identity changed since the previous verify_run')
                 continue
             try:
                 p = (base / str(res.get('evidence') or '')).resolve()
@@ -614,10 +641,13 @@ def run_round(st, spec_args, dry_run=False, full=False):
     # whole round, and the same-spec reuse decision (aidd:FR-427) is taken on exactly this state.
     starts, parts_start, probe = {}, {}, {}
     for s in specs:
-        st_start = st.ev.code_state(root, budget_s=st._fingerprint_budget(), scope=s['scope'])
+        # aidd:FR-433 the spec's `Generated:` artifacts are skipped before hashing (same skip as a plain verify)
+        st_start = st.ev.code_state(root, budget_s=st._fingerprint_budget(), scope=s['scope'], skip=s['generated'])
         if st_start is None and not dry_run:
-            print(f"Refused: cannot fingerprint the verification inputs of {s['name']}; nothing was executed.")
+            print(st.fingerprint_refusal(s['name'], 'nothing was executed'))
             return 1
+        if st_start is None:
+            print(f"note: {st.fingerprint_refusal(s['name'], 'the real round would refuse to start')}")
         starts[s['name']] = {'started': time.time(), 'fp_start': st.ev.worktree_fingerprint(root), 'st_start': st_start}
         parts_start[s['name']] = env_parts(st, root, s, [r['cmd'] for r in rows_by_spec.get(s['name'], [])], probe)
     reused, reasons = {}, {}
@@ -674,6 +704,7 @@ def run_round(st, spec_args, dry_run=False, full=False):
           f'from the previous verify_run of their own spec')
     for name, rc in out:
         print(f"{'PASS' if rc == 0 else 'FAIL'}  {name}")
+    print_no_env_id({'reasons': reasons})
     return worst
 
 

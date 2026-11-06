@@ -1594,6 +1594,62 @@ def split_tasks_segments(text):
     return [('tasks.md', parts[0])] + [(parts[i], parts[i + 1]) for i in range(1, len(parts) - 1, 2)]
 
 
+def approval_segment_hashes(combined_text):
+    """aidd:FR-440 {file name: sha1[:12] of its approval projection} for tasks.md and every batch file of a
+    combined tasks text. Recorded in the `approved` event so a later mismatch names the file that changed; it
+    never enters `approval_hash` (approvals stay byte-for-byte compatible). Never raises ({} on error)."""
+    try:
+        out = {}
+        for name, seg in split_tasks_segments(combined_text):
+            proj = approval_projection(seg.rstrip('\n'))
+            data = proj if proj is not None else _norm_nl(seg)
+            out[name] = hashlib.sha1(data.strip().encode('utf-8', 'replace')).hexdigest()[:12]
+        return out
+    except Exception:
+        return {}
+
+
+def approval_change_hint(spec_dir, approved=None):
+    """aidd:FR-440 One sentence naming WHICH task file(s) changed after the approval, or ''. With the per-file
+    hashes the `approved` event recorded (`segments`): exact (changed / added / removed file); otherwise (an
+    approval recorded before this field) the task files modified after the approval time, by mtime. Never raises."""
+    try:
+        d = Path(spec_dir)
+        names = ['tasks.md'] + tasks_batch_names(d)
+
+        def mt(name):
+            try:
+                return (d / name).stat().st_mtime
+            except OSError:
+                return None
+
+        def when(name):
+            t = mt(name)
+            if t is None:
+                return name + ' (removed)'
+            from datetime import datetime as _dt
+            return f'{name} (modified {_dt.fromtimestamp(t).isoformat(timespec="seconds")})'
+        seg = (approved or {}).get('segments')
+        if isinstance(seg, dict) and seg:
+            now = approval_segment_hashes(read_tasks(d))
+            changed = sorted(n for n in set(now) | set(seg) if now.get(n) != seg.get(n))
+            if not changed:
+                return ''
+            return ('changed after approval (per-file hash): '
+                    + ', '.join(when(n) if n in now else n + ' (removed since approval)' for n in changed))
+        ts = float((approved or {}).get('ts') or 0.0)
+        if ts:
+            newer = [n for n in names if (mt(n) or 0.0) > ts]
+            if newer:
+                from datetime import datetime as _dt
+                return (f'changed after approval ({_dt.fromtimestamp(ts).isoformat(timespec="seconds")}, by mtime; '
+                        f'the approval predates per-file hashes): ' + ', '.join(when(n) for n in newer))
+        latest = max(names, key=lambda n: mt(n) or 0.0)
+        return f'most recently modified task file: {when(latest)} (the approval hash covers tasks.md + every tasks-*.md)'
+    except Exception:
+        return ''
+
+
 def approval_projection(tasks_text):
     """Semantic task text shared by legacy approval and incremental scope hashes."""
     t = _norm_nl(tasks_text)
@@ -1995,7 +2051,14 @@ def check_spec_dir(spec_dir, root=None, session=None, static_only=False):
                                   'Keep exactly one "Approved:" line, re-present the tasks to the user, then run '
                                   '`aidd rules approve <spec_dir>`.'))
                 elif valid[0][1] != approval_hash(tasks_t):
-                    out.append(_v('R6', 'tasks.md changed after approval (hash mismatch) — approval is void.',
+                    hint = ''
+                    try:
+                        _e = _evidence()
+                        hint = approval_change_hint(d, _e.latest_approved(proj, d.name) if (_e and proj) else None)
+                    except Exception:
+                        hint = approval_change_hint(d)
+                    out.append(_v('R6', 'tasks.md changed after approval (hash mismatch) — approval is void.'
+                                  + (f' {hint}.' if hint else ''),
                                   'Re-present the changed tasks to the user, then run `aidd rules approve <spec_dir>`.'))
         if qa_p.exists():
             if _big(qa_p):
@@ -2620,6 +2683,60 @@ def capacity_problems(spec_text):
         return out
     except Exception as e:  # pragma: no cover - defensive
         return [_v('R10', f'Could not parse "## Capacity & test budget" ({e}).', fix)]
+
+
+_SLOT_RE = re.compile(r'--slot(?:\s+|=)(\d+)\b')
+
+
+def _row_slots(cmd):
+    return sorted({int(m.group(1)) for m in _SLOT_RE.finditer(str(cmd or ''))})
+
+
+def slot_warnings(spec_dir):
+    """aidd:FR-442 Non-blocking advice for check_spec.py: a Verification row of THIS spec that runs with
+    `--slot N` (db_verify resets that work database from the template) while ANOTHER spec of the same specs/
+    folder protects slot N: it declares `Protected-slot: N` under `## Verification` (opt-in), or one of its
+    `Tier: perf` rows runs on `--slot N` / names the `..._wN` database (heuristic). Never raises."""
+    out = []
+    try:
+        d = Path(spec_dir)
+        rows = parse_verification(_read(d / 'spec.md'))
+        mine = {}
+        for r in rows:
+            for s in _row_slots(r.get('cmd')):
+                mine.setdefault(s, []).append(str(r.get('n')))
+        if not mine or not d.parent.is_dir():
+            return out
+        for other in sorted(p for p in d.parent.iterdir() if p.is_dir() and p.name != d.name):
+            t = _read(other / 'spec.md') if (other / 'spec.md').is_file() else ''
+            if not t:
+                continue
+            prot = set()
+            for v in _verification_globs(t, 'protected-slot'):
+                for x in re.split(r'[,\s]+', v):
+                    if x.isdigit():
+                        prot.add(int(x))
+            perf = {}
+            for r in parse_verification(t):
+                if row_tier(r) != 'perf':
+                    continue
+                cmd = str(r.get('cmd') or '')
+                hit = set(_row_slots(cmd)) | {int(m.group(1)) for m in re.finditer(r'_w(\d+)\b', cmd)}
+                for s in hit:
+                    perf.setdefault(s, []).append(str(r.get('n')))
+            for s, ns in sorted(mine.items()):
+                if s in prot:
+                    why = f'declares `Protected-slot: {s}`'
+                elif s in perf:
+                    why = f'has `Tier: perf` row(s) {", ".join(perf[s])} on slot {s}'
+                else:
+                    continue
+                out.append(f'Verification row(s) {", ".join(ns)} run with `--slot {s}`, which resets that work '
+                           f'database, but {other.name} {why} (it needs the seeded data there): run that perf row '
+                           f'first, or give this row another slot.')
+    except Exception:
+        return out
+    return out
 
 
 def capacity_warnings(spec_text):
