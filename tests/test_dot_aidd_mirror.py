@@ -104,6 +104,7 @@ VERBATIM_SCRIPTS = [
     "aidd_coverage.py",
     "alias_graph.py",
     "aidd_sync.py",         # amendment 10 item N, FR-413..FR-418
+    "aidd_round.py",        # amendment 10 item O, FR-419..FR-426
 ]
 
 # Graph-first scripts (spec 004) that must import with stdlib only.

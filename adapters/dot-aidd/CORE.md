@@ -106,6 +106,12 @@ anything works. `aidd verify specs/<id>` is what executes the spec's `## Verific
   alone (`Perf: required` makes the close need them). Fill `## Capacity & test budget` (RAM, heavy runs
   at a time, round budget, per-row budget and justified data scale); seed volume with set-based SQL
   (`templates/perf/`), and test plan risks without volume (generic plan after 6 calls, Seq Scan).
+- **One verification pass for several specs (E12, Step 6).** Before verifying 2+ open specs, plan a
+  round: `aidd verify --round <ids...> --dry-run` (groups of identical rows, executions saved, estimated
+  seconds), freeze the code, run ONE pass `aidd verify --round <ids...>` (each identical command runs
+  once, in series; shared only when the environment fingerprint — Scope/Inputs files, docker
+  container, `Round-identity:`, declared vars — is unchanged before/after; else `ROUND-INVALIDATED`),
+  then ONE round of auditors per spec. Spec by spec only when a single spec is ready.
 - Never copy a secret into a file, spec, memory entry or command; refer to it by variable name.
 
 ## 6. Reading AIDD.md without truncation

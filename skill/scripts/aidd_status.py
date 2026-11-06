@@ -871,6 +871,9 @@ def cmd_status(args):
         if ghost:
             print('Open specs whose folder is missing: ' + ', '.join(ghost)
                   + ' (code edits stay blocked; run `aidd rules abandon <id>` if the user drops them)')
+        round_line = _safe(lambda: _round_mod().suggestion(sys.modules[__name__], root), '')   # aidd:FR-425
+        if round_line:
+            print(round_line)
     for s in sts:
         print(format_status(s))
         if s.get('open'):
@@ -2288,7 +2291,7 @@ def _tier_select(rows, perf, spec_name):
 
 
 def cmd_verify(spec_arg, full=False, bail=False, wave=None, result_sink=None, wave_cache=None, task_ids=None,
-               always_rows=None, perf=False):
+               always_rows=None, perf=False, round_shared=None, round_start=None):
     """aidd:FR-205 aidd:AC-209 aidd:AC-216 aidd:AC-218 `aidd verify <spec>`: run every `## Verification` row
     (shell, project root, AIDD_VERIFY_TIMEOUT per row), save `evidence/verify-<n>.txt` (header line
     `# <cmd> | exit <code> | <ISO ts>` + combined output), mark zero-test / too-short output failed,
@@ -2364,6 +2367,8 @@ def cmd_verify(spec_arg, full=False, bail=False, wave=None, result_sink=None, wa
     if had_rows and not rows:
         print('Refused: the selection has no row of this tier; nothing was executed.')
         return 1
+    if round_shared is None and wave is None and task_ids is None and not perf:
+        _round_hint(root, d.name)   # aidd:FR-425 suggest the one-pass round when other open specs share rows
     if perf:
         full = True        # FR-399: a perf run never reuses, carries or stores a result
         print(f'perf tier: {len(rows)} row(s); run alone (one heavy run at a time); recorded as perf_verify_run.', flush=True)
@@ -2403,8 +2408,8 @@ def cmd_verify(spec_arg, full=False, bail=False, wave=None, result_sink=None, wa
     timeout = _verify_timeout()
     vhash = rules.verification_hash(spec_text)
     sess = _current_session(root)
-    started = time.time()
-    fp_start = ev.worktree_fingerprint(root)
+    started = time.time() if round_start is None else round_start['started']
+    fp_start = ev.worktree_fingerprint(root) if round_start is None else round_start['fp_start']
     scope = rules.verification_scope(spec_text, _read_tasks(d))   # [] = whole tree; else only these files count
     if task_ids is not None and all(row.get('inputs') for row in rows):
         scope = sorted({pattern for row in rows for pattern in row['inputs']})
@@ -2418,7 +2423,9 @@ def cmd_verify(spec_arg, full=False, bail=False, wave=None, result_sink=None, wa
     except (ValueError, re.error):
         print('Refused: invalid Scope or Generated pattern; no verification commands were run.', flush=True)
         return 1
-    st_start = ev.code_state(root, budget_s=_fingerprint_budget(), scope=scope)
+    # aidd:FR-422 in a round the state was taken BEFORE the first shared execution, so stability covers the round
+    st_start = (ev.code_state(root, budget_s=_fingerprint_budget(), scope=scope) if round_start is None
+                else round_start['st_start'])
     if st_start is None:
         print('Refused: cannot fingerprint the verification inputs; no verification commands were run. '
               'Check the scope, or raise the budget with AIDD_FINGERPRINT_BUDGET=<seconds> (default 8), before retrying.', flush=True)
@@ -2431,7 +2438,8 @@ def cmd_verify(spec_arg, full=False, bail=False, wave=None, result_sink=None, wa
     # A file fingerprint alone does not describe a database or other external
     # state. Wave reuse is opt-in, scoped to this invocation, and hermetic only.
     reuse = {}
-    input_reuse = {} if wave is not None or task_ids is not None else _reusable_input_rows(d, prior, full)
+    input_reuse = ({} if wave is not None or task_ids is not None or round_shared is not None
+                   else _reusable_input_rows(d, prior, full))
     if any(r.get('reuse') == 'hermetic' and r.get('environment', '').strip().lower().startswith('contract:offline;') for r in rows):
         print('Offline reuse relies on the owner contract; isolation and transitive Inputs are not independently verified.', flush=True)
     # Rows with explicit Inputs use their own fingerprinted cache; there is no
@@ -2469,7 +2477,7 @@ def cmd_verify(spec_arg, full=False, bail=False, wave=None, result_sink=None, wa
         wave_key = ((str(root), _verification_key(cmd), _verification_key(expected), tuple(inputs),
                      input_fp, env_decl.strip(), env_id)
                     if wave_cache is not None and input_fp and env_id and not full else None)
-        shared = wave_cache.get(wave_key) if wave_key else None
+        shared = wave_cache.get(wave_key) if (wave_key and round_shared is None) else None
         if shared:
             data, saved = shared
             try:
@@ -2504,8 +2512,8 @@ def cmd_verify(spec_arg, full=False, bail=False, wave=None, result_sink=None, wa
             except Exception:
                 pass                                         # could not copy the evidence: run the row for real
         # aidd:FR-221 cross-spec, cross-invocation lookup of offline-contract PASS rows.
-        if (wave is None and task_ids is None and _round_enabled(full) and inputs and input_fp and env_id
-                and r.get('reuse') == 'hermetic'):
+        if (wave is None and task_ids is None and round_shared is None and _round_enabled(full) and inputs
+                and input_fp and env_id and r.get('reuse') == 'hermetic'):
             try:
                 store_key = _contract_store_key(cmd, expected, inputs, input_fp, env_decl, env_id)
                 chit = _contract_store_get(root, store_key, expected)
@@ -2546,8 +2554,21 @@ def cmd_verify(spec_arg, full=False, bail=False, wave=None, result_sink=None, wa
                 pass
         problem = ('declared Inputs cannot be fingerprinted' if inputs and not input_fp else
                    rules.verification_command_problem(cmd, expected, root))
+        round_line = None
         if problem:
             code, note, body, secs = -1, f'not run: {problem}', '', 0.0
+        elif round_shared is not None:
+            # aidd:FR-422 aidd:FR-423 the round's one shared execution; the row is never run here
+            ent = round_shared.get((d.name, str(n)))
+            if ent is None:
+                code, note, body, secs = -1, 'not run: row missing from the round plan', '', 0.0
+            elif ent.get('invalid'):
+                code, note, body, secs = -1, f"ROUND-INVALIDATED: {ent['invalid']}", '', 0.0
+            else:
+                code, note, body = ent['code'], ent['note'], ent['body']
+                own = ent['source_spec'] == d.name and str(ent['source_n']) == str(n)
+                secs = ent['secs'] if own else 0.0
+                round_line = _round_mod().evidence_line(ent)
         else:
             t_row = time.monotonic()
             code, note = _run_row(cmd, root, tmp, timeout)
@@ -2575,6 +2596,10 @@ def cmd_verify(spec_arg, full=False, bail=False, wave=None, result_sink=None, wa
             end_fp = rules.row_input_fingerprint(root, inputs)
             if not end_fp or end_fp != input_fp:
                 ok, why = False, 'declared Inputs changed during this check or cannot be fingerprinted'
+        if round_line is not None:
+            # output checks above ran on the normal text; the ROUND-SHARED line goes right after the header
+            head, _, tail = text.partition('\n')
+            text = f'{head}\n{round_line}\n{tail}'
         sha1 = ''
         try:
             data = text.encode('utf-8')
@@ -2595,6 +2620,10 @@ def cmd_verify(spec_arg, full=False, bail=False, wave=None, result_sink=None, wa
                     res.update(environment_id=env_id, environment_declaration=env_decl.strip())
         if why and not ok:
             res['problem'] = why
+        if round_line is not None:
+            ent = round_shared[(d.name, str(n))]
+            res['round_shared'] = {'source_spec': ent['source_spec'], 'source_n': str(ent['source_n']),
+                                   'fingerprint': ent['fp'], 'ts': ent['ts']}
         print(f"{'PASS' if ok else 'FAIL'} row {n}: {one_line[:100]} (exit {code}, {secs} s)"
               + (f' - {why}' if why and not ok else '') + f' → {rel}', flush=True)
         return res
@@ -2607,8 +2636,8 @@ def cmd_verify(spec_arg, full=False, bail=False, wave=None, result_sink=None, wa
     except Exception:
         jobs = 1
     jobs = max(1, min(jobs, len(rows), 8))
-    if task_ids is not None:
-        jobs = 1  # Keep partial checks serialized, including DB/build commands.
+    if task_ids is not None or round_shared is not None:
+        jobs = 1  # Keep partial checks serialized, including DB/build commands (a round already ran them).
     indexed_rows = list(enumerate(rows, 1))
     groups = {}
     representatives = {}
@@ -2751,7 +2780,7 @@ def cmd_verify(spec_arg, full=False, bail=False, wave=None, result_sink=None, wa
             except OSError:
                 pass
     # aidd:FR-220 store the PASS offline-contract rows executed in this stable run for later invocations.
-    if wave is None and task_ids is None and _round_enabled(full) and stable:
+    if wave is None and task_ids is None and round_shared is None and _round_enabled(full) and stable:
         for result in results:
             original = next((r for r in rows if str(r.get('n')) == result['n']), None)
             inputs = (original or {}).get('inputs') or result.get('input_globs') or []
@@ -2874,6 +2903,24 @@ def cmd_verify(spec_arg, full=False, bail=False, wave=None, result_sink=None, wa
     print(f"verify_run recorded for {d.name}: {'PASSED' if all_ok else 'FAILED'} "
           f"({sum(1 for x in results if x['ok'])}/{len(results)} rows, verify hash {vhash})")
     return 0 if all_ok else 1
+
+
+def _round_mod():
+    try:
+        from . import aidd_round as mod
+    except ImportError:
+        import aidd_round as mod
+    return mod
+
+
+def _round_hint(root, spec_name):
+    """aidd:FR-425 Print the round command when other open specs share identical rows (never raises)."""
+    try:
+        line = _round_mod().suggestion(sys.modules[__name__], root, current=spec_name)
+        if line:
+            print(line, flush=True)
+    except Exception:
+        pass
 
 
 def _verify_json_error(message, spec=None, wave=None, elapsed=0.0):
@@ -3305,7 +3352,31 @@ def main(argv=None):
             print('       aidd verify <spec> --perf   (only the `Tier: perf` rows; once per spec, before close)')
             print('Task selection runs matching verification rows and records partial evidence; it does not close a spec.')
             print('Rows with `Tier: perf` are skipped by every other form.')
+            print('       aidd verify --round <spec> <spec> ... [--dry-run] [--full]')
+            print('       aidd verify --all-open --round [--dry-run] [--full]')
+            print('A round runs each identical row command ONCE for all the specs (environment fingerprint checked')
+            print('before and after it) and records every spec\'s own verify_run; --dry-run shows the plan only.')
             return 0
+        if len(argv) >= 2 and argv[0] == 'verify' and '--round' in argv[1:]:
+            # aidd:FR-419 one verification pass over several specs
+            rest = argv[1:]
+            allowed = {'--round', '--all-open', '--dry-run', '--full'}
+            flags = [a for a in rest if a.startswith('-')]
+            names = [a for a in rest if not a.startswith('-')]
+            if any(f not in allowed for f in flags) or len(set(flags)) != len(flags):
+                print('Refused: --round accepts only spec names, --all-open, --dry-run and --full '
+                      '(not --tasks, --changed, --wave, --perf, --json, --bail); nothing was executed.')
+                return 1
+            if '--all-open' in flags:
+                if names:
+                    print('Refused: --all-open takes no spec names; nothing was executed.')
+                    return 1
+                names = _round_mod().open_specs(sys.modules[__name__], ev.find_root())
+            if not names:
+                print('Refused: --round needs at least one spec (or --all-open with open specs); nothing was executed.')
+                return 1
+            return _round_mod().run_round(sys.modules[__name__], names, dry_run='--dry-run' in flags,
+                                          full='--full' in flags)
         if len(argv) >= 2 and argv[0] == 'verify':
             if '--perf' in argv[1:]:
                 rest = [a for a in argv[1:] if a != '--perf']

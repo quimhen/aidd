@@ -38,6 +38,17 @@ def _load_status_module():
         return None
 
 
+def round_suggestion(root):
+    """aidd:FR-425 The `aidd verify --round` line when 2+ open specs with pending verification share rows; ''."""
+    try:
+        mod = _load_status_module()
+        if mod is None or root is None:
+            return ''
+        return mod._round_mod().suggestion(mod, Path(root))
+    except Exception:
+        return ''
+
+
 def _find_root(spec_dir):
     """Project root: from the spec dir when given, else from the cwd. None when unknown."""
     try:
@@ -205,7 +216,10 @@ def main(argv=None):
         if gate and (Path(root) / 'specs' / gate).is_dir():
             spec_dir = str(Path(root) / 'specs' / gate)
     info = build_next(spec_dir, root)
+    info['round'] = round_suggestion(root)
     text = format_next(info)
+    if info['round']:
+        text += '\n' + info['round']
     if '--write' in flags and not _write_next(root, text):
         print('warning: could not write .aidd/NEXT.md', file=sys.stderr)
     print(json.dumps(info, indent=2, ensure_ascii=False) if '--json' in flags else text)

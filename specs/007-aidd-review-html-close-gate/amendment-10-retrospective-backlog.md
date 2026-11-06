@@ -464,6 +464,49 @@ asked for a report only) with a reusable command. Numbering: next free block FR-
 
 Status of item N: implemented on branch `am10/aidd-sync` of the AIDD repo (not installed, not pushed).
 
+### O. `aidd verify --round`: one verification pass for several specs (2026-11-05)
+
+**Measured (2026-11-05, b1SycLink).** 8 open specs (F21, F36, F37, F38, F40, F41, F42, F56) repeat identical rows
+(`python eDoc/tools/db_verify.py --psql "docker exec -i supabase_db_edoc psql -U postgres" --tap --plpgsql-check ...`
+full or `--only-tests`, `node .../vitest.mjs run --root eDoc/web <path>`, `npm test --prefix eDoc/web`, tsc,
+Playwright); `aidd verify` runs each row per spec, so a full round costs more than 100 min. Cross-spec reuse is OFF
+(`aidd_status.py`: `round_on = False`, commit 1cef7ed) because the old `ROUND-REUSED` cache had no database/environment
+identity and could give a false PASS; the project works around it by hand (heavy row in ONE designated spec). Owner
+order: grouping specs into ONE verification pass is part of the method (Step 6), not a loose option. Design base:
+`batch-staging/reuse-front1` (contract store, kept as is: this item is in-invocation only, no cache). Numbering: next
+free block FR-419..FR-426, AC-475..AC-484, T-20 of this amendment.
+
+| Code | Requirement |
+|---|---|
+| FR-419 | `aidd verify --round <spec>...` and `aidd verify --all-open --round` (open = `aidd_evidence.open_specs` with a folder) in `skill/scripts/aidd_round.py` (mirrored byte-identical). Accepts only `--dry-run` and `--full`; `--tasks`, `--changed`, `--wave`, `--perf`, `--json`, `--bail` are refused with nothing executed. |
+| FR-420 | Collect the Verification rows of every spec, excluding `Tier: perf` (one note per spec); normalise each command (tokens split on whitespace outside quotes, joined by one space; a double-quoted plain word loses its quotes, single quotes too outside Windows; spaces inside quotes stay significant) and group identical commands per project root. Each row keeps its own Expected. |
+| FR-421 | Execute each group ONCE before any bookkeeping: in series; a heavy runner (db_verify, psql, pg_prove, docker, supabase, `--tap`, vitest, Playwright, `npm test`, tsc, npx, pytest, ...) always alone; light groups in parallel only up to the SMALLEST `Jobs:` of the round's specs (default 1; `AIDD_VERIFY_JOBS` overrides). A row with a lint problem is never executed. |
+| FR-422 | Each spec records its OWN `verify_run` (same event, rows, evidence paths `evidence/verify-<n>.txt`, verify hash) through `cmd_verify(..., round_shared, round_start)`, which never runs a row in that mode; its code state and worktree fingerprint are the ones taken BEFORE the round, so a code change during the round makes that spec unstable. Same-spec, contract-store and wave reuse are bypassed and nothing is stored. |
+| FR-423 | Evidence of every row executed in the round: line 1 the normal header `# <cmd> \| exit <code> \| <ts>`, line 2 `ROUND-SHARED: ejecutado una vez por <spec> fila <n>, huella <hash>, <ISO date>`, then the output. Output checks (zero tests, too short) run on the text WITHOUT that line. The result carries `round_shared{source_spec, source_n, fingerprint, ts}`; only the source row keeps its seconds. |
+| FR-424 | Safety. A group of 2+ rows is shared only when the environment fingerprint is identical at the start and at the end of its execution: content fingerprint (`code_state` + `fingerprint_of`) of the union of the group specs' `Scope:` and rows' `Inputs` (the whole code tree outside specs/, .aidd/ and ignored files when a spec has no Scope), excluding the union of `Generated:`; `docker inspect` id + start time of every `docker exec <container>` in the command; sha256 of the stdout of each spec's optional `Round-identity: <command>` line; sha256 of the values of the variables in `Round-vars:` and in the rows' `Environment` `vars=`. Changed or unavailable = `ROUND-INVALIDATED`: every consumer row (the source too) FAILS with that reason and nothing is shared. A failure is never a pass: each row's Expected is evaluated on the shared exit code and output. |
+| FR-425 | Methodology (owner order 2026-11-05): `aidd status` (no spec argument) and `aidd next` print one `round:` line with the command and the executions saved when 2+ open specs with pending verification (no passing `verify_run` of the current table) share identical rows; a single `aidd verify <spec>` prints the round command when other open specs share rows with it. Never executes a row, never raises. |
+| FR-426 | `--dry-run` prints the plan (specs, functional rows, executions, executions saved, per-group seconds from each spec's previous `verify_run` and the estimated seconds saved) and executes and records nothing. AIDD.md E12 + Step 6 close sequence, SKILL.md E12, `adapters/dot-aidd/CORE.md` §5 and `adapters/AGENTS.md.snippet` state the rule: plan a round, freeze, ONE pass, one round of auditors per spec; spec by spec only with a single spec ready. |
+
+**Acceptance (O).**
+| Code | Scenario | Command | Expected |
+|---|---|---|---|
+| AC-475 | two specs, identical row with different spacing/quotes and different Expected | `python -m unittest tests.test_verify_round -v` | 1 execution for 2 rows; 2 `verify_run`, both PASS; B's evidence line 2 `ROUND-SHARED: ejecutado una vez por A fila V-1, huella <16 hex>, ...` |
+| AC-476 | different command (or different text inside quotes) | same | not grouped; one execution each |
+| AC-477 | the command edits a file in scope during its execution | same | `INVALIDATED`; every row FAILS with `ROUND-INVALIDATED`; exit 1 |
+| AC-478 | shared command exits 1; one spec expects `contains: FAILED` | same | one execution; both rows FAIL |
+| AC-479 | `--dry-run` with a previous verify_run of 42 s | same | no execution, no event, no evidence folder; `1 execution(s) saved (~42 s` |
+| AC-480 | three rows timestamping start/end, one spec without `Jobs:` | same | intervals never overlap |
+| AC-481 | a `Tier: perf` row | same | not executed; `excluded` note |
+| AC-482 | `--round` with `--tasks`/`--perf`/`--wave`/`--json`/`--bail`; `--all-open` | same | refused, nothing run; `--all-open` plans the open specs that have a folder |
+| AC-483 | 2 open specs sharing a row: `suggestion`, `aidd status`, `aidd verify A`; no shared row or one open spec | same | round line with `aidd verify --round A B` and `1 saved`; the warning names B; '' otherwise |
+| AC-484 | regression of the modules touched | `python -m unittest tests.test_verify_tiers tests.test_aidd_status tests.test_aidd_rules_r10 tests.test_check_spec tests.test_cli_rules tests.test_dot_aidd_mirror tests.test_aidd_next tests.test_contract_store tests.test_verify_git_contract tests.test_wave_verification tests.test_verify_regressions tests.test_aidd_task_verify` | exit 0 (pre-existing failures, if any, listed in the branch report) |
+
+| Task | Item | Target file(s) | Wave | Deps | Agent min | Explicitly out of scope |
+|---|---|---|---|---|---|---|
+| T-20 | O | `skill/scripts/aidd_round.py` (new), `skill/scripts/aidd_status.py`, `skill/scripts/aidd_next.py`, mirrors in `adapters/dot-aidd/scripts/` (copied by script), `skill/AIDD.md` + `adapters/dot-aidd/AIDD.md` (E12, Step 6), `skill/SKILL.md` (E12), `adapters/dot-aidd/CORE.md`, `adapters/AGENTS.md.snippet`, `tests/test_verify_round.py`, `tests/test_dot_aidd_mirror.py` | 1 | none | 120 | re-enabling `round_on`; a cross-invocation cache; the `aidd lock heavy` inter-process lock (item F); same-spec reuse inside a round; installing into `~/.claude` or a project |
+
+Status of item O: implemented on branch `am10/verify-round` of the AIDD repo (not installed, not pushed).
+
 ---
 
 ## Cross-cutting acceptance
