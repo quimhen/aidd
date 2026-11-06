@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "aidd-cli"
-version = "0.4.1"
+version = "0.4.2"
 description = "AIDD — a methodology for working with AI coding agents (CLI distribution)"
 readme = "README.md"
 license = "MIT"
