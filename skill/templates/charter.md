@@ -59,7 +59,7 @@ edited (a hook starts the `Refresh` command detached; it never blocks and never 
 `db`, `code`, `ui` or `spec`. `Output` is the node-link JSON (`nodes` + `edges`/`links`). `Refresh` is a shell
 command, `builtin:sql` (AIDD's SQL-migrations scanner, no database needed) or empty (read-only graph).
 `Watch` is a comma-separated list of globs relative to the project root. With no table AIDD auto-detects
-`graphify-out/graph.json`, SQL migration folders and `specs/index.toon`. Delete this section if unused.
+`.aidd/graphs/`, SQL migration folders and `specs/index.toon`. Delete this section if unused.
 
 | Name | Kind | Output | Refresh | Watch |
 |---|---|---|---|---|

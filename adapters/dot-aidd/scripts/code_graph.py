@@ -54,7 +54,7 @@ DEFAULT_GLOBS = ('skill/**', 'aidd/**', 'adapters/**', 'tests/**')
 GENERIC_GLOBS = ('**/*.py',)
 SKIP_DIRS = frozenset({'.git', '.hg', '.svn', 'node_modules', 'venv', '.venv', 'env', '.env', '__pycache__',
                        'site-packages', 'dist', 'build', '.tox', '.nox', '.eggs', '.mypy_cache', '.pytest_cache',
-                       '.ruff_cache', 'vendor', 'third_party', 'graphify-out'})
+                       '.ruff_cache', 'vendor', 'third_party', 'external-graphs'})
 SKIP_TOP = frozenset({'.aidd'})
 # aidd:FR-014 reads: open, read_text, read_bytes (last name segment); json.load is a read with no path
 READ_FUNCS = ('open', 'read_text', 'read_bytes')

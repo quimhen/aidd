@@ -14,14 +14,11 @@ an agent with judgment — same division of labor as every other script in
 this skill (check_spec.py flags gaps, find_spec.py searches; neither
 fabricates spec prose).
 
-Why this exists instead of a file-by-file knowledge-graph tool: a generic
-graph builder (e.g. graphify) has no documented spec to start from, so it
-must read every file in the repo and dispatch an LLM pass per chunk to
-extract meaning — thorough, but token-expensive, and it re-derives structure
-on every rebuild. AIDD's own graph (find_spec.py's index.toon) is built by
-parsing the specs the project already maintains (mockup-audit.md's own
-tables) — a few regex passes over markdown, no LLM, refreshed via a cheap
-mtime check per file. That's only possible once specs exist; this script is
+Why this exists: a project without specs has no spec structure to index yet.
+AIDD's own graph (find_spec.py's index.toon) is built by parsing the specs
+the project already maintains (mockup-audit.md's own tables) — a few regex
+passes over markdown, no LLM, refreshed from the files' content hashes.
+That's only possible once specs exist; this script is
 the one-time bridge for a project that doesn't have them yet, so the cheap
 path becomes available instead of staying dependent on a full-repo re-scan
 every time.
@@ -66,7 +63,7 @@ ROOT_HIT_DIR_NAMES = {'app', 'pages'}  # Next.js/Nuxt-style, only meaningful at 
 NOISE_DIR_NAMES = {
     '.git', 'node_modules', '.venv', 'venv', '__pycache__', 'build', 'dist',
     '.dart_tool', '.gradle', 'target', 'bin', 'obj', '.next', '.nuxt',
-    'graphify-out', 'specs', '.specify', '.aidd', 'vendor',
+    'external-graphs', 'specs', '.specify', '.aidd', 'vendor',
 }
 
 CODE_SUFFIXES = {

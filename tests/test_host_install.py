@@ -189,25 +189,25 @@ class TestOpencodeInstall(HostInstallBase):
         cfg = {
             "$schema": "https://opencode.ai/config.json",
             "model": "x/y",
-            "plugin": [".opencode/plugins/graphify.js", ".opencode/plugins/aidd.js"],
+            "plugin": [".opencode/plugins/other-plugin.js", ".opencode/plugins/aidd.js"],
         }
         (odir / "opencode.json").write_text(json.dumps(cfg), encoding="utf-8")
         for force in (False, True):
             self.ok(install("opencode", self.root, force=force))
             got = json.loads((odir / "opencode.json").read_text(encoding="utf-8"))
-            self.assertEqual(got["plugin"].count(".opencode/plugins/graphify.js"), 1)
+            self.assertEqual(got["plugin"].count(".opencode/plugins/other-plugin.js"), 1)
             self.assertEqual(got["plugin"].count(".opencode/plugins/aidd.js"), 1)
             self.assertEqual(got["model"], "x/y")
         self.assertTrue((self.root / ".opencode" / "plugins" / "aidd.js").is_file())
 
-    def test_graphify_only_does_not_get_aidd_entry(self):
+    def test_other_plugin_only_does_not_get_aidd_entry(self):
         odir = self.root / ".opencode"
         odir.mkdir()
         (odir / "opencode.json").write_text(
-            json.dumps({"plugin": [".opencode/plugins/graphify.js"]}), encoding="utf-8")
+            json.dumps({"plugin": [".opencode/plugins/other-plugin.js"]}), encoding="utf-8")
         self.ok(install("opencode", self.root))
         got = json.loads((odir / "opencode.json").read_text(encoding="utf-8"))
-        self.assertEqual(got["plugin"].count(".opencode/plugins/graphify.js"), 1)
+        self.assertEqual(got["plugin"].count(".opencode/plugins/other-plugin.js"), 1)
         self.assertNotIn(".opencode/plugins/aidd.js", got["plugin"])
         self.assertTrue((odir / "plugins" / "aidd.js").is_file())
 

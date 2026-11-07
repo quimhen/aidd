@@ -297,7 +297,7 @@ class TestPathWithSpaces(unittest.TestCase):
 
 class TestFr907Fr911Protected(HostBase):
     BLOCKED = (".aidd/x", ".gemini/settings.json", ".opencode/opencode.json", ".opencode/plugins/aidd.js")
-    ALLOWED = (".opencode/skills/x.md", ".opencode/plugins/graphify.js")
+    ALLOWED = (".opencode/skills/x.md", ".opencode/plugins/other-plugin.json")
 
     def test_fr907_fr911_protected_paths_blocked_on_both_hosts(self):
         for host in HOSTS:

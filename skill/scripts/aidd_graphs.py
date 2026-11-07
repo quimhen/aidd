@@ -12,10 +12,9 @@ Builtins: `builtin:code` (code_graph.py, Python ast), `builtin:method` (method_g
 methodology), `builtin:spec` (find_spec.py --reindex -> specs/index.toon), `builtin:sql` (combined `db`),
 `builtin:sql-schema` (`db-schema`, append-only migration replay), `builtin:sql-dml` (`db-dml`, cached body
 analysis), `builtin:progress`.
-Without that section the registry is auto-detected (code, method, spec, progress, a migrations dir,
-graphify-out/graph.json). Charter entries win over auto-detected ones of the same name. The name `code` is
-ALWAYS the built-in code graph: any `code` row whose Refresh is not `builtin:code` (e.g. graphify) is
-renamed `code-<tool>` at load, with a warning.
+Without that section the registry is auto-detected (built-in code, method, spec, progress and SQL graphs).
+Charter entries win over auto-detected ones of the same name. External graphs must be declared explicitly
+in the charter; an external `code` row is renamed `code-<tool>` so it cannot shadow the built-in graph.
 Freshness is by CONTENT: each successful refresh writes `.aidd/graphs/stamps/<name>.stamp.json` =
 {inputs_hash, inputs} (git blob shas of the watched files; the legacy `<output>.stamp.json` is read as a
 fallback); a graph is stale when that hash differs or the stamp is missing.
@@ -153,9 +152,6 @@ def _autodetect(root):  # aidd:FR-014 aidd:FR-021 aidd:FR-029 aidd:FR-030
     if (HERE / "method_graph.py").is_file() and (root / "skill" / "SKILL.md").is_file():
         out.append({"name": "method", "kind": "method", "output": ".aidd/graphs/method.json",
                     "refresh": "builtin:method", "watch": ["skill/**", "commands/**", ".aidd/graphs/code.json"]})
-    if (root / "graphify-out" / "graph.json").is_file():
-        # third-party graph: renamed `code-graphify` by load_registry (the name `code` is the builtin)
-        out.append({"name": "code", "kind": "code", "output": "graphify-out/graph.json", "refresh": "", "watch": []})
     d = _migration_dir(root)
     if d:
         out.append({"name": "db", "kind": "db", "output": ".aidd/graphs/db.json",
@@ -192,7 +188,7 @@ def _rename_foreign_code(e):  # aidd:FR-014
     if words:
         tool = Path(words[0].strip("\"'")).stem.lower()
     else:
-        tool = "graphify" if "graphify" in str(e.get("output", "")).lower() else "external"
+        tool = "external"
     tool = re.sub(r"[^\w.-]", "_", tool) or "external"
     new = "code-" + tool
     _warn("warning: %s graph 'code' (refresh %s) renamed '%s'; the name 'code' is the built-in code graph "
@@ -927,11 +923,11 @@ def show(root, name, query, limit=25):
         if rl == "builtin:code":
             res = _show_code(root, e, nodes, edges, query, limit, stale)
             if "No FUNC/FILE matching" in res:
-                alt = _get(root, "code-graphify")
+                alt = _get(root, "code-external")
                 if alt is not None and alt.get("output") and Path(alt["output"]).is_file():
-                    alt_res = show(root, "code-graphify", query, limit=limit)
+                    alt_res = show(root, "code-external", query, limit=limit)
                     if not alt_res.startswith("No node matching"):
-                        return res + "\n(Found in 'code-graphify'):\n" + alt_res
+                        return res + "\n(Found in the declared external code graph):\n" + alt_res
             return res
         if rl == "builtin:method":
             return _show_method(e, nodes, edges, query, limit, stale)

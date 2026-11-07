@@ -75,7 +75,7 @@ _DETACHED_PROCESS = 0x00000008
 _CREATE_NEW_PROCESS_GROUP = 0x00000200
 _FALLBACK_SKIP_DIRS = frozenset({'.git', '.hg', '.svn', 'node_modules', 'venv', '.venv', 'env', '.env',
                                  '__pycache__', 'site-packages', 'dist', 'build', '.tox', '.nox', '.eggs',
-                                 '.mypy_cache', '.pytest_cache', '.ruff_cache', 'graphify-out'})
+                                 '.mypy_cache', '.pytest_cache', '.ruff_cache', 'external-graphs'})
 _SKIP_TOP = frozenset({'.aidd'})
 _DEFAULT_SKIP_TOP = frozenset({'specs'})
 _DOC_EXTS = ('.md', '.markdown', '.rst', '.adoc', '.txt')

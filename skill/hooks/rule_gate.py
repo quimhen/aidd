@@ -741,7 +741,7 @@ def _protected(ev, cp, segs):
 
 def _host_gate_file(ev, cp, patterns=HOST_GATE_FILES):
     """aidd:FR-911 R9: `cp` (canonical) is a host gate registration RELATIVE TO a project root (an ancestor with
-    specs/ or .aidd/), so `~/.gemini/settings.json` or `.opencode/plugins/graphify.js` stay writable.
+    specs/ or .aidd/), so `~/.gemini/settings.json` or `.opencode/plugins/other-plugin.js` stay writable.
     aidd:FR-1110 aidd:FR-1111 `patterns` are matched per component (`_gate_match`; exact tuples match themselves)."""
     for root in ev.project_roots(cp):
         rel = ev.rel_to_root(cp, root)

@@ -6,4 +6,4 @@ specs/*/review.html
 .aidd/evidence/
 .aidd/jobs/
 .aidd/sqlcheck-cache.json
-graphify-out/
+external-graphs/

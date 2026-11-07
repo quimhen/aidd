@@ -163,7 +163,7 @@ class UnifiedGraphTests(unittest.TestCase):
 
     def test_no_project_specific_paths(self):  # FR-060, FR-062
         text = (REPO / "skill" / "scripts" / "unified_graph.py").read_text(encoding="utf-8")
-        for bad in ("docs/db-graph", "graphify-out", "Payroll", "mobile", "b1Sy", "eDoc", "Nomina"):
+        for bad in ("docs/db-graph", "external-graphs", "Payroll", "mobile", "b1Sy", "eDoc", "Nomina"):
             self.assertNotIn(bad, text)
 
 
