@@ -90,6 +90,20 @@ class SyncCase(unittest.TestCase):
 
 
 class TestSyncAskAnswers(SyncCase):
+    def test_antigravity_ask_question_recorded(self):
+        line1 = json.dumps({"step_index": 1, "source": "MODEL", "type": "PLANNER_RESPONSE", "status": "DONE",
+                            "tool_calls": [{"name": "ask_question", "args": {
+                                "questions": [{"question": Q, "options": ["Approve", "Changes"], "is_multi_select": False}]
+                            }}]})
+        line2 = json.dumps({"step_index": 2, "source": "MODEL", "type": "GENERIC", "status": "DONE",
+                            "content": "A1: (Recommended) Approve"})
+        self.write([line1, line2])
+        self.assertEqual(self.sync(), 1)
+        qs, ans = self.evs("question"), self.evs("answer")
+        self.assertEqual((len(qs), len(ans)), (1, 1))
+        self.assertEqual(ans[0]["detail"]["pairs"], [[Q, "Approve"]])
+        self.assertIsNotNone(self.affirm())
+
     def test_one_click_recorded_once(self):
         self.write([ask_line()] + noise_lines() + [result_line()])
         self.assertEqual(self.sync(), 1)

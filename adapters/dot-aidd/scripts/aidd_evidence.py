@@ -923,36 +923,73 @@ def parse_transcript_pairs(path, start_offset=0, pending=None):
                 try:
                     if not isinstance(obj, dict):
                         continue
+                    # Claude Code schema:
                     msg = obj.get('message')
                     content = msg.get('content') if isinstance(msg, dict) else None
-                    if not isinstance(content, list):
-                        continue
-                    for blk in content:
-                        if not isinstance(blk, dict):
-                            continue
-                        if blk.get('type') == 'tool_use' and blk.get('name') == 'AskUserQuestion':
-                            qs = (blk.get('input') or {}).get('questions') if isinstance(blk.get('input'), dict) else None
-                            qs = [q for q in (qs if isinstance(qs, list) else [])
-                                  if isinstance(q, dict) and isinstance(q.get('question'), str)]
-                            if qs and isinstance(blk.get('id'), str):
-                                known.pop(blk['id'], None)
-                                known[blk['id']] = qs
-                        elif blk.get('type') == 'tool_result' and blk.get('tool_use_id') in known:
-                            tid = blk['tool_use_id']
-                            qs = known.pop(tid)
-                            qstrs = [q['question'] for q in qs]
-                            tur = obj.get('toolUseResult')
-                            ans = tur.get('answers') if isinstance(tur, dict) else None
-                            if isinstance(ans, dict):
+                    if isinstance(content, list):
+                        for blk in content:
+                            if not isinstance(blk, dict):
+                                continue
+                            if blk.get('type') == 'tool_use' and blk.get('name') == 'AskUserQuestion':
+                                qs = (blk.get('input') or {}).get('questions') if isinstance(blk.get('input'), dict) else None
+                                qs = [q for q in (qs if isinstance(qs, list) else [])
+                                      if isinstance(q, dict) and isinstance(q.get('question'), str)]
+                                if qs and isinstance(blk.get('id'), str):
+                                    known.pop(blk['id'], None)
+                                    known[blk['id']] = qs
+                            elif blk.get('type') == 'tool_result' and blk.get('tool_use_id') in known:
+                                tid = blk['tool_use_id']
+                                qs = known.pop(tid)
+                                qstrs = [q['question'] for q in qs]
+                                tur = obj.get('toolUseResult')
+                                ans = tur.get('answers') if isinstance(tur, dict) else None
+                                if isinstance(ans, dict):
+                                    pp = []
+                                    for q, a in ans.items():
+                                        if isinstance(a, (list, tuple)):
+                                            a = ', '.join(str(x) for x in a)
+                                        pp.append([str(q), str(a)])
+                                else:
+                                    pp = parse_answers(blk.get('content'), qstrs)[1]
+                                pairs.append({'tool_use_id': tid, 'questions': qstrs,
+                                              'options': [_labels_of(q) for q in qs], 'pairs': pp})
+
+                    # Antigravity / Gemini transcript schema:
+                    tcs = obj.get('tool_calls')
+                    if isinstance(tcs, list):
+                        for tc in tcs:
+                            if isinstance(tc, dict) and tc.get('name') in ('ask_question', 'AskUserQuestion'):
+                                args = tc.get('args') or {}
+                                qs = args.get('questions')
+                                if isinstance(qs, str):
+                                    try:
+                                        qs = json.loads(qs)
+                                    except Exception:
+                                        qs = []
+                                qs = [q for q in (qs if isinstance(qs, list) else [])
+                                      if isinstance(q, dict) and isinstance(q.get('question'), str)]
+                                if qs:
+                                    tid = tc.get('id') or f"step_{obj.get('step_index')}"
+                                    known.pop(tid, None)
+                                    known[tid] = qs
+                    elif known and (obj.get('type') == 'GENERIC' or obj.get('source') in ('MODEL', 'USER_INPUT')):
+                        txt = obj.get('content')
+                        if isinstance(txt, str) and txt.strip():
+                            for tid in list(known.keys()):
+                                qs = known.pop(tid)
+                                qstrs = [q['question'] for q in qs]
                                 pp = []
-                                for q, a in ans.items():
-                                    if isinstance(a, (list, tuple)):
-                                        a = ', '.join(str(x) for x in a)
-                                    pp.append([str(q), str(a)])
-                            else:
-                                pp = parse_answers(blk.get('content'), qstrs)[1]
-                            pairs.append({'tool_use_id': tid, 'questions': qstrs,
-                                          'options': [_labels_of(q) for q in qs], 'pairs': pp})
+                                for m in re.finditer(r'A\d+:\s*(.+?)(?=(?:\nA\d+:|$))', txt, re.DOTALL):
+                                    val = m.group(1).strip()
+                                    val = re.sub(r'^\(Recommended\)\s*', '', val, flags=re.I).strip()
+                                    if len(pp) < len(qstrs):
+                                        pp.append([qstrs[len(pp)], val])
+                                if not pp and len(qstrs) == 1 and txt.strip():
+                                    val = re.sub(r'^\(Recommended\)\s*', '', txt.strip(), flags=re.I).strip()
+                                    pp.append([qstrs[0], val])
+                                if pp:
+                                    pairs.append({'tool_use_id': tid, 'questions': qstrs,
+                                                  'options': [_labels_of(q) for q in qs], 'pairs': pp})
                 except Exception:
                     continue
     except Exception:
