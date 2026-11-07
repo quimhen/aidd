@@ -93,7 +93,20 @@ OpenCode discovers the skill by itself; the gate needs one command (`aidd instal
 
 Codex discovers repository skills from `.agents/skills/` and user skills from `~/.agents/skills/`. Install this folder at `.agents/skills/aidd/` for one repository or `~/.agents/skills/aidd/` for the user. Keep the skill's scripts, hooks and templates alongside `SKILL.md`; do not install only the Markdown pointer when using this full package. Put project-wide always-read instructions in `AGENTS.md` and point them to the skill.
 
-The Codex native hook runtime is separate from Claude hooks. Codex reads project hook configuration from `.codex/hooks.json` or `.codex/config.toml`, and the project layer must be trusted. Non-managed hooks also require review/trust in Codex. AIDD's `install_host.py` currently does not install a Codex host adapter, so do **not** infer that Claude hooks or `.agents/hooks.json` enforce AIDD in Codex. Until a Codex registration and adapter are installed and observed working, run `aidd rules check <spec>` before code edits and `aidd status` before ending the session. If Codex hooks are configured, verify their trust and live pre-hook denial: documented hook errors, timeouts or malformed results may let the tool run, and a post-hook cannot undo a completed operation. See [Codex skills](https://developers.openai.com/codex/skills) and [Codex hooks](https://developers.openai.com/codex/hooks).
+**Windows fallback when `aidd` is not in `PATH`:** use the user's installed Python and the scripts in the user's installed skill. Do not ask for, guess or search for the AIDD source checkout. In PowerShell:
+
+```powershell
+$AiddPython = (& uv python find 3.14).Trim()
+$AiddScripts = Join-Path $HOME '.agents\skills\aidd\scripts'
+& $AiddPython (Join-Path $AiddScripts 'aidd_graphs.py') list
+$Query = 'keywords or codes'
+& $AiddPython (Join-Path $AiddScripts 'find_spec.py') $Query
+& $AiddPython (Join-Path $AiddScripts 'aidd_status.py') status
+```
+
+Use `aidd_graphs.py show <graph> <query>` for graph-first code/method lookups and `aidd_status.py rules check <spec>` for rule checks. If `uv python find` is unavailable, select an interpreter already installed for the user (`py -0p`, then `py -3`, or `python` if present) and use the same user-skill script paths. Check the actual error before concluding Python is missing: an `Access denied` when launching a user-profile interpreter is a sandbox permission boundary, not proof that the file or installation is absent. Use the host's approved way to run that user-installed interpreter; do not substitute the Codex source tree or a stale hard-coded path.
+
+The Codex native hook runtime is separate from Claude hooks. Codex reads project hook configuration from `.codex/hooks.json` or `.codex/config.toml`, and the project layer must be trusted. Non-managed hooks also require review/trust in Codex. AIDD's `install_host.py` currently does not install a Codex host adapter, so do **not** infer that Claude hooks or `.agents/hooks.json` enforce AIDD in Codex. Until a Codex registration and adapter are installed and observed working, run `aidd rules check <spec>` before code edits and `aidd status` before ending the session; when `aidd` is absent from `PATH`, use the user-skill script fallback above. If Codex hooks are configured, verify their trust and live pre-hook denial: documented hook errors, timeouts or malformed results may let the tool run, and a post-hook cannot undo a completed operation. See [Codex skills](https://developers.openai.com/codex/skills) and [Codex hooks](https://developers.openai.com/codex/hooks).
 
 For hosts without an AIDD adapter (including Cursor, Windsurf, Cline and Copilot), `pip install aidd-cli && aidd init <project>` drops the portable `.aidd/` bundle (methodology + `find_spec.py` / `check_spec.py`), and `aidd adapters generate <target> <project>` renders that host's native command files from `commands/aidd-*.md`. The always-read layer is `AGENTS.md` (plus `GEMINI.md` for Gemini). See `adapters/README.md`.
 
