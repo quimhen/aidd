@@ -89,7 +89,7 @@ PROTECTED_NAMES = {"memory", "evidence", "gate_spec", "active_spec"}
 IGNORED_DIRS = {"__pycache__"}
 IGNORED_SUFFIXES = {".pyc", ".pyo"}
 
-GEMINI_MATCHER = "write_file|replace|run_shell_command|edit_file|run_command|bash"
+GEMINI_MATCHER = "write_file|replace|run_shell_command|edit_file|run_command|bash|invoke_subagent|task|agent"
 GEMINI_HOOKS = (
     ("BeforeTool", "aidd-gate", "python .aidd/hooks/host_adapter.py gemini pre"),
     ("AfterTool", "aidd-record", "python .aidd/hooks/host_adapter.py gemini post"),

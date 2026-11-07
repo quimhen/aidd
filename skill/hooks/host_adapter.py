@@ -97,14 +97,14 @@ AG = 'antigravity'
 PHASES = ('pre', 'post')
 _PATCH_PATH_RE = re.compile(r'^\*\*\*\s+(?:Add|Update|Delete)\s+File:\s*(.+?)\s*$|^\*\*\*\s+Move\s+to:\s*(.+?)\s*$',
                             re.MULTILINE)
-_KNOWN_GATED = frozenset(('write_file', 'replace', 'run_shell_command', 'write', 'edit', 'multiedit', 'patch', 'bash', 'edit_file', 'run_command'))
+_KNOWN_GATED = frozenset(('write_file', 'replace', 'run_shell_command', 'write', 'edit', 'multiedit', 'patch', 'bash', 'edit_file', 'run_command', 'invoke_subagent'))
 _WRITE_LIKE_RE = re.compile(r'(write|edit|patch|replace|create|append|insert|save|delete|remove|move|rename)')
 _READ_PREFIXES = ('read', 'glob', 'grep', 'list', 'search', 'fetch', 'web', 'find')
 _SID_BAD_RE = re.compile(r'[^A-Za-z0-9_-]')
 SID_MAX = 64
 _AG_PATH_KEYS = ('TargetFile', 'AbsolutePath', 'FilePath', 'Path', 'file_path', 'path')
 _AG_CONTENT_KEYS = ('CodeContent', 'Content', 'content')
-_AG_KNOWN = frozenset(('write_to_file', 'replace_file_content', 'multi_replace_file_content', 'run_command', 'write_file', 'edit_file'))
+_AG_KNOWN = frozenset(('write_to_file', 'replace_file_content', 'multi_replace_file_content', 'run_command', 'write_file', 'edit_file', 'invoke_subagent'))
 _AG_UNKNOWN_PATH_KEYS = _AG_PATH_KEYS + ('filePath', 'filename', 'file')
 DEPTH_LIMIT = 100
 # a whole JSON string (escapes skipped; an unterminated one runs to the end, so the scan stays linear) or a bracket
@@ -290,6 +290,13 @@ def _norm_gemini(tool, args):
         return 'Edit', {'file_path': fp, 'old_string': old_s, 'new_string': new_s}
     if tool in ('run_shell_command', 'run_command', 'bash', 'execute_command'):
         return 'Bash', {'command': _str(args, 'command', 'CommandLine', 'cmd')}
+    if tool in ('invoke_subagent', 'task', 'agent'):
+        return 'Agent', {
+            'prompt': _str(args, 'prompt', 'Prompt', 'message'),
+            'description': _str(args, 'description', 'Role', 'desc'),
+            'subagent_type': _str(args, 'subagent_type', 'type', 'TypeName'),
+            'model': _str(args, 'model', 'Model'),
+        }
     return None, None
 
 
@@ -401,6 +408,13 @@ def _norm_antigravity(tool, args):
         return 'MultiEdit', ti
     if tool == 'run_command':
         return 'Bash', {'command': _str(args, 'CommandLine', 'command')}
+    if tool == 'invoke_subagent':
+        return 'Agent', {
+            'prompt': _str(args, 'Prompt', 'prompt', 'message'),
+            'description': _str(args, 'Role', 'description', 'desc'),
+            'subagent_type': _str(args, 'TypeName', 'type', 'subagent_type'),
+            'model': _str(args, 'Model', 'model'),
+        }
     return None, None
 
 
@@ -462,7 +476,7 @@ def normalise(host, event, strict=False):
     name, ti = _NORMALISERS.get(host, _norm_opencode)(tool, args)
     if not name and tool and _is_gated(tool):
         name, ti = (_norm_unknown_antigravity if host == AG else _norm_unknown)(tool, args)
-    if strict and host == AG and name != 'Bash' and tool and _is_gated(tool):
+    if strict and host == AG and name not in ('Bash', 'Agent') and tool and _is_gated(tool):
         reason = _ag_deny_reason(tool, args)
         if reason:
             raise _AgDeny(reason)
@@ -478,6 +492,12 @@ def normalise(host, event, strict=False):
     sid = _session_of(event, host)
     if sid:
         out['session_id'] = sid
+    resp = event.get('tool_response') or event.get('toolResponse') or event.get('response') or event.get('result') or event.get('output')
+    if resp is not None:
+        out['tool_response'] = resp
+    tuid = event.get('tool_use_id') or event.get('callId') or event.get('id')
+    if tuid:
+        out['tool_use_id'] = tuid
     return out
 
 
@@ -556,6 +576,19 @@ def _run_core(host, phase, event):
             if unmapped:
                 _hook_error(cwd, sid, 'unmapped write-like tool %s' % unmapped)
             return 0, b''
+        if norm.get('tool_name') == 'Agent':
+            if phase == 'pre':
+                try:
+                    _spawn('record_dispatch_pre.py', norm, PRE_TIMEOUT_S)
+                except Exception as e:
+                    _hook_error(cwd, sid, 'record_dispatch_pre: %r' % (e,))
+                return 0, b''
+            else:  # post
+                try:
+                    _spawn('mark_agent_dispatch.py', norm, POST_TIMEOUT_S)
+                except Exception as e:
+                    _hook_error(cwd, sid, 'mark_agent_dispatch: %r' % (e,))
+                return 0, b''
         if phase == 'post':
             try:
                 _spawn('mark_code_edit.py', norm, POST_TIMEOUT_S)

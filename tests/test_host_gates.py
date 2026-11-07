@@ -597,6 +597,8 @@ def agy_payload(tool, root, rel=None, command=None, conv=None, phase="pre", cwd_
                                        "WaitMsBeforeAsync": 500}}
     elif tool == "view_file":
         call = {"name": tool, "args": {"AbsolutePath": target}}
+    elif tool == "invoke_subagent":
+        call = {"name": tool, "args": {"Prompt": "Audit database invariants", "Role": "Database Auditor", "TypeName": "research", "Model": "inherit"}}
     else:
         call = None
     ev = {"toolCall": call, "conversationId": conv or SID, "stepIdx": 3, "modelName": "gemini-3",
@@ -666,6 +668,17 @@ class TestAgyAdapterProtocol(AgyBase):
 
     def test_view_file_is_allowed_untouched(self):
         self.assertAllow(self.apre("view_file", "src/cart.py"))
+
+    def test_invoke_subagent_allowed_and_post_records_subagent(self):
+        r = self.apre("invoke_subagent")
+        self.assertAllow(r)
+        self.assertEqual(r.obj, {"decision": "allow"})
+        before = len(self.events("subagent"))
+        r = self.apost("invoke_subagent")
+        self.assertEqual(r.obj, {})
+        evs = self.events("subagent")
+        self.assertGreater(len(evs), before, "post must append a subagent event")
+        self.assertTrue(any("Database Auditor" in str((e.get("detail") or {}).get("desc", "")) for e in evs), evs)
 
     def test_ac1104_post_with_null_toolcall_prints_empty_object(self):
         r = self.agy("post", {"toolCall": None})
