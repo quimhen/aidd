@@ -89,7 +89,7 @@ PROTECTED_NAMES = {"memory", "evidence", "gate_spec", "active_spec"}
 IGNORED_DIRS = {"__pycache__"}
 IGNORED_SUFFIXES = {".pyc", ".pyo"}
 
-GEMINI_MATCHER = "write_file|replace|run_shell_command"
+GEMINI_MATCHER = "write_file|replace|run_shell_command|edit_file|run_command|bash"
 GEMINI_HOOKS = (
     ("BeforeTool", "aidd-gate", "python .aidd/hooks/host_adapter.py gemini pre"),
     ("AfterTool", "aidd-record", "python .aidd/hooks/host_adapter.py gemini post"),
@@ -114,7 +114,7 @@ GITHOOK_MODES = {"pre-commit": "commit", "pre-push": "push"}
 GITHOOK_SH_SHELLS = {"sh", "bash", "dash", "zsh", "ksh"}
 GIT_TIMEOUT = 10  # seconds for `git rev-parse`
 # Hosts with no write gate in 2.x: the install offers `--githooks` after them.
-GITHOOK_OFFER_HOSTS = ("opencode", "antigravity")
+GITHOOK_OFFER_HOSTS = ("gemini", "opencode", "antigravity")
 
 # Windows reparse tags (stat exposes them since 3.8; literal fallback just in case).
 _TAG_SYMLINK = getattr(stat, "IO_REPARSE_TAG_SYMLINK", 0xA000000C)

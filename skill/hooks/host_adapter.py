@@ -97,14 +97,14 @@ AG = 'antigravity'
 PHASES = ('pre', 'post')
 _PATCH_PATH_RE = re.compile(r'^\*\*\*\s+(?:Add|Update|Delete)\s+File:\s*(.+?)\s*$|^\*\*\*\s+Move\s+to:\s*(.+?)\s*$',
                             re.MULTILINE)
-_KNOWN_GATED = frozenset(('write_file', 'replace', 'run_shell_command', 'write', 'edit', 'multiedit', 'patch', 'bash'))
+_KNOWN_GATED = frozenset(('write_file', 'replace', 'run_shell_command', 'write', 'edit', 'multiedit', 'patch', 'bash', 'edit_file', 'run_command'))
 _WRITE_LIKE_RE = re.compile(r'(write|edit|patch|replace|create|append|insert|save|delete|remove|move|rename)')
 _READ_PREFIXES = ('read', 'glob', 'grep', 'list', 'search', 'fetch', 'web', 'find')
 _SID_BAD_RE = re.compile(r'[^A-Za-z0-9_-]')
 SID_MAX = 64
-_AG_PATH_KEYS = ('TargetFile', 'AbsolutePath', 'FilePath', 'file_path', 'path')
+_AG_PATH_KEYS = ('TargetFile', 'AbsolutePath', 'FilePath', 'Path', 'file_path', 'path')
 _AG_CONTENT_KEYS = ('CodeContent', 'Content', 'content')
-_AG_KNOWN = frozenset(('write_to_file', 'replace_file_content', 'multi_replace_file_content', 'run_command'))
+_AG_KNOWN = frozenset(('write_to_file', 'replace_file_content', 'multi_replace_file_content', 'run_command', 'write_file', 'edit_file'))
 _AG_UNKNOWN_PATH_KEYS = _AG_PATH_KEYS + ('filePath', 'filename', 'file')
 DEPTH_LIMIT = 100
 # a whole JSON string (escapes skipped; an unterminated one runs to the end, so the scan stays linear) or a bracket
@@ -281,13 +281,15 @@ def _args_of(event, host=''):
 
 
 def _norm_gemini(tool, args):
+    fp = _str(args, 'file_path', 'filePath', 'Path', 'path', 'filename')
     if tool == 'write_file':
-        return 'Write', {'file_path': _str(args, 'file_path'), 'content': args.get('content', '')}
-    if tool == 'replace':
-        return 'Edit', {'file_path': _str(args, 'file_path'),
-                        'old_string': args.get('old_string', ''), 'new_string': args.get('new_string', '')}
-    if tool == 'run_shell_command':
-        return 'Bash', {'command': _str(args, 'command')}
+        return 'Write', {'file_path': fp, 'content': _text(args, 'content', 'Content', 'code')}
+    if tool in ('replace', 'edit_file', 'edit'):
+        old_s = _text(args, 'old_string', 'oldString', 'Target', 'oldText', 'oldContent')
+        new_s = _text(args, 'new_string', 'newString', 'Replacement', 'newText', 'newContent')
+        return 'Edit', {'file_path': fp, 'old_string': old_s, 'new_string': new_s}
+    if tool in ('run_shell_command', 'run_command', 'bash', 'execute_command'):
+        return 'Bash', {'command': _str(args, 'command', 'CommandLine', 'cmd')}
     return None, None
 
 
@@ -379,18 +381,20 @@ def _ag_deny_reason(tool, args):
 
 def _norm_antigravity(tool, args):
     fp = _str(args, *_AG_PATH_KEYS)
-    if tool == 'write_to_file':
+    if tool in ('write_to_file', 'write_file'):
         return 'Write', {'file_path': fp, 'content': _text(args, *_AG_CONTENT_KEYS)}
-    if tool == 'replace_file_content':
-        return 'Edit', {'file_path': fp, 'old_string': _text(args, 'TargetContent'),
-                        'new_string': _text(args, 'ReplacementContent')}
+    if tool in ('replace_file_content', 'edit_file'):
+        old_s = _text(args, 'TargetContent', 'Target', 'old_string')
+        new_s = _text(args, 'ReplacementContent', 'Replacement', 'new_string')
+        return 'Edit', {'file_path': fp, 'old_string': old_s, 'new_string': new_s}
     if tool == 'multi_replace_file_content':
         chunks = _ag_chunks(args.get('ReplacementChunks'))
         if chunks is None:  # unparseable chunks: denied in pre (normalise strict); post records by path only
             edits = [{'file_path': fp}] if fp else []
         else:
-            edits = [{'file_path': _str(c, *_AG_PATH_KEYS) or fp, 'old_string': _text(c, 'TargetContent'),
-                      'new_string': _text(c, 'ReplacementContent')} for c in chunks]
+            edits = [{'file_path': _str(c, *_AG_PATH_KEYS) or fp,
+                      'old_string': _text(c, 'TargetContent', 'Target', 'old_string'),
+                      'new_string': _text(c, 'ReplacementContent', 'Replacement', 'new_string')} for c in chunks]
         ti = {'edits': edits}
         if fp:
             ti['file_path'] = fp
