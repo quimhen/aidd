@@ -10,6 +10,7 @@ import json
 import os
 import re
 import secrets
+import sys
 import tempfile
 import time
 import webbrowser
@@ -122,6 +123,21 @@ def _page(package, token):
             '<button type="submit">Aprobar esta versión</button></form></div></main></html>').encode('utf-8')
 
 
+def _registry_dir():
+    d = Path(tempfile.gettempdir()) / 'aidd-unit-reviews'
+    try:
+        d.mkdir(mode=0o700, exist_ok=True)
+        test = d / f'.perm-check-{os.getpid()}'
+        test.touch()
+        test.unlink(missing_ok=True)
+        return d
+    except (OSError, PermissionError):
+        user_suffix = os.environ.get('USERNAME') or os.environ.get('USER') or str(os.getpid())
+        d2 = Path(tempfile.gettempdir()) / f'aidd-unit-reviews-{user_suffix}'
+        d2.mkdir(parents=True, exist_ok=True)
+        return d2
+
+
 def serve_unit_review(spec_dir, unit_id, *, open_browser=False, timeout=3600):
     """Show an exact package and record only a matching, explicit local POST."""
     spec_dir = Path(spec_dir).resolve(strict=True)
@@ -136,6 +152,8 @@ def serve_unit_review(spec_dir, unit_id, *, open_browser=False, timeout=3600):
     page = _page(package, token)
 
     class Handler(BaseHTTPRequestHandler):
+        protocol_version = 'HTTP/1.0'
+
         def log_message(self, *args):
             pass
 
@@ -143,8 +161,9 @@ def serve_unit_review(spec_dir, unit_id, *, open_browser=False, timeout=3600):
             self.send_response(code)
             self.send_header('Content-Type', 'text/html; charset=utf-8')
             self.send_header('Content-Length', str(len(body)))
+            self.send_header('Connection', 'close')
             self.send_header('Cache-Control', 'no-store')
-            self.send_header('Referrer-Policy', 'no-referrer')
+            self.send_header('Referrer-Policy', 'same-origin')
             self.send_header('X-Content-Type-Options', 'nosniff')
             policy = "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'"
             if navigator:
@@ -152,6 +171,8 @@ def serve_unit_review(spec_dir, unit_id, *, open_browser=False, timeout=3600):
             self.send_header('Content-Security-Policy', policy)
             self.end_headers()
             self.wfile.write(body)
+            self.wfile.flush()
+            self.close_connection = True
 
         def do_GET(self):
             if self.path == '/navigator/' + token:
@@ -203,8 +224,7 @@ def serve_unit_review(spec_dir, unit_id, *, open_browser=False, timeout=3600):
         url = f'http://127.0.0.1:{server.server_port}/{token}'
         print('Revisión opcional de la unidad: ' + url, flush=True)
         print('Solo el usuario debe pulsar Aprobar esta versión.', flush=True)
-        registry = Path(tempfile.gettempdir()) / 'aidd-unit-reviews'
-        registry.mkdir(mode=0o700, exist_ok=True)
+        registry = _registry_dir()
         fd, name = tempfile.mkstemp(prefix='review-', suffix='.json', dir=registry)
         try:
             with os.fdopen(fd, 'w', encoding='utf-8') as stream:

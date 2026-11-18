@@ -25,7 +25,7 @@ class WaveVerificationTests(unittest.TestCase):
             (root / 'ok.txt').write_bytes(data)
             row = {'ok': True, 'exit': 0, 'cmd': 'test', 'expected': 'exit 0', 'input_globs': ['a.py'],
                    'input_fp': 'fingerprint', 'evidence': 'ok.txt', 'sha1': hashlib.sha1(data).hexdigest(),
-                   'reuse_policy': 'hermetic', 'input_algorithm': 'raw-sql-v2-glob-v2'}
+                   'reuse_policy': 'hermetic', 'input_algorithm': status.ev.EVIDENCE_ALGORITHM}
             self.assertEqual(status._reusable_input_rows(root, {'results': [row]}, False), {})
 
     def test_wave_requires_and_selects_every_task(self):
@@ -105,12 +105,15 @@ class WaveVerificationTests(unittest.TestCase):
                  patch.object(status.ev, 'worktree_fingerprint', return_value='fp'), \
                  patch.object(status.ev, 'latest_verify_run', return_value=None), \
                  patch.object(status.ev, 'append_verify_run', return_value=True), \
+                 patch.object(status, '_fingerprint_budget', return_value=status.FINGERPRINT_BUDGET_DEFAULT), \
                  patch.object(status, '_run_row', side_effect=run), \
                  patch.object(status, '_round_load') as round_load:
                 self.assertEqual(status.cmd_verify(str(spec)), 0)
                 round_load.assert_not_called()
                 self.assertEqual(scan.call_count, 2)
-                self.assertTrue(all('budget_s' not in call.kwargs for call in scan.call_args_list))
+                # Both ordinary stability scans use the normal budget, never the 120s round-global scan.
+                self.assertTrue(all(call.kwargs.get('budget_s') == status.FINGERPRINT_BUDGET_DEFAULT
+                                    for call in scan.call_args_list))
 
     def test_json_pass_detects_corruption_inputs_and_code_changes(self):
         with tempfile.TemporaryDirectory() as tmp:

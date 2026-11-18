@@ -1,0 +1,25 @@
+{
+  "format": "graph-v5-actual-proof-summary-v1",
+  "taskHash": "6e7dec9276b7",
+  "graphResults": {
+    "V-GR1": "4 PASS actual",
+    "V-GR2": "9 PASS actual",
+    "V-GR3": "42 PASS plus3 subtests actual",
+    "V-GR4": "5 PASS initial;2 failed missing read_hint fixture;2 failed-only PASS after original fixture restored; no source/test assertions changed"
+  },
+  "coherentSecurity": "97 PASS in six actual commands; stable inputs; receipts retained exactly",
+  "featureLayout": "62 PASS plus20 subtests initial;3 missing-document failures;3 failed-only PASS after original commands/aidd-converge.md restored;65 covered methods, not a fabricated65-pass single run",
+  "finalTargets": {
+    "skill/scripts/code_graph.py": "bceaf0f8758d2c2471b228d2dc7a5b657a82fb24734f51052acc67c416542801",
+    "skill/scripts/aidd_graphs.py": "8519b558cdeda6adcb027820ff87eafe4a13cd769e5677669ce6b7e7f9ff9726",
+    "adapters/dot-aidd/scripts/code_graph.py": "bceaf0f8758d2c2471b228d2dc7a5b657a82fb24734f51052acc67c416542801",
+    "adapters/dot-aidd/scripts/aidd_graphs.py": "8519b558cdeda6adcb027820ff87eafe4a13cd769e5677669ce6b7e7f9ff9726",
+    "tests/test_code_graph_raw_hashes.py": "22f9413ca08e995886667417216b1973c4c7e809b63690c74afcf7992d7d7419"
+  },
+  "limits": [
+    "Root code review is independent source review, not official unit_audit",
+    "Main Graph source remains baseline before real V5 owner consent",
+    "Official final functional/security audit after controlled Main source integration, before installation",
+    "Distribution version bump is outside Graph behavior proof; no post-bump rerun is fabricated"
+  ]
+}

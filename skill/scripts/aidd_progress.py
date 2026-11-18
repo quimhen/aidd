@@ -331,6 +331,23 @@ def _stages(root, d, tasks_text):
     return st
 
 
+def _source_structure(task, root):
+    """FR-974: describe explicit Python targets; never change presence or verification."""
+    results = []
+    for name in task['paths']:
+        if Path(name).suffix.lower() != '.py' or name in (task.get('delete') or []):
+            continue
+        target = _resolve(root, name) or _renumbered(root, name) or _alias_target(root, name)
+        target = target or (Path(root) / name)
+        try:
+            from aidd_source_shape import inspect_python
+            results.append(inspect_python(target))
+        except (ImportError, OSError, ValueError, RuntimeError):
+            results.append({'path': str(target), 'status': 'unknown', 'findings': [],
+                            'reason': 'structure inspection unavailable'})
+    return results
+
+
 def measure(root, spec_dir):
     d = Path(spec_dir)
     tasks_md = d / 'tasks.md'
@@ -342,7 +359,8 @@ def measure(root, spec_dir):
         pass
     rows = []
     for t in parse_tasks(text):
-        rows.append({**t, 'state': task_state(t, root), 'declared_done': bool(DONE_RE.search(t['status']))})
+        rows.append({**t, 'state': task_state(t, root), 'declared_done': bool(DONE_RE.search(t['status'])),
+                     'source_structure': _source_structure(t, root)})
     n = {k: sum(1 for r in rows if r['state'] == k) for k in ('missing', 'stub', 'present', 'marked', 'n/a')}
     renamed = sum(1 for r in rows if r['state'] == 'renamed')     # aidd:FR-234 counts as present in Impl%
     stages = _stages(root, d, text)
@@ -421,10 +439,23 @@ def render(results, detail=False):
                              % (r['spec'], len(moved), ALIAS_FILE))
                 for t in moved:
                     lines.append('  %-7s %-8s %s' % (t['id'], t['state'], ', '.join(t['paths'])[:90]))
+            for task in r['rows']:
+                for result in task.get('source_structure', []):
+                    if result['status'] == 'clean' and not result['findings']:
+                        continue
+                    path = result['path'].replace('\\', '/')[:300]
+                    lines.append('  %s source structure %s: %s' % (task['id'], result['status'], path))
+                    for finding in result['findings']:
+                        previous = (' (previous line %s)' % finding['previous_line']) if finding['previous_line'] else ''
+                        lines.append('    line %s %s %s%s' % (finding['line'], finding['kind'],
+                                     finding['symbol'][:200], previous))
+                    if result.get('reason'):
+                        lines.append('    ' + result['reason'])
     lines.append('')
     lines.append('Decl% = tasks whose Status cell says done (hand-written, not measured). Impl% = target files present; '
                  'Mark% = they also carry aidd:<code>. Existence is not correctness: '
                  'aidd verify and the closing audit decide that.')
+    lines.append('Source structure is static inspection only; it does not prove integrated functionality or runtime behavior.')
     return '\n'.join(lines)
 
 

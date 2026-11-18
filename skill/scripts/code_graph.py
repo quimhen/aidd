@@ -46,7 +46,7 @@ if hasattr(sys.stdout, 'reconfigure'):
 GRAPH_REL = '.aidd/graphs/code.json'
 CACHE_SUFFIX = '.cache.json'
 SCHEMA_VERSION = 1
-EXTRACTOR_VERSION = 3
+EXTRACTOR_VERSION = 4
 EMPTY_BLOB = 'e69de29bb2d1d6434b8b29ae775ad8c2e48c5391'
 MAX_CANDIDATES = 3
 # aidd:FR-014 default globs: the AIDD repo's own Python; `**/*.py` minus vendor dirs anywhere else
@@ -148,7 +148,7 @@ def _git(root, args, data=None):
     """stdout bytes of a git command, or None (git missing, not a repo, timeout, non-zero exit)."""
     try:
         env = dict(os.environ, GIT_OPTIONAL_LOCKS='0', LC_ALL='C')
-        r = subprocess.run(['git'] + list(args), cwd=str(root), env=env, input=data,
+        r = subprocess.run(['git', '-c', 'core.fsmonitor=false'] + list(args), cwd=str(root), env=env, input=data,
                            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=GIT_TIMEOUT,
                            creationflags=_CREATE_NO_WINDOW)
     except (OSError, ValueError, subprocess.SubprocessError):
@@ -195,13 +195,13 @@ def _blob_sha(data):
 
 
 def file_shas(root, rels):
-    """aidd:FR-023 {rel: git blob sha of the WORKING-TREE content}. One `git hash-object --stdin-paths`;
+    """aidd:FR-023 {rel: git blob sha of the WORKING-TREE content}. One `git hash-object --no-filters --stdin-paths`;
     pure-Python `sha1(b"blob %d\\0" + data)` when git is unavailable or answers short. Never stat/mtime.
     A file that cannot be read is left out."""
     rels = [r for r in rels if '\n' not in r]
     if not rels:
         return {}
-    out = _git(root, ['hash-object', '--stdin-paths'],
+    out = _git(root, ['hash-object', '--no-filters', '--stdin-paths'],
                data=('\n'.join(rels) + '\n').encode('utf-8', errors='surrogateescape'))
     if out is not None:
         shas = out.decode('ascii', errors='replace').split()

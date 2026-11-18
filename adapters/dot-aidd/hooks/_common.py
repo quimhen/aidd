@@ -28,7 +28,7 @@ R6_NON_CODE_EXTENSIONS = {'.md', '.markdown', '.txt', '.rst', '.csv', '.tsv', '.
 # ...and files under these locations (canonical path relative to the OUTERMOST project root).
 # Build files that happen to carry a prose extension are still code.
 R6_CODE_BASENAMES = {'cmakelists.txt', 'requirements.txt', 'pyproject.toml'}
-R6_EXEMPT_PREFIXES = ('specs/', 'design-system/', '.aidd/memory/', '.claude/skills/', '.git/', 'node_modules/',
+R6_EXEMPT_PREFIXES = ('specs/', 'design-system/', '.aidd/', '.claude/skills/', '.git/', 'node_modules/',
                       '__pycache__/', '.venv/')
 SPEC_ARTIFACT_NAMES = {'spec.md', 'plan.md', 'tasks.md', 'contracts.md', 'data-model.md',
                        'mockup-audit.md', 'qa-audit.md'}

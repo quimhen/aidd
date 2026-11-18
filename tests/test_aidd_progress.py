@@ -13,6 +13,43 @@ import aidd_progress as P  # noqa: E402
 HDR = '| Task | Description | Codes | Target file | Status |\n|---|---|---|---|---|\n'
 
 
+class SourceStructureProgress(unittest.TestCase):
+    def setUp(self):
+        self.temp=tempfile.TemporaryDirectory(prefix='aidd-structure-progress-')
+        self.addCleanup(self.temp.cleanup)
+        self.root=Path(self.temp.name);(self.root/'src').mkdir()
+        self.spec=self.root/'specs'/'structure';self.spec.mkdir(parents=True)
+        (self.spec/'tasks.md').write_text(HDR+'| T-01 | source | FR-970 | `src/sample.py` | |\n',encoding='utf-8')
+
+    def test_structural_stub_does_not_rewrite_legacy_presence_percent(self):
+        (self.root/'src'/'sample.py').write_text('# long contract\ndef real(): return 1\ndef real(): raise NotImplementedError("pending")\n',encoding='utf-8')
+        result=P.measure(self.root,self.spec)
+        self.assertEqual(result['impl_pct'],100.0)
+        self.assertEqual(result['rows'][0]['state'],'present')
+        structures=result['rows'][0]['source_structure']
+        self.assertEqual(len(structures),1)
+        self.assertEqual(structures[0]['status'],'findings')
+        self.assertTrue(any(f['kind']=='duplicate_definition' for f in structures[0]['findings']))
+        text=P.render([result],detail=True)
+        self.assertIn('real',text)
+        self.assertIn('duplicate_definition',text)
+        self.assertIn('src/sample.py',text)
+
+    def test_syntax_unknown_is_not_clean_or_runtime_verified(self):
+        (self.root/'src'/'sample.py').write_text('# '+'long '*20+'\ndef unfinished(\n',encoding='utf-8')
+        result=P.measure(self.root,self.spec)
+        self.assertEqual(result['impl_pct'],100.0)
+        self.assertEqual(result['rows'][0]['source_structure'][0]['status'],'unknown')
+        self.assertNotEqual(result['stages']['verify'],'passed')
+
+    def test_other_languages_are_not_claimed_as_inspected(self):
+        (self.spec/'tasks.md').write_text(HDR+'| T-01 | SQL | FR-970 | `src/sample.sql` | |\n',encoding='utf-8')
+        (self.root/'src'/'sample.sql').write_text('select 1; -- '+'unchanged '*15,encoding='utf-8')
+        result=P.measure(self.root,self.spec)
+        self.assertEqual(result['rows'][0]['source_structure'],[])
+        self.assertEqual(result['impl_pct'],100.0)
+
+
 class TestProgress(unittest.TestCase):
     def setUp(self):
         self.root = Path(tempfile.mkdtemp())

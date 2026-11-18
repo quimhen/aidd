@@ -1,0 +1,105 @@
+{
+  "meaning": "actual original/installed kernel bytes before4b body edits; must remain unchanged during isolated work",
+  "rows": [
+    {
+      "path": "D:\\Fuentes\\AIDD\\skill\\scripts\\aidd_rules.py",
+      "sha256": "ff7e82cf4ec02c2d4673e1f1c217602309e08849a3264a9d35d4cdc88ffa3ff0"
+    },
+    {
+      "path": "D:\\Fuentes\\AIDD\\skill\\scripts\\aidd_amendment_verify.py",
+      "sha256": "4a182248e6c39316aab4540709dc835f5c122604dcd84f1513315d2d79ea3aea"
+    },
+    {
+      "path": "D:\\Fuentes\\AIDD\\skill\\scripts\\aidd_round.py",
+      "sha256": "5b368694297762fbb8565a86015c8f3d3b2510c77edfddacb8726fe1a90acdfe"
+    },
+    {
+      "path": "D:\\Fuentes\\AIDD\\skill\\scripts\\aidd_status.py",
+      "sha256": "095ca4127adff49aa2f3f5979aa33b3a960bca654c888b29269398e66dc60b4c"
+    },
+    {
+      "path": "D:\\Fuentes\\AIDD\\skill\\scripts\\aidd_evidence.py",
+      "sha256": "9fde4fd718a3d9f0f87254e1e0909c04f4831498feb4281d7bb79a9bda870866"
+    },
+    {
+      "path": "D:\\Fuentes\\AIDD\\adapters\\dot-aidd\\scripts\\aidd_rules.py",
+      "sha256": "ff7e82cf4ec02c2d4673e1f1c217602309e08849a3264a9d35d4cdc88ffa3ff0"
+    },
+    {
+      "path": "D:\\Fuentes\\AIDD\\adapters\\dot-aidd\\scripts\\aidd_amendment_verify.py",
+      "sha256": "4a182248e6c39316aab4540709dc835f5c122604dcd84f1513315d2d79ea3aea"
+    },
+    {
+      "path": "D:\\Fuentes\\AIDD\\adapters\\dot-aidd\\scripts\\aidd_round.py",
+      "sha256": "5b368694297762fbb8565a86015c8f3d3b2510c77edfddacb8726fe1a90acdfe"
+    },
+    {
+      "path": "D:\\Fuentes\\AIDD\\adapters\\dot-aidd\\scripts\\aidd_status.py",
+      "sha256": "095ca4127adff49aa2f3f5979aa33b3a960bca654c888b29269398e66dc60b4c"
+    },
+    {
+      "path": "D:\\Fuentes\\AIDD\\adapters\\dot-aidd\\scripts\\aidd_evidence.py",
+      "sha256": "9fde4fd718a3d9f0f87254e1e0909c04f4831498feb4281d7bb79a9bda870866"
+    },
+    {
+      "path": "C:\\Users\\jquimis\\.claude\\skills\\aidd\\scripts\\aidd_rules.py",
+      "sha256": "ff7e82cf4ec02c2d4673e1f1c217602309e08849a3264a9d35d4cdc88ffa3ff0"
+    },
+    {
+      "path": "C:\\Users\\jquimis\\.claude\\skills\\aidd\\scripts\\aidd_amendment_verify.py",
+      "sha256": "d2b82ee28af59f2a1d17fa18103b78225dd2ade4206f9f2302d181de54eecf53"
+    },
+    {
+      "path": "C:\\Users\\jquimis\\.claude\\skills\\aidd\\scripts\\aidd_round.py",
+      "sha256": "5b368694297762fbb8565a86015c8f3d3b2510c77edfddacb8726fe1a90acdfe"
+    },
+    {
+      "path": "C:\\Users\\jquimis\\.claude\\skills\\aidd\\scripts\\aidd_status.py",
+      "sha256": "095ca4127adff49aa2f3f5979aa33b3a960bca654c888b29269398e66dc60b4c"
+    },
+    {
+      "path": "C:\\Users\\jquimis\\.claude\\skills\\aidd\\scripts\\aidd_evidence.py",
+      "sha256": "9fde4fd718a3d9f0f87254e1e0909c04f4831498feb4281d7bb79a9bda870866"
+    },
+    {
+      "path": "C:\\Users\\jquimis\\.agents\\skills\\aidd\\scripts\\aidd_rules.py",
+      "sha256": "ff7e82cf4ec02c2d4673e1f1c217602309e08849a3264a9d35d4cdc88ffa3ff0"
+    },
+    {
+      "path": "C:\\Users\\jquimis\\.agents\\skills\\aidd\\scripts\\aidd_amendment_verify.py",
+      "sha256": "d2b82ee28af59f2a1d17fa18103b78225dd2ade4206f9f2302d181de54eecf53"
+    },
+    {
+      "path": "C:\\Users\\jquimis\\.agents\\skills\\aidd\\scripts\\aidd_round.py",
+      "sha256": "5b368694297762fbb8565a86015c8f3d3b2510c77edfddacb8726fe1a90acdfe"
+    },
+    {
+      "path": "C:\\Users\\jquimis\\.agents\\skills\\aidd\\scripts\\aidd_status.py",
+      "sha256": "095ca4127adff49aa2f3f5979aa33b3a960bca654c888b29269398e66dc60b4c"
+    },
+    {
+      "path": "C:\\Users\\jquimis\\.agents\\skills\\aidd\\scripts\\aidd_evidence.py",
+      "sha256": "9fde4fd718a3d9f0f87254e1e0909c04f4831498feb4281d7bb79a9bda870866"
+    },
+    {
+      "path": "D:\\Fuentes\\b1SycLink\\.aidd\\scripts\\aidd_rules.py",
+      "sha256": "ff7e82cf4ec02c2d4673e1f1c217602309e08849a3264a9d35d4cdc88ffa3ff0"
+    },
+    {
+      "path": "D:\\Fuentes\\b1SycLink\\.aidd\\scripts\\aidd_amendment_verify.py",
+      "sha256": "d2b82ee28af59f2a1d17fa18103b78225dd2ade4206f9f2302d181de54eecf53"
+    },
+    {
+      "path": "D:\\Fuentes\\b1SycLink\\.aidd\\scripts\\aidd_round.py",
+      "sha256": "5b368694297762fbb8565a86015c8f3d3b2510c77edfddacb8726fe1a90acdfe"
+    },
+    {
+      "path": "D:\\Fuentes\\b1SycLink\\.aidd\\scripts\\aidd_status.py",
+      "sha256": "095ca4127adff49aa2f3f5979aa33b3a960bca654c888b29269398e66dc60b4c"
+    },
+    {
+      "path": "D:\\Fuentes\\b1SycLink\\.aidd\\scripts\\aidd_evidence.py",
+      "sha256": "9fde4fd718a3d9f0f87254e1e0909c04f4831498feb4281d7bb79a9bda870866"
+    }
+  ]
+}

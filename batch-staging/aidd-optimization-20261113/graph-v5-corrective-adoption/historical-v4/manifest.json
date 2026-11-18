@@ -1,0 +1,42 @@
+{
+  "schema_version": 2,
+  "spec_id": "004-aidd-graph-first",
+  "unit_id": "graph-on-miss",
+  "sequence": 1,
+  "parents": [],
+  "paths": [
+    "specs/004-aidd-graph-first/amendments/graph-on-miss/spec.md",
+    "specs/004-aidd-graph-first/amendments/graph-on-miss/plan.md",
+    "specs/004-aidd-graph-first/amendments/graph-on-miss/tasks.md"
+  ],
+  "targets": [
+    "skill/scripts/aidd_graphs.py",
+    "tests/test_aidd_graphs.py",
+    "adapters/dot-aidd/scripts/aidd_graphs.py",
+    "docs/aidd-graph-fresh-query.md",
+    "tests/test_aidd_graphs_empty_query.py",
+    "tests/test_aidd_graphs_running_state.py"
+  ],
+  "version": "v4",
+  "inputs": [
+    "batch-staging/aidd-optimization-20261113/independent-progress-legacy-contracts-20261114.md",
+    "batch-staging/aidd-optimization-20261113/regression-root-after-audit-receipt.json",
+    "batch-staging/aidd-optimization-20261113/regression-root-after-audit.log",
+    "skill/scripts/code_graph.py",
+    "tests/test_code_graph.py",
+    "tests/test_graphs_auto.py",
+    "batch-staging/aidd-optimization-20261113/graph-empty-query-v3/red-empty-query.log",
+    "batch-staging/aidd-optimization-20261113/graph-empty-query-v3/green-empty-query.log",
+    "batch-staging/aidd-optimization-20261113/graph-empty-query-v3/execution-receipt.json",
+    "batch-staging/aidd-optimization-20261113/graph-empty-query-v3/independent-fix-review.md",
+    "batch-staging/aidd-optimization-20261113/graph-empty-query-v3/empty-query.patch",
+    "batch-staging/aidd-optimization-20261113/graph-running-state-v4/red-running-state.log",
+    "batch-staging/aidd-optimization-20261113/graph-running-state-v4/green-running-state.log",
+    "batch-staging/aidd-optimization-20261113/graph-running-state-v4/execution-receipt.json",
+    "batch-staging/aidd-optimization-20261113/graph-running-state-v4/independent-fix-review.md",
+    "batch-staging/aidd-optimization-20261113/graph-running-state-v4/running-state.patch",
+    "batch-staging/aidd-optimization-20261113/graph-running-state-v4/handoff.md"
+  ],
+  "config": [],
+  "visual_refs": []
+}

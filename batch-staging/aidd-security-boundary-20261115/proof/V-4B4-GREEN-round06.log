@@ -1,0 +1,20 @@
+test_command_naming_a_declared_file_runs (test_verify_amendment.AmendmentScope.test_command_naming_a_declared_file_runs) ... ok
+test_nothing_changed_reuses_everything (test_verify_amendment.AmendmentScope.test_nothing_changed_reuses_everything) ... ok
+test_only_rows_touched_by_the_amendment_run (test_verify_amendment.AmendmentScope.test_only_rows_touched_by_the_amendment_run) ... ok
+test_regression_always_runs (test_verify_amendment.AmendmentScope.test_regression_always_runs) ... ok
+test_undeclared_input_change_runs_with_warning (test_verify_amendment.AmendmentScope.test_undeclared_input_change_runs_with_warning) ... ok
+test_forged_reused_result_is_stale (test_verify_amendment.CloseGate.test_forged_reused_result_is_stale) ... ok
+test_gate_accepts_then_stales_on_reused_inputs (test_verify_amendment.CloseGate.test_gate_accepts_then_stales_on_reused_inputs) ... ok
+test_amendment_dry_run_executes_nothing (test_verify_amendment.DryRun.test_amendment_dry_run_executes_nothing) ... ok
+test_plain_dry_run_does_not_execute (test_verify_amendment.DryRun.test_plain_dry_run_does_not_execute) ... ok
+test_unprovable_env_runs_with_reason (test_verify_amendment.Environment.test_unprovable_env_runs_with_reason) ... ok
+test_fingerprint_budget_refusal (test_verify_amendment.Refusals.test_fingerprint_budget_refusal) ... ok
+test_machine_block_is_read (test_verify_amendment.Refusals.test_machine_block_is_read) ... ok
+test_missing_or_empty_amendment_file (test_verify_amendment.Refusals.test_missing_or_empty_amendment_file) ... ok
+test_unknown_option_and_bad_combinations (test_verify_amendment.Refusals.test_unknown_option_and_bad_combinations) ... ok
+test_lint_and_hash (test_verify_amendment.RegressionColumn.test_lint_and_hash) ... ok
+
+----------------------------------------------------------------------
+Ran 15 tests in 38.753s
+
+OK

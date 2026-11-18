@@ -1,0 +1,66 @@
+{
+  "wave": "GRAPHV5",
+  "task": "T-952",
+  "taskHash": "6e7dec9276b7",
+  "sourceChanges": [
+    {
+      "path": "D:\\Fuentes\\_worktrees\\aidd-graph-adoption-proposal-20261115\\runtime\\skill\\scripts\\code_graph.py",
+      "before": "cd86d9ad495883896d639ab0e28f19848993a1f769b47051a9520ce676e6d3ab",
+      "after": "bceaf0f8758d2c2471b228d2dc7a5b657a82fb24734f51052acc67c416542801",
+      "addedLines": 0
+    },
+    {
+      "path": "D:\\Fuentes\\_worktrees\\aidd-graph-adoption-proposal-20261115\\runtime\\skill\\scripts\\aidd_graphs.py",
+      "before": "3d01c1736317cfe520b2e24857bd142d9f71dd8bc94966dfc756e4d67cdf8b04",
+      "after": "8519b558cdeda6adcb027820ff87eafe4a13cd769e5677669ce6b7e7f9ff9726",
+      "addedLines": 20
+    },
+    {
+      "path": "D:\\Fuentes\\_worktrees\\aidd-graph-adoption-proposal-20261115\\runtime\\adapters\\dot-aidd\\scripts\\code_graph.py",
+      "before": "cd86d9ad495883896d639ab0e28f19848993a1f769b47051a9520ce676e6d3ab",
+      "after": "bceaf0f8758d2c2471b228d2dc7a5b657a82fb24734f51052acc67c416542801",
+      "addedLines": 0
+    },
+    {
+      "path": "D:\\Fuentes\\_worktrees\\aidd-graph-adoption-proposal-20261115\\runtime\\adapters\\dot-aidd\\scripts\\aidd_graphs.py",
+      "before": "3d01c1736317cfe520b2e24857bd142d9f71dd8bc94966dfc756e4d67cdf8b04",
+      "after": "8519b558cdeda6adcb027820ff87eafe4a13cd769e5677669ce6b7e7f9ff9726",
+      "addedLines": 20
+    }
+  ],
+  "mirrorsEqual": true,
+  "staticAST": true,
+  "kernelPinsUnchanged": {
+    "aidd_rules.py": "31ae5f48312776a3c7130229c8cc50fdf9e553d40ed67357bfada3aca0fd8cbe",
+    "aidd_amendment_verify.py": "d398f87437bba00fd834115af37824aad06efe0f803d7a5c36a58847f8565340",
+    "aidd_round.py": "f6640e4efa20b17610717e2592d51aefb798e4dd642f0f77d1960616fc926caa",
+    "aidd_status.py": "1abfff8cb944ae3fb3be25866ca6dacb3865766b41a782cb903949a8f460a278",
+    "aidd_evidence.py": "335aacce002f14c7bb6d1975fbbcbbb0bd007ed5544fb3538dcc42ed378cb676"
+  },
+  "originalGraphPinsUnchanged": {
+    "D:\\Fuentes\\AIDD\\skill\\scripts\\code_graph.py": "cd86d9ad495883896d639ab0e28f19848993a1f769b47051a9520ce676e6d3ab",
+    "D:\\Fuentes\\AIDD\\skill\\scripts\\aidd_graphs.py": "3d01c1736317cfe520b2e24857bd142d9f71dd8bc94966dfc756e4d67cdf8b04",
+    "D:\\Fuentes\\AIDD\\adapters\\dot-aidd\\scripts\\code_graph.py": "cd86d9ad495883896d639ab0e28f19848993a1f769b47051a9520ce676e6d3ab",
+    "D:\\Fuentes\\AIDD\\adapters\\dot-aidd\\scripts\\aidd_graphs.py": "3d01c1736317cfe520b2e24857bd142d9f71dd8bc94966dfc756e4d67cdf8b04"
+  },
+  "testSHA256": "22f9413ca08e995886667417216b1973c4c7e809b63690c74afcf7992d7d7419",
+  "sourceBuilderTestExecutions": 0,
+  "R10": [],
+  "verificationCommandCorrection": {
+    "beforeSpecSHA": "cf1a17936e5c42acb6f66444085660e329b4bf3e96c6e464d0d884b4cfa3cfa1",
+    "afterSpecSHA": "aff9d77f2e428bce865687074d0aa05cf78b40bf23b7a22759d380edc0faf22b",
+    "reason": "V-GR3 modules mix unittest classes and pytest free functions/fixtures/parametrize; unittest discovery omits pytest-only cases. V-GR4 is unittest-compatible and pytest also collects it completely. Root selected targeted pytest commands; no claim that both old commands collect zero total tests.",
+    "commands": {
+      "python -B -m unittest discover -s tests -p test_aidd_graphs*.py": "python -B -m pytest -q -p no:cacheprovider tests/test_aidd_graphs.py tests/test_aidd_graphs_empty_query.py tests/test_aidd_graphs_running_state.py",
+      "python -B -m unittest discover -s tests -p test_graphs_auto.py": "python -B -m pytest -q -p no:cacheprovider tests/test_graphs_auto.py"
+    }
+  },
+  "prototypeReferenceOnly": "2d9eaca9e61ab6e49e188d86e3ee6d1e85f436115b33b70e8b5035d785d9f817",
+  "currentFinalSourceHashes": {
+    "code_graph.py": "bceaf0f8758d2c2471b228d2dc7a5b657a82fb24734f51052acc67c416542801",
+    "aidd_graphs.py": "8519b558cdeda6adcb027820ff87eafe4a13cd769e5677669ce6b7e7f9ff9726"
+  },
+  "ownerSealWrites": 0,
+  "installationWrites": 0,
+  "rootActualREDLog": "V-GR1-RED.log; Root reports four semantic failures, zero errors, before this body"
+}

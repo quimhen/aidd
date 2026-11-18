@@ -1,0 +1,28 @@
+test_each_gap (tests.test_aidd_rules.TestVerificationGaps.test_each_gap) ... ok
+test_evidence_path_forms (tests.test_aidd_rules.TestVerificationGaps.test_evidence_path_forms) ... ok
+test_old_library_and_garbage_fail_closed (tests.test_aidd_rules.TestVerificationGaps.test_old_library_and_garbage_fail_closed) ... ok
+test_passing_run_absolute_and_relative (tests.test_aidd_rules.TestVerificationGaps.test_passing_run_absolute_and_relative) ... ok
+test_table_and_evidence_drift (tests.test_aidd_rules.TestVerificationGaps.test_table_and_evidence_drift) ... ok
+test_states (tests.test_aidd_rules.TestVerificationState.test_states) ... ok
+test_cache_never_older_than_the_compared_run_or_code_edit (tests.test_aidd_rules.TestFingerprintOnce.test_cache_never_older_than_the_compared_run_or_code_edit) ... ok
+test_failures_never_raise_and_fail_closed (tests.test_aidd_rules.TestFingerprintOnce.test_failures_never_raise_and_fail_closed) ... ok
+test_one_fingerprint_shared_across_specs_absolute_and_relative (tests.test_aidd_rules.TestFingerprintOnce.test_one_fingerprint_shared_across_specs_absolute_and_relative) ... ok
+test_explicit_inputs_do_not_trigger_round_global_scan (tests.test_wave_verification.WaveVerificationTests.test_explicit_inputs_do_not_trigger_round_global_scan) ... PASS row V-1: python check.py (exit 0, 0.0 s) → evidence/verify-V-1.txt
+verify wall time 0.0 s; slowest row: V-1 (0.0 s)
+ok
+test_hermetic_label_without_environment_identity_cannot_reuse (tests.test_wave_verification.WaveVerificationTests.test_hermetic_label_without_environment_identity_cannot_reuse) ... ok
+test_json_pass_detects_corruption_inputs_and_code_changes (tests.test_wave_verification.WaveVerificationTests.test_json_pass_detects_corruption_inputs_and_code_changes) ... ok
+test_json_uses_own_result_and_redacts_diagnostics (tests.test_wave_verification.WaveVerificationTests.test_json_uses_own_result_and_redacts_diagnostics) ... ok
+test_old_false_passes_are_not_reused (tests.test_wave_verification.WaveVerificationTests.test_old_false_passes_are_not_reused) ... ok
+test_row_reuse_survives_failed_batch_only_with_intact_evidence (tests.test_wave_verification.WaveVerificationTests.test_row_reuse_survives_failed_batch_only_with_intact_evidence) ... ok
+test_wave_id_rejects_path_traversal (tests.test_wave_verification.WaveVerificationTests.test_wave_id_rejects_path_traversal) ... ok
+test_wave_requires_and_selects_every_task (tests.test_wave_verification.WaveVerificationTests.test_wave_requires_and_selects_every_task) ... ok
+test_multi_spec_wave_runs_shared_check_once_and_preserves_coverage (tests.test_wave_verification.WaveEndToEnd.test_multi_spec_wave_runs_shared_check_once_and_preserves_coverage) ... ok
+test_multi_spec_wave_does_not_reuse_undeclared_external_checks (tests.test_wave_verification.WaveEndToEnd.test_multi_spec_wave_does_not_reuse_undeclared_external_checks) ... ok
+
+----------------------------------------------------------------------
+Ran 19 tests in 2.457s
+
+OK
+verify_run recorded for spec: PASSED (1/1 rows, verify hash 06290775bf9b)
+Refused: invalid wave ID; nothing was executed.

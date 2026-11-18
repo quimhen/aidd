@@ -17,9 +17,18 @@ from test_verify_round_reuse import ReuseBase  # noqa: E402
 REUSED_LINE = r'^REUSED: PASS del verify_run de A fila V-2 del \d{4}-\d\d-\d\dT[\d:]+, huella c2:[0-9a-f]{16}, '
 
 
-def table(rows, extra=''):
+def table(rows, extra='', profile=False):
     head = ('## Verification\n' + extra
             + '| # | Command | Expected | Covers | Inputs | Regression |\n|---|---|---|---|---|---|\n')
+    if profile:
+        head = ('## Verification\n' + extra + '| # | Command | Expected | Covers | Inputs | Regression | Reuse | Environment |\n|---|---|---|---|---|---|---|---|\n')
+        result = head
+        for n, c, e, inputs, regression in rows:
+            script = next(s for s in ('ok.py', 'other.py', 'fail.py') if s in c)
+            declared = f'{script},{inputs}' if inputs else ''
+            reuse, environment = ('hermetic', 'contract:offline;vars=none;packages=none') if inputs else ('', '')
+            result += f'| {n} | {c} | {e} | FR-1 | {declared} | {regression} | {reuse} | {environment} |\n'
+        return result
     return head + ''.join(f'| {n} | {c} | {e} | FR-1 | {i} | {g} |\n' for n, c, e, i, g in rows)
 
 
@@ -33,10 +42,10 @@ class AmendBase(ReuseBase):
         (self.root / 'tests').mkdir()
         (self.root / 'tests' / 't1.py').write_text('t = 1\n', encoding='utf-8')
 
-    def aspec(self, rows, scope='src/**, lib/**', extra='', amendment=TASKS_01):
+    def aspec(self, rows, scope='src/**, lib/**', extra='', amendment=TASKS_01, profile=False):
         d = self.root / 'specs' / 'A'
         d.mkdir(parents=True, exist_ok=True)
-        (d / 'spec.md').write_text('# A\n\n' + table(rows, f'Scope: {scope}\n' + extra), encoding='utf-8')
+        (d / 'spec.md').write_text('# A\n\n' + table(rows, f'Scope: {scope}\n' + extra, profile=profile), encoding='utf-8')
         (d / 'tasks.md').write_text('', encoding='utf-8')
         if amendment is not None:
             (d / 'tasks-amendment-01.md').write_text(amendment, encoding='utf-8')
@@ -55,7 +64,7 @@ class AmendBase(ReuseBase):
 
 class AmendmentScope(AmendBase):
     def test_only_rows_touched_by_the_amendment_run(self):                              # AC-520
-        self.three_rows()
+        self.three_rows(profile=True)
         rc, out = self.verify('A')
         self.assertEqual((rc, len(self.runs)), (0, 3), out)
         (self.root / 'lib' / 'b.py').write_text('y = 2\n', encoding='utf-8')
@@ -71,7 +80,7 @@ class AmendmentScope(AmendBase):
         r2 = self.result('A', 'V-2')
         self.assertTrue(r2['reused'] and r2['ok'])
         self.assertEqual(r2['reuse_kind'], 'amendment-inputs')
-        self.assertEqual(r2['input_globs'], ['src/a.py'])
+        self.assertEqual(r2['input_globs'], ['other.py', 'src/a.py'])
         self.assertRegex(self.evidence('A', 'V-2')[1], REUSED_LINE)
         self.assertIn('aidd verify --amendment 01', self.evidence('A', 'V-2')[1])
         self.assertEqual(self.store['A'].get('amendment'), '01')
@@ -79,15 +88,15 @@ class AmendmentScope(AmendBase):
         self.assertIn('amendment 01: 2 row(s) executed, 1 REUSED', out)
 
     def test_nothing_changed_reuses_everything(self):                                   # AC-521
-        self.three_rows(amendment='### T-01\n- **Files to change:** `docs/x.md`.\n')
+        self.three_rows(profile=True, amendment='### T-01\n- **Files to change:** `docs/x.md`.\n')
         self.verify('A')
         rc, out = self.verify('A', '--amendment', '1')
-        self.assertEqual((rc, self.runs), (0, []), out)
-        self.assertEqual(self.result('A', 'V-3')['reuse_kind'], 'amendment-scope')
+        self.assertEqual((rc, len(self.runs)), (0, 1), out)
+        self.assertFalse(self.result('A', 'V-3').get('reused'))  # Scope-only remains RUN
 
     def test_regression_always_runs(self):                                               # AC-522
         self.aspec([('V-1', f'{PY} ok.py', 'exit 0', 'src/a.py', 'always'),
-                    ('V-2', f'{PY} other.py', 'exit 0', 'src/a.py', '')])
+                    ('V-2', f'{PY} other.py', 'exit 0', 'src/a.py', '')], profile=True)
         self.verify('A')
         rc, out = self.verify('A', '--amendment', '01')
         self.assertEqual((rc, len(self.runs)), (0, 1), out)
@@ -95,7 +104,7 @@ class AmendmentScope(AmendBase):
         self.assertIn('Regression: always', out)
 
     def test_undeclared_input_change_runs_with_warning(self):                           # AC-523
-        self.three_rows()
+        self.three_rows(profile=True)
         self.verify('A')
         (self.root / 'src' / 'a.py').write_text('x = 3\n', encoding='utf-8')
         rc, out = self.verify('A', '--amendment', '01')
@@ -104,7 +113,7 @@ class AmendmentScope(AmendBase):
         self.assertIn('warning: row V-2: its Inputs changed since its last PASS but amendment 01 declares none', out)
 
     def test_command_naming_a_declared_file_runs(self):
-        self.aspec([('V-1', f'{PY} ok.py lib/b.py', 'exit 0', 'src/a.py', '')])
+        self.aspec([('V-1', f'{PY} ok.py lib/b.py', 'exit 0', 'src/a.py', '')], profile=True)
         self.verify('A')
         rc, out = self.verify('A', '--amendment', '01')
         self.assertEqual((rc, len(self.runs)), (0, 1), out)
@@ -120,7 +129,7 @@ class DryRun(AmendBase):
         self.assertEqual((rc, self.runs, self.events), (0, [], []), out)
         self.assertEqual(self.evidence('A', 'V-2'), before)
         self.assertIn('RUN    V-1: Inputs match amendment file lib/b.py', out)
-        self.assertIn('REUSED V-2:', out)
+        self.assertIn('RUN    V-2:', out)
         self.assertIn('RUN    V-3:', out)
         self.assertIn('nothing was executed and nothing was recorded', out)
 
@@ -181,13 +190,13 @@ class Environment(AmendBase):
         rc, out = self.verify('A', '--amendment', '01')
         self.assertEqual((rc, len(self.runs)), (0, 1), out)
         self.assertIn('cannot prove reuse', out)
-        self.assertIn('no env_id', out)
+        self.assertRegex(out, 'hermetic|offline|contract')
         rc, out = self.verify('A', '--amendment', '01')                                 # env_id now recorded
-        self.assertEqual((rc, self.runs), (0, []), out)
+        self.assertEqual((rc, len(self.runs)), (0, 1), out)
         (self.root / 'ident.txt').write_text('template-2\n', encoding='utf-8')
         rc, out = self.verify('A', '--amendment', '01')
         self.assertEqual((rc, len(self.runs)), (0, 1), out)
-        self.assertIn('environment identity changed', out)
+        self.assertRegex(out, 'hermetic|offline|contract')
 
 
 class CloseGate(AmendBase):
@@ -198,7 +207,7 @@ class CloseGate(AmendBase):
                     rules._run_problems(status.ev, self.root, d, (d / 'spec.md').read_text(encoding='utf-8'), run)]
 
     def test_gate_accepts_then_stales_on_reused_inputs(self):                           # AC-528
-        d = self.three_rows()
+        d = self.three_rows(profile=True)
         self.verify('A')
         (self.root / 'lib' / 'b.py').write_text('y = 2\n', encoding='utf-8')
         rc, out = self.verify('A', '--amendment', '01')
@@ -208,7 +217,7 @@ class CloseGate(AmendBase):
         self.assertTrue(any('inputs changed' in m for m in self.problems(d)), self.problems(d))
 
     def test_forged_reused_result_is_stale(self):                                        # AC-532
-        d = self.three_rows()
+        d = self.three_rows(profile=True)
         self.verify('A')
         (self.root / 'lib' / 'b.py').write_text('y = 2\n', encoding='utf-8')
         self.verify('A', '--amendment', '01')

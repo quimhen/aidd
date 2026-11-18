@@ -1,0 +1,186 @@
+FFFFFFF.....                                                             [100%]
+================================== FAILURES ===================================
+________ test_empty_query_returns_usage_without_show_or_refresh[rest0] ________
+
+tmp_path = WindowsPath('C:/Users/jquimis/AppData/Local/Temp/pytest-of-jquimis/pytest-840/test_empty_query_returns_usage0')
+rest = ['code', '--refresh-on-miss']
+
+    @pytest.mark.parametrize("rest", [
+        ["code", "--refresh-on-miss"],
+        ["code", "", "--refresh-on-miss"],
+        ["code", "   ", "--refresh-on-miss"],
+        ["code", "--refresh-on-miss", "--limit", "5"],
+        ["code", "--limit", "5"],
+        ["code", "", "--limit", "5"],
+        ["code", ""],
+        ["code"],
+    ])
+    def test_empty_query_returns_usage_without_show_or_refresh(tmp_path, rest):
+        with patch.object(G, "show") as show, patch.object(G, "refresh") as refresh:
+>           assert G.main(["--root", str(tmp_path), "show", *rest]) == 2
+E           AssertionError: assert 0 == 2
+E            +  where 0 = <function main at 0x000001DCC2D4A020>(['--root', 'C:\\Users\\jquimis\\AppData\\Local\\Temp\\pytest-of-jquimis\\pytest-840\\test_empty_query_returns_usage0', 'show', 'code', '--refresh-on-miss'])
+E            +    where <function main at 0x000001DCC2D4A020> = G.main
+
+tests\test_aidd_graphs_empty_query.py:23: AssertionError
+---------------------------- Captured stdout call -----------------------------
+<MagicMock name='show()' id='2047699178352'>
+________ test_empty_query_returns_usage_without_show_or_refresh[rest1] ________
+
+tmp_path = WindowsPath('C:/Users/jquimis/AppData/Local/Temp/pytest-of-jquimis/pytest-840/test_empty_query_returns_usage1')
+rest = ['code', '', '--refresh-on-miss']
+
+    @pytest.mark.parametrize("rest", [
+        ["code", "--refresh-on-miss"],
+        ["code", "", "--refresh-on-miss"],
+        ["code", "   ", "--refresh-on-miss"],
+        ["code", "--refresh-on-miss", "--limit", "5"],
+        ["code", "--limit", "5"],
+        ["code", "", "--limit", "5"],
+        ["code", ""],
+        ["code"],
+    ])
+    def test_empty_query_returns_usage_without_show_or_refresh(tmp_path, rest):
+        with patch.object(G, "show") as show, patch.object(G, "refresh") as refresh:
+>           assert G.main(["--root", str(tmp_path), "show", *rest]) == 2
+E           AssertionError: assert 0 == 2
+E            +  where 0 = <function main at 0x000001DCC2D4A020>(['--root', 'C:\\Users\\jquimis\\AppData\\Local\\Temp\\pytest-of-jquimis\\pytest-840\\test_empty_query_returns_usage1', 'show', 'code', '', '--refresh-on-miss'])
+E            +    where <function main at 0x000001DCC2D4A020> = G.main
+
+tests\test_aidd_graphs_empty_query.py:23: AssertionError
+---------------------------- Captured stdout call -----------------------------
+<MagicMock name='show()' id='2047699392304'>
+________ test_empty_query_returns_usage_without_show_or_refresh[rest2] ________
+
+tmp_path = WindowsPath('C:/Users/jquimis/AppData/Local/Temp/pytest-of-jquimis/pytest-840/test_empty_query_returns_usage2')
+rest = ['code', '   ', '--refresh-on-miss']
+
+    @pytest.mark.parametrize("rest", [
+        ["code", "--refresh-on-miss"],
+        ["code", "", "--refresh-on-miss"],
+        ["code", "   ", "--refresh-on-miss"],
+        ["code", "--refresh-on-miss", "--limit", "5"],
+        ["code", "--limit", "5"],
+        ["code", "", "--limit", "5"],
+        ["code", ""],
+        ["code"],
+    ])
+    def test_empty_query_returns_usage_without_show_or_refresh(tmp_path, rest):
+        with patch.object(G, "show") as show, patch.object(G, "refresh") as refresh:
+>           assert G.main(["--root", str(tmp_path), "show", *rest]) == 2
+E           AssertionError: assert 0 == 2
+E            +  where 0 = <function main at 0x000001DCC2D4A020>(['--root', 'C:\\Users\\jquimis\\AppData\\Local\\Temp\\pytest-of-jquimis\\pytest-840\\test_empty_query_returns_usage2', 'show', 'code', '   ', '--refresh-on-miss'])
+E            +    where <function main at 0x000001DCC2D4A020> = G.main
+
+tests\test_aidd_graphs_empty_query.py:23: AssertionError
+---------------------------- Captured stdout call -----------------------------
+<MagicMock name='show()' id='2047699524576'>
+________ test_empty_query_returns_usage_without_show_or_refresh[rest3] ________
+
+tmp_path = WindowsPath('C:/Users/jquimis/AppData/Local/Temp/pytest-of-jquimis/pytest-840/test_empty_query_returns_usage3')
+rest = ['code', '--refresh-on-miss', '--limit', '5']
+
+    @pytest.mark.parametrize("rest", [
+        ["code", "--refresh-on-miss"],
+        ["code", "", "--refresh-on-miss"],
+        ["code", "   ", "--refresh-on-miss"],
+        ["code", "--refresh-on-miss", "--limit", "5"],
+        ["code", "--limit", "5"],
+        ["code", "", "--limit", "5"],
+        ["code", ""],
+        ["code"],
+    ])
+    def test_empty_query_returns_usage_without_show_or_refresh(tmp_path, rest):
+        with patch.object(G, "show") as show, patch.object(G, "refresh") as refresh:
+>           assert G.main(["--root", str(tmp_path), "show", *rest]) == 2
+E           AssertionError: assert 0 == 2
+E            +  where 0 = <function main at 0x000001DCC2D4A020>(['--root', 'C:\\Users\\jquimis\\AppData\\Local\\Temp\\pytest-of-jquimis\\pytest-840\\test_empty_query_returns_usage3', 'show', 'code', '--refresh-on-miss', '--limit', ...])
+E            +    where <function main at 0x000001DCC2D4A020> = G.main
+
+tests\test_aidd_graphs_empty_query.py:23: AssertionError
+---------------------------- Captured stdout call -----------------------------
+<MagicMock name='show()' id='2047699492912'>
+________ test_empty_query_returns_usage_without_show_or_refresh[rest4] ________
+
+tmp_path = WindowsPath('C:/Users/jquimis/AppData/Local/Temp/pytest-of-jquimis/pytest-840/test_empty_query_returns_usage4')
+rest = ['code', '--limit', '5']
+
+    @pytest.mark.parametrize("rest", [
+        ["code", "--refresh-on-miss"],
+        ["code", "", "--refresh-on-miss"],
+        ["code", "   ", "--refresh-on-miss"],
+        ["code", "--refresh-on-miss", "--limit", "5"],
+        ["code", "--limit", "5"],
+        ["code", "", "--limit", "5"],
+        ["code", ""],
+        ["code"],
+    ])
+    def test_empty_query_returns_usage_without_show_or_refresh(tmp_path, rest):
+        with patch.object(G, "show") as show, patch.object(G, "refresh") as refresh:
+>           assert G.main(["--root", str(tmp_path), "show", *rest]) == 2
+E           AssertionError: assert 0 == 2
+E            +  where 0 = <function main at 0x000001DCC2D4A020>(['--root', 'C:\\Users\\jquimis\\AppData\\Local\\Temp\\pytest-of-jquimis\\pytest-840\\test_empty_query_returns_usage4', 'show', 'code', '--limit', '5'])
+E            +    where <function main at 0x000001DCC2D4A020> = G.main
+
+tests\test_aidd_graphs_empty_query.py:23: AssertionError
+---------------------------- Captured stdout call -----------------------------
+<MagicMock name='show()' id='2047672875536'>
+________ test_empty_query_returns_usage_without_show_or_refresh[rest5] ________
+
+tmp_path = WindowsPath('C:/Users/jquimis/AppData/Local/Temp/pytest-of-jquimis/pytest-840/test_empty_query_returns_usage5')
+rest = ['code', '', '--limit', '5']
+
+    @pytest.mark.parametrize("rest", [
+        ["code", "--refresh-on-miss"],
+        ["code", "", "--refresh-on-miss"],
+        ["code", "   ", "--refresh-on-miss"],
+        ["code", "--refresh-on-miss", "--limit", "5"],
+        ["code", "--limit", "5"],
+        ["code", "", "--limit", "5"],
+        ["code", ""],
+        ["code"],
+    ])
+    def test_empty_query_returns_usage_without_show_or_refresh(tmp_path, rest):
+        with patch.object(G, "show") as show, patch.object(G, "refresh") as refresh:
+>           assert G.main(["--root", str(tmp_path), "show", *rest]) == 2
+E           AssertionError: assert 0 == 2
+E            +  where 0 = <function main at 0x000001DCC2D4A020>(['--root', 'C:\\Users\\jquimis\\AppData\\Local\\Temp\\pytest-of-jquimis\\pytest-840\\test_empty_query_returns_usage5', 'show', 'code', '', '--limit', ...])
+E            +    where <function main at 0x000001DCC2D4A020> = G.main
+
+tests\test_aidd_graphs_empty_query.py:23: AssertionError
+---------------------------- Captured stdout call -----------------------------
+<MagicMock name='show()' id='2047699691248'>
+________ test_empty_query_returns_usage_without_show_or_refresh[rest6] ________
+
+tmp_path = WindowsPath('C:/Users/jquimis/AppData/Local/Temp/pytest-of-jquimis/pytest-840/test_empty_query_returns_usage6')
+rest = ['code', '']
+
+    @pytest.mark.parametrize("rest", [
+        ["code", "--refresh-on-miss"],
+        ["code", "", "--refresh-on-miss"],
+        ["code", "   ", "--refresh-on-miss"],
+        ["code", "--refresh-on-miss", "--limit", "5"],
+        ["code", "--limit", "5"],
+        ["code", "", "--limit", "5"],
+        ["code", ""],
+        ["code"],
+    ])
+    def test_empty_query_returns_usage_without_show_or_refresh(tmp_path, rest):
+        with patch.object(G, "show") as show, patch.object(G, "refresh") as refresh:
+>           assert G.main(["--root", str(tmp_path), "show", *rest]) == 2
+E           AssertionError: assert 0 == 2
+E            +  where 0 = <function main at 0x000001DCC2D4A020>(['--root', 'C:\\Users\\jquimis\\AppData\\Local\\Temp\\pytest-of-jquimis\\pytest-840\\test_empty_query_returns_usage6', 'show', 'code', ''])
+E            +    where <function main at 0x000001DCC2D4A020> = G.main
+
+tests\test_aidd_graphs_empty_query.py:23: AssertionError
+---------------------------- Captured stdout call -----------------------------
+<MagicMock name='show()' id='2047698456592'>
+=========================== short test summary info ===========================
+FAILED tests/test_aidd_graphs_empty_query.py::test_empty_query_returns_usage_without_show_or_refresh[rest0]
+FAILED tests/test_aidd_graphs_empty_query.py::test_empty_query_returns_usage_without_show_or_refresh[rest1]
+FAILED tests/test_aidd_graphs_empty_query.py::test_empty_query_returns_usage_without_show_or_refresh[rest2]
+FAILED tests/test_aidd_graphs_empty_query.py::test_empty_query_returns_usage_without_show_or_refresh[rest3]
+FAILED tests/test_aidd_graphs_empty_query.py::test_empty_query_returns_usage_without_show_or_refresh[rest4]
+FAILED tests/test_aidd_graphs_empty_query.py::test_empty_query_returns_usage_without_show_or_refresh[rest5]
+FAILED tests/test_aidd_graphs_empty_query.py::test_empty_query_returns_usage_without_show_or_refresh[rest6]
+7 failed, 5 passed in 0.62s

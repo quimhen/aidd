@@ -1126,6 +1126,9 @@ def _check_debt_impl(root, spec_id, extra_texts):
     return _dedup(out)
 
 
+_DEBT_CACHE = {}
+
+
 def open_debt_blocking(root):
     """{spec_id: [rows]} — open Visual-debt rows found in ANY specs/*/spec.md, indexed by the
     existing spec they block (a row in another spec naming X blocks X). Each row dict also
@@ -1133,6 +1136,9 @@ def open_debt_blocking(root):
     res = {}
     try:
         specs = Path(root) / 'specs'
+        sig_key = (str(root), tuple((n, (specs / n / 'spec.md').stat().st_mtime_ns if (specs / n / 'spec.md').exists() else 0) for n in _spec_ids(specs)))
+        if sig_key in _DEBT_CACHE:
+            return {k: [dict(r) for r in v] for k, v in _DEBT_CACHE[sig_key].items()}
         ids = _spec_ids(specs)
         for name in ids:
             t = _read(specs / name / 'spec.md')
@@ -1143,6 +1149,7 @@ def open_debt_blocking(root):
                     r = dict(row)
                     r['in_spec'] = name
                     res.setdefault(target, []).append(r)
+        _DEBT_CACHE[sig_key] = res
     except Exception:
         pass
     return res
@@ -3386,6 +3393,61 @@ def _rows_already_executed(spec_text, run):
         return False
 
 
+def historical_reuse_problem(row, result, *, input_algorithm, validate_environment=None):
+    """Policy/schema gate only; deciding reuse also requires live caller proofs and validator."""
+    try:
+        if not isinstance(row, dict) or not isinstance(result, dict):
+            return 'offline hermetic contract proof is malformed'
+        inputs = row.get('inputs')
+        if row.get('reuse') != 'hermetic' or not isinstance(inputs, list) or not inputs:
+            return 'historical reuse requires explicit offline hermetic Inputs'
+        if any(not isinstance(item, str) or not item.strip() for item in inputs):
+            return 'offline hermetic Inputs declaration is malformed'
+        declaration = row.get('environment')
+        if not isinstance(declaration, str):
+            return 'offline hermetic Environment declaration is missing'
+        declaration = declaration.strip()
+        sections = [section.strip() for section in declaration.split(';')]
+        if len(sections) != 3 or sections[0].lower() != 'contract:offline':
+            return 'complete offline hermetic Environment declaration is required'
+        options = {}
+        for section in sections[1:]:
+            key, separator, value = section.partition('=')
+            key = key.strip().lower()
+            if not separator or key not in ('vars', 'packages') or key in options:
+                return 'offline hermetic Environment options are malformed'
+            values = [item.strip() for item in value.split(',')]
+            if not values or any(not item for item in values):
+                return 'offline hermetic Environment options are incomplete'
+            if len(values) == 1 and values[0].lower() == 'none':
+                values = []
+            elif any(item.lower() == 'none' for item in values):
+                return 'offline hermetic Environment options are malformed'
+            pattern = r'[A-Za-z_][A-Za-z0-9_]*' if key == 'vars' else r'[A-Za-z0-9][A-Za-z0-9_.-]*'
+            normalized = values if key == 'vars' else [re.sub(r'[-_.]+', '-', item).lower() for item in values]
+            if any(not re.fullmatch(pattern, item) for item in values) or len(set(normalized)) != len(values):
+                return 'offline hermetic Environment options are malformed'
+            options[key] = values
+        if set(options) != {'vars', 'packages'}:
+            return 'offline hermetic Environment options are incomplete'
+        if (result.get('reuse_policy') != 'hermetic'
+                or result.get('input_globs') != inputs
+                or not isinstance(result.get('input_fp'), str) or not result['input_fp']
+                or not input_algorithm or result.get('input_algorithm') != input_algorithm):
+            return 'prior offline hermetic Inputs/algorithm proof is missing or changed'
+        recorded_id = result.get('environment_id')
+        if (not isinstance(recorded_id, str) or not recorded_id.strip()
+                or result.get('environment_declaration') != declaration):
+            return 'prior offline hermetic environment contract proof is missing or changed'
+        if validate_environment is not None:
+            current = validate_environment(row.get('cmd') or '', declaration)
+            if not current or current != recorded_id:
+                return 'current offline hermetic contract identity is unavailable or changed'
+        return None
+    except Exception:
+        return 'offline hermetic contract proof cannot be validated'
+
+
 def _run_problems(ev, root, spec_dir, spec_text, run, fingerprint=None):
     """[(state, violation)] for an existing verify_run; state 'failed' | 'stale'. Fail closed.
     `fingerprint`: an optional FingerprintOnce (shared across the specs of one status run); without it the
@@ -3396,6 +3458,9 @@ def _run_problems(ev, root, spec_dir, spec_text, run, fingerprint=None):
     out = []
     changed = [str(x) for x in (run.get('code_changed') or [])]
     res0 = run.get('results') or []
+    current_rows = {}
+    for row in parse_verification(spec_text):
+        current_rows.setdefault(str(row.get('n')), []).append(row)
     for result in res0:
         if isinstance(result, dict) and result.get('input_globs'):
             fp = row_input_fingerprint(root, result['input_globs'])
@@ -3403,6 +3468,14 @@ def _run_problems(ev, root, spec_dir, spec_text, run, fingerprint=None):
                 out.append(('stale', _v('R10', 'Verification row inputs changed or are unavailable.', rerun)))
         # aidd:FR-456 amendment 11: a row reused by `--amendment` counts only with the proof it was reused on
         if isinstance(result, dict) and result.get('reused'):
+            matched_rows = current_rows.get(str(result.get('n')), [])
+            reason = ('historical reuse has no unambiguous current Verification row'
+                      if len(matched_rows) != 1 else
+                      historical_reuse_problem(matched_rows[0], result,
+                                               input_algorithm=getattr(ev, 'EVIDENCE_ALGORITHM',
+                                                                       'raw-sql-v3-nofilters-glob-v2')))
+            if reason:
+                out.append(('stale', _v('R10', reason, rerun)))
             kind = result.get('reuse_kind')
             origin = result.get('reused_from') if isinstance(result.get('reused_from'), dict) else {}
             if ((kind == 'amendment-inputs' and not (result.get('input_globs') and result.get('input_fp')))
@@ -3439,29 +3512,9 @@ def _run_problems(ev, root, spec_dir, spec_text, run, fingerprint=None):
     f = getattr(ev, 'last_code_edit_ts', None)
     scope = [str(x) for x in (run.get('code_scope') or [])]
     algorithm = run.get('code_algorithm')
-    current_algorithm = getattr(ev, 'EVIDENCE_ALGORITHM', 'raw-sql-v2-glob-v2')
+    current_algorithm = getattr(ev, 'EVIDENCE_ALGORITHM', 'raw-sql-v3-nofilters-glob-v2')
     if algorithm != current_algorithm:
-        def safe_literals(values):
-            for value in values:
-                value = str(value).replace('\\', '/')
-                if any(c in value for c in '*?[]') or value.lower().endswith('.sql'):
-                    return False
-            try:
-                import aidd_evidence as evidence_module
-                evidence_module._scope_re(values)
-                return True
-            except (ValueError, re.error):
-                return False
-        current_scope = verification_scope(spec_text, read_tasks(d))
-        recorded_generated = [str(x) for x in (run.get('code_generated') or [])]
-        legacy_fp = run.get('code_fp_end')
-        legacy_safe = (not algorithm and isinstance(legacy_fp, str)
-                       and re.fullmatch(r'c2:[0-9a-f]{16}', legacy_fp) is not None
-                       and bool(scope) and scope == current_scope
-                       and sorted(recorded_generated) == sorted(gen_now)
-                       and safe_literals(scope) and safe_literals(recorded_generated))
-        if not legacy_safe:
-            out.append(('stale', _v('R10', 'Verification fingerprint algorithm is legacy or unknown for this scope.', rerun)))
+        out.append(('stale', _v('R10', 'Verification fingerprint algorithm is legacy or unknown for this scope.', rerun)))
     from glob import escape as escape_glob
     excl = [str(x) for x in (run.get('code_generated') or [])] + [escape_glob(x) for x in changed]
     try:

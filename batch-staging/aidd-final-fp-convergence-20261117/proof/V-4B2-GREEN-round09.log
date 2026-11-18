@@ -1,0 +1,11 @@
+test_01_all_dry_run_routes_skip_real_identity_marker (test_dry_run_identity_security.DryRunIdentitySecurity.test_01_all_dry_run_routes_skip_real_identity_marker) ... ok
+test_02_actual_identity_path_preserved_and_failure_unavailable (test_dry_run_identity_security.DryRunIdentitySecurity.test_02_actual_identity_path_preserved_and_failure_unavailable) ... ok
+test_13_actual_amendment_dry_run_does_not_execute_tracked_clean_filter (test_dry_run_identity_security.FullDryRunTrackedFilterSecurity.test_13_actual_amendment_dry_run_does_not_execute_tracked_clean_filter) ... ok
+test_14_actual_round_dry_run_does_not_execute_tracked_clean_filter (test_dry_run_identity_security.FullDryRunTrackedFilterSecurity.test_14_actual_round_dry_run_does_not_execute_tracked_clean_filter) ... ok
+test_11_blob_and_code_state_do_not_invoke_clean_filter (test_dry_run_identity_security.RawGitIdentitySecurity.test_11_blob_and_code_state_do_not_invoke_clean_filter) ... ok
+test_12_raw_bytes_and_crlf_changes_change_public_identity (test_dry_run_identity_security.RawGitIdentitySecurity.test_12_raw_bytes_and_crlf_changes_change_public_identity) ... ok
+
+----------------------------------------------------------------------
+Ran 6 tests in 3.962s
+
+OK

@@ -245,6 +245,8 @@ def collect(st, root, spec_args):
             expected = r.get('expected') or 'exit 0'
             rows.append({'spec': d.name, 'n': str(r.get('n') or i), 'i': i, 'cmd': r['cmd'], 'expected': expected,
                          'inputs': r.get('inputs') or [], 'reuse': str(r.get('reuse') or '').strip().lower(),
+                         'environment': r.get('environment', ''),
+                         'regression': r.get('regression', ''),
                          'key': group_key(root, r['cmd']), 'heavy': heavy(r['cmd'])})
     return specs, rows, notes
 
@@ -450,12 +452,21 @@ def reuse_plan(st, root, spec, spec_rows, state, parts, full=False):
         results = [x for x in (prior.get('results') or []) if isinstance(x, dict)]
         for r in spec_rows:
             n = r['n']
+            if r.get('regression') == 'always':
+                why[n] = 'Regression: always'
+                continue
             if r.get('reuse') == 'never':
                 why[n] = '`Reuse: never`'
                 continue
             res = next((x for x in results if str(x.get('n')) == n), None)
             if res is None:
                 why[n] = 'new row (not in the previous verify_run)'
+                continue
+            policy_problem = st.rules.historical_reuse_problem(
+                r, res, input_algorithm=st.ev.EVIDENCE_ALGORITHM,
+                validate_environment=st._contract_environment_id)
+            if policy_problem:
+                why[n] = policy_problem
                 continue
             if normalize_command(res.get('cmd') or '') != normalize_command(r['cmd']):
                 why[n] = 'command changed'
@@ -649,7 +660,8 @@ def run_round(st, spec_args, dry_run=False, full=False):
         if st_start is None:
             print(f"note: {st.fingerprint_refusal(s['name'], 'the real round would refuse to start')}")
         starts[s['name']] = {'started': time.time(), 'fp_start': st.ev.worktree_fingerprint(root), 'st_start': st_start}
-        parts_start[s['name']] = env_parts(st, root, s, [r['cmd'] for r in rows_by_spec.get(s['name'], [])], probe)
+        parts_start[s['name']] = (None if dry_run else
+                                 env_parts(st, root, s, [r['cmd'] for r in rows_by_spec.get(s['name'], [])], probe))
     reused, reasons = {}, {}
     for s in specs:
         got, why = reuse_plan(st, root, s, rows_by_spec.get(s['name'], []), starts[s['name']]['st_start'],

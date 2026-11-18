@@ -19,7 +19,9 @@
 
 Lazy-imported by aidd_status (`_amendment_mod`); stdlib only."""
 import hashlib
+import os
 import re
+import stat
 import time
 from datetime import datetime
 from pathlib import Path
@@ -49,26 +51,80 @@ def _pathlike(p):
     return bool(p) and '<' not in p and '>' not in p and not any(c.isspace() for c in p) and ('/' in p or '.' in p)
 
 
-def amendment_file(d, nn):
-    """The `tasks-amendment-NN.md` of spec dir `d` (NN zero-padded or not), else None."""
+def _candidate_bytes(p, base):
+    """Read one stable regular candidate; never follow a link or reopen it for parsing."""
+    try:
+        p.resolve().relative_to(base)
+        directory = base.lstat()
+        before = p.lstat()
+        if (not stat.S_ISREG(before.st_mode) or p.is_symlink()
+                or getattr(before, 'st_file_attributes', 0) & 0x400):
+            raise ValueError('amendment task candidate must be a regular file, not a link')
+        flags = os.O_RDONLY | getattr(os, 'O_BINARY', 0) | getattr(os, 'O_NONBLOCK', 0) | getattr(os, 'O_NOFOLLOW', 0)
+        fd = os.open(p, flags)
+        try:
+            opened = os.fstat(fd)
+            identity = lambda s: (s.st_dev, s.st_ino)
+            if not stat.S_ISREG(opened.st_mode) or identity(before) != identity(opened):
+                raise ValueError('amendment task candidate changed before stable read')
+            limit = 2 * 1024 * 1024
+            if opened.st_size > limit:
+                raise ValueError('amendment task candidate exceeds 2 MiB')
+            parts = []; size = 0
+            while size <= limit:
+                chunk = os.read(fd, min(65536, limit + 1 - size))
+                if not chunk: break
+                parts.append(chunk); size += len(chunk)
+            after = os.fstat(fd)
+            if (size > limit or identity(directory) != identity(base.lstat())
+                    or identity(opened) != identity(p.lstat())
+                    or (opened.st_size, opened.st_mtime_ns) != (after.st_size, after.st_mtime_ns)):
+                raise ValueError('amendment task candidate changed during stable read')
+            p.resolve().relative_to(base)
+            return b''.join(parts)
+        finally:
+            os.close(fd)
+    except FileNotFoundError:
+        # A genuinely absent candidate is optional; a disappearing existing candidate is unsafe.
+        if 'before' not in locals(): return None
+        raise ValueError('amendment task candidate changed during stable read')
+    except (OSError, RuntimeError, ValueError) as error:
+        raise ValueError('cannot read stable contained amendment task candidate: ' + p.name + ': ' + str(error)) from error
+
+
+def _amendment_candidate(d, nn):
+    """FR-980..983: discover both task layouts without creating a batch or changing approval identity."""
     n = int(nn)
-    for name in (f'tasks-amendment-{n:02d}.md', f'tasks-amendment-{nn}.md', f'tasks-amendment-{n}.md',
-                 f'tasks-amendment-{n:03d}.md'):
-        p = Path(d) / name
-        if p.is_file():
-            return p
-    return None
+    canonical=(f'tasks-amendment-{n:02d}.md',f'tasks-amendment-{nn}.md',
+               f'tasks-amendment-{n}.md',f'tasks-amendment-{n:03d}.md')
+    reverse=(f'amendment-{n:02d}-tasks.md',f'amendment-{nn}-tasks.md',
+             f'amendment-{n}-tasks.md',f'amendment-{n:03d}-tasks.md')
+    base=Path(d).resolve();found=[];content=None
+    for name in dict.fromkeys(canonical+reverse):
+        p=Path(d)/name
+        data = _candidate_bytes(p, base)
+        if data is None: continue
+        if found and data!=content:
+            raise ValueError('ambiguous amendment task files differ: '+found[0].name+', '+name)
+        content=data;found.append(p)
+    return (found[0], content) if found else (None, None)
+
+
+def amendment_file(d, nn):
+    """FR-980..983: compatible discovery API; parser uses the same validated byte snapshot."""
+    return _amendment_candidate(d, nn)[0]
 
 
 def amendment_files(st, d, nn):
     """aidd:FR-450 (sorted root-relative declared files, path of the task file). ValueError when the file is
     missing or declares no path."""
-    p = amendment_file(d, nn)
+    p, data = _amendment_candidate(d, nn)
     want = f'specs/{Path(d).name}/tasks-amendment-{int(nn):02d}.md'
     if p is None:
-        raise ValueError(f'{want} not found (`--amendment {nn}` reads the files it declares: `Files to change:` '
+        reverse=f'amendment-{int(nn):02d}-tasks.md'
+        raise ValueError(f'{want} (or {reverse}) not found (`--amendment {nn}` reads the files it declares: `Files to change:` '
                          'lines, the `Target file` column or an ```aidd-files block)')
-    text = p.read_text(encoding='utf-8', errors='replace')
+    text = data.decode('utf-8', errors='replace')
     files = set()
     for m in _FILES_LINE_RE.finditer(text):
         files.update(x for x in (_norm(t) for t in _TICK_RE.findall(m.group(1))) if _pathlike(x))
@@ -108,6 +164,39 @@ def _reused_evidence(data, line):
         del lines[1]
     lines.insert(1, line)
     return '\n'.join(lines).encode('utf-8')
+
+
+def _legacy_truncated_command_matches(st, rnd, result, current_cmd, data):
+    """Prove legacy full command from an already SHA1-bound artifact; no execution."""
+    try:
+        recorded = result.get('cmd')
+        if not isinstance(recorded, str) or len(recorded) != 500:
+            return False
+        first = data.decode('utf-8', errors='strict').split('\n', 1)[0]
+        if first.endswith('\r'):
+            first = first[:-1]
+        if not first.startswith('# '):
+            return False
+        command_and_exit, sep, stamp = first[2:].rpartition(' | ')
+        actual_cmd, exit_sep, exit_field = command_and_exit.rpartition(' | ')
+        if not sep or not exit_sep or exit_field != 'exit 0' or not actual_cmd:
+            return False
+        parsed = datetime.strptime(stamp, '%Y-%m-%dT%H:%M:%S')
+        if parsed.isoformat(timespec='seconds') != stamp:
+            return False
+        if any(ord(ch) < 32 or ord(ch) == 127 for ch in actual_cmd + current_cmd):
+            return False
+        projected, labels = st.ev.redact_secrets(actual_cmd, limit=500)
+        uncut, uncut_labels = st.ev.redact_secrets(actual_cmd, limit=20000)
+        if labels or uncut_labels or len(actual_cmd) >= st.ev.MAX_REDACT_INPUT:
+            return False
+        if len(uncut) <= 500 or projected != recorded or uncut[:500] != recorded:
+            return False
+        if '[redacted]' in actual_cmd:
+            return False
+        return rnd.normalize_command(actual_cmd) == rnd.normalize_command(current_cmd)
+    except Exception:
+        return False
 
 
 def plan(st, root, d, rows, state, parts, files, scope, nn=None):
@@ -154,10 +243,19 @@ def plan(st, root, d, rows, state, parts, files, scope, nn=None):
             return 'no previous verify_run of this spec', None
         if prior.get('stable') is not True:
             return 'previous verify_run was not stable', None
+        if prior.get('code_algorithm') != st.ev.EVIDENCE_ALGORITHM:
+            return 'previous verify_run has no current fingerprint algorithm proof', None
         res = next((x for x in results if str(x.get('n')) == n), None)
         if res is None:
             return 'new row (not in the previous verify_run)', None
-        if rnd.normalize_command(res.get('cmd') or '') != rnd.normalize_command(r['cmd']):
+        policy_problem = st.rules.historical_reuse_problem(
+            r, res, input_algorithm=st.ev.EVIDENCE_ALGORITHM,
+            validate_environment=st._contract_environment_id)
+        if policy_problem:
+            return 'cannot prove reuse: ' + policy_problem, None
+        command_changed = (rnd.normalize_command(res.get('cmd') or '') !=
+                           rnd.normalize_command(r['cmd']))
+        if command_changed and (not isinstance(res.get('cmd'), str) or len(res['cmd']) != 500):
             return 'command changed since its last PASS', None
         if str(res.get('expected') or '').strip() != str(r.get('expected') or 'exit 0').strip():
             return 'Expected changed since its last PASS', None
@@ -200,6 +298,17 @@ def plan(st, root, d, rows, state, parts, files, scope, nn=None):
         want = str(res.get('sha1') or '').lower()
         if len(want) < 40 or hashlib.sha1(data).hexdigest() != want:
             return 'cannot prove reuse: previous evidence file missing or changed', None
+        if command_changed:
+            # New fallback only: unknown external state never becomes reusable.
+            declaration = str(r.get('environment') or '').strip()
+            if r.get('reuse') != 'hermetic' or not inputs or not declaration:
+                return 'cannot prove reuse: truncated command requires an offline hermetic Inputs contract', None
+            contract_id = st._contract_environment_id(r['cmd'], declaration)
+            if (not contract_id or res.get('environment_id') != contract_id or
+                    str(res.get('environment_declaration') or '').strip() != declaration):
+                return 'cannot prove reuse: truncated command offline contract is unavailable or changed', None
+            if not _legacy_truncated_command_matches(st, rnd, res, r['cmd'], data):
+                return 'cannot prove reuse: truncated command has no intact matching full header', None
         if not st._cached_pass_valid(data, res, r.get('expected') or 'exit 0'):
             return "previous evidence does not satisfy today's PASS rules", None
         origin = dict(res['reused_from']) if isinstance(res.get('reused_from'), dict) else {
@@ -334,7 +443,7 @@ def run(st, spec_arg, nn=None, dry_run=False):
     try:
         spec_info = {'identity': rnd.identity_commands(spec_text),
                      'vars': rnd.declared_vars(st, spec_text, functional)}
-        parts = rnd.env_parts(st, root, spec_info, [r['cmd'] for r in functional])
+        parts = None if dry_run else rnd.env_parts(st, root, spec_info, [r['cmd'] for r in functional])
     except Exception:
         parts = None          # row_env_id(None) = unavailable: rows that need an identity run (fail closed)
     items = plan(st, root, d, functional, state, parts, files, scope, nn)

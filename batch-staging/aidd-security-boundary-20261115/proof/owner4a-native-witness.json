@@ -1,0 +1,40 @@
+{
+  "status": "AUTHENTIC_STRUCTURED_BOUNDED_EXCEPTION_DATA_ONLY",
+  "session": "01a1bad1-eed0-7ae0-b417-8b56ef653d28",
+  "native_source": "C:\\Users\\jquimis\\.codex\\sessions\\2026\\11\\08\\rollout-2026-11-08T06-01-23-01a1bad1-eed0-7ae0-b417-8b56ef653d28.jsonl",
+  "native_cwd": "D:\\Fuentes\\b1SycLink",
+  "target_overlay_root": "D:\\Fuentes\\_worktrees\\aidd-spanish-approval-20261114",
+  "callback_tool_use_id": "call_b7626dfd2ccc4d4bb2c97dc1ff26323f",
+  "question_index": 0,
+  "question": {
+    "text": "¿Autorizas aprobar la excepción puntual [tasks:4a034dae] para corregir dos compatibilidades de AIDD en una copia aislada? Reconocer «Apruebas» y recuperar comandos truncados solo desde evidencia íntegra cuyo hash, comando completo, resultado y entorno coincidan. Incluye pruebas dirigidas y revisión independiente; conserva tus decisiones y exige ejecutar cualquier fila dudosa. [Plan](D:/Fuentes/_worktrees/aidd-spanish-approval-20261114/overlay-tasks.md). No modifica la app ni la instalación actual.",
+    "options": [
+      "Autorizar corrección puntual",
+      "Revisar el plan"
+    ],
+    "proof": {
+      "byte_offset": 108837672,
+      "raw_record_sha256": "ae9602c1ebe38e25b88f721c00bab173f4ff6f758e18875831e43921bfbe54c9",
+      "timestamp": "2026-11-14T20:30:15.684Z"
+    }
+  },
+  "answer": {
+    "label": "Autorizar corrección puntual",
+    "echo": "¿Autorizas aprobar la excepción puntual [tasks:4a034dae] para corregir dos compatibilidades de AIDD en una copia aislada? Reconocer «Apruebas» y recuperar comandos truncados solo desde evidencia íntegra cuyo hash, comando completo, resultado y entorno coincidan. Incluye pruebas dirigidas y revisión independiente; conserva tus decisiones y exige ejecutar cualquier fila dudosa. [Plan](D:/Fuentes/_worktrees/aidd-spanish-approval-20261114/overlay-tasks.md). No modifica la app ni la instalación actual.",
+    "native_user_text": "<send_user_message_question_reply>\n[{\"answer\":\"Autorizar corrección puntual\",\"question\":\"¿Autorizas aprobar la excepción puntual [tasks:4a034dae] para corregir dos compatibilidades de AIDD en una copia aislada? Reconocer «Apruebas» y recuperar comandos truncados solo desde evidencia íntegra cuyo hash, comando completo, resultado y entorno coincidan. Incluye pruebas dirigidas y revisión independiente; conserva tus decisiones y exige ejecutar cualquier fila dudosa. [Plan](D:/Fuentes/_worktrees/aidd-spanish-approval-20261114/overlay-tasks.md). No modifica la app ni la instalación actual.\",\"questionItemId\":\"[\\\"request_user_input_async\\\",\\\"call_b7626dfd2ccc4d4bb2c97dc1ff26323f\\\",0]\"}]\n</send_user_message_question_reply>",
+    "proof": {
+      "byte_offset": 109381462,
+      "raw_record_sha256": "61643a18b2fbd09de1818d7b3ec27a9e9a7ab827cc7a5acc7422b74467b3126b",
+      "timestamp": "2026-11-14T20:49:52.610Z"
+    }
+  },
+  "question_sha256": "3626d1c33e9cb12a349d476bbc55627017b8e216cabede9acd06de6b2ac85ea5",
+  "current_overlay_tasks_hash": "4a034dae3dec",
+  "overlay_tasks_sha256": "b269632a3be71e362462721af01e8e83ab57beac5d3db3c019286f6ae813f7e7",
+  "read_thread_proof_sha256": "0b5f3bd0cde7b7d6d7e95f2940bc58838f9c0589b10fd2375413c4afad1ebd6f",
+  "scope": "only explicitly offered two compatibility fixes in an isolated copy, targeted tests and independent review; does not authorize V2 approvals, original installation, B1 source changes or broad reuse",
+  "plain_ya_aprobe_at_2026_11_14T202416Z": "earlier old-three-page reply; NOT used as this authorization",
+  "approval_events_written": 0,
+  "unit_approval_events_written": 0,
+  "API_registration_performed": false
+}

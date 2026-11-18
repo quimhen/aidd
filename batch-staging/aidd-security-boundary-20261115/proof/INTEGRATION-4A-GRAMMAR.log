@@ -1,0 +1,12 @@
+test_newer_apruebas_decline_cancels_older_aprobar_summary (test_approval_topic_grammar.TestApprovalTopicGrammar.test_newer_apruebas_decline_cancels_older_aprobar_summary) ... ok
+test_ordinary_and_review_callers_accept_apruebas (test_approval_topic_grammar.TestApprovalTopicGrammar.test_ordinary_and_review_callers_accept_apruebas) ... ok
+test_ordinary_and_review_callers_preserve_refusals (test_approval_topic_grammar.TestApprovalTopicGrammar.test_ordinary_and_review_callers_preserve_refusals) ... ok
+test_review_missing_stale_or_newer_context_still_refuses (test_approval_topic_grammar.TestApprovalTopicGrammar.test_review_missing_stale_or_newer_context_still_refuses) ... ok
+test_summary_accepts_apruebas_and_existing_stems (test_approval_topic_grammar.TestApprovalTopicGrammar.test_summary_accepts_apruebas_and_existing_stems) ... ok
+test_summary_cannot_approve_different_canonical_unit_context (test_approval_topic_grammar.TestApprovalTopicGrammar.test_summary_cannot_approve_different_canonical_unit_context) ... ok
+test_summary_preserves_tag_label_and_topic_refusals (test_approval_topic_grammar.TestApprovalTopicGrammar.test_summary_preserves_tag_label_and_topic_refusals) ... ok
+
+----------------------------------------------------------------------
+Ran 7 tests in 4.405s
+
+OK

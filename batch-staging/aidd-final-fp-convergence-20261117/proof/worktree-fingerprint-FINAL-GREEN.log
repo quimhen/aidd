@@ -1,0 +1,35 @@
+test_13_actual_amendment_dry_run_does_not_execute_tracked_clean_filter (tests.test_dry_run_identity_security.FullDryRunTrackedFilterSecurity.test_13_actual_amendment_dry_run_does_not_execute_tracked_clean_filter) ... ok
+test_14_actual_round_dry_run_does_not_execute_tracked_clean_filter (tests.test_dry_run_identity_security.FullDryRunTrackedFilterSecurity.test_14_actual_round_dry_run_does_not_execute_tracked_clean_filter) ... ok
+test_git_missing_falls_back_to_mtimes (tests.test_evidence.TestWorktreeFingerprint.test_git_missing_falls_back_to_mtimes) ... ok
+test_git_repo (tests.test_evidence.TestWorktreeFingerprint.test_git_repo) ... ok
+test_non_git_dir_uses_mtime_fallback (tests.test_evidence.TestWorktreeFingerprint.test_non_git_dir_uses_mtime_fallback) ... ok
+test_over_file_cap_or_budget_is_none (tests.test_evidence.TestWorktreeFingerprint.test_over_file_cap_or_budget_is_none) ... ok
+test_commit_does_not_change_it (tests.test_code_fingerprint.TestCodeFingerprint.test_commit_does_not_change_it) ... ok
+test_doc_and_spec_edits_do_not_change_it_but_code_does (tests.test_code_fingerprint.TestCodeFingerprint.test_doc_and_spec_edits_do_not_change_it_but_code_does) ... ok
+test_git_listed_sql_read_error_never_uses_fallback (tests.test_code_fingerprint.TestCodeFingerprint.test_git_listed_sql_read_error_never_uses_fallback) ... ok
+test_git_unavailable_still_uses_fallback (tests.test_code_fingerprint.TestCodeFingerprint.test_git_unavailable_still_uses_fallback) ... ok
+test_large_sql_is_hashed_as_raw_bytes (tests.test_code_fingerprint.TestCodeFingerprint.test_large_sql_is_hashed_as_raw_bytes) ... ok
+test_listed_missing_sql_never_uses_git_fallback (tests.test_code_fingerprint.TestCodeFingerprint.test_listed_missing_sql_never_uses_git_fallback) ... ok
+test_prefix_and_none_for_missing_root (tests.test_code_fingerprint.TestCodeFingerprint.test_prefix_and_none_for_missing_root) ... ok
+test_sql_change_during_read_with_restored_mtime_is_unsafe (tests.test_code_fingerprint.TestCodeFingerprint.test_sql_change_during_read_with_restored_mtime_is_unsafe) ... ok
+test_sql_deadline_exhaustion_refuses_snapshot (tests.test_code_fingerprint.TestCodeFingerprint.test_sql_deadline_exhaustion_refuses_snapshot) ... ok
+test_sql_raw_bytes_and_restored_metadata_for_both_backends (tests.test_code_fingerprint.TestCodeFingerprint.test_sql_raw_bytes_and_restored_metadata_for_both_backends) ... ok
+test_untracked_code_file_counts_deleted_file_counts (tests.test_code_fingerprint.TestCodeFingerprint.test_untracked_code_file_counts_deleted_file_counts) ... ok
+test_changed_command_or_new_row_is_not (tests.test_code_fingerprint.TestRowsAlreadyExecuted.test_changed_command_or_new_row_is_not) ... ok
+test_legacy_run_without_code_fingerprint_or_expected_is_not (tests.test_code_fingerprint.TestRowsAlreadyExecuted.test_legacy_run_without_code_fingerprint_or_expected_is_not) ... ok
+test_wording_and_covers_edits_are_covered_by_the_run (tests.test_code_fingerprint.TestRowsAlreadyExecuted.test_wording_and_covers_edits_are_covered_by_the_run) ... ok
+test_invalid_generated_does_not_hide_recorded_code_edits (tests.test_code_fingerprint.TestScope.test_invalid_generated_does_not_hide_recorded_code_edits) ... ok
+test_invalid_patterns_fail_closed (tests.test_code_fingerprint.TestScope.test_invalid_patterns_fail_closed) ... ok
+test_last_code_edit_ts_with_scope (tests.test_code_fingerprint.TestScope.test_last_code_edit_ts_with_scope) ... ok
+test_placeholder_and_empty_scopes_are_never_trusted (tests.test_code_fingerprint.TestScope.test_placeholder_and_empty_scopes_are_never_trusted) ... ok
+test_scope_auto_takes_the_task_target_files (tests.test_code_fingerprint.TestScope.test_scope_auto_takes_the_task_target_files) ... ok
+test_scoped_fingerprint_ignores_other_specs_but_not_its_own_files (tests.test_code_fingerprint.TestScope.test_scoped_fingerprint_ignores_other_specs_but_not_its_own_files) ... ok
+test_segment_patterns_and_character_classes (tests.test_code_fingerprint.TestScope.test_segment_patterns_and_character_classes) ... ok
+test_the_shipped_template_declares_scope_auto_and_it_parses (tests.test_code_fingerprint.TestScope.test_the_shipped_template_declares_scope_auto_and_it_parses) ... ok
+test_valid_patterns_match_pathlib_for_representative_files (tests.test_code_fingerprint.TestScope.test_valid_patterns_match_pathlib_for_representative_files) ... ok
+test_verification_scope_parsing (tests.test_code_fingerprint.TestScope.test_verification_scope_parsing) ... ok
+
+----------------------------------------------------------------------
+Ran 30 tests in 8.234s
+
+OK

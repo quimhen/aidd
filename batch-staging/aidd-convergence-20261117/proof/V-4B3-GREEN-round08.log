@@ -1,0 +1,37 @@
+test_docker_containers_and_heavy (test_verify_round.Normalisation.test_docker_containers_and_heavy) ... ok
+test_quoted_spaces_are_significant (test_verify_round.Normalisation.test_quoted_spaces_are_significant) ... ok
+test_whitespace_and_plain_quotes (test_verify_round.Normalisation.test_whitespace_and_plain_quotes) ... ok
+test_all_open (test_verify_round.Round.test_all_open) ... ok
+test_changed_fingerprint_invalidates (test_verify_round.Round.test_changed_fingerprint_invalidates) ... ok
+test_different_command_not_grouped (test_verify_round.Round.test_different_command_not_grouped) ... ok
+test_dry_run_executes_nothing (test_verify_round.Round.test_dry_run_executes_nothing) ... ok
+test_fail_is_never_shared_as_pass (test_verify_round.Round.test_fail_is_never_shared_as_pass) ... ok
+test_fingerprint_refusal_names_the_budget_like_plain_verify (test_verify_round.Round.test_fingerprint_refusal_names_the_budget_like_plain_verify) ... ok
+test_generated_artifacts_are_skipped_before_hashing (test_verify_round.Round.test_generated_artifacts_are_skipped_before_hashing) ... ok
+test_identical_rows_run_once_and_each_spec_records_its_run (test_verify_round.Round.test_identical_rows_run_once_and_each_spec_records_its_run) ... ok
+test_perf_rows_excluded (test_verify_round.Round.test_perf_rows_excluded) ... ok
+test_refused_options (test_verify_round.Round.test_refused_options) ... ok
+test_rewrite_names_the_row_that_wrote_the_file (test_verify_round.Round.test_rewrite_names_the_row_that_wrote_the_file) ... ok
+test_series_one_at_a_time (test_verify_round.Round.test_series_one_at_a_time) ... ok
+test_no_suggestion_for_one_spec_or_no_shared_rows (test_verify_round.Suggestions.test_no_suggestion_for_one_spec_or_no_shared_rows) ... ok
+test_status_prints_round_line (test_verify_round.Suggestions.test_status_prints_round_line) ... ok
+test_status_suggests_round_and_verify_warns (test_verify_round.Suggestions.test_status_suggests_round_and_verify_warns) ... ok
+test_changed_command_runs (test_verify_round_reuse.SameSpecReuse.test_changed_command_runs) ... ok
+test_changed_evidence_is_not_reused (test_verify_round_reuse.SameSpecReuse.test_changed_evidence_is_not_reused) ... ok
+test_dry_run_reports_reuse_and_executes_nothing (test_verify_round_reuse.SameSpecReuse.test_dry_run_reports_reuse_and_executes_nothing) ... ok
+test_environment_identity_changed_or_unavailable (test_verify_round_reuse.SameSpecReuse.test_environment_identity_changed_or_unavailable) ... ok
+test_full_runs_everything (test_verify_round_reuse.SameSpecReuse.test_full_runs_everything) ... ok
+test_new_row_runs_and_old_row_is_reused (test_verify_round_reuse.SameSpecReuse.test_new_row_runs_and_old_row_is_reused) ... ok
+test_plain_verify_run_feeds_the_round (test_verify_round_reuse.SameSpecReuse.test_plain_verify_run_feeds_the_round) ... ok
+test_previous_fail_is_not_reused_and_mixes_with_reused_rows (test_verify_round_reuse.SameSpecReuse.test_previous_fail_is_not_reused_and_mixes_with_reused_rows) ... ok
+test_reuse_never_row_always_runs (test_verify_round_reuse.SameSpecReuse.test_reuse_never_row_always_runs) ... ok
+test_reused_row_is_never_a_shared_execution (test_verify_round_reuse.SameSpecReuse.test_reused_row_is_never_a_shared_execution) ... ok
+test_reuses_only_when_nothing_changed (test_verify_round_reuse.SameSpecReuse.test_reuses_only_when_nothing_changed) ... ok
+test_rows_without_previous_env_id_are_listed_with_the_first_round_note (test_verify_round_reuse.SameSpecReuse.test_rows_without_previous_env_id_are_listed_with_the_first_round_note) ... ok
+test_scope_file_changed_runs_again (test_verify_round_reuse.SameSpecReuse.test_scope_file_changed_runs_again) ... ok
+test_unavailable_fingerprint_fails_closed (test_verify_round_reuse.SameSpecReuse.test_unavailable_fingerprint_fails_closed) ... ok
+
+----------------------------------------------------------------------
+Ran 32 tests in 21.834s
+
+OK

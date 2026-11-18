@@ -1,0 +1,8 @@
+{
+  "source": "D:\\Fuentes\\AIDD\\commands\\aidd-converge.md",
+  "destination": "D:\\Fuentes\\_worktrees\\aidd-security-boundary-20261114\\publication-plan\\coherent-final-candidate\\commands\\aidd-converge.md",
+  "sha256": "f1268bda1269cacc50ce1751dca6fd1ac1b92c25fb137973d9bf7f4f62f7c5a2",
+  "kind": "unchanged doc fixture required by three mirror-doc tests; no Python source changes",
+  "MainWrites": 0,
+  "PythonWrites": 0
+}

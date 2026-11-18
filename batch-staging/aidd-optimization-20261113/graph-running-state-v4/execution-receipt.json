@@ -1,0 +1,21 @@
+{
+  "recorded_at": "2026-11-14T20:49:51.132224+00:00",
+  "red": {
+    "exit": 1,
+    "failed": 1,
+    "passed": 3,
+    "seconds": 0.56,
+    "log_sha256": "58a9811b73111ecb64d8394cfac8328821cce7d008b12b08896ea35af2785e9d"
+  },
+  "green": {
+    "exit": 0,
+    "passed": 4,
+    "seconds": 0.08,
+    "log_sha256": "8ca39dee5ab2d6a8a93f84576fb3c4b3449f19eb7b221782c58620b48ea42f68"
+  },
+  "main_AST_unchanged": true,
+  "original_source_before_sha256": "e93bf410749a0327c1f2fdfca55ccb657bc70f16911096a745dde1c777ef6ed7",
+  "stage_source_after_sha256": "3d01c1736317cfe520b2e24857bd142d9f71dd8bc94966dfc756e4d67cdf8b04",
+  "runtime_source_applied": false,
+  "owner_V4_approval_claimed": false
+}

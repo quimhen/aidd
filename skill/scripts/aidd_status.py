@@ -67,13 +67,15 @@ import aidd_evidence as ev  # noqa: E402
 import aidd_rules as rules  # noqa: E402
 
 # Rev 2: topic (on the question text) AND the exact option label the user must have chosen.
-APPROVE_TOPIC = re.compile(r'approv|aprob', re.I)
+APPROVE_TOPIC = re.compile(r'approv|aprob|aprueb', re.I)
 # aidd:FR-313 the negative lookahead refuses every label that starts `aprobar con resum...` (any case, typo or extra
 # word) in the generic tagged-answer route and its typed fallback: only the exact SUMMARY_LABEL, read by
 # `_summary_answer`, mints `source=summary`
 APPROVE_LABEL = re.compile(r'^(approve|aprobar|aprobado)\b(?!\s+con\s+resum)', re.I)
 SUMMARY_LABEL = 'Aprobar con resumen'
 _SUMMARY_EXACT_RE = re.compile(r'\A\s*Aprobar con resumen\s*\Z')      # compiled WITHOUT re.I: case-sensitive
+
+_SUMMARY_NATIVE_LABEL_RE = re.compile(r'^(?:' + re.escape(SUMMARY_LABEL) + r'|Approve)$')
 CLOSE_TOPIC = re.compile(r'close|cierr|finaliz', re.I)
 CLOSE_LABEL = re.compile(r'^(yes,? close|cerrar|si,? cerrar|sí,? cerrar)', re.I)
 ABANDON_TOPIC = re.compile(r'abandon|descart', re.I)
@@ -389,6 +391,62 @@ def _unit_audit_states(root, spec_id):
                              environment_id=environment_id, provenance_verifier=provenance)['units']
 
 
+_STATUS_MEM_CACHE = {}
+
+
+def _spec_signature(d):
+    try:
+        sig = []
+        for p in sorted(d.iterdir()):
+            if p.is_file() and not p.name.startswith('.'):
+                st = p.stat()
+                sig.append((p.name, st.st_mtime_ns, st.st_size))
+        return tuple(sig)
+    except OSError:
+        return ()
+
+
+def _events_sig(root):
+    try:
+        ep = Path(root) / ('.' + 'aidd') / 'evidence' / 'events.toon'
+        if ep.exists():
+            st = ep.stat()
+            return (st.st_mtime_ns, st.st_size)
+    except OSError:
+        pass
+    return None
+
+
+def _git_head_sig(root):
+    try:
+        hp = Path(root) / '.git' / 'HEAD'
+        if hp.exists():
+            return (hp.stat().st_mtime_ns, hp.stat().st_size)
+    except OSError:
+        pass
+    return None
+
+
+def _load_status_cache(root):
+    try:
+        cp = Path(root) / ('.' + 'aidd') / 'status-cache.json'
+        if cp.exists():
+            return json.loads(cp.read_text(encoding='utf-8'))
+    except Exception:
+        pass
+    return {}
+
+
+def _save_status_cache(root, cache_dict):
+    try:
+        cd = Path(root) / ('.' + 'aidd')
+        if cd.exists():
+            cp = cd / 'status-cache.json'
+            cp.write_text(json.dumps(cache_dict, ensure_ascii=False), encoding='utf-8')
+    except Exception:
+        pass
+
+
 def _build_status(spec_dir, root=None, named=False, fingerprint=None):
     d = Path(spec_dir).resolve()
     root = Path(root) if root else ev.find_root(d)
@@ -397,6 +455,28 @@ def _build_status(spec_dir, root=None, named=False, fingerprint=None):
     since = rules.spec_first_edit_ts(ev, root, d.name)
 
     st['open'] = d.name in ev.open_specs(root, include_approved=named)
+    ck = None
+    if not st['open'] and _was_closed(root, d.name):
+        spec_sig = _spec_signature(d)
+        ev_sig = _events_sig(root)
+        gh_sig = _git_head_sig(root)
+        ck = (str(d), spec_sig, ev_sig, gh_sig)
+        if ck in _STATUS_MEM_CACHE:
+            hit = dict(_STATUS_MEM_CACHE[ck])
+            hit['active'] = ev.get_active_spec(root) == d.name
+            hit['debt_blocking'] = len(rules.open_debt_blocking(root).get(d.name, []))
+            hit['gate_pointer'] = _safe(lambda: ev.get_gate_spec(root), '')
+            return hit
+        disk_cache = _load_status_cache(root)
+        entry = disk_cache.get(d.name)
+        if isinstance(entry, dict) and entry.get('sig') == [list(x) for x in spec_sig] and entry.get('ev_sig') == (list(ev_sig) if ev_sig else None) and entry.get('gh_sig') == (list(gh_sig) if gh_sig else None):
+            hit = dict(entry.get('st') or {})
+            if hit:
+                _STATUS_MEM_CACHE[ck] = hit
+                hit['active'] = ev.get_active_spec(root) == d.name
+                hit['debt_blocking'] = len(rules.open_debt_blocking(root).get(d.name, []))
+                hit['gate_pointer'] = _safe(lambda: ev.get_gate_spec(root), '')
+                return hit
     st['route'] = _route(spec_text, root, since)
     st['alignment'] = _alignment(spec_text, root, since)
 
@@ -461,6 +541,19 @@ def _build_status(spec_dir, root=None, named=False, fingerprint=None):
     st['gate_pointer_changes'] = _safe(lambda: ev.recent_gate_pointer_changes(root, 5), [])
     st['rules_mode'] = _rules_mode()
     st['why_blocked'] = _why_blocked(d, root, st)
+    if ck is not None:
+        _STATUS_MEM_CACHE[ck] = dict(st)
+        try:
+            disk_cache = _load_status_cache(root)
+            disk_cache[d.name] = {
+                'sig': [list(x) for x in ck[1]],
+                'ev_sig': list(ck[2]) if ck[2] else None,
+                'gh_sig': list(ck[3]) if ck[3] else None,
+                'st': st,
+            }
+            _save_status_cache(root, disk_cache)
+        except Exception:
+            pass
     return st
 
 
@@ -1313,28 +1406,60 @@ def _review_fix(d, tag):
             f'review.html: use `aidd review specs/{d.name} --check` or `--comments`.')
 
 
+def _native_summary_approve_question(question, tag):
+    """Conservative positive summary intent; do not reinterpret the stored question."""
+    text = re.sub(r'\s+', ' ', str(question)).strip()
+    clause, mark, _ = text.partition('?')
+    if not mark or not re.match(r'^¿Apruebas con resumen ', clause, re.I) or tag not in clause:
+        return False
+    if re.search(r'\b(?:no|sin|o|si|cuando|u|versus|vs)\b|\b(?:siempre que|en caso de|sujeto a|condicionado a|a condición de|hasta que)\b', clause, re.I):
+        return False
+    return not re.search(r'\b(?:no aprobar|no apruebes|no apruebas|no autorizo|sin aprobar|nunca aprobar)\b', text, re.I)
+
+
 def _summary_answer(ev, root, session, since, tag):
-    """aidd:FR-313 aidd:AC-327 The owner's explicit waiver of the review page: the newest topical hook-recorded
-    AskUserQuestion answer whose QUESTION carries `tag` (and `aprobar`/`approve`) and whose chosen label is EXACTLY
-    SUMMARY_LABEL (str.strip() equality). Reads answers only through `ev._answer_event` (case-sensitive pattern):
-    never `affirmative_answer`, never `typed_approval`, so no typed prompt and no agent text can mint it. A newer
-    topical answer with another label cancels it (the newest-answer-wins rule of `_answer_event`). Returns the
-    answer event or None; never raises (any error = None, fail closed)."""
+    """Return the newest genuine summary choice, preserving the original evidence event."""
     try:
         if not tag:
             return None
-        e = ev._answer_event(root, session, APPROVE_TOPIC, since, label_re=_SUMMARY_EXACT_RE, must_contain=tag)
-        if not e:
+        event = ev._answer_event(root, session, APPROVE_TOPIC, since,
+                                 label_re=_SUMMARY_NATIVE_LABEL_RE, must_contain=tag)
+        if not event:
             return None
+        detail = event.get('detail') or {}
         need = re.sub(r'\s+', ' ', str(tag)).strip().lower()
-        for p in (e.get('detail') or {}).get('pairs') or []:
-            if (isinstance(p, (list, tuple)) and len(p) == 2 and APPROVE_TOPIC.search(str(p[0]))
-                    and need in re.sub(r'\s+', ' ', str(p[0])).strip().lower()
-                    and str(p[1]).strip() == SUMMARY_LABEL):
-                return e
+        for index, pair in enumerate(detail.get('pairs') or []):
+            if not (isinstance(pair, (list, tuple)) and len(pair) == 2
+                    and APPROVE_TOPIC.search(str(pair[0]))
+                    and need in re.sub(r'\s+', ' ', str(pair[0])).strip().lower()):
+                continue
+            options = detail.get('options')
+            if isinstance(options, list):
+                offered = options[index] if index < len(options) and isinstance(options[index], (list, tuple)) else []
+                if str(pair[1]).strip().lower() not in {str(value).strip().lower() for value in offered}:
+                    continue
+            if str(pair[1]).strip() == SUMMARY_LABEL:
+                return event
+            if str(pair[1]).strip() != 'Approve':
+                return None
+            stamp, lower = float(event.get('ts') or 0), float(since or 0)
+            options, tool_id = detail.get('options'), detail.get('tool_use_id')
+            if (not session or session == 'unknown-session' or event.get('session') != session
+                    or not lower < stamp <= time.time() + 1 or not isinstance(tool_id, str) or not tool_id
+                    or not isinstance(options, list) or index >= len(options)
+                    or not isinstance(options[index], (list, tuple)) or 'Approve' not in options[index]
+                    or not _native_summary_approve_question(str(pair[0]), str(tag))):
+                return None
+            anchors = [row for row in ev.events(root, session=session, kind='question', since=lower)
+                       if lower < float(row.get('ts') or 0) <= stamp
+                       and (row.get('detail') or {}).get('tool_use_id') == tool_id
+                       and (row.get('detail') or {}).get('text') == str(pair[0])
+                       and (row.get('detail') or {}).get('options') == options]
+            return event if len(anchors) == 1 else None
     except Exception:
         pass
     return None
+
 
 
 def _unit_summary_consent(root, session, question, tag, since, semantic_digest=None):
@@ -1686,6 +1811,74 @@ def _verification_key(value):
     return str(value or '').strip()
 
 
+def _historical_entry_problem(d, row, entry, input_fp, *, full=False, amendment=None):
+    """Revalidate a planned historical entry at the sink; never execute or repair its proof."""
+    try:
+        if full:
+            return '--full forbids historical carryover'
+        if row.get('reuse') == 'never' or row.get('regression') == 'always':
+            return 'current row policy forces execution'
+        result = entry.get('result')
+        reason = rules.historical_reuse_problem(
+            row, result, input_algorithm=ev.EVIDENCE_ALGORITHM,
+            validate_environment=_contract_environment_id)
+        if reason:
+            return reason
+        cmd = row['cmd']
+        expected = row.get('expected') or 'exit 0'
+        if result.get('ok') is not True or result.get('exit') != 0:
+            return 'prior result is not a PASS'
+        if str(result.get('n')) != str(row.get('n')):
+            return 'prior result belongs to a different Verification row'
+        if str(result.get('expected') or '').strip() != str(expected).strip():
+            return 'prior Expected differs from the current row'
+        if rules.verification_command_problem(cmd, expected, ev.find_root(d)):
+            return 'current command has a lint problem'
+        base = Path(d).resolve()
+        source = (base / str(result.get('evidence') or '')).resolve()
+        source.relative_to(base)
+        original = source.read_bytes()
+        digest = str(result.get('sha1') or '').lower()
+        if not re.fullmatch(r'[0-9a-f]{40}', digest) or hashlib.sha1(original).hexdigest() != digest:
+            return 'prior source artifact is missing or changed'
+        rnd = _round_mod()
+        am = _amendment_mod()
+        if rnd.normalize_command(result.get('cmd') or '') != rnd.normalize_command(cmd):
+            if not am._legacy_truncated_command_matches(sys.modules[__name__], rnd, result, cmd, original):
+                return 'full current command has no intact matching source proof'
+        else:
+            # The full metadata command must also be bound to the intact producer header.
+            first = original.decode('utf-8', errors='strict').split('\n', 1)[0].rstrip('\r')
+            command_exit, separator, stamp = first[2:].rpartition(' | ')
+            source_cmd, exit_separator, exit_field = command_exit.rpartition(' | ')
+            if (not first.startswith('# ') or not separator or not exit_separator or exit_field != 'exit 0'
+                    or rnd.normalize_command(source_cmd) != rnd.normalize_command(cmd)):
+                return 'source artifact command differs from the current row'
+        if not _cached_pass_valid(original, result, expected):
+            return 'prior source output no longer satisfies PASS rules'
+        current_fp = rules.row_input_fingerprint(ev.find_root(d), row['inputs'])
+        if not current_fp or current_fp != input_fp or current_fp != result.get('input_fp') or current_fp != entry.get('input_fp'):
+            return 'live Inputs no longer match the planned and prior proof'
+        origin = entry.get('origin')
+        if not isinstance(origin, dict):
+            return 'source origin is malformed'
+        kind = entry.get('kind') or 'round-same-spec'
+        if kind in ('amendment-inputs', 'amendment-scope'):
+            if amendment is None:
+                return 'amendment proof was injected into a different consumption route'
+            basis = 'Inputs' if kind == 'amendment-inputs' else 'Scope'
+            transformed = am._reused_evidence(original, am.reused_line(origin, basis, amendment.get('id')))
+        else:
+            transformed = rnd.reused_evidence(original, origin)
+        if not isinstance(entry.get('data'), bytes) or entry['data'] != transformed:
+            return 'transformed reuse data is not bound to the original source artifact'
+        if not _cached_pass_valid(entry['data'], result, expected):
+            return 'transformed output no longer satisfies PASS rules'
+        return None
+    except Exception:
+        return 'historical source/contract proof is invalid or unavailable'
+
+
 def _reusable_rows(d, prior, code_fp, full):
     """Amendment to spec 007: {(cmd, expected): (text, result)} of the PRIOR run's passing rows that may be
     reused: the prior run was stable and recorded the same code fingerprint as now, the row passed and its
@@ -1812,16 +2005,29 @@ def _contract_environment_id(cmd, declaration):
         return None
 
 
-def _reusable_input_rows(d, prior, full):
+def _reusable_input_rows(d, prior, full, current_rows=None):
     """Return intact previous PASS rows only under the explicit offline contract."""
     out = {}
-    if full or not prior or prior.get('stable') is not True:
+    if full or not prior or prior.get('stable') is not True or prior.get('code_algorithm') != ev.EVIDENCE_ALGORITHM:
         return out
+    if current_rows is None:
+        try:
+            current_rows = rules.parse_verification((Path(d) / 'spec.md').read_text(encoding='utf-8'))
+        except (OSError, UnicodeError):
+            return out
     for row in prior.get('results') or []:
         try:
             if (row.get('ok') is not True or row.get('reuse_policy') != 'hermetic'
                     or not row.get('input_globs') or not row.get('input_fp')
                     or not row.get('environment_id') or not row.get('environment_declaration')):
+                continue
+            candidates = [current for current in current_rows
+                          if _verification_key(current.get('cmd')) == _verification_key(row.get('cmd'))
+                          and _verification_key(current.get('expected')) == _verification_key(row.get('expected'))
+                          and current.get('regression') != 'always']
+            if not any(rules.historical_reuse_problem(
+                    current, row, input_algorithm=ev.EVIDENCE_ALGORITHM,
+                    validate_environment=_contract_environment_id) is None for current in candidates):
                 continue
             p = (d.resolve() / str(row.get('evidence') or '')).resolve()
             p.relative_to(d.resolve())
@@ -1881,6 +2087,51 @@ def _contract_store_get(root, key, expected):
         if hashlib.sha256(data).hexdigest() == entry['sha256'] and _cached_pass_valid(data, entry, expected):
             return data, entry
         return None
+    except Exception:
+        return None
+
+
+def _qualified_contract_source(root, row, data, entry):
+    """Read-only qualification of an immutable object against its latest genuine source proof."""
+    try:
+        source_name = entry.get('spec')
+        if not isinstance(source_name, str) or not re.fullmatch(r'[A-Za-z0-9_-]+', source_name):
+            return None
+        prior = ev.latest_verify_run(root, source_name)
+        if (not prior or prior.get('stable') is not True or prior.get('ok') is not True
+                or prior.get('code_algorithm') != ev.EVIDENCE_ALGORITHM):
+            return None
+        cmd, expected = row['cmd'], row.get('expected') or 'exit 0'
+        rnd, am = _round_mod(), _amendment_mod()
+        if (rnd.normalize_command(entry.get('cmd') or '') != rnd.normalize_command(cmd)
+                or str(entry.get('expected') or '').strip() != str(expected).strip()):
+            return None
+        matches = []
+        for result in prior.get('results') or []:
+            if (not isinstance(result, dict) or result.get('ok') is not True or result.get('exit') != 0
+                    or str(result.get('expected') or '').strip() != str(expected).strip()
+                    or result.get('sha1') != entry.get('sha1')):
+                continue
+            if (rnd.normalize_command(result.get('cmd') or '') == rnd.normalize_command(cmd)
+                    or am._legacy_truncated_command_matches(sys.modules[__name__], rnd, result, cmd, data)):
+                matches.append(result)
+        if len(matches) != 1:
+            return None
+        result = matches[0]
+        if rules.historical_reuse_problem(row, result, input_algorithm=ev.EVIDENCE_ALGORITHM,
+                                         validate_environment=_contract_environment_id):
+            return None
+        if rules.row_input_fingerprint(root, row['inputs']) != result.get('input_fp'):
+            return None
+        spec_base = (Path(root) / 'specs' / source_name).resolve()
+        spec_base.relative_to((Path(root) / 'specs').resolve())
+        artifact = (spec_base / str(result.get('evidence') or '')).resolve()
+        artifact.relative_to(spec_base)
+        original = artifact.read_bytes()
+        if (original != data or hashlib.sha1(original).hexdigest() != result.get('sha1')
+                or not _cached_pass_valid(original, result, expected)):
+            return None
+        return result
     except Exception:
         return None
 
@@ -2453,8 +2704,8 @@ def cmd_verify(spec_arg, full=False, bail=False, wave=None, result_sink=None, wa
     # A file fingerprint alone does not describe a database or other external
     # state. Wave reuse is opt-in, scoped to this invocation, and hermetic only.
     reuse = {}
-    input_reuse = ({} if wave is not None or task_ids is not None or round_shared is not None
-                   else _reusable_input_rows(d, prior, full))
+    input_reuse = ({} if wave is not None or task_ids is not None or round_shared is not None or amendment is not None
+                   else _reusable_input_rows(d, prior, full, rows))
     if any(r.get('reuse') == 'hermetic' and r.get('environment', '').strip().lower().startswith('contract:offline;') for r in rows):
         print('Offline reuse relies on the owner contract; isolation and transitive Inputs are not independently verified.', flush=True)
     # Rows with explicit Inputs use their own fingerprinted cache; there is no
@@ -2509,17 +2760,24 @@ def cmd_verify(spec_arg, full=False, bail=False, wave=None, result_sink=None, wa
             # aidd:FR-427 aidd:FR-429 same-spec reuse decided by the round on the state taken BEFORE it: not executed,
             # never a shared execution; the round's stability check still covers it.
             try:
+                problem = _historical_entry_problem(d, r, reused_ent, input_fp,
+                                                    full=full, amendment=amendment)
+                if problem:
+                    reason = 'stale reuse plan: ' + problem + '; nothing was executed; replan required'
+                    print(f'FAIL row {n}: {reason}', flush=True)
+                    return {'n': str(n), 'cmd': cmd, 'expected': expected, 'exit': -1, 'ok': False,
+                            'evidence': rel, 'sha1': '', 'secs': 0.0, 'problem': reason, 'not_executed': True}
                 data = reused_ent['data']
                 final.write_bytes(data)
                 o = reused_ent['origin']
                 res = {'n': str(n), 'cmd': cmd, 'expected': expected, 'exit': 0, 'ok': True, 'evidence': rel,
                        'sha1': hashlib.sha1(data).hexdigest(), 'secs': 0.0, 'reused': True,
                        'reuse_kind': reused_ent.get('kind') or 'round-same-spec', 'reused_from': dict(o)}
-                if inputs:
-                    res.update(input_globs=inputs, input_fp=reused_ent.get('input_fp'),
-                               input_algorithm=ev.EVIDENCE_ALGORITHM)
-                    if r.get('reuse') == 'hermetic':
-                        res['reuse_policy'] = 'hermetic'
+                proven = reused_ent['result']
+                res.update(reuse_policy=proven['reuse_policy'], input_globs=list(proven['input_globs']),
+                           input_fp=proven['input_fp'], input_algorithm=proven['input_algorithm'],
+                           environment_id=proven['environment_id'],
+                           environment_declaration=proven['environment_declaration'])
                 if reused_ent.get('env_id') is not None:
                     res['env_id'] = reused_ent['env_id']
                 one_line = re.sub(r'[\r\n]+', ' ', cmd).strip()
@@ -2554,7 +2812,8 @@ def cmd_verify(spec_arg, full=False, bail=False, wave=None, result_sink=None, wa
             except (OSError, ValueError, KeyError):
                 pass
         hit = (input_reuse.get((*key, tuple(inputs), input_fp, env_decl.strip()))
-               if inputs and input_fp and env_id and r.get('reuse') == 'hermetic' else None)
+               if inputs and input_fp and env_id and r.get('reuse') == 'hermetic'
+               and r.get('regression') != 'always' else None)
         if (hit is not None and hit[1].get('environment_id') == env_id
                 and _contract_environment_id(cmd, env_decl) == env_id):
             try:
@@ -2573,23 +2832,28 @@ def cmd_verify(spec_arg, full=False, bail=False, wave=None, result_sink=None, wa
             except Exception:
                 pass                                         # could not copy the evidence: run the row for real
         # aidd:FR-221 cross-spec, cross-invocation lookup of offline-contract PASS rows.
-        if (wave is None and task_ids is None and round_shared is None and _round_enabled(full) and inputs
-                and input_fp and env_id and r.get('reuse') == 'hermetic'):
+        if (wave is None and task_ids is None and round_shared is None and amendment is None
+                and _round_enabled(full) and inputs and input_fp and env_id
+                and r.get('reuse') == 'hermetic' and r.get('regression') != 'always'):
             try:
                 store_key = _contract_store_key(cmd, expected, inputs, input_fp, env_decl, env_id)
                 chit = _contract_store_get(root, store_key, expected)
                 if (chit is not None and rules.row_input_fingerprint(root, inputs) == input_fp
                         and _contract_environment_id(cmd, env_decl) == env_id):
                     data, entry = chit
+                    source_proof = _qualified_contract_source(root, r, data, entry)
+                    if source_proof is None:
+                        raise ValueError('latest source verification does not qualify this stored object')
                     with open(final, 'wb') as fh:
                         fh.write(data)
                     one_line = re.sub(r'[\r\n]+', ' ', cmd).strip()
                     res = {'n': str(n), 'cmd': cmd, 'expected': expected, 'exit': entry.get('exit', 0), 'ok': True,
                            'evidence': rel, 'sha1': hashlib.sha1(data).hexdigest(), 'reused': True}
                     if inputs:
-                        res.update(input_globs=inputs, input_fp=input_fp, reuse_policy='hermetic',
-                                   input_algorithm=ev.EVIDENCE_ALGORITHM, environment_id=env_id,
-                                   environment_declaration=env_decl.strip())
+                        res.update(input_globs=list(source_proof['input_globs']), input_fp=source_proof['input_fp'],
+                                   reuse_policy=source_proof['reuse_policy'], input_algorithm=source_proof['input_algorithm'],
+                                   environment_id=source_proof['environment_id'],
+                                   environment_declaration=source_proof['environment_declaration'])
                     res.update(cross_spec=True, source_spec=entry['spec'], source_sha256=entry['sha256'], secs=0.0)
                     print(f"CROSS-REUSED row {n} (PASS): {one_line[:100]} (passed in {entry['spec']} on the same "
                           f"Inputs and environment) → {rel}", flush=True)
@@ -2863,7 +3127,7 @@ def cmd_verify(spec_arg, full=False, bail=False, wave=None, result_sink=None, wa
             except OSError:
                 pass
     # aidd:FR-220 store the PASS offline-contract rows executed in this stable run for later invocations.
-    if wave is None and task_ids is None and round_shared is None and _round_enabled(full) and stable:
+    if wave is None and task_ids is None and round_shared is None and amendment is None and _round_enabled(full) and stable:
         for result in results:
             original = next((r for r in rows if str(r.get('n')) == result['n']), None)
             inputs = (original or {}).get('inputs') or result.get('input_globs') or []

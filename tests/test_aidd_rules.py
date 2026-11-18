@@ -2003,7 +2003,7 @@ class _GateSpec(unittest.TestCase):
         self.vh = R.verification_hash(self.spec_text)
         sha = hashlib.sha1((d / 'evidence' / 'verify-1.txt').read_bytes()).hexdigest()
         self.run = {'ts': 500.0, 'ok': True, 'verify_hash': self.vh, 'started': 400.0, 'fingerprint_start': 'fp',
-                    'fingerprint_end': 'fp', 'stable': True, 'code_algorithm': 'raw-sql-v2-glob-v2',
+                    'fingerprint_end': 'fp', 'stable': True, 'code_algorithm': E.EVIDENCE_ALGORITHM,
                     'results': [{'n': 'V-1', 'cmd': 'python -m unittest tests.test_x', 'exit': 0, 'ok': True,
                                  'evidence': 'evidence/verify-1.txt', 'sha1': sha}]}
         self.approved = {'spec': spec_id, 'hash': R.approval_hash(self.tasks_text), 'gate': 2, 'source': 'review+answer',

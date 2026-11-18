@@ -206,7 +206,7 @@ Total tokens (k): 880
 
 ## Approval gate
 
-Approved: 2026-10-05 hash:e2e2d2437686
+Approved: 2026-11-17 hash:9d28a24a080a
 
 ## Definition of Done (applies to every task above)
 1. Code implements exactly the FR cited, in exactly the target file, following plan.md's Naming & File Contract, SOLID and the antifragile standard.

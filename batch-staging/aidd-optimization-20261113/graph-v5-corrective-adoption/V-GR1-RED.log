@@ -1,0 +1,37 @@
+FFFF
+======================================================================
+FAIL: test_builtin_code_generation_invalidates_legacy_freshness_stamp (test_code_graph_raw_hashes.RawWorkingTreeHashes.test_builtin_code_generation_invalidates_legacy_freshness_stamp)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "D:\Fuentes\_worktrees\aidd-graph-adoption-proposal-20261115\runtime\tests\test_code_graph_raw_hashes.py", line 136, in test_builtin_code_generation_invalidates_legacy_freshness_stamp
+    self.assertNotEqual(hashes['code'][0], old_aggregate)
+AssertionError: '432b6d4ab6488e6bd993005d178b28ba5a8174f07732273ef7fc8e3fc51f38d2' == '432b6d4ab6488e6bd993005d178b28ba5a8174f07732273ef7fc8e3fc51f38d2'
+
+======================================================================
+FAIL: test_constant_filter_cannot_hide_changed_bytes_or_preserve_parse_cache (test_code_graph_raw_hashes.RawWorkingTreeHashes.test_constant_filter_cannot_hide_changed_bytes_or_preserve_parse_cache)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "D:\Fuentes\_worktrees\aidd-graph-adoption-proposal-20261115\runtime\tests\test_code_graph_raw_hashes.py", line 67, in test_constant_filter_cannot_hide_changed_bytes_or_preserve_parse_cache
+    self.assertNotEqual(first_hashes, changed_hashes,
+AssertionError: {'src/example.py': 'ce151ea5d9b2b8ef471c407a0f148d6d39d0e700'} == {'src/example.py': 'ce151ea5d9b2b8ef471c407a0f148d6d39d0e700'} : constant clean-filter output hid different parsed working-tree bytes
+
+======================================================================
+FAIL: test_hashing_raw_worktree_never_executes_configured_clean_filter (test_code_graph_raw_hashes.RawWorkingTreeHashes.test_hashing_raw_worktree_never_executes_configured_clean_filter)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "D:\Fuentes\_worktrees\aidd-graph-adoption-proposal-20261115\runtime\tests\test_code_graph_raw_hashes.py", line 55, in test_hashing_raw_worktree_never_executes_configured_clean_filter
+    self.assertFalse(self.marker.exists(), 'hashing source executed a repository clean filter')
+AssertionError: True is not false : hashing source executed a repository clean filter
+
+======================================================================
+FAIL: test_legacy_filtered_hash_alias_does_not_reuse_old_ast (test_code_graph_raw_hashes.RawWorkingTreeHashes.test_legacy_filtered_hash_alias_does_not_reuse_old_ast)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "D:\Fuentes\_worktrees\aidd-graph-adoption-proposal-20261115\runtime\tests\test_code_graph_raw_hashes.py", line 99, in test_legacy_filtered_hash_alias_does_not_reuse_old_ast
+    self.assertIsNotNone(graph, 'legacy equal hash incorrectly skipped generation migration')
+AssertionError: unexpectedly None : legacy equal hash incorrectly skipped generation migration
+
+----------------------------------------------------------------------
+Ran 4 tests in 3.689s
+
+FAILED (failures=4)

@@ -1,0 +1,83 @@
+{
+  "finished_at": "2026-11-14T21:11:36.650358+00:00",
+  "authority_callback": "call_b7626dfd2ccc4d4bb2c97dc1ff26323f",
+  "tasks_hash": "4a034dae3dec",
+  "bounded_task_status": "DONE for isolated compatibility overlay only",
+  "source_changes": [
+    {
+      "path": "skill/scripts/aidd_amendment_verify.py",
+      "before_sha256": "4a182248e6c39316aab4540709dc835f5c122604dcd84f1513315d2d79ea3aea",
+      "after_sha256": "22707d26522617c85a46051742393077ce8b89dd195be97e44dccd66c5e9ca8e"
+    },
+    {
+      "path": "skill/scripts/aidd_status.py",
+      "before_sha256": "095ca4127adff49aa2f3f5979aa33b3a960bca654c888b29269398e66dc60b4c",
+      "after_sha256": "a9a71490902dba137ad7323d893281e290cba8f5128cf10035c925cc6571918e"
+    }
+  ],
+  "new_tests": [
+    {
+      "path": "tests/test_approval_topic_grammar.py",
+      "sha256": "c1afdfade7e554bb49e4874a3e1bf53318891c4f513bc83717d1308f3ca861b5"
+    },
+    {
+      "path": "tests/test_amendment_truncated_command.py",
+      "sha256": "ddfa71e2dd56efd18195a0fbb9f77610d0c600f6efb0226ee5536397d17f85b3"
+    }
+  ],
+  "executed_tests": 20,
+  "grammar_RED": {
+    "tests": 7,
+    "failures": 4,
+    "seconds": 1.106,
+    "test_version": "v1 SHA5e98ed968c6096f5a41056d3d288d6ed1ed006a6a476933ca4aa61eafd483a4f"
+  },
+  "grammar_GREEN": {
+    "tests": 7,
+    "seconds": 1.074,
+    "test_version": "v2 additional diagnostics assertions after RED"
+  },
+  "receipt_RED": {
+    "tests": 13,
+    "failures": 1,
+    "seconds": 0.625
+  },
+  "receipt_GREEN": {
+    "tests": 13,
+    "seconds": 0.696
+  },
+  "logs": {
+    "grammar-red.log": {
+      "sha256": "f265abcd9b659515b05f5f8b4125c8d6331c483b80e94b20f58d02d54fcac0ce",
+      "bytes": 6377
+    },
+    "grammar-green.log": {
+      "sha256": "a73547a26f148a2a1f66761b02dc514da7ffe8205ef4d3333fefc16aa9bdf909",
+      "bytes": 110
+    },
+    "receipt-red.log": {
+      "sha256": "052ed5482d5c4f64b642651f80f4a4b4c3e575827f49c58a0706d6f485a2cc60",
+      "bytes": 3222
+    },
+    "receipt-green.log": {
+      "sha256": "7fd53a36e44108ebf55213b62f9e550262be8a8d08136e0f973555d62b940778",
+      "bytes": 2269
+    }
+  },
+  "independent_audit": {
+    "path": "4a-independent-code-audit.md",
+    "sha256": "55ef58bbc08c2e50242a715a106260cde385dffc4047a008315f52705411f717",
+    "verdict": "PASS"
+  },
+  "original_frozen_kernel_sha256": {
+    "skill/scripts/aidd_status.py": "095ca4127adff49aa2f3f5979aa33b3a960bca654c888b29269398e66dc60b4c",
+    "skill/scripts/aidd_round.py": "5b368694297762fbb8565a86015c8f3d3b2510c77edfddacb8726fe1a90acdfe",
+    "skill/scripts/aidd_amendment_verify.py": "4a182248e6c39316aab4540709dc835f5c122604dcd84f1513315d2d79ea3aea"
+  },
+  "B1_or_installed_runtime_changed": false,
+  "DB_historical_reuse_authorized": false,
+  "F1_F2_closed": false,
+  "canonical_unit_approval_claimed": false,
+  "real_B1_consent_readonly_check": "real-consent-readonly-check.json",
+  "operator_restriction": "Do not mutate B1 approvals or use overlay until root ROUND08 freeze ends; only the already authorized registration afterward. No installation into B1."
+}

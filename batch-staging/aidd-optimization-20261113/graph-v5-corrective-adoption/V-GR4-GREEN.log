@@ -1,0 +1,40 @@
+.....FF                                                                  [100%]
+================================== FAILURES ===================================
+_______________ TestSqlReadHint.test_no_hint_without_a_db_graph _______________
+
+self = <test_graphs_auto.TestSqlReadHint testMethod=test_no_hint_without_a_db_graph>
+
+    def test_no_hint_without_a_db_graph(self):
+        with tempfile.TemporaryDirectory() as td:
+            (Path(td) / "specs").mkdir()
+            f = Path(td) / "x.sql"
+            f.write_text("select 1;", encoding="utf-8")
+>           self.assertEqual(self.run_hook(td, f, sid="t-nodb-%d" % os.getpid()), "")
+                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\test_graphs_auto.py:109: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+tests\test_graphs_auto.py:91: in run_hook
+    self.assertEqual(r.returncode, 0)
+E   AssertionError: 2 != 0
+__ TestSqlReadHint.test_whole_sql_read_in_a_db_project_hints_the_graph_once ___
+
+self = <test_graphs_auto.TestSqlReadHint testMethod=test_whole_sql_read_in_a_db_project_hints_the_graph_once>
+
+    def test_whole_sql_read_in_a_db_project_hints_the_graph_once(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = make_project(td)
+            f = root / "supabase" / "migrations" / "0001_init.sql"
+            sid = "t-sql-%d" % os.getpid()
+>           out = self.run_hook(root, f, sid=sid)
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\test_graphs_auto.py:99: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+tests\test_graphs_auto.py:91: in run_hook
+    self.assertEqual(r.returncode, 0)
+E   AssertionError: 2 != 0
+=========================== short test summary info ===========================
+FAILED tests/test_graphs_auto.py::TestSqlReadHint::test_no_hint_without_a_db_graph
+FAILED tests/test_graphs_auto.py::TestSqlReadHint::test_whole_sql_read_in_a_db_project_hints_the_graph_once
+2 failed, 5 passed in 5.04s

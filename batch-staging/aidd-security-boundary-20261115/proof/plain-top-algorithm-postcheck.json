@@ -1,0 +1,12 @@
+{
+  "source": "D:\\Fuentes\\_worktrees\\aidd-security-boundary-20261114\\runtime\\skill\\scripts\\aidd_status.py",
+  "mirror": "D:\\Fuentes\\_worktrees\\aidd-security-boundary-20261114\\runtime\\adapters\\dot-aidd\\scripts\\aidd_status.py",
+  "before": "092e9da34c1093a6686e30ed5b7c8bbca897c6b974eae950e21b26f66085754f",
+  "after": "1abfff8cb944ae3fb3be25866ca6dacb3865766b41a782cb903949a8f460a278",
+  "change": "plain historical input cache requires current top-level code_algorithm",
+  "protectedPathsUnchanged": 25,
+  "mirrorEqual": true,
+  "staticAST": true,
+  "builderRuntimeTests": 0,
+  "sourceFrozen": true
+}

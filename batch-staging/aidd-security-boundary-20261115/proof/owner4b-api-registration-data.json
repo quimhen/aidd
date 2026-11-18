@@ -1,0 +1,13 @@
+{
+  "session": "01a1bad1-eed0-7ae0-b417-8b56ef653d28",
+  "toolUseId": "call_b794c9b285a84cf7a4a322165505f640",
+  "api": "aidd_evidence.append_question/append_answer",
+  "written": [
+    "question",
+    "answer"
+  ],
+  "unitApprovalWrites": 0,
+  "taskApprovedLineWritten": false,
+  "origin": "native Codex exact actual callback",
+  "witnessSha256": "acf56166d8531620ce1f76fa705b32631aa316c21d0d54f4942f95d9167ec1da"
+}

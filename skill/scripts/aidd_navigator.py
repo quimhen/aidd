@@ -15,25 +15,30 @@ MAX_SOURCE_BYTES = 512 * 1024
 
 def _active_unit_reviews(root):
     """Ephemeral links only; following one never constitutes approval."""
-    directory = Path(tempfile.gettempdir()) / 'aidd-unit-reviews'
+    tmp = Path(tempfile.gettempdir())
+    directories = [tmp / 'aidd-unit-reviews']
+    user_suffix = os.environ.get('USERNAME') or os.environ.get('USER') or ''
+    if user_suffix:
+        directories.append(tmp / f'aidd-unit-reviews-{user_suffix}')
     result = {}
-    try:
-        files = list(directory.glob('review-*.json'))[:500]
-    except OSError:
-        return result
-    for path in files:
+    for directory in directories:
         try:
-            if path.is_symlink() or path.stat().st_size > 4096:
-                continue
-            data = json.loads(path.read_text(encoding='utf-8'))
-            if (data.get('project') != os.path.normcase(str(root.resolve())) or
-                    not isinstance(data.get('expires'), (int, float)) or data['expires'] <= time.time() or
-                    not re.fullmatch(r'http://127\.0\.0\.1:[0-9]{1,5}/[A-Za-z0-9_-]{32,}', str(data.get('url', ''))) or
-                    not all(re.fullmatch(r'[A-Za-z0-9_-]+', str(data.get(k, ''))) for k in ('spec', 'unit'))):
-                continue
-            result.setdefault(data['spec'], []).append({'unit': data['unit'], 'url': data['url']})
-        except (OSError, ValueError, TypeError):
+            files = list(directory.glob('review-*.json'))[:500]
+        except OSError:
             continue
+        for path in files:
+            try:
+                if path.is_symlink() or path.stat().st_size > 4096:
+                    continue
+                data = json.loads(path.read_text(encoding='utf-8'))
+                if (data.get('project') != os.path.normcase(str(root.resolve())) or
+                        not isinstance(data.get('expires'), (int, float)) or data['expires'] <= time.time() or
+                        not re.fullmatch(r'http://127\.0\.0\.1:[0-9]{1,5}/[A-Za-z0-9_-]{32,}', str(data.get('url', ''))) or
+                        not all(re.fullmatch(r'[A-Za-z0-9_-]+', str(data.get(k, ''))) for k in ('spec', 'unit'))):
+                    continue
+                result.setdefault(data['spec'], []).append({'unit': data['unit'], 'url': data['url']})
+            except (OSError, ValueError, TypeError):
+                continue
     return result
 
 

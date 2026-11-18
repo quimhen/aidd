@@ -1,6 +1,7 @@
 import contextlib
 import io
 import json
+import sys
 import threading
 import urllib.error
 import urllib.parse
@@ -32,7 +33,9 @@ def test_visual_requires_explicit_origin_and_rechecks_package(tmp_path):
         url = output.getvalue().splitlines()[0].split(': ', 1)[1]
         origin = url.rsplit('/', 1)[0]
         token = url.rsplit('/', 1)[1]
-        page = urllib.request.urlopen(url).read().decode()
+        response = urllib.request.urlopen(url)
+        assert response.headers['Referrer-Policy'] == 'same-origin', 'native browser POST must retain its explicit same-origin Origin'
+        page = response.read().decode()
         assert '&lt;script&gt;' in page
         assert '/navigator/' + token in page
         assert 'Centro de revisión' in urllib.request.urlopen(origin + '/navigator/' + token).read().decode()

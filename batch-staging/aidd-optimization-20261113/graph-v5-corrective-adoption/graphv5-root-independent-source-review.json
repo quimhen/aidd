@@ -1,0 +1,20 @@
+{
+  "reviewer": "Root Codex independent of Graph source author",
+  "scope": "isolated GraphV5 source review; not an official unit_audit or owner seal",
+  "verdict": "PASS",
+  "checks": [
+    "Git clean filters cannot execute through file_shas because --no-filters is passed before --stdin-paths; Python fallback remains raw blob hashing.",
+    "EXTRACTOR_VERSION 4 invalidates prior extractor3 caches without falsely relabeling existing cache evidence.",
+    "Only builtin:code input stamps receive trusted producer generation salt; unknown generation omits hash and status remains stale. External providers retain prior hash behavior.",
+    "Four new real filter/cache tests passed; 9 existing extractor tests and 42 lifecycle tests with 3 subtests passed. Auto registry passed 5 initially and 2 failed-only after restoring original missing fixture hook; no assertions or source changed to obtain PASS."
+  ],
+  "inputs": {
+    "skill/scripts/code_graph.py": "bceaf0f8758d2c2471b228d2dc7a5b657a82fb24734f51052acc67c416542801",
+    "skill/scripts/aidd_graphs.py": "8519b558cdeda6adcb027820ff87eafe4a13cd769e5677669ce6b7e7f9ff9726",
+    "tests/test_code_graph_raw_hashes.py": "22f9413ca08e995886667417216b1973c4c7e809b63690c74afcf7992d7d7419"
+  },
+  "limitations": [
+    "Official final Main unit review and real V5 owner consent still required before installation.",
+    "Main Graph source has not been replaced."
+  ]
+}

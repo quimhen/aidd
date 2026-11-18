@@ -1,0 +1,26 @@
+{
+  "wave": "GRAPHV5",
+  "task": "T-951",
+  "taskHash": "6e7dec9276b7",
+  "testPath": "D:\\Fuentes\\_worktrees\\aidd-graph-adoption-proposal-20261115\\runtime\\tests\\test_code_graph_raw_hashes.py",
+  "testSHA256": "22f9413ca08e995886667417216b1973c4c7e809b63690c74afcf7992d7d7419",
+  "methods": [
+    "test_hashing_raw_worktree_never_executes_configured_clean_filter",
+    "test_constant_filter_cannot_hide_changed_bytes_or_preserve_parse_cache",
+    "test_legacy_filtered_hash_alias_does_not_reuse_old_ast",
+    "test_builtin_code_generation_invalidates_legacy_freshness_stamp"
+  ],
+  "sourcePinsUnchanged": {
+    "skill\\scripts\\code_graph.py": "cd86d9ad495883896d639ab0e28f19848993a1f769b47051a9520ce676e6d3ab",
+    "skill\\scripts\\aidd_graphs.py": "3d01c1736317cfe520b2e24857bd142d9f71dd8bc94966dfc756e4d67cdf8b04",
+    "skill\\scripts\\aidd_rules.py": "31ae5f48312776a3c7130229c8cc50fdf9e553d40ed67357bfada3aca0fd8cbe",
+    "skill\\scripts\\aidd_status.py": "1abfff8cb944ae3fb3be25866ca6dacb3865766b41a782cb903949a8f460a278",
+    "skill\\scripts\\aidd_evidence.py": "335aacce002f14c7bb6d1975fbbcbbb0bd007ed5544fb3538dcc42ed378cb676",
+    "skill\\scripts\\aidd_round.py": "f6640e4efa20b17610717e2592d51aefb798e4dd642f0f77d1960616fc926caa",
+    "skill\\scripts\\aidd_amendment_verify.py": "d398f87437bba00fd834115af37824aad06efe0f803d7a5c36a58847f8565340"
+  },
+  "staticAST": true,
+  "sourceImplementationChanges": 0,
+  "testExecutions": 0,
+  "next": "Root actual RED before any T-952 source edit"
+}

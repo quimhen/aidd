@@ -25,8 +25,12 @@ SCRIPTS = {
 }
 
 
-def table(rows, extra=''):
+def table(rows, extra='', profile=None):
     head = '## Verification\n' + extra + '| # | Command | Expected | Covers | Tier |\n|---|---|---|---|---|\n'
+    if profile is not None:
+        head = '## Verification\n' + extra + '| # | Command | Expected | Covers | Tier | Inputs | Reuse | Environment |\n|---|---|---|---|---|---|---|---|\n'
+        return head + ''.join(f'| {n} | {c} | {e} | FR-1 | {tier} | {profile[n][0]} | {profile[n][1]} | {profile[n][2]} |\n'
+                              for n, c, e, tier in rows)
     return head + ''.join(f'| {n} | {c} | {e} | FR-1 | {t} |\n' for n, c, e, t in rows)
 
 
@@ -43,10 +47,10 @@ class RoundBase(unittest.TestCase):
     def tearDown(self):
         self._tmp.cleanup()
 
-    def spec(self, name, rows, scope='src/**', extra=''):
+    def spec(self, name, rows, scope='src/**', extra='', profile=None):
         d = self.root / 'specs' / name
         d.mkdir(parents=True)
-        (d / 'spec.md').write_text(f'# {name}\n\n' + table(rows, (f'Scope: {scope}\n' if scope else '') + extra),
+        (d / 'spec.md').write_text(f'# {name}\n\n' + table(rows, (f'Scope: {scope}\n' if scope else '') + extra, profile=profile),
                                    encoding='utf-8')
         (d / 'tasks.md').write_text('', encoding='utf-8')
         return d

@@ -1,0 +1,24 @@
+{
+  "recorded_at": "2026-11-14T20:29:29.305682+00:00",
+  "red": {
+    "exit": 1,
+    "failed": 7,
+    "passed": 5,
+    "seconds": 0.62,
+    "module": "D:/Fuentes/AIDD/skill/scripts/aidd_graphs.py",
+    "log": "red-empty-query.log",
+    "sha256": "052c84124a21526a149ac73fd32ddb58708b47cb1706c50a77bb55c03fd343f6"
+  },
+  "green": {
+    "exit": 0,
+    "passed": 12,
+    "seconds": 0.46,
+    "module": "D:\\Fuentes\\_worktrees\\aidd-graph-empty-query-20261114\\skill\\scripts\\aidd_graphs.py",
+    "log": "green-empty-query.log",
+    "sha256": "e35f1bdf24fb1bfeca84662cc17edf3ed12b3bf82c79c641551c9baac3c96833"
+  },
+  "original_pins_unchanged": true,
+  "stage_source_sha256": "e93bf410749a0327c1f2fdfca55ccb657bc70f16911096a745dde1c777ef6ed7",
+  "runtime_source_applied": false,
+  "owner_V3_approval": false
+}

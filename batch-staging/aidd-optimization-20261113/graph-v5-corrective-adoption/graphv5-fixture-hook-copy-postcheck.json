@@ -1,0 +1,27 @@
+{
+  "fixtureClosureAddition": {
+    "source": "D:\\Fuentes\\AIDD\\skill\\hooks\\read_hint.py",
+    "destination": "D:\\Fuentes\\_worktrees\\aidd-graph-adoption-proposal-20261115\\runtime\\skill\\hooks\\read_hint.py",
+    "sha256": "71406502245856bb2352f646089f8d8d81ec654a49c91bbeb60bf85fdebce4f9",
+    "destinationExisted": false,
+    "reason": "tests/test_graphs_auto.py::TestSqlReadHint.run_hook directly launches skill/hooks/read_hint.py; absent workspace file makes Python return2 before test behavior. Existing _common.py and graph scripts are present."
+  },
+  "existingTransitiveCommonSHA256": "45c0cd7df40e8fc2d806c00728b92be07efbc6cf8d25549888a6a6d4969891a5",
+  "sourceAndTestPinsUnchanged": {
+    "skill\\scripts\\code_graph.py": "bceaf0f8758d2c2471b228d2dc7a5b657a82fb24734f51052acc67c416542801",
+    "skill\\scripts\\aidd_graphs.py": "8519b558cdeda6adcb027820ff87eafe4a13cd769e5677669ce6b7e7f9ff9726",
+    "skill\\scripts\\aidd_rules.py": "31ae5f48312776a3c7130229c8cc50fdf9e553d40ed67357bfada3aca0fd8cbe",
+    "skill\\scripts\\aidd_amendment_verify.py": "d398f87437bba00fd834115af37824aad06efe0f803d7a5c36a58847f8565340",
+    "skill\\scripts\\aidd_round.py": "f6640e4efa20b17610717e2592d51aefb798e4dd642f0f77d1960616fc926caa",
+    "skill\\scripts\\aidd_status.py": "1abfff8cb944ae3fb3be25866ca6dacb3865766b41a782cb903949a8f460a278",
+    "skill\\scripts\\aidd_evidence.py": "335aacce002f14c7bb6d1975fbbcbbb0bd007ed5544fb3538dcc42ed378cb676",
+    "tests\\test_code_graph_raw_hashes.py": "22f9413ca08e995886667417216b1973c4c7e809b63690c74afcf7992d7d7419"
+  },
+  "runtimeTestExecutions": 0,
+  "sourceImplementationChanges": 0,
+  "originalMainWrites": 0,
+  "rerunOnly": [
+    "tests/test_graphs_auto.py::TestSqlReadHint::test_no_hint_without_a_db_graph",
+    "tests/test_graphs_auto.py::TestSqlReadHint::test_whole_sql_read_in_a_db_project_hints_the_graph_once"
+  ]
+}

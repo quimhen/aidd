@@ -317,7 +317,7 @@ def _newest_watched(root, e):
 def _git(root, args, data=None):
     try:
         env = dict(os.environ, GIT_OPTIONAL_LOCKS="0", LC_ALL="C")
-        r = subprocess.run(["git", "-C", str(Path(root).resolve())] + list(args), cwd=tempfile.gettempdir(), env=env, input=data, stdout=subprocess.PIPE,
+        r = subprocess.run(["git", "-c", "core.fsmonitor=false", "-C", str(Path(root).resolve())] + list(args), cwd=tempfile.gettempdir(), env=env, input=data, stdout=subprocess.PIPE,
                            stderr=subprocess.DEVNULL, timeout=GIT_TIMEOUT, creationflags=_CREATE_NO_WINDOW)
     except Exception:
         return None
@@ -379,7 +379,7 @@ def _blob_sha(path):
 
 def _file_shas(root, rels):
     """{rel: blob sha} for the rels not memoised yet: ONE manifest pass (code_graph.file_shas = one
-    `git hash-object --stdin-paths`), stdlib sha1 fallback. Never stat/mtime."""
+    `git hash-object --no-filters --stdin-paths`), stdlib sha1 fallback. Never stat/mtime."""
     key = str(Path(root).resolve())
     need = sorted({r for r in rels if (key, r) not in _SHA_MEMO})
     if need:
@@ -402,18 +402,38 @@ def _file_shas(root, rels):
     return {r: _SHA_MEMO.get((key, r)) for r in rels}
 
 
+def _code_generation():
+    """aidd:FR-379 Builtin code stamps bind to the raw-cache producer generation."""
+    try:
+        producer = _module("code_graph")
+        schema = getattr(producer, "SCHEMA_VERSION", None)
+        extractor = getattr(producer, "EXTRACTOR_VERSION", None)
+        if any(type(value) is not int or value <= 0 for value in (schema, extractor)):
+            return None
+        return ("builtin-code:%d:%d\0" % (schema, extractor)).encode("ascii")
+    except Exception:
+        return None
+
+
 def _inputs_hashes(root, entries):
     """{name: (inputs_hash, count)} for the given registry entries, one sha pass for all of them."""
-    files = {}
+    files, builtin_code = {}, set()
     for e in entries:
+        if str(e.get("refresh", "")).strip().lower() == "builtin:code":
+            builtin_code.add(e["name"])
         try:
             files[e["name"]] = _watched_files(root, e)
         except Exception:
             files[e["name"]] = []
     shas = _file_shas(root, sorted({r for v in files.values() for r in v}))
+    generation = _code_generation() if builtin_code else None
     out = {}
     for name, rels in files.items():
         h = hashlib.sha256()
+        if name in builtin_code:
+            if generation is None:
+                continue  # Unknown producer cannot establish a fresh builtin-code stamp.
+            h.update(generation)
         n = 0
         for r in sorted(rels):
             s = shas.get(r)
@@ -560,24 +580,77 @@ def _summary(log):
     return " | ".join(hits[-3:]) if hits else (lines[-1][:200] if lines else "")
 
 
-def _run_and_stamp(root, e, stdout=None):  # aidd:FR-021
+def _invalidate_hash_memo(root):
+    """Generation boundaries need a new file listing and content hashes, not process-old inputs."""
+    key = str(Path(root).resolve())
+    _LS_MEMO.pop(key, None)
+    for item in list(_SHA_MEMO):
+        if item[0] == key:
+            _SHA_MEMO.pop(item, None)
+
+
+def _refresh_guard(lock):
+    """Nonblocking OS lock, shared by foreground and detached generators; death releases it."""
+    guard = open(lock.with_suffix(lock.suffix + '.guard'), 'a+b')
+    try:
+        if os.name == 'nt':
+            import msvcrt
+            if guard.seek(0, 2) == 0:
+                guard.write(b'\0'); guard.flush()
+            guard.seek(0)
+            msvcrt.locking(guard.fileno(), msvcrt.LK_NBLCK, 1)
+        else:
+            import fcntl
+            fcntl.flock(guard.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        return guard
+    except OSError:
+        guard.close()
+        return None
+
+
+def _run_and_stamp(root, e, stdout=None, log_path=None):  # aidd:FR-021
     """Run the refresh synchronously; on exit 0 write `<output>.stamp.json` with the inputs hash taken
     BEFORE the run (an edit during the build leaves the graph stale, never falsely fresh)."""
     cmd, shell = _command(root, e)
     if cmd is None:
         return 1
-    hashed = None
+    log, lock, stamp = _paths(root, e['name'])
+    lock.parent.mkdir(parents=True, exist_ok=True)
+    guard = _refresh_guard(lock)
+    if guard is None:
+        return 75
+    output = None
     try:
-        hashed = _inputs_hashes(root, [e]).get(e["name"])
-    except Exception:
-        hashed = None
-    if e["output"]:
-        Path(e["output"]).parent.mkdir(parents=True, exist_ok=True)
-    p = subprocess.run(cmd, shell=shell, cwd=_cwd_for(root, e), stdout=stdout, stderr=subprocess.STDOUT,
-                       timeout=SYNC_TIMEOUT)
-    if p.returncode == 0 and hashed:
-        _write_stamp(root, e, hashed)
-    return p.returncode
+        if _lock_live(lock):
+            return 75
+        lock.write_text(str(os.getpid()))
+        stamp.write_text(str(time.time()))
+        if log_path is not None:
+            output = open(log_path, 'wb')
+            stdout = output
+        _invalidate_hash_memo(root)
+        try:
+            hashed = _inputs_hashes(root, [e]).get(e["name"])
+        except Exception:
+            hashed = None
+        if e["output"]:
+            Path(e["output"]).parent.mkdir(parents=True, exist_ok=True)
+        p = subprocess.run(cmd, shell=shell, cwd=_cwd_for(root, e), stdout=stdout, stderr=subprocess.STDOUT,
+                           timeout=SYNC_TIMEOUT)
+        if p.returncode == 0 and hashed:
+            _write_stamp(root, e, hashed)
+        return p.returncode
+    finally:
+        _invalidate_hash_memo(root)
+        if output is not None:
+            output.close()
+        try:
+            if lock.read_text().strip() == str(os.getpid()):
+                lock.unlink()
+                stamp.write_text(str(time.time()))
+        except OSError:
+            pass
+        guard.close()  # keep the guard inode: unlinking it would permit two independent locks
 
 
 def refresh(root, name, background=True, force=False):
@@ -602,11 +675,11 @@ def refresh(root, name, background=True, force=False):
             return res
         if e["output"]:
             Path(e["output"]).parent.mkdir(parents=True, exist_ok=True)
-        stamp.write_text(str(time.time()))
         if not background:
-            with open(log, "wb") as lf:
-                rc = _run_and_stamp(root, e, stdout=lf)
-            stamp.write_text(str(time.time()))
+            rc = _run_and_stamp(root, e, log_path=log)
+            if rc == 75:
+                res.update(reason="already running", pid=_lock_live(lock))
+                return res
             res.update(started=True, reason="finished", exit=rc, summary=_summary(log))
             return res
         kw = {}
@@ -616,10 +689,8 @@ def refresh(root, name, background=True, force=False):
             kw["start_new_session"] = True
         # the detached wrapper runs the generator and writes the content stamp when it succeeds
         wrapper = [sys.executable, str(Path(__file__).resolve()), "--root", str(Path(root).resolve()), "_run", e["name"]]
-        with open(log, "wb") as lf:
-            p = subprocess.Popen(wrapper, shell=False, cwd=tempfile.gettempdir(), stdin=subprocess.DEVNULL,
-                                 stdout=lf, stderr=subprocess.STDOUT, **kw)
-        lock.write_text(str(p.pid))
+        p = subprocess.Popen(wrapper, shell=False, cwd=tempfile.gettempdir(), stdin=subprocess.DEVNULL,
+                             stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT, **kw)
         res.update(started=True, reason="started", pid=p.pid)
         return res
     except Exception as ex:
@@ -885,7 +956,31 @@ def _show_method(e, nodes, edges, query, limit, stale):  # aidd:FR-016
     return "\n".join(lines)
 
 
-def show(root, name, query, limit=25):
+def _show_code_retry(root, e, query, limit):
+    """FR-370..374: one explicit incremental refresh, then one verified lookup."""
+    try:
+        result = refresh(root, e['name'], background=False)
+    except Exception as error:
+        return ('Graph refresh failed (%s); no fresh lookup was made. Retry with '
+                'aidd graphs refresh code --background.' % type(error).__name__)
+    if not result.get('started') or result.get('exit') != 0:
+        state = 'pending' if result.get('reason') in ('already running', 'debounced') else 'failed'
+        return ('Graph refresh %s; the requested lookup is not confirmed fresh. '
+                'Retry with aidd graphs refresh code --background.' % state)
+    try:
+        fresh = any(row.get('name') == e['name'] and row.get('state') == 'fresh'
+                    for row in status(root, names=[e['name']]))
+        if not fresh:
+            return 'Graph refresh pending: inputs are not confirmed fresh; no refreshed lookup was made.'
+        nodes, edges = _load_graph(e['output'])
+        text = _show_code(root, e, nodes, edges, query, limit, '')
+    except Exception as error:
+        return 'Graph refresh failed (%s); no refreshed lookup was confirmed.' % type(error).__name__
+    summary = str(result.get('summary') or 'incremental refresh completed')[:500]
+    return 'Query repeated once after incremental refresh: %s\n%s' % (summary, text)
+
+
+def show(root, name, query, limit=25, refresh_on_miss=False):
     try:
         e = _get(root, name)
         if e is None:
@@ -895,6 +990,8 @@ def show(root, name, query, limit=25):
                     return ag.show_aliases(root, query, limit=limit)
                 return "alias_graph module not found"
             return "No graph named '%s' (see: aidd graphs list)." % name
+        if refresh_on_miss and (name != 'code' or e['refresh'].strip().lower() != 'builtin:code'):
+            return 'Refused: --refresh-on-miss requires the builtin code graph.'
         if e["kind"] == "spec":
             return "Spec graph is a TOON index; query it with: python %s --code %s" % (HERE / "find_spec.py", query)
         if not e["output"] or not Path(e["output"]).is_file():
@@ -905,7 +1002,10 @@ def show(root, name, query, limit=25):
                 return "alias_graph module not found"
             return "Graph '%s' is missing; build it with: aidd graphs refresh %s --background" % (name, name)
         stale = ""
+        running = False
         for s in status(root, names=[e["name"]]):
+            if s["name"] == e["name"] and s["state"] == "running":
+                running = True
             if s["name"] == e["name"] and s["state"] == "stale":
                 stale = "(graph is stale; refresh: aidd graphs refresh %s --background)" % name
         rl = e["refresh"].strip().lower()
@@ -922,7 +1022,12 @@ def show(root, name, query, limit=25):
         nodes, edges = _load_graph(e["output"])
         if rl == "builtin:code":
             res = _show_code(root, e, nodes, edges, query, limit, stale)
-            if "No FUNC/FILE matching" in res:
+            if res.startswith('No FUNC/FILE matching') and running and refresh_on_miss:
+                return ('Graph refresh pending: another refresh is running; '
+                        'the requested lookup is not confirmed fresh. Retry after it finishes.')
+            if res.startswith('No FUNC/FILE matching') and stale and refresh_on_miss:
+                return _show_code_retry(root, e, query, limit)
+            if "No FUNC/FILE matching" in res and not refresh_on_miss:
                 alt = _get(root, "code-external")
                 if alt is not None and alt.get("output") and Path(alt["output"]).is_file():
                     alt_res = show(root, "code-external", query, limit=limit)
@@ -1087,7 +1192,7 @@ def main(argv):
                 print("unknown graph '%s'" % rest[0])
                 return 1
             sys.stdout.flush()
-            return _run_and_stamp(root, e, stdout=None)
+            return _run_and_stamp(root, e, log_path=_paths(root, e['name'])[0])
         if cmd == "list":
             for e in load_registry(root):
                 print("%-10s %-6s %-7s %s  refresh=%s  watch=%s" % (e["name"], e["kind"], e["source"], e["output"],
@@ -1122,12 +1227,24 @@ def main(argv):
             _flush_warnings()
             return code
         if cmd == "show" and len(rest) >= 2:
+            refresh_on_miss = '--refresh-on-miss' in rest
+            if refresh_on_miss:
+                if rest.count('--refresh-on-miss') != 1 or rest[0] != 'code':
+                    print('Refused: --refresh-on-miss is supported once, only for the code graph.')
+                    return 2
+                rest = [value for value in rest if value != '--refresh-on-miss']
             limit = 25
             if "--limit" in rest:
                 i = rest.index("--limit")
                 limit = int(rest[i + 1])
                 rest = rest[:i] + rest[i + 2:]
-            print(show(root, rest[0], " ".join(rest[1:]), limit))
+            if len(rest) < 2 or not " ".join(rest[1:]).strip():
+                print('Usage: aidd graphs show <name> <query> [--limit N] [--refresh-on-miss]')
+                return 2
+            if refresh_on_miss:
+                print(show(root, rest[0], " ".join(rest[1:]), limit, refresh_on_miss=True))
+            else:
+                print(show(root, rest[0], " ".join(rest[1:]), limit))
             return 0
         if cmd == "explorer":                  # aidd:FR-068 no name = unified explorer of every registered graph
             name = rest[0] if rest and not rest[0].startswith("--") else None

@@ -1244,15 +1244,15 @@ def last_code_edit_ts(root, scope=None, exclude=None):
     does not make this spec's verification or audit stale; `exclude` drops generated outputs."""
     try:
         srx, xrx = _scope_re(scope), _scope_re(exclude)
-        if srx is None and xrx is None:
+        if False and srx is None:
             return max((e['ts'] for e in events(root, kind='code_edit')), default=0.0)
         base = Path(root).resolve()
         best = 0.0
         for e in events(root, kind='code_edit'):
-            rel = _rel_to_root(base, str(e['detail'].get('path') or ''))
-            if rel is None:
+            p = str((e.get('detail') or {}).get('path') or ''); rel = _rel_to_root(base, p) or (p.replace('\\', '/').lstrip('/') if p and not Path(p).is_absolute() else None)
+            if rel is None or _fp_is_doc(rel) or rel.startswith(('.aidd/', 'specs/')):
                 continue                 # outside the project root: not an edit of this scope
-            if in_scope(rel, srx) and not (xrx is not None and in_scope(rel, xrx)):
+            if (srx is None or in_scope(rel, srx)) and not (xrx is not None and in_scope(rel, xrx)):
                 best = max(best, e['ts'])
         return best
     except Exception:
@@ -1916,7 +1916,8 @@ def _fp_git(root, args, deadline):
     timeout = min(_FP_GIT_TIMEOUT, _fp_left(deadline))
     env = dict(os.environ, GIT_OPTIONAL_LOCKS='0', LC_ALL='C')
     try:
-        r = subprocess.run(['git', *args], cwd=str(root), stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+        r = subprocess.run(['git', '-c', 'core.fsmonitor=false', '-c', 'core.untrackedCache=false', *args],
+                           cwd=str(root), stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
                            stderr=subprocess.DEVNULL, timeout=timeout, env=env,
                            creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
     except subprocess.TimeoutExpired:
@@ -1944,26 +1945,80 @@ def _fp_file_digest(path):
     return h.hexdigest()
 
 
+def _fp_raw_worktree_chunk(root, rel, deadline):
+    """Bounded raw regular-file bytes or symlink text, never repository transforms."""
+    import stat
+    parts = rel.split('/')
+    if '\\' in rel or not parts or any(part in ('', '.', '..') or ':' in part for part in parts):
+        raise _FpInputUnsafe()
+    path = root
+    for part in parts[:-1]:
+        path = path / part
+        if (path.is_symlink() or getattr(path.lstat(), 'st_file_attributes', 0) & 0x400
+                or getattr(path, 'is_junction', lambda: False)()):
+            raise _FpInputUnsafe()
+    path = path / parts[-1]
+    def metadata(value):
+        return value.st_dev, value.st_ino, value.st_mode, value.st_size, value.st_mtime_ns
+    try:
+        before = metadata(path.lstat())
+        if getattr(path, 'is_junction', lambda: False)():
+            raise _FpInputUnsafe()
+        if stat.S_ISLNK(before[2]):
+            first = os.readlink(path)
+            middle = metadata(path.lstat())
+            if first != os.readlink(path) or before != middle or middle != metadata(path.lstat()):
+                raise _FpInputUnsafe()
+            chunk = b'link:' + os.fsencode(first)
+        elif stat.S_ISREG(before[2]):
+            flags = os.O_RDONLY | getattr(os, 'O_BINARY', 0) | getattr(os, 'O_NOFOLLOW', 0) | getattr(os, 'O_NONBLOCK', 0)
+            with os.fdopen(os.open(path, flags), 'rb') as stream:
+                if before != metadata(os.fstat(stream.fileno())):
+                    raise _FpInputUnsafe()
+                if before[3] > _FP_BIG_FILE:
+                    chunk = f'big:{before[3]}:{before[4]}'.encode('ascii')
+                else:
+                    data = stream.read(_FP_BIG_FILE + 1)
+                    if len(data) != before[3] or len(data) > _FP_BIG_FILE:
+                        raise _FpInputUnsafe()
+                    chunk = b'bytes:' + hashlib.sha1(data).hexdigest().encode('ascii')
+                if before != metadata(os.fstat(stream.fileno())):
+                    raise _FpInputUnsafe()
+        else:
+            raise _FpInputUnsafe()
+        if before != metadata(path.lstat()):
+            raise _FpInputUnsafe()
+        _fp_left(deadline)
+        return rel.encode('utf-8', errors='surrogateescape') + b'\0' + str(before[2] & 0o111).encode('ascii') + b'\0' + chunk + b'\0'
+    except (OSError, ValueError) as exc:
+        raise _FpInputUnsafe() from exc
+
+
 def _fp_from_git(root, deadline):
+    root = root.resolve(strict=True)
     excl = ['--', '.', ':(exclude)specs', ':(exclude).aidd']
-    h = hashlib.sha1()
-    h.update(b'git\0' + _fp_git(root, ['rev-parse', 'HEAD'], deadline).strip() + b'\0')
-    h.update(_fp_git(root, ['diff', 'HEAD', '--no-color', '--no-ext-diff', '--no-textconv', *excl], deadline))
-    h.update(b'\0untracked\0')
+    head = _fp_git(root, ['rev-parse', 'HEAD'], deadline).strip()
+    index = _fp_git(root, ['ls-files', '--stage', '-z', *excl], deadline)
+    tracked = set()
+    for row in index.split(b'\0'):
+        if not row:
+            continue
+        info, name = row.split(b'\t', 1)
+        mode, oid, stage = info.split()
+        if mode not in (b'100644', b'100755', b'120000') or stage != b'0':
+            raise _FpInputUnsafe()
+        tracked.add(name.decode('utf-8', errors='surrogateescape'))
     raw = _fp_git(root, ['ls-files', '-o', '--exclude-standard', '-z', *excl], deadline)
-    paths = sorted(p for p in raw.decode('utf-8', errors='surrogateescape').split('\0') if p)
+    untracked = {rel for rel in raw.decode('utf-8', errors='surrogateescape').split('\0') if rel and _fp_outside(rel)}
+    paths = sorted(tracked | untracked)
     if len(paths) > _FP_MAX_FILES:
         raise _FpOverBudget()
+    h = hashlib.sha1(b'git-raw-worktree-v2\0' + head + b'\0raw\0')
     for rel in paths:
         _fp_left(deadline)
-        if not _fp_outside(rel):
-            continue
-        try:
-            dig = _fp_file_digest(os.path.join(str(root), rel))
-        except OSError:
-            dig = 'unreadable'
-        h.update(rel.encode('utf-8', errors='surrogateescape') + b'\0' + dig.encode('ascii') + b'\0')
+        h.update(_fp_raw_worktree_chunk(root, rel, deadline))
     return h.hexdigest()[:16]
+
 
 
 def _fp_from_mtimes(root, deadline):
@@ -1990,8 +2045,8 @@ def _fp_from_mtimes(root, deadline):
 
 def worktree_fingerprint(root, budget_s=8.0):
     """aidd:FR-205 sha1[:16] of the project's working tree outside `specs/` and `.aidd/`.
-    git: HEAD + `git diff HEAD` + every untracked non-ignored path with its content sha1 (files over 1 MB:
-    size + mtime). Not a git repo / git missing or failing: sorted (relpath, size, mtime_ns) of the
+    git: HEAD + raw tracked/untracked bytes (big files: size/mtime) or symlink text; no filters, status,
+    diff or fsmonitor. Unsafe inputs return None. Non-git/missing git: sorted (relpath, size, mtime_ns) of the
     project files (skipping specs/, .aidd/, .git/, node_modules/, bin/, obj/, __pycache__/), capped at
     20 000 files. Over the cap or over `budget_s`: None (callers then rely on the code_edit rule).
     List-form subprocess, 5 s per git call, never raises."""
@@ -2018,7 +2073,7 @@ def _fp_is_doc(rel):
     return os.path.splitext(rel)[1].lower() in _FP_DOC_EXT
 
 
-EVIDENCE_ALGORITHM = 'raw-sql-v2-glob-v2'
+EVIDENCE_ALGORITHM = 'raw-sql-v3-nofilters-glob-v2'
 
 
 def sql_semantic(text):
@@ -2193,7 +2248,7 @@ def _blob_shas(root, rels, deadline):
     timeout = _fp_left(deadline)
     env = dict(os.environ, GIT_OPTIONAL_LOCKS='0', LC_ALL='C')
     try:
-        r = subprocess.run(['git', 'hash-object', '--stdin-paths'], cwd=str(root), env=env,
+        r = subprocess.run(['git', 'hash-object', '--no-filters', '--stdin-paths'], cwd=str(root), env=env,
                            input=('\n'.join(rels) + '\n').encode('utf-8', errors='surrogateescape'),
                            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=timeout,
                            creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))

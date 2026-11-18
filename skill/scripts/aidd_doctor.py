@@ -31,7 +31,7 @@ GUARD_CALLS = ('aidd guard', 'aidd_guard.py')
 NEXT_LINE_NEEDLE = 'aidd next'
 OPENCODE2_GATE_LINE = 'write gate: none on opencode 2.x, enforcement: git guard'
 PLUGIN_ENTRY = '.opencode/plugins/aidd.js'
-GEMINI_MATCHER = 'write_file|replace|run_shell_command'
+GEMINI_MATCHER = 'write_file|replace|run_shell_command|edit_file|run_command|bash|invoke_subagent|task|agent'
 RULE_MAX_BYTES = 24000
 AGY_COMMANDS = {'PreToolUse': 'python ../.aidd/hooks/host_adapter.py antigravity pre',
                 'PostToolUse': 'python ../.aidd/hooks/host_adapter.py antigravity post'}

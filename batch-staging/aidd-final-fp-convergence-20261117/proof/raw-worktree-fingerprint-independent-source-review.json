@@ -1,0 +1,50 @@
+{
+  "format": "bounded-independent-functional-security-source-review-v1",
+  "at": "2026-11-18T01:27:25.274810+00:00",
+  "reviewer": "/root/aidd_optimization_plan_review; not raw worktree fingerprint implementation author",
+  "scope": "Existing4b no-repository-execution corrective worktree fingerprint change; exact final source, no unit consent or official unit_audit emitted",
+  "verdict": "PASS",
+  "verdicts": {
+    "functional": "PASS",
+    "security": "PASS"
+  },
+  "pins": {
+    "skill/scripts/aidd_evidence.py": "9e3641692e3a7326b971b9e5143bdd5085c7356adfc3a207245f0636eedcbe86",
+    "adapters/dot-aidd/scripts/aidd_evidence.py": "9e3641692e3a7326b971b9e5143bdd5085c7356adfc3a207245f0636eedcbe86",
+    "tests/test_dry_run_identity_security.py": "11acd8e0cada45c92c5fb101ba43e5f8c5a6c4df3539a380930d6d6c410b31c8"
+  },
+  "checks": [
+    "The reachable unsafe git diff HEAD path is removed. Whole-tree Git fingerprint uses rev-parse HEAD and ls-files metadata only, then reads raw file bytes or symlink text in Python; no diff/status/textconv/clean-filter command is invoked.",
+    "core.fsmonitor=false and core.untrackedCache=false are applied in _fp_git globally with GIT_OPTIONAL_LOCKS=0. This covers inventory reached through code_state with absent/default Scope as well as declared Scope, not only the whole-tree helper. Remaining direct _blob_shas uses fixed hash-object --no-filters --stdin-paths and is unchanged.",
+    "Raw paths reject absolute/empty/traversal/colon segments and a single backslash before Windows path joining. Ancestors reject symlinks, junctions and Windows REPARSE_POINT attributes, including Python3.10 where Path.is_junction is absent. AST inspection confirms the backslash literal is exactly one codepoint92.",
+    "Regular reads are bounded to1MiB+1 and validate lstat/opened descriptor metadata before and after reading plus final path metadata. Files above1MiB retain the documented size/mtime contract rather than being streamed without limit. Symlinks hash their own text via readlink and repeated metadata checks, not target contents.",
+    "Deleted/unreadable inputs, unsafe types/gitlinks and unmerged index stages fail closed. _FpInputUnsafe is separate from _FpUnavailable, so unsafe inputs do not fall through to mtime-only fallback; public result remains16hex orNone. File-count/budget caps and non-Git fallback contract remain.",
+    "Fingerprint includes HEAD, raw path/type/mode/content identity and a new raw-v2 salt; index object IDs are not salted, preserving stability when git add records unchanged working-tree bytes. All pre-existing top-level functions/classes outside the named fingerprint helpers remain AST-identical to Main.",
+    "Inspected actual final Root log:30 tests PASS in8.234s, comprising the two real full CLI clean-filter regressions and28 existing worktree/code fingerprint tests. New tests establish a real positive clean-filter control and ensure dry runs do not run the verification sentinel. Reviewer performed no runtime tests."
+  ],
+  "unchangedExistingTopLevelASTCount": 127,
+  "actualFinalEvidence": {
+    "path": "D:\\Fuentes\\_worktrees\\release-preflight-20261116\\worktree-fingerprint-FINAL-GREEN.log",
+    "sha256": "1ec95f9f8223e3558fc93ed432efe1467951bc94b94a1fd455b13685a1983e8b",
+    "methods": 30,
+    "seconds": 8.234,
+    "status": "PASS"
+  },
+  "historicalEvidence": {
+    "worktree-fingerprint-filter-RED.log": "149e71dc4c912bbdb5eea74aa07e1cfd12f172b1c71b1f9652e87b7aee766522",
+    "worktree-fingerprint-filter-GREEN.log": "44af8bb1c2d57a79a3ad0a33e4293ab63f13ffc1805bf62df9247b23d3c18ed7",
+    "worktree-fingerprint-existing-GREEN.log": "cf3de0b76458d1dc713b09013ef58495f9bfd4e4646bccd5d79ec3d16462a739",
+    "raw-worktree-fingerprint-final-guards.diff": "b66a0b62aed66af899fd0e4852978782b501ee016108923a4035a32c3721d3bb"
+  },
+  "blockingFindings": [],
+  "limits": [
+    "Scope-absence Git reachability was traced statically through the same guarded inventory; no additional runtime case is claimed beyond the actual30-test log.",
+    "Metadata stability checks cover observable state changes, not an OS-atomic snapshot under an adversary capable of restoring every observed attribute. Large-file metadata behavior is preserved deliberately.",
+    "This bounded source PASS supports Root controlled publication of its authorized three files. Final current cohort, proof publication and official native unit audits remain separate gates."
+  ],
+  "reviewerRuntimeTests": 0,
+  "reviewerDBRuns": 0,
+  "reviewerSourceWrites": 0,
+  "reviewerMainOrInstalledWrites": 0,
+  "reviewerApprovalOrOfficialUnitAuditWrites": 0
+}

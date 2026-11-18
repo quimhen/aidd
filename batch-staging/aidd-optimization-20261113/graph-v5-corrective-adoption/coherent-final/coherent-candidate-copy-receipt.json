@@ -1,0 +1,2826 @@
+{
+  "destination": "D:\\Fuentes\\_worktrees\\aidd-security-boundary-20261114\\publication-plan\\coherent-final-candidate",
+  "mapping": [
+    {
+      "relative": "adapters/dot-aidd/AIDD.md",
+      "source": "D:\\Fuentes\\AIDD\\adapters\\dot-aidd\\AIDD.md",
+      "sourceSha256": "1272435f21a51b9206fbb577c7b42f2b82c35f64574736dd24c5d54bfbd6458f",
+      "baselineMainSha256": "1272435f21a51b9206fbb577c7b42f2b82c35f64574736dd24c5d54bfbd6458f",
+      "bytes": 152893,
+      "overlay": false
+    },
+    {
+      "relative": "adapters/dot-aidd/CORE.md",
+      "source": "D:\\Fuentes\\AIDD\\adapters\\dot-aidd\\CORE.md",
+      "sourceSha256": "bee88736d96122139654394cb5fcd8c0dc72fb48fe3d06781a0fdb4941ce691f",
+      "baselineMainSha256": "bee88736d96122139654394cb5fcd8c0dc72fb48fe3d06781a0fdb4941ce691f",
+      "bytes": 10145,
+      "overlay": false
+    },
+    {
+      "relative": "adapters/dot-aidd/extensions/azure_devops/manifest.json",
+      "source": "D:\\Fuentes\\AIDD\\adapters\\dot-aidd\\extensions\\azure_devops\\manifest.json",
+      "sourceSha256": "7aa99ba0f6c09188c3baf2f155bad9c76e7704b275fe499e469045bdf405fabb",
+      "baselineMainSha256": "7aa99ba0f6c09188c3baf2f155bad9c76e7704b275fe499e469045bdf405fabb",
+      "bytes": 220,
+      "overlay": false
+    },
+    {
+      "relative": "adapters/dot-aidd/extensions/azure_devops/provider.py",
+      "source": "D:\\Fuentes\\AIDD\\adapters\\dot-aidd\\extensions\\azure_devops\\provider.py",
+      "sourceSha256": "e37f707098967052b8237a13c6b7cf00c47f69a620f3b3011fdf24b8e7024cce",
+      "baselineMainSha256": "e37f707098967052b8237a13c6b7cf00c47f69a620f3b3011fdf24b8e7024cce",
+      "bytes": 5046,
+      "overlay": false
+    },
+    {
+      "relative": "adapters/dot-aidd/extensions/bitbucket/manifest.json",
+      "source": "D:\\Fuentes\\AIDD\\adapters\\dot-aidd\\extensions\\bitbucket\\manifest.json",
+      "sourceSha256": "d1f8c2a5986e3a52bffca22bffa7cdc87e647042abb92eb5ba5b241d764cf181",
+      "baselineMainSha256": "d1f8c2a5986e3a52bffca22bffa7cdc87e647042abb92eb5ba5b241d764cf181",
+      "bytes": 221,
+      "overlay": false
+    },
+    {
+      "relative": "adapters/dot-aidd/extensions/bitbucket/provider.py",
+      "source": "D:\\Fuentes\\AIDD\\adapters\\dot-aidd\\extensions\\bitbucket\\provider.py",
+      "sourceSha256": "ed0c356959a0842bc677af7e69d420f7f8c17271e408587d82abf7255e0217c6",
+      "baselineMainSha256": "ed0c356959a0842bc677af7e69d420f7f8c17271e408587d82abf7255e0217c6",
+      "bytes": 5917,
+      "overlay": false
+    },
+    {
+      "relative": "adapters/dot-aidd/extensions/github/manifest.json",
+      "source": "D:\\Fuentes\\AIDD\\adapters\\dot-aidd\\extensions\\github\\manifest.json",
+      "sourceSha256": "7a8d3a7c7705c23961dadf5713b8943d0ad17251c6e8e89fb5ecc411a7596007",
+      "baselineMainSha256": "7a8d3a7c7705c23961dadf5713b8943d0ad17251c6e8e89fb5ecc411a7596007",
+      "bytes": 199,
+      "overlay": false
+    },
+    {
+      "relative": "adapters/dot-aidd/extensions/github/provider.py",
+      "source": "D:\\Fuentes\\AIDD\\adapters\\dot-aidd\\extensions\\github\\provider.py",
+      "sourceSha256": "7c1cc7e69d0fc9a9e20ad7d00d21fc5e8739db3f8c97c0e0ad2350eb75fcd5e6",
+      "baselineMainSha256": "7c1cc7e69d0fc9a9e20ad7d00d21fc5e8739db3f8c97c0e0ad2350eb75fcd5e6",
+      "bytes": 3238,
+      "overlay": false
+    },
+    {
+      "relative": "adapters/dot-aidd/hooks/_common.py",
+      "source": "D:\\Fuentes\\AIDD\\adapters\\dot-aidd\\hooks\\_common.py",
+      "sourceSha256": "45c0cd7df40e8fc2d806c00728b92be07efbc6cf8d25549888a6a6d4969891a5",
+      "baselineMainSha256": "45c0cd7df40e8fc2d806c00728b92be07efbc6cf8d25549888a6a6d4969891a5",
+      "bytes": 8601,
+      "overlay": false
+    },
+    {
+      "relative": "adapters/dot-aidd/hooks/codex_patch.py",
+      "source": "D:\\Fuentes\\AIDD\\adapters\\dot-aidd\\hooks\\codex_patch.py",
+      "sourceSha256": "80606fc63d5093b30635a60ead1033daf6cefeec2631e71decba418922394505",
+      "baselineMainSha256": "80606fc63d5093b30635a60ead1033daf6cefeec2631e71decba418922394505",
+      "bytes": 7800,
+      "overlay": false
+    },
+    {
+      "relative": "adapters/dot-aidd/hooks/codex_subagent.py",
+      "source": "D:\\Fuentes\\AIDD\\adapters\\dot-aidd\\hooks\\codex_subagent.py",
+      "sourceSha256": "979ec6b972db69f259a813f3774e1d2e437b0dda767af971e69b3e0e3b42fd8c",
+      "baselineMainSha256": "979ec6b972db69f259a813f3774e1d2e437b0dda767af971e69b3e0e3b42fd8c",
+      "bytes": 2530,
+      "overlay": false
+    },
+    {
+      "relative": "adapters/dot-aidd/hooks/host_adapter.py",
+      "source": "D:\\Fuentes\\AIDD\\adapters\\dot-aidd\\hooks\\host_adapter.py",
+      "sourceSha256": "866255e711599a1dc193cd98e67d9cb68474a3e32e2cf13b53a369959ef8b5d0",
+      "baselineMainSha256": "866255e711599a1dc193cd98e67d9cb68474a3e32e2cf13b53a369959ef8b5d0",
+      "bytes": 32142,
+      "overlay": false
+    },
+    {
+      "relative": "adapters/dot-aidd/hooks/mark_agent_dispatch.py",
+      "source": "D:\\Fuentes\\AIDD\\adapters\\dot-aidd\\hooks\\mark_agent_dispatch.py",
+      "sourceSha256": "f8493c2050015e77dd1099a09b46a2d10f843514d8603395ad126d04c8ba5de5",
+      "baselineMainSha256": "f8493c2050015e77dd1099a09b46a2d10f843514d8603395ad126d04c8ba5de5",
+      "bytes": 7084,
+      "overlay": false
+    },
+    {
+      "relative": "adapters/dot-aidd/hooks/mark_code_edit.py",
+      "source": "D:\\Fuentes\\AIDD\\adapters\\dot-aidd\\hooks\\mark_code_edit.py",
+      "sourceSha256": "ad079853f95fe3eecf192e3e5f6ba9b7b985a8419a434e288a74594e0333f91a",
+      "baselineMainSha256": "ad079853f95fe3eecf192e3e5f6ba9b7b985a8419a434e288a74594e0333f91a",
+      "bytes": 6334,
+      "overlay": false
+    },
+    {
+      "relative": "adapters/dot-aidd/hooks/record_dispatch_pre.py",
+      "source": "D:\\Fuentes\\AIDD\\adapters\\dot-aidd\\hooks\\record_dispatch_pre.py",
+      "sourceSha256": "fdd01a182570b472e259c25d7ed5e5a1587e87b96da5e3a75fe5f0f1c5880ee9",
+      "baselineMainSha256": "fdd01a182570b472e259c25d7ed5e5a1587e87b96da5e3a75fe5f0f1c5880ee9",
+      "bytes": 2234,
+      "overlay": false
+    },
+    {
+      "relative": "adapters/dot-aidd/hooks/require_aidd.py",
+      "source": "D:\\Fuentes\\AIDD\\adapters\\dot-aidd\\hooks\\require_aidd.py",
+      "sourceSha256": "c17ac0e89be6ca7bdee86c97cfde3fe8a6390b170221a9bf4983c9bfaaca2498",
+      "baselineMainSha256": "c17ac0e89be6ca7bdee86c97cfde3fe8a6390b170221a9bf4983c9bfaaca2498",
+      "bytes": 2615,
+      "overlay": false
+    },
+    {
+      "relative": "adapters/dot-aidd/hooks/require_graph_coherence_audit.py",
+      "source": "D:\\Fuentes\\AIDD\\adapters\\dot-aidd\\hooks\\require_graph_coherence_audit.py",
+      "sourceSha256": "4b7ca30c063c38ec9b7b439a76bdecb5b4f9714ab94833c6776331e040f2d5f4",
+      "baselineMainSha256": "4b7ca30c063c38ec9b7b439a76bdecb5b4f9714ab94833c6776331e040f2d5f4",
+      "bytes": 6986,
+      "overlay": false
+    },
+    {
+      "relative": "adapters/dot-aidd/hooks/require_independent_audit.py",
+      "source": "D:\\Fuentes\\AIDD\\adapters\\dot-aidd\\hooks\\require_independent_audit.py",
+      "sourceSha256": "83133575c09139308b9a0e51c9bdeb1f0190f794239e8322b52f0942077821fa",
+      "baselineMainSha256": "83133575c09139308b9a0e51c9bdeb1f0190f794239e8322b52f0942077821fa",
+      "bytes": 3528,
+      "overlay": false
+    },
+    {
+      "relative": "adapters/dot-aidd/hooks/rule_gate.py",
+      "source": "D:\\Fuentes\\AIDD\\adapters\\dot-aidd\\hooks\\rule_gate.py",
+      "sourceSha256": "218144030955f377acb81a278a40259b212688c24ba037566cbfe4ed416f9153",
+      "baselineMainSha256": "218144030955f377acb81a278a40259b212688c24ba037566cbfe4ed416f9153",
+      "bytes": 106984,
+      "overlay": false
+    },
+    {
+      "relative": "adapters/dot-aidd/scripts/aidd_amendment_verify.py",
+      "source": "D:\\Fuentes\\AIDD\\adapters\\dot-aidd\\scripts\\aidd_amendment_verify.py",
+      "sourceSha256": "d398f87437bba00fd834115af37824aad06efe0f803d7a5c36a58847f8565340",
+      "baselineMainSha256": "d398f87437bba00fd834115af37824aad06efe0f803d7a5c36a58847f8565340",
+      "bytes": 25044,
+      "overlay": false
+    },
+    {
+      "relative": "adapters/dot-aidd/scripts/aidd_calibrate.py",
+      "source": "D:\\Fuentes\\AIDD\\adapters\\dot-aidd\\scripts\\aidd_calibrate.py",
+      "sourceSha256": "8ba2095e85e0ef70f44d635904c2152a1b67d91f0d4a48585d5bede0d7cc83e2",
+      "baselineMainSha256": "8ba2095e85e0ef70f44d635904c2152a1b67d91f0d4a48585d5bede0d7cc83e2",
+      "bytes": 5532,
+      "overlay": false
+    },
+    {
+      "relative": "adapters/dot-aidd/scripts/aidd_close_ledger.py",
+      "source": "D:\\Fuentes\\AIDD\\adapters\\dot-aidd\\scripts\\aidd_close_ledger.py",
+      "sourceSha256": "30ac3340d9b0883c79647efcd894b9c90e7971d495cf10e87bdba7bc6f9322d8",
+      "baselineMainSha256": "30ac3340d9b0883c79647efcd894b9c90e7971d495cf10e87bdba7bc6f9322d8",
+      "bytes": 13738,
+      "overlay": false
+    },
+    {
+      "relative": "adapters/dot-aidd/scripts/aidd_coverage.py",
+      "source": "D:\\Fuentes\\AIDD\\adapters\\dot-aidd\\scripts\\aidd_coverage.py",
+      "sourceSha256": "a5242def74461fd0b25913706e5eb0c9f09b71fb016007d54dd5859f6e404798",
+      "baselineMainSha256": "a5242def74461fd0b25913706e5eb0c9f09b71fb016007d54dd5859f6e404798",
+      "bytes": 24046,
+      "overlay": false
+    },
+    {
+      "relative": "adapters/dot-aidd/scripts/aidd_doctor.py",
+      "source": "D:\\Fuentes\\AIDD\\adapters\\dot-aidd\\scripts\\aidd_doctor.py",
+      "sourceSha256": "c460a811bde2cd1c3aafcd26f8151481f7c6cc5d83f05dc001ccfd97c8696b65",
+      "baselineMainSha256": "c460a811bde2cd1c3aafcd26f8151481f7c6cc5d83f05dc001ccfd97c8696b65",
+      "bytes": 32572,
+      "overlay": false
+    },
+    {
+      "relative": "adapters/dot-aidd/scripts/aidd_embed.py",
+      "source": "D:\\Fuentes\\AIDD\\adapters\\dot-aidd\\scripts\\aidd_embed.py",
+      "sourceSha256": "f6128bcada85c6c550a46615f5aa5adbe7396df6c98fedbcb83a11d6aeeb58ea",
+      "baselineMainSha256": "f6128bcada85c6c550a46615f5aa5adbe7396df6c98fedbcb83a11d6aeeb58ea",
+      "bytes": 2174,
+      "overlay": false
+    },
+    {
+      "relative": "adapters/dot-aidd/scripts/aidd_evidence.py",
+      "source": "D:\\Fuentes\\AIDD\\adapters\\dot-aidd\\scripts\\aidd_evidence.py",
+      "sourceSha256": "335aacce002f14c7bb6d1975fbbcbbb0bd007ed5544fb3538dcc42ed378cb676",
+      "baselineMainSha256": "335aacce002f14c7bb6d1975fbbcbbb0bd007ed5544fb3538dcc42ed378cb676",
+      "bytes": 104383,
+      "overlay": false
+    },
+    {
+      "relative": "adapters/dot-aidd/scripts/aidd_gitignore.py",
+      "source": "D:\\Fuentes\\AIDD\\adapters\\dot-aidd\\scripts\\aidd_gitignore.py",
+      "sourceSha256": "c3ffe2db014c78ecb5570b6ac7ee6966583aa4a08f08949c21b8da22c70883c7",
+      "baselineMainSha256": "c3ffe2db014c78ecb5570b6ac7ee6966583aa4a08f08949c21b8da22c70883c7",
+      "bytes": 2418,
+      "overlay": false
+    },
+    {
+      "relative": "adapters/dot-aidd/scripts/aidd_graphs.py",
+      "source": "D:\\Fuentes\\_worktrees\\aidd-graph-adoption-proposal-20261115\\runtime\\adapters\\dot-aidd\\scripts\\aidd_graphs.py",
+      "sourceSha256": "8519b558cdeda6adcb027820ff87eafe4a13cd769e5677669ce6b7e7f9ff9726",
+      "baselineMainSha256": "3d01c1736317cfe520b2e24857bd142d9f71dd8bc94966dfc756e4d67cdf8b04",
+      "bytes": 58415,
+      "overlay": true
+    },
+    {
+      "relative": "adapters/dot-aidd/scripts/aidd_guard.py",
+      "source": "D:\\Fuentes\\AIDD\\adapters\\dot-aidd\\scripts\\aidd_guard.py",
+      "sourceSha256": "e44b113280488f859e1179fcea8b92bca13a462df3f918f1068672ed04a778e0",
+      "baselineMainSha256": "e44b113280488f859e1179fcea8b92bca13a462df3f918f1068672ed04a778e0",
+      "bytes": 31959,
+      "overlay": false
+    },
+    {
+      "relative": "adapters/dot-aidd/scripts/aidd_job.py",
+      "source": "D:\\Fuentes\\AIDD\\adapters\\dot-aidd\\scripts\\aidd_job.py",
+      "sourceSha256": "bc9afe091955e692511a9cf979fce9c8f86273b69c7de44bec54945a1f991984",
+      "baselineMainSha256": "bc9afe091955e692511a9cf979fce9c8f86273b69c7de44bec54945a1f991984",
+      "bytes": 29924,
+      "overlay": false
+    },
+    {
+      "relative": "adapters/dot-aidd/scripts/aidd_memory.py",
+      "source": "D:\\Fuentes\\AIDD\\adapters\\dot-aidd\\scripts\\aidd_memory.py",
+      "sourceSha256": "bb828833e66331e52e69c0ca1e6d0ca3dee7c38856b629d2d3be7767904edce5",
+      "baselineMainSha256": "bb828833e66331e52e69c0ca1e6d0ca3dee7c38856b629d2d3be7767904edce5",
+      "bytes": 48892,
+      "overlay": false
+    },
+    {
+      "relative": "adapters/dot-aidd/scripts/aidd_memory_import.py",
+      "source": "D:\\Fuentes\\AIDD\\adapters\\dot-aidd\\scripts\\aidd_memory_import.py",
+      "sourceSha256": "72ec99607f61fde3411b7158798b9e389a96f454d2da4e3f0d314c62d1e92101",
+      "baselineMainSha256": "72ec99607f61fde3411b7158798b9e389a96f454d2da4e3f0d314c62d1e92101",
+      "bytes": 16214,
+      "overlay": false
+    },
+    {
+      "relative": "adapters/dot-aidd/scripts/aidd_navigator.py",
+      "source": "D:\\Fuentes\\AIDD\\adapters\\dot-aidd\\scripts\\aidd_navigator.py",
+      "sourceSha256": "8f4e401f708313772b0f1623de8f277fb7d2bacbb74f127a02b8f9e0b097fd3b",
+      "baselineMainSha256": "8f4e401f708313772b0f1623de8f277fb7d2bacbb74f127a02b8f9e0b097fd3b",
+      "bytes": 8599,
+      "overlay": false
+    },
+    {
+      "relative": "adapters/dot-aidd/scripts/aidd_next.py",
+      "source": "D:\\Fuentes\\AIDD\\adapters\\dot-aidd\\scripts\\aidd_next.py",
+      "sourceSha256": "cec86faf227a20283840b4c2877b0be77e39fc35670c298eafdafeee2cfe7917",
+      "baselineMainSha256": "cec86faf227a20283840b4c2877b0be77e39fc35670c298eafdafeee2cfe7917",
+      "bytes": 8412,
+      "overlay": false
+    },
+    {
+      "relative": "adapters/dot-aidd/scripts/aidd_pending.py",
+      "source": "D:\\Fuentes\\AIDD\\adapters\\dot-aidd\\scripts\\aidd_pending.py",
+      "sourceSha256": "8545f8154c57d4f323ec318bd0e016caaf1e7803bc9690952063605cb85490c1",
+      "baselineMainSha256": "8545f8154c57d4f323ec318bd0e016caaf1e7803bc9690952063605cb85490c1",
+      "bytes": 7740,
+      "overlay": false
+    },
+    {
+      "relative": "adapters/dot-aidd/scripts/aidd_progress.py",
+      "source": "D:\\Fuentes\\AIDD\\adapters\\dot-aidd\\scripts\\aidd_progress.py",
+      "sourceSha256": "f78a92171423f7585c45159fcb89453c23951d269e85b6b9dcc5adbd1e90fee3",
+      "baselineMainSha256": "f78a92171423f7585c45159fcb89453c23951d269e85b6b9dcc5adbd1e90fee3",
+      "bytes": 22603,
+      "overlay": false
+    },
+    {
+      "relative": "adapters/dot-aidd/scripts/aidd_provider_attestation.py",
+      "source": "D:\\Fuentes\\AIDD\\adapters\\dot-aidd\\scripts\\aidd_provider_attestation.py",
+      "sourceSha256": "963e3ab5433a699c742792a6c69505f3f8ef98e8034dc3fe541c77366d278e24",
+      "baselineMainSha256": "963e3ab5433a699c742792a6c69505f3f8ef98e8034dc3fe541c77366d278e24",
+      "bytes": 32007,
+      "overlay": false
+    },
+    {
+      "relative": "adapters/dot-aidd/scripts/aidd_readiness.py",
+      "source": "D:\\Fuentes\\AIDD\\adapters\\dot-aidd\\scripts\\aidd_readiness.py",
+      "sourceSha256": "9e849388f8e1f779c787da3b75f8ea3091bf62a30a3ab5bac973e4321f532a6c",
+      "baselineMainSha256": "9e849388f8e1f779c787da3b75f8ea3091bf62a30a3ab5bac973e4321f532a6c",
+      "bytes": 5556,
+      "overlay": false
+    },
+    {
+      "relative": "adapters/dot-aidd/scripts/aidd_red.py",
+      "source": "D:\\Fuentes\\AIDD\\adapters\\dot-aidd\\scripts\\aidd_red.py",
+      "sourceSha256": "c79beb57f7ff4f09bf891c80e053bfdd43da5ebac963d9d661cc29a42acc9df0",
+      "baselineMainSha256": "c79beb57f7ff4f09bf891c80e053bfdd43da5ebac963d9d661cc29a42acc9df0",
+      "bytes": 10821,
+      "overlay": false
+    },
+    {
+      "relative": "adapters/dot-aidd/scripts/aidd_reuse.py",
+      "source": "D:\\Fuentes\\AIDD\\adapters\\dot-aidd\\scripts\\aidd_reuse.py",
+      "sourceSha256": "d44ab46e81460428b60adda8b5422dcf62504fc5e5c08b8f155d0a135af27b1f",
+      "baselineMainSha256": "d44ab46e81460428b60adda8b5422dcf62504fc5e5c08b8f155d0a135af27b1f",
+      "bytes": 4916,
+      "overlay": false
+    },
+    {
+      "relative": "adapters/dot-aidd/scripts/aidd_review.py",
+      "source": "D:\\Fuentes\\AIDD\\adapters\\dot-aidd\\scripts\\aidd_review.py",
+      "sourceSha256": "193ef345c12b2a6978f5c559baae133135148404124a5ef319ab93a64c2a2a71",
+      "baselineMainSha256": "193ef345c12b2a6978f5c559baae133135148404124a5ef319ab93a64c2a2a71",
+      "bytes": 78977,
+      "overlay": false
+    },
+    {
+      "relative": "adapters/dot-aidd/scripts/aidd_review_items.py",
+      "source": "D:\\Fuentes\\AIDD\\adapters\\dot-aidd\\scripts\\aidd_review_items.py",
+      "sourceSha256": "f60656841367524f9726c960a6e8d0114901de41ebbb7ec2f7ef0527847c6d1d",
+      "baselineMainSha256": "f60656841367524f9726c960a6e8d0114901de41ebbb7ec2f7ef0527847c6d1d",
+      "bytes": 42647,
+      "overlay": false
+    },
+    {
+      "relative": "adapters/dot-aidd/scripts/aidd_review_state.py",
+      "source": "D:\\Fuentes\\AIDD\\adapters\\dot-aidd\\scripts\\aidd_review_state.py",
+      "sourceSha256": "d8aa138121481f46c1350be1f5308185f85f78a21dc05e394231c16bd1491b30",
+      "baselineMainSha256": "d8aa138121481f46c1350be1f5308185f85f78a21dc05e394231c16bd1491b30",
+      "bytes": 28812,
+      "overlay": false
+    },
+    {
+      "relative": "adapters/dot-aidd/scripts/aidd_round.py",
+      "source": "D:\\Fuentes\\AIDD\\adapters\\dot-aidd\\scripts\\aidd_round.py",
+      "sourceSha256": "f6640e4efa20b17610717e2592d51aefb798e4dd642f0f77d1960616fc926caa",
+      "baselineMainSha256": "f6640e4efa20b17610717e2592d51aefb798e4dd642f0f77d1960616fc926caa",
+      "bytes": 37892,
+      "overlay": false
+    },
+    {
+      "relative": "adapters/dot-aidd/scripts/aidd_rules.py",
+      "source": "D:\\Fuentes\\AIDD\\adapters\\dot-aidd\\scripts\\aidd_rules.py",
+      "sourceSha256": "31ae5f48312776a3c7130229c8cc50fdf9e553d40ed67357bfada3aca0fd8cbe",
+      "baselineMainSha256": "31ae5f48312776a3c7130229c8cc50fdf9e553d40ed67357bfada3aca0fd8cbe",
+      "bytes": 188783,
+      "overlay": false
+    },
+    {
+      "relative": "adapters/dot-aidd/scripts/aidd_source_shape.py",
+      "source": "D:\\Fuentes\\_worktrees\\aidd-security-boundary-20261114\\publication-plan\\source-shape-race-runtime\\adapters\\dot-aidd\\scripts\\aidd_source_shape.py",
+      "sourceSha256": "58232679a323ad5bb51754c37fd672491dbfe25165edc767a3e8c25d79e4047f",
+      "baselineMainSha256": "84b96e4b3fdf088593d04e11110b0d807db12bec2d9f8fadc8817d0050dfdc42",
+      "bytes": 6073,
+      "overlay": true
+    },
+    {
+      "relative": "adapters/dot-aidd/scripts/aidd_sqlcheck.py",
+      "source": "D:\\Fuentes\\AIDD\\adapters\\dot-aidd\\scripts\\aidd_sqlcheck.py",
+      "sourceSha256": "996a3db37de2507c3b745eee7b2be53a9ad1be1eca2af3b33c202503a3274a69",
+      "baselineMainSha256": "996a3db37de2507c3b745eee7b2be53a9ad1be1eca2af3b33c202503a3274a69",
+      "bytes": 10718,
+      "overlay": false
+    },
+    {
+      "relative": "adapters/dot-aidd/scripts/aidd_status.py",
+      "source": "D:\\Fuentes\\AIDD\\adapters\\dot-aidd\\scripts\\aidd_status.py",
+      "sourceSha256": "1abfff8cb944ae3fb3be25866ca6dacb3865766b41a782cb903949a8f460a278",
+      "baselineMainSha256": "1abfff8cb944ae3fb3be25866ca6dacb3865766b41a782cb903949a8f460a278",
+      "bytes": 213553,
+      "overlay": false
+    },
+    {
+      "relative": "adapters/dot-aidd/scripts/aidd_sync.py",
+      "source": "D:\\Fuentes\\AIDD\\adapters\\dot-aidd\\scripts\\aidd_sync.py",
+      "sourceSha256": "275c8d9341edf102edfcf6f0a5347957639f17bf560d15c2099c4a8e124f518a",
+      "baselineMainSha256": "275c8d9341edf102edfcf6f0a5347957639f17bf560d15c2099c4a8e124f518a",
+      "bytes": 19339,
+      "overlay": false
+    },
+    {
+      "relative": "adapters/dot-aidd/scripts/aidd_tools.py",
+      "source": "D:\\Fuentes\\AIDD\\adapters\\dot-aidd\\scripts\\aidd_tools.py",
+      "sourceSha256": "7e4c83db65fffe7a3bbf3e2e00850efc54cc17e8a465ff5081b61a59ce7bac8e",
+      "baselineMainSha256": "7e4c83db65fffe7a3bbf3e2e00850efc54cc17e8a465ff5081b61a59ce7bac8e",
+      "bytes": 16036,
+      "overlay": false
+    },
+    {
+      "relative": "adapters/dot-aidd/scripts/aidd_triage.py",
+      "source": "D:\\Fuentes\\AIDD\\adapters\\dot-aidd\\scripts\\aidd_triage.py",
+      "sourceSha256": "8b37d88a784faeab135cfafd4621b4590db1c0cfc0925a9b05b649ec75792c7b",
+      "baselineMainSha256": "8b37d88a784faeab135cfafd4621b4590db1c0cfc0925a9b05b649ec75792c7b",
+      "bytes": 5523,
+      "overlay": false
+    },
+    {
+      "relative": "adapters/dot-aidd/scripts/aidd_unit_audit.py",
+      "source": "D:\\Fuentes\\AIDD\\adapters\\dot-aidd\\scripts\\aidd_unit_audit.py",
+      "sourceSha256": "3eb0ef12a6b451cbbcc3de0c493704cbe81506b36759f91c7ebd261298164d01",
+      "baselineMainSha256": "3eb0ef12a6b451cbbcc3de0c493704cbe81506b36759f91c7ebd261298164d01",
+      "bytes": 44808,
+      "overlay": false
+    },
+    {
+      "relative": "adapters/dot-aidd/scripts/aidd_unit_consent.py",
+      "source": "D:\\Fuentes\\AIDD\\adapters\\dot-aidd\\scripts\\aidd_unit_consent.py",
+      "sourceSha256": "b1ced4a620b1501b1f51a1a1945d7c188aeeb49ea62870e843100ccde5c28fe4",
+      "baselineMainSha256": "b1ced4a620b1501b1f51a1a1945d7c188aeeb49ea62870e843100ccde5c28fe4",
+      "bytes": 2803,
+      "overlay": false
+    },
+    {
+      "relative": "adapters/dot-aidd/scripts/aidd_unit_visual.py",
+      "source": "D:\\Fuentes\\AIDD\\adapters\\dot-aidd\\scripts\\aidd_unit_visual.py",
+      "sourceSha256": "ee9bf1d2c1cf713951ec3538bca49cd14bbd6b8ad29f6da648232034858c37e6",
+      "baselineMainSha256": "ee9bf1d2c1cf713951ec3538bca49cd14bbd6b8ad29f6da648232034858c37e6",
+      "bytes": 12048,
+      "overlay": false
+    },
+    {
+      "relative": "adapters/dot-aidd/scripts/aidd_units.py",
+      "source": "D:\\Fuentes\\AIDD\\adapters\\dot-aidd\\scripts\\aidd_units.py",
+      "sourceSha256": "3c53f71416a41b934c24d2bff646d60e1834d237e729a5e3658c41b027ff8d61",
+      "baselineMainSha256": "3c53f71416a41b934c24d2bff646d60e1834d237e729a5e3658c41b027ff8d61",
+      "bytes": 39257,
+      "overlay": false
+    },
+    {
+      "relative": "adapters/dot-aidd/scripts/alias_graph.py",
+      "source": "D:\\Fuentes\\AIDD\\adapters\\dot-aidd\\scripts\\alias_graph.py",
+      "sourceSha256": "ebde0c8955fecf3d04c41acd80aa6b2674ee29fcc6655701810d3ec844d82e94",
+      "baselineMainSha256": "ebde0c8955fecf3d04c41acd80aa6b2674ee29fcc6655701810d3ec844d82e94",
+      "bytes": 5064,
+      "overlay": false
+    },
+    {
+      "relative": "adapters/dot-aidd/scripts/check_charter.py",
+      "source": "D:\\Fuentes\\AIDD\\adapters\\dot-aidd\\scripts\\check_charter.py",
+      "sourceSha256": "3012c8b6f75395b7ecda621ff36407ae56baf62f72d2eb5e7f0019c6ebdef239",
+      "baselineMainSha256": "3012c8b6f75395b7ecda621ff36407ae56baf62f72d2eb5e7f0019c6ebdef239",
+      "bytes": 9305,
+      "overlay": false
+    },
+    {
+      "relative": "adapters/dot-aidd/scripts/check_spec.py",
+      "source": "D:\\Fuentes\\AIDD\\adapters\\dot-aidd\\scripts\\check_spec.py",
+      "sourceSha256": "6f9e073de4c29d04674fbab33ed4825a55b811c2749601a104eba1713d029e79",
+      "baselineMainSha256": "6f9e073de4c29d04674fbab33ed4825a55b811c2749601a104eba1713d029e79",
+      "bytes": 32541,
+      "overlay": false
+    },
+    {
+      "relative": "adapters/dot-aidd/scripts/code_graph.py",
+      "source": "D:\\Fuentes\\_worktrees\\aidd-graph-adoption-proposal-20261115\\runtime\\adapters\\dot-aidd\\scripts\\code_graph.py",
+      "sourceSha256": "bceaf0f8758d2c2471b228d2dc7a5b657a82fb24734f51052acc67c416542801",
+      "baselineMainSha256": "cd86d9ad495883896d639ab0e28f19848993a1f769b47051a9520ce676e6d3ab",
+      "bytes": 47890,
+      "overlay": true
+    },
+    {
+      "relative": "adapters/dot-aidd/scripts/component_graph.py",
+      "source": "D:\\Fuentes\\AIDD\\adapters\\dot-aidd\\scripts\\component_graph.py",
+      "sourceSha256": "fc5f048e98ca820961c75900174e4bfbc19e93d3c9894eba840c5c161df1084d",
+      "baselineMainSha256": "fc5f048e98ca820961c75900174e4bfbc19e93d3c9894eba840c5c161df1084d",
+      "bytes": 21133,
+      "overlay": false
+    },
+    {
+      "relative": "adapters/dot-aidd/scripts/extension_registry.py",
+      "source": "D:\\Fuentes\\AIDD\\adapters\\dot-aidd\\scripts\\extension_registry.py",
+      "sourceSha256": "84f92e73731e3a8440b40aa045243191cb3d1750ec3f476837e335170f9c222d",
+      "baselineMainSha256": "84f92e73731e3a8440b40aa045243191cb3d1750ec3f476837e335170f9c222d",
+      "bytes": 12443,
+      "overlay": false
+    },
+    {
+      "relative": "adapters/dot-aidd/scripts/find_spec.py",
+      "source": "D:\\Fuentes\\AIDD\\adapters\\dot-aidd\\scripts\\find_spec.py",
+      "sourceSha256": "182066815d51e8c8b489b5296179ba9d62dff30caf8ba763a7bbfb4e9178026c",
+      "baselineMainSha256": "182066815d51e8c8b489b5296179ba9d62dff30caf8ba763a7bbfb4e9178026c",
+      "bytes": 51778,
+      "overlay": false
+    },
+    {
+      "relative": "adapters/dot-aidd/scripts/flowmap.py",
+      "source": "D:\\Fuentes\\AIDD\\adapters\\dot-aidd\\scripts\\flowmap.py",
+      "sourceSha256": "17a30f677b4d1f0176d82831fb5374ce7a22b72af1068bfdb9b7c933c627b9bc",
+      "baselineMainSha256": "17a30f677b4d1f0176d82831fb5374ce7a22b72af1068bfdb9b7c933c627b9bc",
+      "bytes": 58656,
+      "overlay": false
+    },
+    {
+      "relative": "adapters/dot-aidd/scripts/graph_explorer.py",
+      "source": "D:\\Fuentes\\AIDD\\adapters\\dot-aidd\\scripts\\graph_explorer.py",
+      "sourceSha256": "f88a70f48ddd3a52bc8f4c8d4a6bcca43d882eb35d849129533a76ff6ca521da",
+      "baselineMainSha256": "f88a70f48ddd3a52bc8f4c8d4a6bcca43d882eb35d849129533a76ff6ca521da",
+      "bytes": 65955,
+      "overlay": false
+    },
+    {
+      "relative": "adapters/dot-aidd/scripts/graph_snapshot.py",
+      "source": "D:\\Fuentes\\AIDD\\adapters\\dot-aidd\\scripts\\graph_snapshot.py",
+      "sourceSha256": "035f67aa18a4699a89c76e9e14d066745b28d98b4c09228138a6e38f354823f3",
+      "baselineMainSha256": "035f67aa18a4699a89c76e9e14d066745b28d98b4c09228138a6e38f354823f3",
+      "bytes": 47930,
+      "overlay": false
+    },
+    {
+      "relative": "adapters/dot-aidd/scripts/graph_trace.py",
+      "source": "D:\\Fuentes\\AIDD\\adapters\\dot-aidd\\scripts\\graph_trace.py",
+      "sourceSha256": "ed17b84d9b2217b8e562fefe8c2ea7908d64e8870d308b6f7532b175ef26ea94",
+      "baselineMainSha256": "ed17b84d9b2217b8e562fefe8c2ea7908d64e8870d308b6f7532b175ef26ea94",
+      "bytes": 30982,
+      "overlay": false
+    },
+    {
+      "relative": "adapters/dot-aidd/scripts/link_pr_to_task.py",
+      "source": "D:\\Fuentes\\AIDD\\adapters\\dot-aidd\\scripts\\link_pr_to_task.py",
+      "sourceSha256": "d3b729bbc9d869fdfd1d1794d1bf7a960c79ce9dee279c745f0f78b974da3279",
+      "baselineMainSha256": "d3b729bbc9d869fdfd1d1794d1bf7a960c79ce9dee279c745f0f78b974da3279",
+      "bytes": 5121,
+      "overlay": false
+    },
+    {
+      "relative": "adapters/dot-aidd/scripts/method_graph.py",
+      "source": "D:\\Fuentes\\AIDD\\adapters\\dot-aidd\\scripts\\method_graph.py",
+      "sourceSha256": "291bac97cb435fc1c12191d591cdfa25d40d029a9ab3745bfe1ff307ced52c65",
+      "baselineMainSha256": "291bac97cb435fc1c12191d591cdfa25d40d029a9ab3745bfe1ff307ced52c65",
+      "bytes": 12282,
+      "overlay": false
+    },
+    {
+      "relative": "adapters/dot-aidd/scripts/sql_graph.py",
+      "source": "D:\\Fuentes\\AIDD\\adapters\\dot-aidd\\scripts\\sql_graph.py",
+      "sourceSha256": "6c893e1172ba65d9f373b8b2bcd0b063267145a0ae8635424986eb138dea07ce",
+      "baselineMainSha256": "6c893e1172ba65d9f373b8b2bcd0b063267145a0ae8635424986eb138dea07ce",
+      "bytes": 50967,
+      "overlay": false
+    },
+    {
+      "relative": "adapters/dot-aidd/scripts/sync_issues.py",
+      "source": "D:\\Fuentes\\AIDD\\adapters\\dot-aidd\\scripts\\sync_issues.py",
+      "sourceSha256": "4635e4f8e67e2c890c7d71dd03bc3bdbfd1c17629f10265c784702414da1a6f2",
+      "baselineMainSha256": "4635e4f8e67e2c890c7d71dd03bc3bdbfd1c17629f10265c784702414da1a6f2",
+      "bytes": 4591,
+      "overlay": false
+    },
+    {
+      "relative": "adapters/dot-aidd/scripts/tasks_to_issues.py",
+      "source": "D:\\Fuentes\\AIDD\\adapters\\dot-aidd\\scripts\\tasks_to_issues.py",
+      "sourceSha256": "b25d960947848f467ccdead895998602f07611b6548de096d41f81713fabf2b7",
+      "baselineMainSha256": "b25d960947848f467ccdead895998602f07611b6548de096d41f81713fabf2b7",
+      "bytes": 11988,
+      "overlay": false
+    },
+    {
+      "relative": "adapters/dot-aidd/scripts/unified_graph.py",
+      "source": "D:\\Fuentes\\AIDD\\adapters\\dot-aidd\\scripts\\unified_graph.py",
+      "sourceSha256": "035be7b3427b985c7ec261101a56fe6c7cfaf42c87c966d095f964be1bc85a35",
+      "baselineMainSha256": "035be7b3427b985c7ec261101a56fe6c7cfaf42c87c966d095f964be1bc85a35",
+      "bytes": 17160,
+      "overlay": false
+    },
+    {
+      "relative": "adapters/dot-aidd/templates/STATE.md",
+      "source": "D:\\Fuentes\\AIDD\\adapters\\dot-aidd\\templates\\STATE.md",
+      "sourceSha256": "635419581701b9ff6f4096a551410c4d288a498110a657d981f1f263522ebcde",
+      "baselineMainSha256": "635419581701b9ff6f4096a551410c4d288a498110a657d981f1f263522ebcde",
+      "bytes": 2087,
+      "overlay": false
+    },
+    {
+      "relative": "adapters/dot-aidd/templates/calibration.toon",
+      "source": "D:\\Fuentes\\AIDD\\adapters\\dot-aidd\\templates\\calibration.toon",
+      "sourceSha256": "85998394bf6238de7e7fef90881a333ba33ac83115114a7ff0f5c6c9b7a2ab09",
+      "baselineMainSha256": "85998394bf6238de7e7fef90881a333ba33ac83115114a7ff0f5c6c9b7a2ab09",
+      "bytes": 171,
+      "overlay": false
+    },
+    {
+      "relative": "adapters/dot-aidd/templates/charter.md",
+      "source": "D:\\Fuentes\\AIDD\\adapters\\dot-aidd\\templates\\charter.md",
+      "sourceSha256": "066a3293f18bfa9f727330d318b46988cdaa2aaf9aa97ee1c0cabafe680a418c",
+      "baselineMainSha256": "066a3293f18bfa9f727330d318b46988cdaa2aaf9aa97ee1c0cabafe680a418c",
+      "bytes": 6109,
+      "overlay": false
+    },
+    {
+      "relative": "adapters/dot-aidd/templates/comprehensive-documentation.md",
+      "source": "D:\\Fuentes\\AIDD\\adapters\\dot-aidd\\templates\\comprehensive-documentation.md",
+      "sourceSha256": "471f1683602740a7a11b0d6eef2466d06ceddd90601e96699bf163f10c8eed89",
+      "baselineMainSha256": "471f1683602740a7a11b0d6eef2466d06ceddd90601e96699bf163f10c8eed89",
+      "bytes": 1015,
+      "overlay": false
+    },
+    {
+      "relative": "adapters/dot-aidd/templates/contracts.md",
+      "source": "D:\\Fuentes\\AIDD\\adapters\\dot-aidd\\templates\\contracts.md",
+      "sourceSha256": "4c063098eb387c2693edff66b0a36a373a28f51a9cf97381f380aa98531b2b89",
+      "baselineMainSha256": "4c063098eb387c2693edff66b0a36a373a28f51a9cf97381f380aa98531b2b89",
+      "bytes": 2459,
+      "overlay": false
+    },
+    {
+      "relative": "adapters/dot-aidd/templates/data-model.md",
+      "source": "D:\\Fuentes\\AIDD\\adapters\\dot-aidd\\templates\\data-model.md",
+      "sourceSha256": "cb33b8bd0e3fd5bc65ae8b7f3941ef1bdc46efd74f1e2e3680316bbc5a2e53e0",
+      "baselineMainSha256": "cb33b8bd0e3fd5bc65ae8b7f3941ef1bdc46efd74f1e2e3680316bbc5a2e53e0",
+      "bytes": 2294,
+      "overlay": false
+    },
+    {
+      "relative": "adapters/dot-aidd/templates/design-system/MASTER.md",
+      "source": "D:\\Fuentes\\AIDD\\adapters\\dot-aidd\\templates\\design-system\\MASTER.md",
+      "sourceSha256": "05e14128e455edce791e2681258ed12efcf3199f79a1a44cabe784eb318f3d2c",
+      "baselineMainSha256": "05e14128e455edce791e2681258ed12efcf3199f79a1a44cabe784eb318f3d2c",
+      "bytes": 973,
+      "overlay": false
+    },
+    {
+      "relative": "adapters/dot-aidd/templates/design-system/components-index.md",
+      "source": "D:\\Fuentes\\AIDD\\adapters\\dot-aidd\\templates\\design-system\\components-index.md",
+      "sourceSha256": "fb82b8b1a6a433f2930d1ac83865055bc3bdbb4bc1e2c947f6843ec3d0b0fdf0",
+      "baselineMainSha256": "fb82b8b1a6a433f2930d1ac83865055bc3bdbb4bc1e2c947f6843ec3d0b0fdf0",
+      "bytes": 1027,
+      "overlay": false
+    },
+    {
+      "relative": "adapters/dot-aidd/templates/design-system/page-override.md",
+      "source": "D:\\Fuentes\\AIDD\\adapters\\dot-aidd\\templates\\design-system\\page-override.md",
+      "sourceSha256": "9d52825642a31dbca9175672545534bf6e1847de50998b3bd3413947dd0bbe2d",
+      "baselineMainSha256": "9d52825642a31dbca9175672545534bf6e1847de50998b3bd3413947dd0bbe2d",
+      "bytes": 304,
+      "overlay": false
+    },
+    {
+      "relative": "adapters/dot-aidd/templates/gitignore.aidd",
+      "source": "D:\\Fuentes\\AIDD\\adapters\\dot-aidd\\templates\\gitignore.aidd",
+      "sourceSha256": "317dbc6c070fa755c144e43213cec0cf1b8329279f87ab0a7e3a3795333d4fd7",
+      "baselineMainSha256": "317dbc6c070fa755c144e43213cec0cf1b8329279f87ab0a7e3a3795333d4fd7",
+      "bytes": 252,
+      "overlay": false
+    },
+    {
+      "relative": "adapters/dot-aidd/templates/mockup-audit.md",
+      "source": "D:\\Fuentes\\AIDD\\adapters\\dot-aidd\\templates\\mockup-audit.md",
+      "sourceSha256": "fcb37defac64f43b983ac4a76e6cda652aed44f6faadd6cbee189758575df147",
+      "baselineMainSha256": "fcb37defac64f43b983ac4a76e6cda652aed44f6faadd6cbee189758575df147",
+      "bytes": 3243,
+      "overlay": false
+    },
+    {
+      "relative": "adapters/dot-aidd/templates/navigator.html",
+      "source": "D:\\Fuentes\\AIDD\\adapters\\dot-aidd\\templates\\navigator.html",
+      "sourceSha256": "81d27152a99172f1335e3afea3cba71b6e17919f643bfb61c8281b0f2221098d",
+      "baselineMainSha256": "81d27152a99172f1335e3afea3cba71b6e17919f643bfb61c8281b0f2221098d",
+      "bytes": 21724,
+      "overlay": false
+    },
+    {
+      "relative": "adapters/dot-aidd/templates/perf/README.md",
+      "source": "D:\\Fuentes\\AIDD\\adapters\\dot-aidd\\templates\\perf\\README.md",
+      "sourceSha256": "12fe7cac4ce92ce0fbe43ae244f5fd0268841cee26d074d015f71dee7d7b3a7e",
+      "baselineMainSha256": "12fe7cac4ce92ce0fbe43ae244f5fd0268841cee26d074d015f71dee7d7b3a7e",
+      "bytes": 1388,
+      "overlay": false
+    },
+    {
+      "relative": "adapters/dot-aidd/templates/perf/plan-risk.test.sql",
+      "source": "D:\\Fuentes\\AIDD\\adapters\\dot-aidd\\templates\\perf\\plan-risk.test.sql",
+      "sourceSha256": "3a6567fea22db6a21f84fc3d90bc8f4759abca474cab119d9f33f56cf64823c1",
+      "baselineMainSha256": "3a6567fea22db6a21f84fc3d90bc8f4759abca474cab119d9f33f56cf64823c1",
+      "bytes": 3151,
+      "overlay": false
+    },
+    {
+      "relative": "adapters/dot-aidd/templates/perf/seed-generate-series.sql",
+      "source": "D:\\Fuentes\\AIDD\\adapters\\dot-aidd\\templates\\perf\\seed-generate-series.sql",
+      "sourceSha256": "565971a963b0307c12df9d90db5b9f34b2165d6a5e0fac910d99a6215c4f00e3",
+      "baselineMainSha256": "565971a963b0307c12df9d90db5b9f34b2165d6a5e0fac910d99a6215c4f00e3",
+      "bytes": 2767,
+      "overlay": false
+    },
+    {
+      "relative": "adapters/dot-aidd/templates/plan.md",
+      "source": "D:\\Fuentes\\AIDD\\adapters\\dot-aidd\\templates\\plan.md",
+      "sourceSha256": "315a4bdfc6097ce7d3c26871802e6b0e828bfe3bf1a97f832f07818ca8cc2258",
+      "baselineMainSha256": "315a4bdfc6097ce7d3c26871802e6b0e828bfe3bf1a97f832f07818ca8cc2258",
+      "bytes": 3422,
+      "overlay": false
+    },
+    {
+      "relative": "adapters/dot-aidd/templates/qa-audit.md",
+      "source": "D:\\Fuentes\\AIDD\\adapters\\dot-aidd\\templates\\qa-audit.md",
+      "sourceSha256": "20c0a6f49f0f3378836d43a91fab1200066506d1666953edc162c1b3b40aa9e9",
+      "baselineMainSha256": "20c0a6f49f0f3378836d43a91fab1200066506d1666953edc162c1b3b40aa9e9",
+      "bytes": 4787,
+      "overlay": false
+    },
+    {
+      "relative": "adapters/dot-aidd/templates/research.md",
+      "source": "D:\\Fuentes\\AIDD\\adapters\\dot-aidd\\templates\\research.md",
+      "sourceSha256": "b97f32140c2fece3eede3fdf7a6c03b3f0b8b1273a8df0cdf764fb150a561835",
+      "baselineMainSha256": "b97f32140c2fece3eede3fdf7a6c03b3f0b8b1273a8df0cdf764fb150a561835",
+      "bytes": 286,
+      "overlay": false
+    },
+    {
+      "relative": "adapters/dot-aidd/templates/review-full.html",
+      "source": "D:\\Fuentes\\AIDD\\adapters\\dot-aidd\\templates\\review-full.html",
+      "sourceSha256": "5288ee9b8eccca437afdd86b62f9990ca47b426925734f3a695b5745b48ee6d2",
+      "baselineMainSha256": "5288ee9b8eccca437afdd86b62f9990ca47b426925734f3a695b5745b48ee6d2",
+      "bytes": 14620,
+      "overlay": false
+    },
+    {
+      "relative": "adapters/dot-aidd/templates/review.html",
+      "source": "D:\\Fuentes\\AIDD\\adapters\\dot-aidd\\templates\\review.html",
+      "sourceSha256": "39ccea28d255482d5e99ff09ed64e4d982f693642925ef48e6d25eebb8e756c0",
+      "baselineMainSha256": "39ccea28d255482d5e99ff09ed64e4d982f693642925ef48e6d25eebb8e756c0",
+      "bytes": 75119,
+      "overlay": false
+    },
+    {
+      "relative": "adapters/dot-aidd/templates/spec.md",
+      "source": "D:\\Fuentes\\AIDD\\adapters\\dot-aidd\\templates\\spec.md",
+      "sourceSha256": "9bdeb6215f42be3f2ceb62fcf3f6138fed491c35b5cf7603701e3d3168b2d3cc",
+      "baselineMainSha256": "9bdeb6215f42be3f2ceb62fcf3f6138fed491c35b5cf7603701e3d3168b2d3cc",
+      "bytes": 10514,
+      "overlay": false
+    },
+    {
+      "relative": "adapters/dot-aidd/templates/tasks.md",
+      "source": "D:\\Fuentes\\AIDD\\adapters\\dot-aidd\\templates\\tasks.md",
+      "sourceSha256": "afc5844641085a905ee6243cc7494f573c15fe8ff788ed4c885f225a05765746",
+      "baselineMainSha256": "afc5844641085a905ee6243cc7494f573c15fe8ff788ed4c885f225a05765746",
+      "bytes": 8475,
+      "overlay": false
+    },
+    {
+      "relative": "adapters/dot-aidd/templates/traceability.md",
+      "source": "D:\\Fuentes\\AIDD\\adapters\\dot-aidd\\templates\\traceability.md",
+      "sourceSha256": "83cde96c414514e6c00d7d94f55190d21ca7dcf1005e62aceba62682cabb657e",
+      "baselineMainSha256": "83cde96c414514e6c00d7d94f55190d21ca7dcf1005e62aceba62682cabb657e",
+      "bytes": 1298,
+      "overlay": false
+    },
+    {
+      "relative": "adapters/dot-aidd/templates/visual-flow.toon",
+      "source": "D:\\Fuentes\\AIDD\\adapters\\dot-aidd\\templates\\visual-flow.toon",
+      "sourceSha256": "536e6645d16903eefdb2a66afecd059a3de9263d566663622bffe697c80cacde",
+      "baselineMainSha256": "536e6645d16903eefdb2a66afecd059a3de9263d566663622bffe697c80cacde",
+      "bytes": 1156,
+      "overlay": false
+    },
+    {
+      "relative": "aidd/__init__.py",
+      "source": "D:\\Fuentes\\AIDD\\aidd\\__init__.py",
+      "sourceSha256": "c2f6eca43aa02c6173cd4056d799f8471c0945c20d57ecb1a3dd8df39d6d9267",
+      "baselineMainSha256": "c2f6eca43aa02c6173cd4056d799f8471c0945c20d57ecb1a3dd8df39d6d9267",
+      "bytes": 459,
+      "overlay": false
+    },
+    {
+      "relative": "aidd/cli.py",
+      "source": "D:\\Fuentes\\AIDD\\aidd\\cli.py",
+      "sourceSha256": "a92eac5f8e9807d2268695fa0c8b1d578a872ce6f9982de2e9a4f96bf4c97e82",
+      "baselineMainSha256": "a92eac5f8e9807d2268695fa0c8b1d578a872ce6f9982de2e9a4f96bf4c97e82",
+      "bytes": 38020,
+      "overlay": false
+    },
+    {
+      "relative": "skill/AIDD.md",
+      "source": "D:\\Fuentes\\AIDD\\skill\\AIDD.md",
+      "sourceSha256": "1272435f21a51b9206fbb577c7b42f2b82c35f64574736dd24c5d54bfbd6458f",
+      "baselineMainSha256": "1272435f21a51b9206fbb577c7b42f2b82c35f64574736dd24c5d54bfbd6458f",
+      "bytes": 152893,
+      "overlay": false
+    },
+    {
+      "relative": "skill/SKILL.md",
+      "source": "D:\\Fuentes\\AIDD\\skill\\SKILL.md",
+      "sourceSha256": "fc5a5be8ca578deacf7ce932dfdb6d13942f65ce2e36680566e74722092d7c61",
+      "baselineMainSha256": "fc5a5be8ca578deacf7ce932dfdb6d13942f65ce2e36680566e74722092d7c61",
+      "bytes": 102985,
+      "overlay": false
+    },
+    {
+      "relative": "skill/extensions/adapters/cline/manifest.json",
+      "source": "D:\\Fuentes\\AIDD\\skill\\extensions\\adapters\\cline\\manifest.json",
+      "sourceSha256": "9c6636caea73574f48ea672a3b95303f44fdbf6143772c9f089bcba0fa9e354d",
+      "baselineMainSha256": "9c6636caea73574f48ea672a3b95303f44fdbf6143772c9f089bcba0fa9e354d",
+      "bytes": 434,
+      "overlay": false
+    },
+    {
+      "relative": "skill/extensions/adapters/copilot/manifest.json",
+      "source": "D:\\Fuentes\\AIDD\\skill\\extensions\\adapters\\copilot\\manifest.json",
+      "sourceSha256": "53bb533b502561c264d50dfde8e25b7f462ec5467169ae25f16247db0d0191f9",
+      "baselineMainSha256": "53bb533b502561c264d50dfde8e25b7f462ec5467169ae25f16247db0d0191f9",
+      "bytes": 500,
+      "overlay": false
+    },
+    {
+      "relative": "skill/extensions/adapters/cursor/manifest.json",
+      "source": "D:\\Fuentes\\AIDD\\skill\\extensions\\adapters\\cursor\\manifest.json",
+      "sourceSha256": "75a6e59b8e0d5f57e89c58bf5d7e4ba1b47c109ee47796bcd848178c0c89e261",
+      "baselineMainSha256": "75a6e59b8e0d5f57e89c58bf5d7e4ba1b47c109ee47796bcd848178c0c89e261",
+      "bytes": 431,
+      "overlay": false
+    },
+    {
+      "relative": "skill/extensions/adapters/gemini/manifest.json",
+      "source": "D:\\Fuentes\\AIDD\\skill\\extensions\\adapters\\gemini\\manifest.json",
+      "sourceSha256": "41200bfc7c17aeeff365cd1314602cdfb577dc4fdd91a4f6540339bf824f800f",
+      "baselineMainSha256": "41200bfc7c17aeeff365cd1314602cdfb577dc4fdd91a4f6540339bf824f800f",
+      "bytes": 438,
+      "overlay": false
+    },
+    {
+      "relative": "skill/extensions/adapters/windsurf/manifest.json",
+      "source": "D:\\Fuentes\\AIDD\\skill\\extensions\\adapters\\windsurf\\manifest.json",
+      "sourceSha256": "e7e3fd13bdd3cec7b993f5113207b0bdc65cefe8e5242e753d3e76efe171fbb7",
+      "baselineMainSha256": "e7e3fd13bdd3cec7b993f5113207b0bdc65cefe8e5242e753d3e76efe171fbb7",
+      "bytes": 441,
+      "overlay": false
+    },
+    {
+      "relative": "skill/extensions/azure_devops/manifest.json",
+      "source": "D:\\Fuentes\\AIDD\\skill\\extensions\\azure_devops\\manifest.json",
+      "sourceSha256": "7aa99ba0f6c09188c3baf2f155bad9c76e7704b275fe499e469045bdf405fabb",
+      "baselineMainSha256": "7aa99ba0f6c09188c3baf2f155bad9c76e7704b275fe499e469045bdf405fabb",
+      "bytes": 220,
+      "overlay": false
+    },
+    {
+      "relative": "skill/extensions/azure_devops/provider.py",
+      "source": "D:\\Fuentes\\AIDD\\skill\\extensions\\azure_devops\\provider.py",
+      "sourceSha256": "e37f707098967052b8237a13c6b7cf00c47f69a620f3b3011fdf24b8e7024cce",
+      "baselineMainSha256": "e37f707098967052b8237a13c6b7cf00c47f69a620f3b3011fdf24b8e7024cce",
+      "bytes": 5046,
+      "overlay": false
+    },
+    {
+      "relative": "skill/extensions/bitbucket/manifest.json",
+      "source": "D:\\Fuentes\\AIDD\\skill\\extensions\\bitbucket\\manifest.json",
+      "sourceSha256": "d1f8c2a5986e3a52bffca22bffa7cdc87e647042abb92eb5ba5b241d764cf181",
+      "baselineMainSha256": "d1f8c2a5986e3a52bffca22bffa7cdc87e647042abb92eb5ba5b241d764cf181",
+      "bytes": 221,
+      "overlay": false
+    },
+    {
+      "relative": "skill/extensions/bitbucket/provider.py",
+      "source": "D:\\Fuentes\\AIDD\\skill\\extensions\\bitbucket\\provider.py",
+      "sourceSha256": "ed0c356959a0842bc677af7e69d420f7f8c17271e408587d82abf7255e0217c6",
+      "baselineMainSha256": "ed0c356959a0842bc677af7e69d420f7f8c17271e408587d82abf7255e0217c6",
+      "bytes": 5917,
+      "overlay": false
+    },
+    {
+      "relative": "skill/extensions/github/manifest.json",
+      "source": "D:\\Fuentes\\AIDD\\skill\\extensions\\github\\manifest.json",
+      "sourceSha256": "7a8d3a7c7705c23961dadf5713b8943d0ad17251c6e8e89fb5ecc411a7596007",
+      "baselineMainSha256": "7a8d3a7c7705c23961dadf5713b8943d0ad17251c6e8e89fb5ecc411a7596007",
+      "bytes": 199,
+      "overlay": false
+    },
+    {
+      "relative": "skill/extensions/github/provider.py",
+      "source": "D:\\Fuentes\\AIDD\\skill\\extensions\\github\\provider.py",
+      "sourceSha256": "7c1cc7e69d0fc9a9e20ad7d00d21fc5e8739db3f8c97c0e0ad2350eb75fcd5e6",
+      "baselineMainSha256": "7c1cc7e69d0fc9a9e20ad7d00d21fc5e8739db3f8c97c0e0ad2350eb75fcd5e6",
+      "bytes": 3238,
+      "overlay": false
+    },
+    {
+      "relative": "skill/hooks/_common.py",
+      "source": "D:\\Fuentes\\AIDD\\skill\\hooks\\_common.py",
+      "sourceSha256": "45c0cd7df40e8fc2d806c00728b92be07efbc6cf8d25549888a6a6d4969891a5",
+      "baselineMainSha256": "45c0cd7df40e8fc2d806c00728b92be07efbc6cf8d25549888a6a6d4969891a5",
+      "bytes": 8601,
+      "overlay": false
+    },
+    {
+      "relative": "skill/hooks/codex_patch.py",
+      "source": "D:\\Fuentes\\AIDD\\skill\\hooks\\codex_patch.py",
+      "sourceSha256": "80606fc63d5093b30635a60ead1033daf6cefeec2631e71decba418922394505",
+      "baselineMainSha256": "80606fc63d5093b30635a60ead1033daf6cefeec2631e71decba418922394505",
+      "bytes": 7800,
+      "overlay": false
+    },
+    {
+      "relative": "skill/hooks/codex_subagent.py",
+      "source": "D:\\Fuentes\\AIDD\\skill\\hooks\\codex_subagent.py",
+      "sourceSha256": "979ec6b972db69f259a813f3774e1d2e437b0dda767af971e69b3e0e3b42fd8c",
+      "baselineMainSha256": "979ec6b972db69f259a813f3774e1d2e437b0dda767af971e69b3e0e3b42fd8c",
+      "bytes": 2530,
+      "overlay": false
+    },
+    {
+      "relative": "skill/hooks/graph_refresh.py",
+      "source": "D:\\Fuentes\\AIDD\\skill\\hooks\\graph_refresh.py",
+      "sourceSha256": "c2939de2d6d4e92063fac0122a3d8aedd398ad6630482f0ea65f97abc5a71a0a",
+      "baselineMainSha256": "c2939de2d6d4e92063fac0122a3d8aedd398ad6630482f0ea65f97abc5a71a0a",
+      "bytes": 3189,
+      "overlay": false
+    },
+    {
+      "relative": "skill/hooks/host_adapter.py",
+      "source": "D:\\Fuentes\\AIDD\\skill\\hooks\\host_adapter.py",
+      "sourceSha256": "866255e711599a1dc193cd98e67d9cb68474a3e32e2cf13b53a369959ef8b5d0",
+      "baselineMainSha256": "866255e711599a1dc193cd98e67d9cb68474a3e32e2cf13b53a369959ef8b5d0",
+      "bytes": 32142,
+      "overlay": false
+    },
+    {
+      "relative": "skill/hooks/mark_agent_dispatch.py",
+      "source": "D:\\Fuentes\\AIDD\\skill\\hooks\\mark_agent_dispatch.py",
+      "sourceSha256": "f8493c2050015e77dd1099a09b46a2d10f843514d8603395ad126d04c8ba5de5",
+      "baselineMainSha256": "f8493c2050015e77dd1099a09b46a2d10f843514d8603395ad126d04c8ba5de5",
+      "bytes": 7084,
+      "overlay": false
+    },
+    {
+      "relative": "skill/hooks/mark_code_edit.py",
+      "source": "D:\\Fuentes\\AIDD\\skill\\hooks\\mark_code_edit.py",
+      "sourceSha256": "ad079853f95fe3eecf192e3e5f6ba9b7b985a8419a434e288a74594e0333f91a",
+      "baselineMainSha256": "ad079853f95fe3eecf192e3e5f6ba9b7b985a8419a434e288a74594e0333f91a",
+      "bytes": 6334,
+      "overlay": false
+    },
+    {
+      "relative": "skill/hooks/mark_graph_rebuild.py",
+      "source": "D:\\Fuentes\\AIDD\\skill\\hooks\\mark_graph_rebuild.py",
+      "sourceSha256": "17e73634e1cfb4eb7ae55657b711c1149b7040fcf085451dc27ecadd2cf45598",
+      "baselineMainSha256": "17e73634e1cfb4eb7ae55657b711c1149b7040fcf085451dc27ecadd2cf45598",
+      "bytes": 3311,
+      "overlay": false
+    },
+    {
+      "relative": "skill/hooks/mark_invoked.py",
+      "source": "D:\\Fuentes\\AIDD\\skill\\hooks\\mark_invoked.py",
+      "sourceSha256": "ca84a4c72bd8e4ba1aca83a4c3cf22905d45dc7474f03fc70a4967650eeaf2c9",
+      "baselineMainSha256": "ca84a4c72bd8e4ba1aca83a4c3cf22905d45dc7474f03fc70a4967650eeaf2c9",
+      "bytes": 965,
+      "overlay": false
+    },
+    {
+      "relative": "skill/hooks/mark_user_question.py",
+      "source": "D:\\Fuentes\\AIDD\\skill\\hooks\\mark_user_question.py",
+      "sourceSha256": "b15dad0fcfe697c4007bcb2421ccc064222e996f0284ab487d0380f259d84bae",
+      "baselineMainSha256": "b15dad0fcfe697c4007bcb2421ccc064222e996f0284ab487d0380f259d84bae",
+      "bytes": 3860,
+      "overlay": false
+    },
+    {
+      "relative": "skill/hooks/memory_context.py",
+      "source": "D:\\Fuentes\\AIDD\\skill\\hooks\\memory_context.py",
+      "sourceSha256": "4b21152bf64bbb9380128e4bd02c24968e6441d3605306da2ef0b98c742cb0b5",
+      "baselineMainSha256": "4b21152bf64bbb9380128e4bd02c24968e6441d3605306da2ef0b98c742cb0b5",
+      "bytes": 1486,
+      "overlay": false
+    },
+    {
+      "relative": "skill/hooks/memory_file_context.py",
+      "source": "D:\\Fuentes\\AIDD\\skill\\hooks\\memory_file_context.py",
+      "sourceSha256": "cad231bd2e42dafc253e05b66616611119a12e52c1fd0906d73667c9540dfe74",
+      "baselineMainSha256": "cad231bd2e42dafc253e05b66616611119a12e52c1fd0906d73667c9540dfe74",
+      "bytes": 3027,
+      "overlay": false
+    },
+    {
+      "relative": "skill/hooks/prompt_trigger.py",
+      "source": "D:\\Fuentes\\AIDD\\skill\\hooks\\prompt_trigger.py",
+      "sourceSha256": "888676a5903c9f97e2c9ce5324cb2a2233be849b7b14983ce2c07d07a2cf82e8",
+      "baselineMainSha256": "888676a5903c9f97e2c9ce5324cb2a2233be849b7b14983ce2c07d07a2cf82e8",
+      "bytes": 13558,
+      "overlay": false
+    },
+    {
+      "relative": "skill/hooks/read_hint.py",
+      "source": "D:\\Fuentes\\AIDD\\skill\\hooks\\read_hint.py",
+      "sourceSha256": "71406502245856bb2352f646089f8d8d81ec654a49c91bbeb60bf85fdebce4f9",
+      "baselineMainSha256": "71406502245856bb2352f646089f8d8d81ec654a49c91bbeb60bf85fdebce4f9",
+      "bytes": 12588,
+      "overlay": false
+    },
+    {
+      "relative": "skill/hooks/record_dispatch_pre.py",
+      "source": "D:\\Fuentes\\AIDD\\skill\\hooks\\record_dispatch_pre.py",
+      "sourceSha256": "fdd01a182570b472e259c25d7ed5e5a1587e87b96da5e3a75fe5f0f1c5880ee9",
+      "baselineMainSha256": "fdd01a182570b472e259c25d7ed5e5a1587e87b96da5e3a75fe5f0f1c5880ee9",
+      "bytes": 2234,
+      "overlay": false
+    },
+    {
+      "relative": "skill/hooks/require_aidd.py",
+      "source": "D:\\Fuentes\\AIDD\\skill\\hooks\\require_aidd.py",
+      "sourceSha256": "c17ac0e89be6ca7bdee86c97cfde3fe8a6390b170221a9bf4983c9bfaaca2498",
+      "baselineMainSha256": "c17ac0e89be6ca7bdee86c97cfde3fe8a6390b170221a9bf4983c9bfaaca2498",
+      "bytes": 2615,
+      "overlay": false
+    },
+    {
+      "relative": "skill/hooks/require_graph_coherence_audit.py",
+      "source": "D:\\Fuentes\\AIDD\\skill\\hooks\\require_graph_coherence_audit.py",
+      "sourceSha256": "4b7ca30c063c38ec9b7b439a76bdecb5b4f9714ab94833c6776331e040f2d5f4",
+      "baselineMainSha256": "4b7ca30c063c38ec9b7b439a76bdecb5b4f9714ab94833c6776331e040f2d5f4",
+      "bytes": 6986,
+      "overlay": false
+    },
+    {
+      "relative": "skill/hooks/require_independent_audit.py",
+      "source": "D:\\Fuentes\\AIDD\\skill\\hooks\\require_independent_audit.py",
+      "sourceSha256": "83133575c09139308b9a0e51c9bdeb1f0190f794239e8322b52f0942077821fa",
+      "baselineMainSha256": "83133575c09139308b9a0e51c9bdeb1f0190f794239e8322b52f0942077821fa",
+      "bytes": 3528,
+      "overlay": false
+    },
+    {
+      "relative": "skill/hooks/rule_gate.py",
+      "source": "D:\\Fuentes\\AIDD\\skill\\hooks\\rule_gate.py",
+      "sourceSha256": "218144030955f377acb81a278a40259b212688c24ba037566cbfe4ed416f9153",
+      "baselineMainSha256": "218144030955f377acb81a278a40259b212688c24ba037566cbfe4ed416f9153",
+      "bytes": 106984,
+      "overlay": false
+    },
+    {
+      "relative": "skill/hooks/session_start.py",
+      "source": "D:\\Fuentes\\AIDD\\skill\\hooks\\session_start.py",
+      "sourceSha256": "b1a707dc4af6f11bcfa7441b61f39b1c60d82fb0852f292d5d5a214b3c013fc1",
+      "baselineMainSha256": "b1a707dc4af6f11bcfa7441b61f39b1c60d82fb0852f292d5d5a214b3c013fc1",
+      "bytes": 2729,
+      "overlay": false
+    },
+    {
+      "relative": "skill/hooks/stop_gate.py",
+      "source": "D:\\Fuentes\\AIDD\\skill\\hooks\\stop_gate.py",
+      "sourceSha256": "3db5a5aef8951408da42be73a2269ff4a1a196dc4a26429b522c6f73ede6fa6f",
+      "baselineMainSha256": "3db5a5aef8951408da42be73a2269ff4a1a196dc4a26429b522c6f73ede6fa6f",
+      "bytes": 12601,
+      "overlay": false
+    },
+    {
+      "relative": "skill/hooks/tool_first_hint.py",
+      "source": "D:\\Fuentes\\AIDD\\skill\\hooks\\tool_first_hint.py",
+      "sourceSha256": "edd196abb526b32fe74a8fcee65bbcd870b742b428d5e6934507df314cdcedd3",
+      "baselineMainSha256": "edd196abb526b32fe74a8fcee65bbcd870b742b428d5e6934507df314cdcedd3",
+      "bytes": 11607,
+      "overlay": false
+    },
+    {
+      "relative": "skill/scripts/aidd_amendment_verify.py",
+      "source": "D:\\Fuentes\\AIDD\\skill\\scripts\\aidd_amendment_verify.py",
+      "sourceSha256": "d398f87437bba00fd834115af37824aad06efe0f803d7a5c36a58847f8565340",
+      "baselineMainSha256": "d398f87437bba00fd834115af37824aad06efe0f803d7a5c36a58847f8565340",
+      "bytes": 25044,
+      "overlay": false
+    },
+    {
+      "relative": "skill/scripts/aidd_calibrate.py",
+      "source": "D:\\Fuentes\\AIDD\\skill\\scripts\\aidd_calibrate.py",
+      "sourceSha256": "8ba2095e85e0ef70f44d635904c2152a1b67d91f0d4a48585d5bede0d7cc83e2",
+      "baselineMainSha256": "8ba2095e85e0ef70f44d635904c2152a1b67d91f0d4a48585d5bede0d7cc83e2",
+      "bytes": 5532,
+      "overlay": false
+    },
+    {
+      "relative": "skill/scripts/aidd_close_ledger.py",
+      "source": "D:\\Fuentes\\AIDD\\skill\\scripts\\aidd_close_ledger.py",
+      "sourceSha256": "30ac3340d9b0883c79647efcd894b9c90e7971d495cf10e87bdba7bc6f9322d8",
+      "baselineMainSha256": "30ac3340d9b0883c79647efcd894b9c90e7971d495cf10e87bdba7bc6f9322d8",
+      "bytes": 13738,
+      "overlay": false
+    },
+    {
+      "relative": "skill/scripts/aidd_coverage.py",
+      "source": "D:\\Fuentes\\AIDD\\skill\\scripts\\aidd_coverage.py",
+      "sourceSha256": "a5242def74461fd0b25913706e5eb0c9f09b71fb016007d54dd5859f6e404798",
+      "baselineMainSha256": "a5242def74461fd0b25913706e5eb0c9f09b71fb016007d54dd5859f6e404798",
+      "bytes": 24046,
+      "overlay": false
+    },
+    {
+      "relative": "skill/scripts/aidd_doctor.py",
+      "source": "D:\\Fuentes\\AIDD\\skill\\scripts\\aidd_doctor.py",
+      "sourceSha256": "c460a811bde2cd1c3aafcd26f8151481f7c6cc5d83f05dc001ccfd97c8696b65",
+      "baselineMainSha256": "c460a811bde2cd1c3aafcd26f8151481f7c6cc5d83f05dc001ccfd97c8696b65",
+      "bytes": 32572,
+      "overlay": false
+    },
+    {
+      "relative": "skill/scripts/aidd_embed.py",
+      "source": "D:\\Fuentes\\AIDD\\skill\\scripts\\aidd_embed.py",
+      "sourceSha256": "f6128bcada85c6c550a46615f5aa5adbe7396df6c98fedbcb83a11d6aeeb58ea",
+      "baselineMainSha256": "f6128bcada85c6c550a46615f5aa5adbe7396df6c98fedbcb83a11d6aeeb58ea",
+      "bytes": 2174,
+      "overlay": false
+    },
+    {
+      "relative": "skill/scripts/aidd_evidence.py",
+      "source": "D:\\Fuentes\\AIDD\\skill\\scripts\\aidd_evidence.py",
+      "sourceSha256": "335aacce002f14c7bb6d1975fbbcbbb0bd007ed5544fb3538dcc42ed378cb676",
+      "baselineMainSha256": "335aacce002f14c7bb6d1975fbbcbbb0bd007ed5544fb3538dcc42ed378cb676",
+      "bytes": 104383,
+      "overlay": false
+    },
+    {
+      "relative": "skill/scripts/aidd_gitignore.py",
+      "source": "D:\\Fuentes\\AIDD\\skill\\scripts\\aidd_gitignore.py",
+      "sourceSha256": "c3ffe2db014c78ecb5570b6ac7ee6966583aa4a08f08949c21b8da22c70883c7",
+      "baselineMainSha256": "c3ffe2db014c78ecb5570b6ac7ee6966583aa4a08f08949c21b8da22c70883c7",
+      "bytes": 2418,
+      "overlay": false
+    },
+    {
+      "relative": "skill/scripts/aidd_graphs.py",
+      "source": "D:\\Fuentes\\_worktrees\\aidd-graph-adoption-proposal-20261115\\runtime\\skill\\scripts\\aidd_graphs.py",
+      "sourceSha256": "8519b558cdeda6adcb027820ff87eafe4a13cd769e5677669ce6b7e7f9ff9726",
+      "baselineMainSha256": "3d01c1736317cfe520b2e24857bd142d9f71dd8bc94966dfc756e4d67cdf8b04",
+      "bytes": 58415,
+      "overlay": true
+    },
+    {
+      "relative": "skill/scripts/aidd_guard.py",
+      "source": "D:\\Fuentes\\AIDD\\skill\\scripts\\aidd_guard.py",
+      "sourceSha256": "e44b113280488f859e1179fcea8b92bca13a462df3f918f1068672ed04a778e0",
+      "baselineMainSha256": "e44b113280488f859e1179fcea8b92bca13a462df3f918f1068672ed04a778e0",
+      "bytes": 31959,
+      "overlay": false
+    },
+    {
+      "relative": "skill/scripts/aidd_job.py",
+      "source": "D:\\Fuentes\\AIDD\\skill\\scripts\\aidd_job.py",
+      "sourceSha256": "bc9afe091955e692511a9cf979fce9c8f86273b69c7de44bec54945a1f991984",
+      "baselineMainSha256": "bc9afe091955e692511a9cf979fce9c8f86273b69c7de44bec54945a1f991984",
+      "bytes": 29924,
+      "overlay": false
+    },
+    {
+      "relative": "skill/scripts/aidd_memory.py",
+      "source": "D:\\Fuentes\\AIDD\\skill\\scripts\\aidd_memory.py",
+      "sourceSha256": "bb828833e66331e52e69c0ca1e6d0ca3dee7c38856b629d2d3be7767904edce5",
+      "baselineMainSha256": "bb828833e66331e52e69c0ca1e6d0ca3dee7c38856b629d2d3be7767904edce5",
+      "bytes": 48892,
+      "overlay": false
+    },
+    {
+      "relative": "skill/scripts/aidd_memory_import.py",
+      "source": "D:\\Fuentes\\AIDD\\skill\\scripts\\aidd_memory_import.py",
+      "sourceSha256": "72ec99607f61fde3411b7158798b9e389a96f454d2da4e3f0d314c62d1e92101",
+      "baselineMainSha256": "72ec99607f61fde3411b7158798b9e389a96f454d2da4e3f0d314c62d1e92101",
+      "bytes": 16214,
+      "overlay": false
+    },
+    {
+      "relative": "skill/scripts/aidd_navigator.py",
+      "source": "D:\\Fuentes\\AIDD\\skill\\scripts\\aidd_navigator.py",
+      "sourceSha256": "8f4e401f708313772b0f1623de8f277fb7d2bacbb74f127a02b8f9e0b097fd3b",
+      "baselineMainSha256": "8f4e401f708313772b0f1623de8f277fb7d2bacbb74f127a02b8f9e0b097fd3b",
+      "bytes": 8599,
+      "overlay": false
+    },
+    {
+      "relative": "skill/scripts/aidd_next.py",
+      "source": "D:\\Fuentes\\AIDD\\skill\\scripts\\aidd_next.py",
+      "sourceSha256": "cec86faf227a20283840b4c2877b0be77e39fc35670c298eafdafeee2cfe7917",
+      "baselineMainSha256": "cec86faf227a20283840b4c2877b0be77e39fc35670c298eafdafeee2cfe7917",
+      "bytes": 8412,
+      "overlay": false
+    },
+    {
+      "relative": "skill/scripts/aidd_pending.py",
+      "source": "D:\\Fuentes\\AIDD\\skill\\scripts\\aidd_pending.py",
+      "sourceSha256": "8545f8154c57d4f323ec318bd0e016caaf1e7803bc9690952063605cb85490c1",
+      "baselineMainSha256": "8545f8154c57d4f323ec318bd0e016caaf1e7803bc9690952063605cb85490c1",
+      "bytes": 7740,
+      "overlay": false
+    },
+    {
+      "relative": "skill/scripts/aidd_progress.py",
+      "source": "D:\\Fuentes\\AIDD\\skill\\scripts\\aidd_progress.py",
+      "sourceSha256": "f78a92171423f7585c45159fcb89453c23951d269e85b6b9dcc5adbd1e90fee3",
+      "baselineMainSha256": "f78a92171423f7585c45159fcb89453c23951d269e85b6b9dcc5adbd1e90fee3",
+      "bytes": 22603,
+      "overlay": false
+    },
+    {
+      "relative": "skill/scripts/aidd_provider_attestation.py",
+      "source": "D:\\Fuentes\\AIDD\\skill\\scripts\\aidd_provider_attestation.py",
+      "sourceSha256": "963e3ab5433a699c742792a6c69505f3f8ef98e8034dc3fe541c77366d278e24",
+      "baselineMainSha256": "963e3ab5433a699c742792a6c69505f3f8ef98e8034dc3fe541c77366d278e24",
+      "bytes": 32007,
+      "overlay": false
+    },
+    {
+      "relative": "skill/scripts/aidd_readiness.py",
+      "source": "D:\\Fuentes\\AIDD\\skill\\scripts\\aidd_readiness.py",
+      "sourceSha256": "9e849388f8e1f779c787da3b75f8ea3091bf62a30a3ab5bac973e4321f532a6c",
+      "baselineMainSha256": "9e849388f8e1f779c787da3b75f8ea3091bf62a30a3ab5bac973e4321f532a6c",
+      "bytes": 5556,
+      "overlay": false
+    },
+    {
+      "relative": "skill/scripts/aidd_red.py",
+      "source": "D:\\Fuentes\\AIDD\\skill\\scripts\\aidd_red.py",
+      "sourceSha256": "c79beb57f7ff4f09bf891c80e053bfdd43da5ebac963d9d661cc29a42acc9df0",
+      "baselineMainSha256": "c79beb57f7ff4f09bf891c80e053bfdd43da5ebac963d9d661cc29a42acc9df0",
+      "bytes": 10821,
+      "overlay": false
+    },
+    {
+      "relative": "skill/scripts/aidd_reuse.py",
+      "source": "D:\\Fuentes\\AIDD\\skill\\scripts\\aidd_reuse.py",
+      "sourceSha256": "d44ab46e81460428b60adda8b5422dcf62504fc5e5c08b8f155d0a135af27b1f",
+      "baselineMainSha256": "d44ab46e81460428b60adda8b5422dcf62504fc5e5c08b8f155d0a135af27b1f",
+      "bytes": 4916,
+      "overlay": false
+    },
+    {
+      "relative": "skill/scripts/aidd_review.py",
+      "source": "D:\\Fuentes\\AIDD\\skill\\scripts\\aidd_review.py",
+      "sourceSha256": "193ef345c12b2a6978f5c559baae133135148404124a5ef319ab93a64c2a2a71",
+      "baselineMainSha256": "193ef345c12b2a6978f5c559baae133135148404124a5ef319ab93a64c2a2a71",
+      "bytes": 78977,
+      "overlay": false
+    },
+    {
+      "relative": "skill/scripts/aidd_review_items.py",
+      "source": "D:\\Fuentes\\AIDD\\skill\\scripts\\aidd_review_items.py",
+      "sourceSha256": "f60656841367524f9726c960a6e8d0114901de41ebbb7ec2f7ef0527847c6d1d",
+      "baselineMainSha256": "f60656841367524f9726c960a6e8d0114901de41ebbb7ec2f7ef0527847c6d1d",
+      "bytes": 42647,
+      "overlay": false
+    },
+    {
+      "relative": "skill/scripts/aidd_review_state.py",
+      "source": "D:\\Fuentes\\AIDD\\skill\\scripts\\aidd_review_state.py",
+      "sourceSha256": "d8aa138121481f46c1350be1f5308185f85f78a21dc05e394231c16bd1491b30",
+      "baselineMainSha256": "d8aa138121481f46c1350be1f5308185f85f78a21dc05e394231c16bd1491b30",
+      "bytes": 28812,
+      "overlay": false
+    },
+    {
+      "relative": "skill/scripts/aidd_round.py",
+      "source": "D:\\Fuentes\\AIDD\\skill\\scripts\\aidd_round.py",
+      "sourceSha256": "f6640e4efa20b17610717e2592d51aefb798e4dd642f0f77d1960616fc926caa",
+      "baselineMainSha256": "f6640e4efa20b17610717e2592d51aefb798e4dd642f0f77d1960616fc926caa",
+      "bytes": 37892,
+      "overlay": false
+    },
+    {
+      "relative": "skill/scripts/aidd_rules.py",
+      "source": "D:\\Fuentes\\AIDD\\skill\\scripts\\aidd_rules.py",
+      "sourceSha256": "31ae5f48312776a3c7130229c8cc50fdf9e553d40ed67357bfada3aca0fd8cbe",
+      "baselineMainSha256": "31ae5f48312776a3c7130229c8cc50fdf9e553d40ed67357bfada3aca0fd8cbe",
+      "bytes": 188783,
+      "overlay": false
+    },
+    {
+      "relative": "skill/scripts/aidd_source_shape.py",
+      "source": "D:\\Fuentes\\_worktrees\\aidd-security-boundary-20261114\\publication-plan\\source-shape-race-runtime\\skill\\scripts\\aidd_source_shape.py",
+      "sourceSha256": "58232679a323ad5bb51754c37fd672491dbfe25165edc767a3e8c25d79e4047f",
+      "baselineMainSha256": "84b96e4b3fdf088593d04e11110b0d807db12bec2d9f8fadc8817d0050dfdc42",
+      "bytes": 6073,
+      "overlay": true
+    },
+    {
+      "relative": "skill/scripts/aidd_sqlcheck.py",
+      "source": "D:\\Fuentes\\AIDD\\skill\\scripts\\aidd_sqlcheck.py",
+      "sourceSha256": "996a3db37de2507c3b745eee7b2be53a9ad1be1eca2af3b33c202503a3274a69",
+      "baselineMainSha256": "996a3db37de2507c3b745eee7b2be53a9ad1be1eca2af3b33c202503a3274a69",
+      "bytes": 10718,
+      "overlay": false
+    },
+    {
+      "relative": "skill/scripts/aidd_status.py",
+      "source": "D:\\Fuentes\\AIDD\\skill\\scripts\\aidd_status.py",
+      "sourceSha256": "1abfff8cb944ae3fb3be25866ca6dacb3865766b41a782cb903949a8f460a278",
+      "baselineMainSha256": "1abfff8cb944ae3fb3be25866ca6dacb3865766b41a782cb903949a8f460a278",
+      "bytes": 213553,
+      "overlay": false
+    },
+    {
+      "relative": "skill/scripts/aidd_sync.py",
+      "source": "D:\\Fuentes\\AIDD\\skill\\scripts\\aidd_sync.py",
+      "sourceSha256": "275c8d9341edf102edfcf6f0a5347957639f17bf560d15c2099c4a8e124f518a",
+      "baselineMainSha256": "275c8d9341edf102edfcf6f0a5347957639f17bf560d15c2099c4a8e124f518a",
+      "bytes": 19339,
+      "overlay": false
+    },
+    {
+      "relative": "skill/scripts/aidd_tools.py",
+      "source": "D:\\Fuentes\\AIDD\\skill\\scripts\\aidd_tools.py",
+      "sourceSha256": "7e4c83db65fffe7a3bbf3e2e00850efc54cc17e8a465ff5081b61a59ce7bac8e",
+      "baselineMainSha256": "7e4c83db65fffe7a3bbf3e2e00850efc54cc17e8a465ff5081b61a59ce7bac8e",
+      "bytes": 16036,
+      "overlay": false
+    },
+    {
+      "relative": "skill/scripts/aidd_triage.py",
+      "source": "D:\\Fuentes\\AIDD\\skill\\scripts\\aidd_triage.py",
+      "sourceSha256": "8b37d88a784faeab135cfafd4621b4590db1c0cfc0925a9b05b649ec75792c7b",
+      "baselineMainSha256": "8b37d88a784faeab135cfafd4621b4590db1c0cfc0925a9b05b649ec75792c7b",
+      "bytes": 5523,
+      "overlay": false
+    },
+    {
+      "relative": "skill/scripts/aidd_unit_audit.py",
+      "source": "D:\\Fuentes\\AIDD\\skill\\scripts\\aidd_unit_audit.py",
+      "sourceSha256": "3eb0ef12a6b451cbbcc3de0c493704cbe81506b36759f91c7ebd261298164d01",
+      "baselineMainSha256": "3eb0ef12a6b451cbbcc3de0c493704cbe81506b36759f91c7ebd261298164d01",
+      "bytes": 44808,
+      "overlay": false
+    },
+    {
+      "relative": "skill/scripts/aidd_unit_consent.py",
+      "source": "D:\\Fuentes\\AIDD\\skill\\scripts\\aidd_unit_consent.py",
+      "sourceSha256": "b1ced4a620b1501b1f51a1a1945d7c188aeeb49ea62870e843100ccde5c28fe4",
+      "baselineMainSha256": "b1ced4a620b1501b1f51a1a1945d7c188aeeb49ea62870e843100ccde5c28fe4",
+      "bytes": 2803,
+      "overlay": false
+    },
+    {
+      "relative": "skill/scripts/aidd_unit_visual.py",
+      "source": "D:\\Fuentes\\AIDD\\skill\\scripts\\aidd_unit_visual.py",
+      "sourceSha256": "ee9bf1d2c1cf713951ec3538bca49cd14bbd6b8ad29f6da648232034858c37e6",
+      "baselineMainSha256": "ee9bf1d2c1cf713951ec3538bca49cd14bbd6b8ad29f6da648232034858c37e6",
+      "bytes": 12048,
+      "overlay": false
+    },
+    {
+      "relative": "skill/scripts/aidd_units.py",
+      "source": "D:\\Fuentes\\AIDD\\skill\\scripts\\aidd_units.py",
+      "sourceSha256": "3c53f71416a41b934c24d2bff646d60e1834d237e729a5e3658c41b027ff8d61",
+      "baselineMainSha256": "3c53f71416a41b934c24d2bff646d60e1834d237e729a5e3658c41b027ff8d61",
+      "bytes": 39257,
+      "overlay": false
+    },
+    {
+      "relative": "skill/scripts/alias_graph.py",
+      "source": "D:\\Fuentes\\AIDD\\skill\\scripts\\alias_graph.py",
+      "sourceSha256": "ebde0c8955fecf3d04c41acd80aa6b2674ee29fcc6655701810d3ec844d82e94",
+      "baselineMainSha256": "ebde0c8955fecf3d04c41acd80aa6b2674ee29fcc6655701810d3ec844d82e94",
+      "bytes": 5064,
+      "overlay": false
+    },
+    {
+      "relative": "skill/scripts/check_charter.py",
+      "source": "D:\\Fuentes\\AIDD\\skill\\scripts\\check_charter.py",
+      "sourceSha256": "3012c8b6f75395b7ecda621ff36407ae56baf62f72d2eb5e7f0019c6ebdef239",
+      "baselineMainSha256": "3012c8b6f75395b7ecda621ff36407ae56baf62f72d2eb5e7f0019c6ebdef239",
+      "bytes": 9305,
+      "overlay": false
+    },
+    {
+      "relative": "skill/scripts/check_spec.py",
+      "source": "D:\\Fuentes\\AIDD\\skill\\scripts\\check_spec.py",
+      "sourceSha256": "6f9e073de4c29d04674fbab33ed4825a55b811c2749601a104eba1713d029e79",
+      "baselineMainSha256": "6f9e073de4c29d04674fbab33ed4825a55b811c2749601a104eba1713d029e79",
+      "bytes": 32541,
+      "overlay": false
+    },
+    {
+      "relative": "skill/scripts/code_graph.py",
+      "source": "D:\\Fuentes\\_worktrees\\aidd-graph-adoption-proposal-20261115\\runtime\\skill\\scripts\\code_graph.py",
+      "sourceSha256": "bceaf0f8758d2c2471b228d2dc7a5b657a82fb24734f51052acc67c416542801",
+      "baselineMainSha256": "cd86d9ad495883896d639ab0e28f19848993a1f769b47051a9520ce676e6d3ab",
+      "bytes": 47890,
+      "overlay": true
+    },
+    {
+      "relative": "skill/scripts/component_graph.py",
+      "source": "D:\\Fuentes\\AIDD\\skill\\scripts\\component_graph.py",
+      "sourceSha256": "fc5f048e98ca820961c75900174e4bfbc19e93d3c9894eba840c5c161df1084d",
+      "baselineMainSha256": "fc5f048e98ca820961c75900174e4bfbc19e93d3c9894eba840c5c161df1084d",
+      "bytes": 21133,
+      "overlay": false
+    },
+    {
+      "relative": "skill/scripts/extension_registry.py",
+      "source": "D:\\Fuentes\\AIDD\\skill\\scripts\\extension_registry.py",
+      "sourceSha256": "89550ea8e70f581e6385778523e5fa184847c9305ff9f3a9cee9d8bf3d2f0aa3",
+      "baselineMainSha256": "89550ea8e70f581e6385778523e5fa184847c9305ff9f3a9cee9d8bf3d2f0aa3",
+      "bytes": 10994,
+      "overlay": false
+    },
+    {
+      "relative": "skill/scripts/find_spec.py",
+      "source": "D:\\Fuentes\\AIDD\\skill\\scripts\\find_spec.py",
+      "sourceSha256": "182066815d51e8c8b489b5296179ba9d62dff30caf8ba763a7bbfb4e9178026c",
+      "baselineMainSha256": "182066815d51e8c8b489b5296179ba9d62dff30caf8ba763a7bbfb4e9178026c",
+      "bytes": 51778,
+      "overlay": false
+    },
+    {
+      "relative": "skill/scripts/flowmap.py",
+      "source": "D:\\Fuentes\\AIDD\\skill\\scripts\\flowmap.py",
+      "sourceSha256": "17a30f677b4d1f0176d82831fb5374ce7a22b72af1068bfdb9b7c933c627b9bc",
+      "baselineMainSha256": "17a30f677b4d1f0176d82831fb5374ce7a22b72af1068bfdb9b7c933c627b9bc",
+      "bytes": 58656,
+      "overlay": false
+    },
+    {
+      "relative": "skill/scripts/generate_adapters.py",
+      "source": "D:\\Fuentes\\AIDD\\skill\\scripts\\generate_adapters.py",
+      "sourceSha256": "a763aa4d9d880ed979fab90c75dd47ac19101cc8afcd6cbce6a91c7b61fefb1d",
+      "baselineMainSha256": "a763aa4d9d880ed979fab90c75dd47ac19101cc8afcd6cbce6a91c7b61fefb1d",
+      "bytes": 9069,
+      "overlay": false
+    },
+    {
+      "relative": "skill/scripts/graph_explorer.py",
+      "source": "D:\\Fuentes\\AIDD\\skill\\scripts\\graph_explorer.py",
+      "sourceSha256": "f88a70f48ddd3a52bc8f4c8d4a6bcca43d882eb35d849129533a76ff6ca521da",
+      "baselineMainSha256": "f88a70f48ddd3a52bc8f4c8d4a6bcca43d882eb35d849129533a76ff6ca521da",
+      "bytes": 65955,
+      "overlay": false
+    },
+    {
+      "relative": "skill/scripts/graph_snapshot.py",
+      "source": "D:\\Fuentes\\AIDD\\skill\\scripts\\graph_snapshot.py",
+      "sourceSha256": "035f67aa18a4699a89c76e9e14d066745b28d98b4c09228138a6e38f354823f3",
+      "baselineMainSha256": "035f67aa18a4699a89c76e9e14d066745b28d98b4c09228138a6e38f354823f3",
+      "bytes": 47930,
+      "overlay": false
+    },
+    {
+      "relative": "skill/scripts/graph_trace.py",
+      "source": "D:\\Fuentes\\AIDD\\skill\\scripts\\graph_trace.py",
+      "sourceSha256": "ed17b84d9b2217b8e562fefe8c2ea7908d64e8870d308b6f7532b175ef26ea94",
+      "baselineMainSha256": "ed17b84d9b2217b8e562fefe8c2ea7908d64e8870d308b6f7532b175ef26ea94",
+      "bytes": 30982,
+      "overlay": false
+    },
+    {
+      "relative": "skill/scripts/install_ci.py",
+      "source": "D:\\Fuentes\\AIDD\\skill\\scripts\\install_ci.py",
+      "sourceSha256": "61f69bbc87b3c3c0cc6c04d784290f417e9884edf8d8d802b8247075ff4d5e3b",
+      "baselineMainSha256": "61f69bbc87b3c3c0cc6c04d784290f417e9884edf8d8d802b8247075ff4d5e3b",
+      "bytes": 4179,
+      "overlay": false
+    },
+    {
+      "relative": "skill/scripts/install_hooks.py",
+      "source": "D:\\Fuentes\\AIDD\\skill\\scripts\\install_hooks.py",
+      "sourceSha256": "02b29415888926985f307ac939f1e41fe1d4423aa5e7fe77bba0b7ca225f507d",
+      "baselineMainSha256": "02b29415888926985f307ac939f1e41fe1d4423aa5e7fe77bba0b7ca225f507d",
+      "bytes": 13337,
+      "overlay": false
+    },
+    {
+      "relative": "skill/scripts/install_host.py",
+      "source": "D:\\Fuentes\\AIDD\\skill\\scripts\\install_host.py",
+      "sourceSha256": "8b1df766e0e9de5d02f47f1180171a792b5666fba61160b583638b687d01c0f6",
+      "baselineMainSha256": "8b1df766e0e9de5d02f47f1180171a792b5666fba61160b583638b687d01c0f6",
+      "bytes": 35090,
+      "overlay": false
+    },
+    {
+      "relative": "skill/scripts/link_pr_to_task.py",
+      "source": "D:\\Fuentes\\AIDD\\skill\\scripts\\link_pr_to_task.py",
+      "sourceSha256": "d3b729bbc9d869fdfd1d1794d1bf7a960c79ce9dee279c745f0f78b974da3279",
+      "baselineMainSha256": "d3b729bbc9d869fdfd1d1794d1bf7a960c79ce9dee279c745f0f78b974da3279",
+      "bytes": 5121,
+      "overlay": false
+    },
+    {
+      "relative": "skill/scripts/marketplace.py",
+      "source": "D:\\Fuentes\\AIDD\\skill\\scripts\\marketplace.py",
+      "sourceSha256": "0e2fabf91b24eb592ba21843c038366dd99f3c19b995592974e05349470159f9",
+      "baselineMainSha256": "0e2fabf91b24eb592ba21843c038366dd99f3c19b995592974e05349470159f9",
+      "bytes": 10712,
+      "overlay": false
+    },
+    {
+      "relative": "skill/scripts/method_graph.py",
+      "source": "D:\\Fuentes\\AIDD\\skill\\scripts\\method_graph.py",
+      "sourceSha256": "291bac97cb435fc1c12191d591cdfa25d40d029a9ab3745bfe1ff307ced52c65",
+      "baselineMainSha256": "291bac97cb435fc1c12191d591cdfa25d40d029a9ab3745bfe1ff307ced52c65",
+      "bytes": 12282,
+      "overlay": false
+    },
+    {
+      "relative": "skill/scripts/research_project.py",
+      "source": "D:\\Fuentes\\AIDD\\skill\\scripts\\research_project.py",
+      "sourceSha256": "debcc9dd9023671d2a0c795f842c3e8c0dd351d9bfc6fc9860046b445a5affdc",
+      "baselineMainSha256": "debcc9dd9023671d2a0c795f842c3e8c0dd351d9bfc6fc9860046b445a5affdc",
+      "bytes": 8703,
+      "overlay": false
+    },
+    {
+      "relative": "skill/scripts/sql_graph.py",
+      "source": "D:\\Fuentes\\AIDD\\skill\\scripts\\sql_graph.py",
+      "sourceSha256": "6c893e1172ba65d9f373b8b2bcd0b063267145a0ae8635424986eb138dea07ce",
+      "baselineMainSha256": "6c893e1172ba65d9f373b8b2bcd0b063267145a0ae8635424986eb138dea07ce",
+      "bytes": 50967,
+      "overlay": false
+    },
+    {
+      "relative": "skill/scripts/sync_issues.py",
+      "source": "D:\\Fuentes\\AIDD\\skill\\scripts\\sync_issues.py",
+      "sourceSha256": "4635e4f8e67e2c890c7d71dd03bc3bdbfd1c17629f10265c784702414da1a6f2",
+      "baselineMainSha256": "4635e4f8e67e2c890c7d71dd03bc3bdbfd1c17629f10265c784702414da1a6f2",
+      "bytes": 4591,
+      "overlay": false
+    },
+    {
+      "relative": "skill/scripts/tasks_to_issues.py",
+      "source": "D:\\Fuentes\\AIDD\\skill\\scripts\\tasks_to_issues.py",
+      "sourceSha256": "b25d960947848f467ccdead895998602f07611b6548de096d41f81713fabf2b7",
+      "baselineMainSha256": "b25d960947848f467ccdead895998602f07611b6548de096d41f81713fabf2b7",
+      "bytes": 11988,
+      "overlay": false
+    },
+    {
+      "relative": "skill/scripts/unified_graph.py",
+      "source": "D:\\Fuentes\\AIDD\\skill\\scripts\\unified_graph.py",
+      "sourceSha256": "035be7b3427b985c7ec261101a56fe6c7cfaf42c87c966d095f964be1bc85a35",
+      "baselineMainSha256": "035be7b3427b985c7ec261101a56fe6c7cfaf42c87c966d095f964be1bc85a35",
+      "bytes": 17160,
+      "overlay": false
+    },
+    {
+      "relative": "skill/scripts/validate_catalog_entry.py",
+      "source": "D:\\Fuentes\\AIDD\\skill\\scripts\\validate_catalog_entry.py",
+      "sourceSha256": "88e4fa3ed51a029acebda7ffb98b26c3f211c727b99368eb3ddaccfb99759ce0",
+      "baselineMainSha256": "88e4fa3ed51a029acebda7ffb98b26c3f211c727b99368eb3ddaccfb99759ce0",
+      "bytes": 8659,
+      "overlay": false
+    },
+    {
+      "relative": "skill/templates/STATE.md",
+      "source": "D:\\Fuentes\\AIDD\\skill\\templates\\STATE.md",
+      "sourceSha256": "635419581701b9ff6f4096a551410c4d288a498110a657d981f1f263522ebcde",
+      "baselineMainSha256": "635419581701b9ff6f4096a551410c4d288a498110a657d981f1f263522ebcde",
+      "bytes": 2087,
+      "overlay": false
+    },
+    {
+      "relative": "skill/templates/calibration.toon",
+      "source": "D:\\Fuentes\\AIDD\\skill\\templates\\calibration.toon",
+      "sourceSha256": "85998394bf6238de7e7fef90881a333ba33ac83115114a7ff0f5c6c9b7a2ab09",
+      "baselineMainSha256": "85998394bf6238de7e7fef90881a333ba33ac83115114a7ff0f5c6c9b7a2ab09",
+      "bytes": 171,
+      "overlay": false
+    },
+    {
+      "relative": "skill/templates/charter.md",
+      "source": "D:\\Fuentes\\AIDD\\skill\\templates\\charter.md",
+      "sourceSha256": "066a3293f18bfa9f727330d318b46988cdaa2aaf9aa97ee1c0cabafe680a418c",
+      "baselineMainSha256": "066a3293f18bfa9f727330d318b46988cdaa2aaf9aa97ee1c0cabafe680a418c",
+      "bytes": 6109,
+      "overlay": false
+    },
+    {
+      "relative": "skill/templates/ci/azure-pipelines-aidd.yml",
+      "source": "D:\\Fuentes\\AIDD\\skill\\templates\\ci\\azure-pipelines-aidd.yml",
+      "sourceSha256": "88e20e3b04bcf750ca82013fdf385858e80e15babd6ad1db1d1c40c88da8dfe7",
+      "baselineMainSha256": "88e20e3b04bcf750ca82013fdf385858e80e15babd6ad1db1d1c40c88da8dfe7",
+      "bytes": 9762,
+      "overlay": false
+    },
+    {
+      "relative": "skill/templates/ci/github-actions-aidd.yml",
+      "source": "D:\\Fuentes\\AIDD\\skill\\templates\\ci\\github-actions-aidd.yml",
+      "sourceSha256": "13622f6960bbc279f92194639ee35154d0a72519e048516eb4116a0b94d96429",
+      "baselineMainSha256": "13622f6960bbc279f92194639ee35154d0a72519e048516eb4116a0b94d96429",
+      "bytes": 7317,
+      "overlay": false
+    },
+    {
+      "relative": "skill/templates/comprehensive-documentation.md",
+      "source": "D:\\Fuentes\\AIDD\\skill\\templates\\comprehensive-documentation.md",
+      "sourceSha256": "471f1683602740a7a11b0d6eef2466d06ceddd90601e96699bf163f10c8eed89",
+      "baselineMainSha256": "471f1683602740a7a11b0d6eef2466d06ceddd90601e96699bf163f10c8eed89",
+      "bytes": 1015,
+      "overlay": false
+    },
+    {
+      "relative": "skill/templates/contracts.md",
+      "source": "D:\\Fuentes\\AIDD\\skill\\templates\\contracts.md",
+      "sourceSha256": "4c063098eb387c2693edff66b0a36a373a28f51a9cf97381f380aa98531b2b89",
+      "baselineMainSha256": "4c063098eb387c2693edff66b0a36a373a28f51a9cf97381f380aa98531b2b89",
+      "bytes": 2459,
+      "overlay": false
+    },
+    {
+      "relative": "skill/templates/data-model.md",
+      "source": "D:\\Fuentes\\AIDD\\skill\\templates\\data-model.md",
+      "sourceSha256": "cb33b8bd0e3fd5bc65ae8b7f3941ef1bdc46efd74f1e2e3680316bbc5a2e53e0",
+      "baselineMainSha256": "cb33b8bd0e3fd5bc65ae8b7f3941ef1bdc46efd74f1e2e3680316bbc5a2e53e0",
+      "bytes": 2294,
+      "overlay": false
+    },
+    {
+      "relative": "skill/templates/design-system/MASTER.md",
+      "source": "D:\\Fuentes\\AIDD\\skill\\templates\\design-system\\MASTER.md",
+      "sourceSha256": "05e14128e455edce791e2681258ed12efcf3199f79a1a44cabe784eb318f3d2c",
+      "baselineMainSha256": "05e14128e455edce791e2681258ed12efcf3199f79a1a44cabe784eb318f3d2c",
+      "bytes": 973,
+      "overlay": false
+    },
+    {
+      "relative": "skill/templates/design-system/components-index.md",
+      "source": "D:\\Fuentes\\AIDD\\skill\\templates\\design-system\\components-index.md",
+      "sourceSha256": "fb82b8b1a6a433f2930d1ac83865055bc3bdbb4bc1e2c947f6843ec3d0b0fdf0",
+      "baselineMainSha256": "fb82b8b1a6a433f2930d1ac83865055bc3bdbb4bc1e2c947f6843ec3d0b0fdf0",
+      "bytes": 1027,
+      "overlay": false
+    },
+    {
+      "relative": "skill/templates/design-system/page-override.md",
+      "source": "D:\\Fuentes\\AIDD\\skill\\templates\\design-system\\page-override.md",
+      "sourceSha256": "9d52825642a31dbca9175672545534bf6e1847de50998b3bd3413947dd0bbe2d",
+      "baselineMainSha256": "9d52825642a31dbca9175672545534bf6e1847de50998b3bd3413947dd0bbe2d",
+      "bytes": 304,
+      "overlay": false
+    },
+    {
+      "relative": "skill/templates/gitignore.aidd",
+      "source": "D:\\Fuentes\\AIDD\\skill\\templates\\gitignore.aidd",
+      "sourceSha256": "317dbc6c070fa755c144e43213cec0cf1b8329279f87ab0a7e3a3795333d4fd7",
+      "baselineMainSha256": "317dbc6c070fa755c144e43213cec0cf1b8329279f87ab0a7e3a3795333d4fd7",
+      "bytes": 252,
+      "overlay": false
+    },
+    {
+      "relative": "skill/templates/mockup-audit.md",
+      "source": "D:\\Fuentes\\AIDD\\skill\\templates\\mockup-audit.md",
+      "sourceSha256": "fcb37defac64f43b983ac4a76e6cda652aed44f6faadd6cbee189758575df147",
+      "baselineMainSha256": "fcb37defac64f43b983ac4a76e6cda652aed44f6faadd6cbee189758575df147",
+      "bytes": 3243,
+      "overlay": false
+    },
+    {
+      "relative": "skill/templates/navigator.html",
+      "source": "D:\\Fuentes\\AIDD\\skill\\templates\\navigator.html",
+      "sourceSha256": "81d27152a99172f1335e3afea3cba71b6e17919f643bfb61c8281b0f2221098d",
+      "baselineMainSha256": "81d27152a99172f1335e3afea3cba71b6e17919f643bfb61c8281b0f2221098d",
+      "bytes": 21724,
+      "overlay": false
+    },
+    {
+      "relative": "skill/templates/perf/README.md",
+      "source": "D:\\Fuentes\\AIDD\\skill\\templates\\perf\\README.md",
+      "sourceSha256": "12fe7cac4ce92ce0fbe43ae244f5fd0268841cee26d074d015f71dee7d7b3a7e",
+      "baselineMainSha256": "12fe7cac4ce92ce0fbe43ae244f5fd0268841cee26d074d015f71dee7d7b3a7e",
+      "bytes": 1388,
+      "overlay": false
+    },
+    {
+      "relative": "skill/templates/perf/plan-risk.test.sql",
+      "source": "D:\\Fuentes\\AIDD\\skill\\templates\\perf\\plan-risk.test.sql",
+      "sourceSha256": "3a6567fea22db6a21f84fc3d90bc8f4759abca474cab119d9f33f56cf64823c1",
+      "baselineMainSha256": "3a6567fea22db6a21f84fc3d90bc8f4759abca474cab119d9f33f56cf64823c1",
+      "bytes": 3151,
+      "overlay": false
+    },
+    {
+      "relative": "skill/templates/perf/seed-generate-series.sql",
+      "source": "D:\\Fuentes\\AIDD\\skill\\templates\\perf\\seed-generate-series.sql",
+      "sourceSha256": "565971a963b0307c12df9d90db5b9f34b2165d6a5e0fac910d99a6215c4f00e3",
+      "baselineMainSha256": "565971a963b0307c12df9d90db5b9f34b2165d6a5e0fac910d99a6215c4f00e3",
+      "bytes": 2767,
+      "overlay": false
+    },
+    {
+      "relative": "skill/templates/plan.md",
+      "source": "D:\\Fuentes\\AIDD\\skill\\templates\\plan.md",
+      "sourceSha256": "315a4bdfc6097ce7d3c26871802e6b0e828bfe3bf1a97f832f07818ca8cc2258",
+      "baselineMainSha256": "315a4bdfc6097ce7d3c26871802e6b0e828bfe3bf1a97f832f07818ca8cc2258",
+      "bytes": 3422,
+      "overlay": false
+    },
+    {
+      "relative": "skill/templates/qa-audit.md",
+      "source": "D:\\Fuentes\\AIDD\\skill\\templates\\qa-audit.md",
+      "sourceSha256": "20c0a6f49f0f3378836d43a91fab1200066506d1666953edc162c1b3b40aa9e9",
+      "baselineMainSha256": "20c0a6f49f0f3378836d43a91fab1200066506d1666953edc162c1b3b40aa9e9",
+      "bytes": 4787,
+      "overlay": false
+    },
+    {
+      "relative": "skill/templates/research.md",
+      "source": "D:\\Fuentes\\AIDD\\skill\\templates\\research.md",
+      "sourceSha256": "b97f32140c2fece3eede3fdf7a6c03b3f0b8b1273a8df0cdf764fb150a561835",
+      "baselineMainSha256": "b97f32140c2fece3eede3fdf7a6c03b3f0b8b1273a8df0cdf764fb150a561835",
+      "bytes": 286,
+      "overlay": false
+    },
+    {
+      "relative": "skill/templates/review-full.html",
+      "source": "D:\\Fuentes\\AIDD\\skill\\templates\\review-full.html",
+      "sourceSha256": "5288ee9b8eccca437afdd86b62f9990ca47b426925734f3a695b5745b48ee6d2",
+      "baselineMainSha256": "5288ee9b8eccca437afdd86b62f9990ca47b426925734f3a695b5745b48ee6d2",
+      "bytes": 14620,
+      "overlay": false
+    },
+    {
+      "relative": "skill/templates/review.html",
+      "source": "D:\\Fuentes\\AIDD\\skill\\templates\\review.html",
+      "sourceSha256": "39ccea28d255482d5e99ff09ed64e4d982f693642925ef48e6d25eebb8e756c0",
+      "baselineMainSha256": "39ccea28d255482d5e99ff09ed64e4d982f693642925ef48e6d25eebb8e756c0",
+      "bytes": 75119,
+      "overlay": false
+    },
+    {
+      "relative": "skill/templates/spec.md",
+      "source": "D:\\Fuentes\\AIDD\\skill\\templates\\spec.md",
+      "sourceSha256": "9bdeb6215f42be3f2ceb62fcf3f6138fed491c35b5cf7603701e3d3168b2d3cc",
+      "baselineMainSha256": "9bdeb6215f42be3f2ceb62fcf3f6138fed491c35b5cf7603701e3d3168b2d3cc",
+      "bytes": 10514,
+      "overlay": false
+    },
+    {
+      "relative": "skill/templates/tasks.md",
+      "source": "D:\\Fuentes\\AIDD\\skill\\templates\\tasks.md",
+      "sourceSha256": "ee283c4978795acf22a5e35d4ec354a0f1037527f3007b2a18a073a619586d67",
+      "baselineMainSha256": "ee283c4978795acf22a5e35d4ec354a0f1037527f3007b2a18a073a619586d67",
+      "bytes": 9396,
+      "overlay": false
+    },
+    {
+      "relative": "skill/templates/traceability.md",
+      "source": "D:\\Fuentes\\AIDD\\skill\\templates\\traceability.md",
+      "sourceSha256": "83cde96c414514e6c00d7d94f55190d21ca7dcf1005e62aceba62682cabb657e",
+      "baselineMainSha256": "83cde96c414514e6c00d7d94f55190d21ca7dcf1005e62aceba62682cabb657e",
+      "bytes": 1298,
+      "overlay": false
+    },
+    {
+      "relative": "skill/templates/visual-flow.toon",
+      "source": "D:\\Fuentes\\AIDD\\skill\\templates\\visual-flow.toon",
+      "sourceSha256": "536e6645d16903eefdb2a66afecd059a3de9263d566663622bffe697c80cacde",
+      "baselineMainSha256": "536e6645d16903eefdb2a66afecd059a3de9263d566663622bffe697c80cacde",
+      "bytes": 1156,
+      "overlay": false
+    },
+    {
+      "relative": "tests/coverage_manifest.py",
+      "source": "D:\\Fuentes\\AIDD\\tests\\coverage_manifest.py",
+      "sourceSha256": "c17ed238727a35ac5230fab2dd0c6cb1305b2493673980a80ea478bfbf389e78",
+      "baselineMainSha256": "c17ed238727a35ac5230fab2dd0c6cb1305b2493673980a80ea478bfbf389e78",
+      "bytes": 3083,
+      "overlay": false
+    },
+    {
+      "relative": "tests/e2e_review_roundtrip.py",
+      "source": "D:\\Fuentes\\AIDD\\tests\\e2e_review_roundtrip.py",
+      "sourceSha256": "92f78022c19bd03888264bb692e655cff178381dfd967c4f83d1d33cca1ef338",
+      "baselineMainSha256": "92f78022c19bd03888264bb692e655cff178381dfd967c4f83d1d33cca1ef338",
+      "bytes": 27113,
+      "overlay": false
+    },
+    {
+      "relative": "tests/gate_fixtures.py",
+      "source": "D:\\Fuentes\\AIDD\\tests\\gate_fixtures.py",
+      "sourceSha256": "ac14082525e6e96a8f75b8c38f44523606c0e86a24dfcab2da58bde44dc97410",
+      "baselineMainSha256": "ac14082525e6e96a8f75b8c38f44523606c0e86a24dfcab2da58bde44dc97410",
+      "bytes": 18841,
+      "overlay": false
+    },
+    {
+      "relative": "tests/report_guard_portability.py",
+      "source": "D:\\Fuentes\\AIDD\\tests\\report_guard_portability.py",
+      "sourceSha256": "95b70220a3aaf87ed68d30f95f5ab78c1ae11ce1a20f09f28212f99b5e568b09",
+      "baselineMainSha256": "95b70220a3aaf87ed68d30f95f5ab78c1ae11ce1a20f09f28212f99b5e568b09",
+      "bytes": 4393,
+      "overlay": false
+    },
+    {
+      "relative": "tests/requirements-test.txt",
+      "source": "D:\\Fuentes\\AIDD\\tests\\requirements-test.txt",
+      "sourceSha256": "a0e201ecda2bc871726ea3bb5db9cfe6b2109f60d8da88eecf910b790794b03d",
+      "baselineMainSha256": "a0e201ecda2bc871726ea3bb5db9cfe6b2109f60d8da88eecf910b790794b03d",
+      "bytes": 14,
+      "overlay": false
+    },
+    {
+      "relative": "tests/run_parallel.py",
+      "source": "D:\\Fuentes\\AIDD\\tests\\run_parallel.py",
+      "sourceSha256": "cef094fa2c88b7a068f25c94e53324b78fc252ef814a73e912541ce8879b9e3f",
+      "baselineMainSha256": "cef094fa2c88b7a068f25c94e53324b78fc252ef814a73e912541ce8879b9e3f",
+      "bytes": 24273,
+      "overlay": false
+    },
+    {
+      "relative": "tests/test_aidd_calibrate.py",
+      "source": "D:\\Fuentes\\AIDD\\tests\\test_aidd_calibrate.py",
+      "sourceSha256": "086c8d81b50ab1d368da352a17b97a3f838998da71abda96be25dcf74da5578a",
+      "baselineMainSha256": "086c8d81b50ab1d368da352a17b97a3f838998da71abda96be25dcf74da5578a",
+      "bytes": 6787,
+      "overlay": false
+    },
+    {
+      "relative": "tests/test_aidd_coverage.py",
+      "source": "D:\\Fuentes\\AIDD\\tests\\test_aidd_coverage.py",
+      "sourceSha256": "d399b5f06a3252e7a56c96b33726a250aa17bfe15dd68db8c6cf14d314b72b59",
+      "baselineMainSha256": "d399b5f06a3252e7a56c96b33726a250aa17bfe15dd68db8c6cf14d314b72b59",
+      "bytes": 9900,
+      "overlay": false
+    },
+    {
+      "relative": "tests/test_aidd_declared_hermetic.py",
+      "source": "D:\\Fuentes\\AIDD\\tests\\test_aidd_declared_hermetic.py",
+      "sourceSha256": "fae9a918860d74706460c59a511ee33131744c7af0534480c4333f5d957de158",
+      "baselineMainSha256": "fae9a918860d74706460c59a511ee33131744c7af0534480c4333f5d957de158",
+      "bytes": 3178,
+      "overlay": false
+    },
+    {
+      "relative": "tests/test_aidd_graphs.py",
+      "source": "D:\\Fuentes\\AIDD\\tests\\test_aidd_graphs.py",
+      "sourceSha256": "90646af5005f167ce027991fc156ad5c28c2f2409eebc2bf58e4cc0c6d06a33a",
+      "baselineMainSha256": "90646af5005f167ce027991fc156ad5c28c2f2409eebc2bf58e4cc0c6d06a33a",
+      "bytes": 19862,
+      "overlay": false
+    },
+    {
+      "relative": "tests/test_aidd_graphs_empty_query.py",
+      "source": "D:\\Fuentes\\AIDD\\tests\\test_aidd_graphs_empty_query.py",
+      "sourceSha256": "c98d00da7278bd78df7a90cbcce53e0aea8110024fb69170bcf78702b32f8585",
+      "baselineMainSha256": "c98d00da7278bd78df7a90cbcce53e0aea8110024fb69170bcf78702b32f8585",
+      "bytes": 1687,
+      "overlay": false
+    },
+    {
+      "relative": "tests/test_aidd_graphs_running_state.py",
+      "source": "D:\\Fuentes\\AIDD\\tests\\test_aidd_graphs_running_state.py",
+      "sourceSha256": "50a1cf98fc57c02d4d1bf6998b27854c7e55271104da6fd259872591d74fb4fc",
+      "baselineMainSha256": "50a1cf98fc57c02d4d1bf6998b27854c7e55271104da6fd259872591d74fb4fc",
+      "bytes": 2118,
+      "overlay": false
+    },
+    {
+      "relative": "tests/test_aidd_guard.py",
+      "source": "D:\\Fuentes\\AIDD\\tests\\test_aidd_guard.py",
+      "sourceSha256": "452f716725fbbbdde5961ad357bd34c8e91a6890e71582709ce6ea8d0d4960cc",
+      "baselineMainSha256": "452f716725fbbbdde5961ad357bd34c8e91a6890e71582709ce6ea8d0d4960cc",
+      "bytes": 20747,
+      "overlay": false
+    },
+    {
+      "relative": "tests/test_aidd_guard_partial.py",
+      "source": "D:\\Fuentes\\AIDD\\tests\\test_aidd_guard_partial.py",
+      "sourceSha256": "84c6067e3881874006259d3129b369ccc28dfd9e378aaa64b112c29dda6b84ae",
+      "baselineMainSha256": "84c6067e3881874006259d3129b369ccc28dfd9e378aaa64b112c29dda6b84ae",
+      "bytes": 3928,
+      "overlay": false
+    },
+    {
+      "relative": "tests/test_aidd_job.py",
+      "source": "D:\\Fuentes\\AIDD\\tests\\test_aidd_job.py",
+      "sourceSha256": "b99eb671bb3dc6bf18949047acbf7fff0fb923838c90ebc19b43e29bf87634e8",
+      "baselineMainSha256": "b99eb671bb3dc6bf18949047acbf7fff0fb923838c90ebc19b43e29bf87634e8",
+      "bytes": 10368,
+      "overlay": false
+    },
+    {
+      "relative": "tests/test_aidd_local_unit_review.py",
+      "source": "D:\\Fuentes\\AIDD\\tests\\test_aidd_local_unit_review.py",
+      "sourceSha256": "186460659378d8717b621b335c12a7737a9ee023823dafdb0a7f639b616171cd",
+      "baselineMainSha256": "186460659378d8717b621b335c12a7737a9ee023823dafdb0a7f639b616171cd",
+      "bytes": 5975,
+      "overlay": false
+    },
+    {
+      "relative": "tests/test_aidd_memory.py",
+      "source": "D:\\Fuentes\\AIDD\\tests\\test_aidd_memory.py",
+      "sourceSha256": "4c613719b30e077fff965830370ffb2b235fc0ff1a96579be52ee43d8b422838",
+      "baselineMainSha256": "4c613719b30e077fff965830370ffb2b235fc0ff1a96579be52ee43d8b422838",
+      "bytes": 39875,
+      "overlay": false
+    },
+    {
+      "relative": "tests/test_aidd_memory_import.py",
+      "source": "D:\\Fuentes\\AIDD\\tests\\test_aidd_memory_import.py",
+      "sourceSha256": "55866735df404b82e2602b1ab7c3a36c95a30def89c7cfe86f2929e1a1e4cc70",
+      "baselineMainSha256": "55866735df404b82e2602b1ab7c3a36c95a30def89c7cfe86f2929e1a1e4cc70",
+      "bytes": 24034,
+      "overlay": false
+    },
+    {
+      "relative": "tests/test_aidd_navigator.py",
+      "source": "D:\\Fuentes\\AIDD\\tests\\test_aidd_navigator.py",
+      "sourceSha256": "15014626911e1deccc5d58917a5c6599522b8e8676376a1598c52e7e13a714b4",
+      "baselineMainSha256": "15014626911e1deccc5d58917a5c6599522b8e8676376a1598c52e7e13a714b4",
+      "bytes": 5010,
+      "overlay": false
+    },
+    {
+      "relative": "tests/test_aidd_next.py",
+      "source": "D:\\Fuentes\\AIDD\\tests\\test_aidd_next.py",
+      "sourceSha256": "8ffa0f46ecf4cfc4706760288cc92245634906f808ce81fe5470cf2e7b18d2b2",
+      "baselineMainSha256": "8ffa0f46ecf4cfc4706760288cc92245634906f808ce81fe5470cf2e7b18d2b2",
+      "bytes": 5720,
+      "overlay": false
+    },
+    {
+      "relative": "tests/test_aidd_prepare_release.py",
+      "source": "D:\\Fuentes\\AIDD\\tests\\test_aidd_prepare_release.py",
+      "sourceSha256": "82dda1cb0bc313dd35b5fb0271275175ff3fcd39a66207146ab938c47c3c36c1",
+      "baselineMainSha256": "82dda1cb0bc313dd35b5fb0271275175ff3fcd39a66207146ab938c47c3c36c1",
+      "bytes": 6854,
+      "overlay": false
+    },
+    {
+      "relative": "tests/test_aidd_progress.py",
+      "source": "D:\\Fuentes\\AIDD\\tests\\test_aidd_progress.py",
+      "sourceSha256": "24273a61fb2bce1fa8988cd96aef21e2d840fafb117bc6c15043bf15bdedf92c",
+      "baselineMainSha256": "24273a61fb2bce1fa8988cd96aef21e2d840fafb117bc6c15043bf15bdedf92c",
+      "bytes": 10389,
+      "overlay": false
+    },
+    {
+      "relative": "tests/test_aidd_provider_attestation.py",
+      "source": "D:\\Fuentes\\AIDD\\tests\\test_aidd_provider_attestation.py",
+      "sourceSha256": "cb95118624750a383d96929598ddfc46dce54e2484d11362e94ce93edf93199a",
+      "baselineMainSha256": "cb95118624750a383d96929598ddfc46dce54e2484d11362e94ce93edf93199a",
+      "bytes": 12949,
+      "overlay": false
+    },
+    {
+      "relative": "tests/test_aidd_readiness.py",
+      "source": "D:\\Fuentes\\AIDD\\tests\\test_aidd_readiness.py",
+      "sourceSha256": "855e310d588bf99f1688c419f6862d4045a1d89570db8112a8931d65de2cce08",
+      "baselineMainSha256": "855e310d588bf99f1688c419f6862d4045a1d89570db8112a8931d65de2cce08",
+      "bytes": 4888,
+      "overlay": false
+    },
+    {
+      "relative": "tests/test_aidd_review.py",
+      "source": "D:\\Fuentes\\AIDD\\tests\\test_aidd_review.py",
+      "sourceSha256": "c86743a50dc4646a153b976c69b24e663714a233adc33728a18ec1d3d9fdf394",
+      "baselineMainSha256": "c86743a50dc4646a153b976c69b24e663714a233adc33728a18ec1d3d9fdf394",
+      "bytes": 74816,
+      "overlay": false
+    },
+    {
+      "relative": "tests/test_aidd_review_items.py",
+      "source": "D:\\Fuentes\\AIDD\\tests\\test_aidd_review_items.py",
+      "sourceSha256": "efe5c77882f1780edb45861314598a16c6a8b18a60f3fefaef2fe9c4c5a88b1c",
+      "baselineMainSha256": "efe5c77882f1780edb45861314598a16c6a8b18a60f3fefaef2fe9c4c5a88b1c",
+      "bytes": 58663,
+      "overlay": false
+    },
+    {
+      "relative": "tests/test_aidd_review_state.py",
+      "source": "D:\\Fuentes\\AIDD\\tests\\test_aidd_review_state.py",
+      "sourceSha256": "c211d8edfe3ae78fc3bd2a65f0f08dfd99ee272d4316a792af810318eb4b6d85",
+      "baselineMainSha256": "c211d8edfe3ae78fc3bd2a65f0f08dfd99ee272d4316a792af810318eb4b6d85",
+      "bytes": 34432,
+      "overlay": false
+    },
+    {
+      "relative": "tests/test_aidd_rules.py",
+      "source": "D:\\Fuentes\\AIDD\\tests\\test_aidd_rules.py",
+      "sourceSha256": "e1dce47b0fdbb4aa8a9515a624bfcbe2528996cdb6d77a8985a8da8f39089add",
+      "baselineMainSha256": "e1dce47b0fdbb4aa8a9515a624bfcbe2528996cdb6d77a8985a8da8f39089add",
+      "bytes": 132025,
+      "overlay": false
+    },
+    {
+      "relative": "tests/test_aidd_rules_r10.py",
+      "source": "D:\\Fuentes\\AIDD\\tests\\test_aidd_rules_r10.py",
+      "sourceSha256": "6e63d077bb6f915d21e69685f8fa735c7f4714916297ad7e865b689a3d44c596",
+      "baselineMainSha256": "6e63d077bb6f915d21e69685f8fa735c7f4714916297ad7e865b689a3d44c596",
+      "bytes": 19282,
+      "overlay": false
+    },
+    {
+      "relative": "tests/test_aidd_source_shape.py",
+      "source": "D:\\Fuentes\\_worktrees\\aidd-security-boundary-20261114\\publication-plan\\source-shape-race-runtime\\tests\\test_aidd_source_shape.py",
+      "sourceSha256": "7db5ee8f4ab131c369e4fb625964699979a594ed0b4340d2f541051719a5322a",
+      "baselineMainSha256": "446c86ce1083156950844da97f5d264187d8f5992c390f5470b0dd0cd1880073",
+      "bytes": 8248,
+      "overlay": true
+    },
+    {
+      "relative": "tests/test_aidd_sqlcheck.py",
+      "source": "D:\\Fuentes\\AIDD\\tests\\test_aidd_sqlcheck.py",
+      "sourceSha256": "cd189dc1d2ef39dc3c2fb47a7daca0da39b95caf996062cd434fc2d3b6db9a5b",
+      "baselineMainSha256": "cd189dc1d2ef39dc3c2fb47a7daca0da39b95caf996062cd434fc2d3b6db9a5b",
+      "bytes": 5282,
+      "overlay": false
+    },
+    {
+      "relative": "tests/test_aidd_status.py",
+      "source": "D:\\Fuentes\\AIDD\\tests\\test_aidd_status.py",
+      "sourceSha256": "a0c4e8801e908bef1ee428477a50c6f37c926361d6cdf6407e9c21d4c1069cc0",
+      "baselineMainSha256": "a0c4e8801e908bef1ee428477a50c6f37c926361d6cdf6407e9c21d4c1069cc0",
+      "bytes": 133278,
+      "overlay": false
+    },
+    {
+      "relative": "tests/test_aidd_sync.py",
+      "source": "D:\\Fuentes\\AIDD\\tests\\test_aidd_sync.py",
+      "sourceSha256": "8bdf4be8eaa2de7e4962bd8dd96d5aa38a47dbf5872714614c02130ffb275e3e",
+      "baselineMainSha256": "8bdf4be8eaa2de7e4962bd8dd96d5aa38a47dbf5872714614c02130ffb275e3e",
+      "bytes": 11161,
+      "overlay": false
+    },
+    {
+      "relative": "tests/test_aidd_task_verify.py",
+      "source": "D:\\Fuentes\\AIDD\\tests\\test_aidd_task_verify.py",
+      "sourceSha256": "fa74e973b5ad458666ea9eca7dd8a8b1f4d2e924009723d43f708c29b2c76e5c",
+      "baselineMainSha256": "fa74e973b5ad458666ea9eca7dd8a8b1f4d2e924009723d43f708c29b2c76e5c",
+      "bytes": 10707,
+      "overlay": false
+    },
+    {
+      "relative": "tests/test_aidd_tools.py",
+      "source": "D:\\Fuentes\\AIDD\\tests\\test_aidd_tools.py",
+      "sourceSha256": "9bfe9b49d64650a305c5bc7e102e390ad7b7f4b74ea7b455541bc1cfd7e001a0",
+      "baselineMainSha256": "9bfe9b49d64650a305c5bc7e102e390ad7b7f4b74ea7b455541bc1cfd7e001a0",
+      "bytes": 7218,
+      "overlay": false
+    },
+    {
+      "relative": "tests/test_aidd_triage.py",
+      "source": "D:\\Fuentes\\AIDD\\tests\\test_aidd_triage.py",
+      "sourceSha256": "ac2295d6792eb4eefcde90fcdae3c811ffd9b3837db125154ed3afb7465dc341",
+      "baselineMainSha256": "ac2295d6792eb4eefcde90fcdae3c811ffd9b3837db125154ed3afb7465dc341",
+      "bytes": 5715,
+      "overlay": false
+    },
+    {
+      "relative": "tests/test_aidd_unit_approval_gate.py",
+      "source": "D:\\Fuentes\\AIDD\\tests\\test_aidd_unit_approval_gate.py",
+      "sourceSha256": "fb35aeb9598aea72525f851d99fab69baf48fe84ee50e65fc7d222c3fc8b8885",
+      "baselineMainSha256": "fb35aeb9598aea72525f851d99fab69baf48fe84ee50e65fc7d222c3fc8b8885",
+      "bytes": 1914,
+      "overlay": false
+    },
+    {
+      "relative": "tests/test_aidd_unit_audit_incremental.py",
+      "source": "D:\\Fuentes\\AIDD\\tests\\test_aidd_unit_audit_incremental.py",
+      "sourceSha256": "6df99aa0fbff292fe017e7d5224d9bd3bedb3243337c5e4cdd9de36b013deb81",
+      "baselineMainSha256": "6df99aa0fbff292fe017e7d5224d9bd3bedb3243337c5e4cdd9de36b013deb81",
+      "bytes": 17059,
+      "overlay": false
+    },
+    {
+      "relative": "tests/test_aidd_unit_consent.py",
+      "source": "D:\\Fuentes\\AIDD\\tests\\test_aidd_unit_consent.py",
+      "sourceSha256": "be3c331d14e0cc445b6c47ba71cceeeb23e47044a915fcf2338c25fc65039b64",
+      "baselineMainSha256": "be3c331d14e0cc445b6c47ba71cceeeb23e47044a915fcf2338c25fc65039b64",
+      "bytes": 3749,
+      "overlay": false
+    },
+    {
+      "relative": "tests/test_aidd_unit_hash.py",
+      "source": "D:\\Fuentes\\AIDD\\tests\\test_aidd_unit_hash.py",
+      "sourceSha256": "d41660bdf923133efeb0d7ca70bcf6fa4431c9f0a5465363ffcc932622ffeb70",
+      "baselineMainSha256": "d41660bdf923133efeb0d7ca70bcf6fa4431c9f0a5465363ffcc932622ffeb70",
+      "bytes": 3959,
+      "overlay": false
+    },
+    {
+      "relative": "tests/test_aidd_unit_hook_e2e.py",
+      "source": "D:\\Fuentes\\AIDD\\tests\\test_aidd_unit_hook_e2e.py",
+      "sourceSha256": "462c852519001dba86c2dfc76537a4911e08c5b39c6a249a4e32be5b6667168e",
+      "baselineMainSha256": "462c852519001dba86c2dfc76537a4911e08c5b39c6a249a4e32be5b6667168e",
+      "bytes": 5198,
+      "overlay": false
+    },
+    {
+      "relative": "tests/test_aidd_unit_impact.py",
+      "source": "D:\\Fuentes\\AIDD\\tests\\test_aidd_unit_impact.py",
+      "sourceSha256": "33af8d33c9a27279188540e354a3bc508e23dfe6868e47ad604d74d7f65d2965",
+      "baselineMainSha256": "33af8d33c9a27279188540e354a3bc508e23dfe6868e47ad604d74d7f65d2965",
+      "bytes": 16970,
+      "overlay": false
+    },
+    {
+      "relative": "tests/test_aidd_unit_migration.py",
+      "source": "D:\\Fuentes\\AIDD\\tests\\test_aidd_unit_migration.py",
+      "sourceSha256": "02e458cdf538d615de785821f9598244db48e929e4ef9a11bc8041226752e960",
+      "baselineMainSha256": "02e458cdf538d615de785821f9598244db48e929e4ef9a11bc8041226752e960",
+      "bytes": 6745,
+      "overlay": false
+    },
+    {
+      "relative": "tests/test_aidd_unit_review.py",
+      "source": "D:\\Fuentes\\AIDD\\tests\\test_aidd_unit_review.py",
+      "sourceSha256": "5578a9f82c50be68aa9098b492c7faa40a583b924ff6023997d2e7d0a270c544",
+      "baselineMainSha256": "5578a9f82c50be68aa9098b492c7faa40a583b924ff6023997d2e7d0a270c544",
+      "bytes": 2321,
+      "overlay": false
+    },
+    {
+      "relative": "tests/test_aidd_unit_review_package.py",
+      "source": "D:\\Fuentes\\AIDD\\tests\\test_aidd_unit_review_package.py",
+      "sourceSha256": "38820e3325abadc77d8c35c8f9e3f2273f0d69444e01cfcae6aac51f9e313a29",
+      "baselineMainSha256": "38820e3325abadc77d8c35c8f9e3f2273f0d69444e01cfcae6aac51f9e313a29",
+      "bytes": 3771,
+      "overlay": false
+    },
+    {
+      "relative": "tests/test_aidd_unit_visual.py",
+      "source": "D:\\Fuentes\\AIDD\\tests\\test_aidd_unit_visual.py",
+      "sourceSha256": "05a57c778af30b15ab99b02e0193590575ae0cb29edba34abc52fb640a2ff52a",
+      "baselineMainSha256": "05a57c778af30b15ab99b02e0193590575ae0cb29edba34abc52fb640a2ff52a",
+      "bytes": 4130,
+      "overlay": false
+    },
+    {
+      "relative": "tests/test_aidd_units.py",
+      "source": "D:\\Fuentes\\AIDD\\tests\\test_aidd_units.py",
+      "sourceSha256": "e7b1e545f0b488c0f7030ab7cd1d02655b32267f6b0f38666e8e4da5e3b2db25",
+      "baselineMainSha256": "e7b1e545f0b488c0f7030ab7cd1d02655b32267f6b0f38666e8e4da5e3b2db25",
+      "bytes": 4215,
+      "overlay": false
+    },
+    {
+      "relative": "tests/test_alias_graph.py",
+      "source": "D:\\Fuentes\\AIDD\\tests\\test_alias_graph.py",
+      "sourceSha256": "1cecf4126df31b67568edc8db90eca855952b5eb1ebaf668df5d6064cbd5923d",
+      "baselineMainSha256": "1cecf4126df31b67568edc8db90eca855952b5eb1ebaf668df5d6064cbd5923d",
+      "bytes": 11215,
+      "overlay": false
+    },
+    {
+      "relative": "tests/test_amendment_file_layout.py",
+      "source": "D:\\Fuentes\\AIDD\\tests\\test_amendment_file_layout.py",
+      "sourceSha256": "ebfa080600955ee3a0be89bd280908d7ff73911d90fdf57f3b0c8ef25fe41015",
+      "baselineMainSha256": "ebfa080600955ee3a0be89bd280908d7ff73911d90fdf57f3b0c8ef25fe41015",
+      "bytes": 6624,
+      "overlay": false
+    },
+    {
+      "relative": "tests/test_amendment_truncated_command.py",
+      "source": "D:\\Fuentes\\AIDD\\tests\\test_amendment_truncated_command.py",
+      "sourceSha256": "77556f4736d58b09aebb8e0ad63a4e4eff79d5d759c658320ee525e3ba129418",
+      "baselineMainSha256": "77556f4736d58b09aebb8e0ad63a4e4eff79d5d759c658320ee525e3ba129418",
+      "bytes": 10753,
+      "overlay": false
+    },
+    {
+      "relative": "tests/test_approval_topic_grammar.py",
+      "source": "D:\\Fuentes\\AIDD\\tests\\test_approval_topic_grammar.py",
+      "sourceSha256": "c1afdfade7e554bb49e4874a3e1bf53318891c4f513bc83717d1308f3ca861b5",
+      "baselineMainSha256": "c1afdfade7e554bb49e4874a3e1bf53318891c4f513bc83717d1308f3ca861b5",
+      "bytes": 5494,
+      "overlay": false
+    },
+    {
+      "relative": "tests/test_b10_b11_b6.py",
+      "source": "D:\\Fuentes\\AIDD\\tests\\test_b10_b11_b6.py",
+      "sourceSha256": "fc5b9370fd98615b1646590ff5559b14ef0d9a0e7073e7ccabe9063459ebde2e",
+      "baselineMainSha256": "fc5b9370fd98615b1646590ff5559b14ef0d9a0e7073e7ccabe9063459ebde2e",
+      "bytes": 10368,
+      "overlay": false
+    },
+    {
+      "relative": "tests/test_b12_b5.py",
+      "source": "D:\\Fuentes\\AIDD\\tests\\test_b12_b5.py",
+      "sourceSha256": "ec841cc36aed093f493e21ff63e905032ffe6076337680340c76d4493ac71733",
+      "baselineMainSha256": "ec841cc36aed093f493e21ff63e905032ffe6076337680340c76d4493ac71733",
+      "bytes": 12581,
+      "overlay": false
+    },
+    {
+      "relative": "tests/test_capacity_budget.py",
+      "source": "D:\\Fuentes\\AIDD\\tests\\test_capacity_budget.py",
+      "sourceSha256": "ea1a64826bd1ad2dfc983de9eef0e1ef0205b17248949dee68b831d3b6112480",
+      "baselineMainSha256": "ea1a64826bd1ad2dfc983de9eef0e1ef0205b17248949dee68b831d3b6112480",
+      "bytes": 4077,
+      "overlay": false
+    },
+    {
+      "relative": "tests/test_check_charter.py",
+      "source": "D:\\Fuentes\\AIDD\\tests\\test_check_charter.py",
+      "sourceSha256": "0a4a2adff8b0df9c40e17075aaf818331d36a42bda54c4a25e9f9378cfd7c750",
+      "baselineMainSha256": "0a4a2adff8b0df9c40e17075aaf818331d36a42bda54c4a25e9f9378cfd7c750",
+      "bytes": 8467,
+      "overlay": false
+    },
+    {
+      "relative": "tests/test_check_spec.py",
+      "source": "D:\\Fuentes\\AIDD\\tests\\test_check_spec.py",
+      "sourceSha256": "e066ca1c2f886cf7ca6ded271a9c0705019b95b472057048821b7c6351a39473",
+      "baselineMainSha256": "e066ca1c2f886cf7ca6ded271a9c0705019b95b472057048821b7c6351a39473",
+      "bytes": 19359,
+      "overlay": false
+    },
+    {
+      "relative": "tests/test_ci_runner.py",
+      "source": "D:\\Fuentes\\AIDD\\tests\\test_ci_runner.py",
+      "sourceSha256": "4b380e7c91720cda4932bb78649d41ddb0d05c3aec5eace0644d71010da0a089",
+      "baselineMainSha256": "4b380e7c91720cda4932bb78649d41ddb0d05c3aec5eace0644d71010da0a089",
+      "bytes": 12167,
+      "overlay": false
+    },
+    {
+      "relative": "tests/test_cli_mem.py",
+      "source": "D:\\Fuentes\\AIDD\\tests\\test_cli_mem.py",
+      "sourceSha256": "882ec758964a4e1e3685d790e23b151a9aebec34bf1162a496b8fa25104f180f",
+      "baselineMainSha256": "882ec758964a4e1e3685d790e23b151a9aebec34bf1162a496b8fa25104f180f",
+      "bytes": 1742,
+      "overlay": false
+    },
+    {
+      "relative": "tests/test_cli_rules.py",
+      "source": "D:\\Fuentes\\AIDD\\tests\\test_cli_rules.py",
+      "sourceSha256": "dc79912bbe41aa7e600f348eb7c7f63000b0571fd25440c3d01848f93760397e",
+      "baselineMainSha256": "dc79912bbe41aa7e600f348eb7c7f63000b0571fd25440c3d01848f93760397e",
+      "bytes": 12341,
+      "overlay": false
+    },
+    {
+      "relative": "tests/test_code_fingerprint.py",
+      "source": "D:\\Fuentes\\AIDD\\tests\\test_code_fingerprint.py",
+      "sourceSha256": "f0172ca0eb5572a33e8ebd9a9eb7847fbda03c0143a5e1281ab36e1defd34927",
+      "baselineMainSha256": "f0172ca0eb5572a33e8ebd9a9eb7847fbda03c0143a5e1281ab36e1defd34927",
+      "bytes": 16561,
+      "overlay": false
+    },
+    {
+      "relative": "tests/test_code_graph.py",
+      "source": "D:\\Fuentes\\AIDD\\tests\\test_code_graph.py",
+      "sourceSha256": "bdef8a867000d6ec1aa2cbdc9872b0d008985c6c4c664fd7d99e8b8c3104e885",
+      "baselineMainSha256": "bdef8a867000d6ec1aa2cbdc9872b0d008985c6c4c664fd7d99e8b8c3104e885",
+      "bytes": 11328,
+      "overlay": false
+    },
+    {
+      "relative": "tests/test_code_graph_raw_hashes.py",
+      "source": "D:\\Fuentes\\_worktrees\\aidd-graph-adoption-proposal-20261115\\runtime\\tests\\test_code_graph_raw_hashes.py",
+      "sourceSha256": "22f9413ca08e995886667417216b1973c4c7e809b63690c74afcf7992d7d7419",
+      "baselineMainSha256": null,
+      "bytes": 10211,
+      "overlay": true
+    },
+    {
+      "relative": "tests/test_codex_patch_parser.py",
+      "source": "D:\\Fuentes\\AIDD\\tests\\test_codex_patch_parser.py",
+      "sourceSha256": "9104f2c898170df1867166ccdf69d4170271f8d320f4609355d5231f4b6aadc3",
+      "baselineMainSha256": "9104f2c898170df1867166ccdf69d4170271f8d320f4609355d5231f4b6aadc3",
+      "bytes": 8257,
+      "overlay": false
+    },
+    {
+      "relative": "tests/test_codex_subagent.py",
+      "source": "D:\\Fuentes\\AIDD\\tests\\test_codex_subagent.py",
+      "sourceSha256": "7c3a9af060d17f3637d96fcdb6feb7b76a4c7b737bea542a15bf9c6f03244bfd",
+      "baselineMainSha256": "7c3a9af060d17f3637d96fcdb6feb7b76a4c7b737bea542a15bf9c6f03244bfd",
+      "bytes": 2065,
+      "overlay": false
+    },
+    {
+      "relative": "tests/test_component_graph.py",
+      "source": "D:\\Fuentes\\AIDD\\tests\\test_component_graph.py",
+      "sourceSha256": "c63a477d523c6783143700882d79fec1b353f16af22d10858850015db616e445",
+      "baselineMainSha256": "c63a477d523c6783143700882d79fec1b353f16af22d10858850015db616e445",
+      "bytes": 10434,
+      "overlay": false
+    },
+    {
+      "relative": "tests/test_contract_store.py",
+      "source": "D:\\Fuentes\\AIDD\\tests\\test_contract_store.py",
+      "sourceSha256": "7d6c9a0ffe265256f5b9cc90a0fe6c844626ab423ad1b7e70a4e597e97701981",
+      "baselineMainSha256": "7d6c9a0ffe265256f5b9cc90a0fe6c844626ab423ad1b7e70a4e597e97701981",
+      "bytes": 9486,
+      "overlay": false
+    },
+    {
+      "relative": "tests/test_coverage_manifest.py",
+      "source": "D:\\Fuentes\\AIDD\\tests\\test_coverage_manifest.py",
+      "sourceSha256": "02169d478a98a4310ed3219c53deab3388111219cc8b06c8f3f25e3f3d54e9c2",
+      "baselineMainSha256": "02169d478a98a4310ed3219c53deab3388111219cc8b06c8f3f25e3f3d54e9c2",
+      "bytes": 1880,
+      "overlay": false
+    },
+    {
+      "relative": "tests/test_cross_platform_paths.py",
+      "source": "D:\\Fuentes\\AIDD\\tests\\test_cross_platform_paths.py",
+      "sourceSha256": "6b6128e2908e5ea3a0f5d39675b1f21aa05ce28e5f4ba83ada6cd6606d560da7",
+      "baselineMainSha256": "6b6128e2908e5ea3a0f5d39675b1f21aa05ce28e5f4ba83ada6cd6606d560da7",
+      "bytes": 14270,
+      "overlay": false
+    },
+    {
+      "relative": "tests/test_dot_aidd_mirror.py",
+      "source": "D:\\Fuentes\\AIDD\\tests\\test_dot_aidd_mirror.py",
+      "sourceSha256": "8f0715133acae218d6534fd629ef91b8f9ca8452f7c43ebfa4758709ef7c95a1",
+      "baselineMainSha256": "8f0715133acae218d6534fd629ef91b8f9ca8452f7c43ebfa4758709ef7c95a1",
+      "bytes": 23601,
+      "overlay": false
+    },
+    {
+      "relative": "tests/test_dry_run_identity_security.py",
+      "source": "D:\\Fuentes\\AIDD\\tests\\test_dry_run_identity_security.py",
+      "sourceSha256": "68942d25a7e60e7ed3b89fa185c61906eed928839cab59b611c50aba5b5386dd",
+      "baselineMainSha256": "68942d25a7e60e7ed3b89fa185c61906eed928839cab59b611c50aba5b5386dd",
+      "bytes": 5113,
+      "overlay": false
+    },
+    {
+      "relative": "tests/test_embed_compression.py",
+      "source": "D:\\Fuentes\\AIDD\\tests\\test_embed_compression.py",
+      "sourceSha256": "9db5fa50a47c92d54e6c540d2386e1effc564adcb0c92e9de0cf45adf764cc9e",
+      "baselineMainSha256": "9db5fa50a47c92d54e6c540d2386e1effc564adcb0c92e9de0cf45adf764cc9e",
+      "bytes": 6258,
+      "overlay": false
+    },
+    {
+      "relative": "tests/test_evidence.py",
+      "source": "D:\\Fuentes\\AIDD\\tests\\test_evidence.py",
+      "sourceSha256": "bfaccaec4f1ec9f93c0848b48671fa39135eb876730839f85f795b729a3ca9bc",
+      "baselineMainSha256": "bfaccaec4f1ec9f93c0848b48671fa39135eb876730839f85f795b729a3ca9bc",
+      "bytes": 88060,
+      "overlay": false
+    },
+    {
+      "relative": "tests/test_explorer_controls.py",
+      "source": "D:\\Fuentes\\AIDD\\tests\\test_explorer_controls.py",
+      "sourceSha256": "a4bdfb43b81899427d1a1b18525b1f375553f0f3dad0cdef4e149bd7ff39a351",
+      "baselineMainSha256": "a4bdfb43b81899427d1a1b18525b1f375553f0f3dad0cdef4e149bd7ff39a351",
+      "bytes": 4018,
+      "overlay": false
+    },
+    {
+      "relative": "tests/test_explorer_controls_browser.py",
+      "source": "D:\\Fuentes\\AIDD\\tests\\test_explorer_controls_browser.py",
+      "sourceSha256": "761a8b2e551982a2d92bf41681d461c738f9647fbb62e724b6efb89483e4f9b7",
+      "baselineMainSha256": "761a8b2e551982a2d92bf41681d461c738f9647fbb62e724b6efb89483e4f9b7",
+      "bytes": 7038,
+      "overlay": false
+    },
+    {
+      "relative": "tests/test_extension_providers.py",
+      "source": "D:\\Fuentes\\AIDD\\tests\\test_extension_providers.py",
+      "sourceSha256": "e8b3a58c03620f7c8ab0ac8a1c2c2015b86535901316327e53c69cca62d19993",
+      "baselineMainSha256": "e8b3a58c03620f7c8ab0ac8a1c2c2015b86535901316327e53c69cca62d19993",
+      "bytes": 19340,
+      "overlay": false
+    },
+    {
+      "relative": "tests/test_find_spec.py",
+      "source": "D:\\Fuentes\\AIDD\\tests\\test_find_spec.py",
+      "sourceSha256": "1deb69a8256c21574f42af99bd1909350b185d675a032e0535b9e8d9f717d0ad",
+      "baselineMainSha256": "1deb69a8256c21574f42af99bd1909350b185d675a032e0535b9e8d9f717d0ad",
+      "bytes": 34154,
+      "overlay": false
+    },
+    {
+      "relative": "tests/test_flowmap.py",
+      "source": "D:\\Fuentes\\AIDD\\tests\\test_flowmap.py",
+      "sourceSha256": "82bbba3fb8f014e100e337cb654edf51d69544626a4128f668f6d2872225247e",
+      "baselineMainSha256": "82bbba3fb8f014e100e337cb654edf51d69544626a4128f668f6d2872225247e",
+      "bytes": 3816,
+      "overlay": false
+    },
+    {
+      "relative": "tests/test_generate_adapters.py",
+      "source": "D:\\Fuentes\\AIDD\\tests\\test_generate_adapters.py",
+      "sourceSha256": "97d75bbbfac1f04d90ebb84ccf5fba44662ebd19bb57900101915a61ae55e1dd",
+      "baselineMainSha256": "97d75bbbfac1f04d90ebb84ccf5fba44662ebd19bb57900101915a61ae55e1dd",
+      "bytes": 8816,
+      "overlay": false
+    },
+    {
+      "relative": "tests/test_graph_explorer.py",
+      "source": "D:\\Fuentes\\AIDD\\tests\\test_graph_explorer.py",
+      "sourceSha256": "0091bcc58e5fd160375b04435150130506c6d98a94e5729c6fb6bc5d037592e8",
+      "baselineMainSha256": "0091bcc58e5fd160375b04435150130506c6d98a94e5729c6fb6bc5d037592e8",
+      "bytes": 5369,
+      "overlay": false
+    },
+    {
+      "relative": "tests/test_graph_refresh_hook.py",
+      "source": "D:\\Fuentes\\AIDD\\tests\\test_graph_refresh_hook.py",
+      "sourceSha256": "e8639c58aa3cfde532366639489c4dd9a9d005e866d22eca51cd6e97e875608e",
+      "baselineMainSha256": "e8639c58aa3cfde532366639489c4dd9a9d005e866d22eca51cd6e97e875608e",
+      "bytes": 5166,
+      "overlay": false
+    },
+    {
+      "relative": "tests/test_graph_snapshot.py",
+      "source": "D:\\Fuentes\\AIDD\\tests\\test_graph_snapshot.py",
+      "sourceSha256": "c6c813ed760733f5d68d7537f98ad4a055790867748eb16dc65522adad3762f8",
+      "baselineMainSha256": "c6c813ed760733f5d68d7537f98ad4a055790867748eb16dc65522adad3762f8",
+      "bytes": 20469,
+      "overlay": false
+    },
+    {
+      "relative": "tests/test_graph_trace_method.py",
+      "source": "D:\\Fuentes\\AIDD\\tests\\test_graph_trace_method.py",
+      "sourceSha256": "71dd896656bb05a9f0fae41a5296a1fca77d3296b846084399c4188c666d3ae1",
+      "baselineMainSha256": "71dd896656bb05a9f0fae41a5296a1fca77d3296b846084399c4188c666d3ae1",
+      "bytes": 14983,
+      "overlay": false
+    },
+    {
+      "relative": "tests/test_graphs_auto.py",
+      "source": "D:\\Fuentes\\AIDD\\tests\\test_graphs_auto.py",
+      "sourceSha256": "8a1048a5f74d996b1b3b4a5347758abe378610559893426f9db8f0c996c8ff11",
+      "baselineMainSha256": "8a1048a5f74d996b1b3b4a5347758abe378610559893426f9db8f0c996c8ff11",
+      "bytes": 5634,
+      "overlay": false
+    },
+    {
+      "relative": "tests/test_guard_portability_report.py",
+      "source": "D:\\Fuentes\\AIDD\\tests\\test_guard_portability_report.py",
+      "sourceSha256": "4d052dd131bf337d5d13dd1b5cb71cb3283ed20d2ca8ad132ab5ba378265f56f",
+      "baselineMainSha256": "4d052dd131bf337d5d13dd1b5cb71cb3283ed20d2ca8ad132ab5ba378265f56f",
+      "bytes": 2341,
+      "overlay": false
+    },
+    {
+      "relative": "tests/test_historical_reuse_security.py",
+      "source": "D:\\Fuentes\\AIDD\\tests\\test_historical_reuse_security.py",
+      "sourceSha256": "971e7636ae124e77f7d72e4f4251b2f7a264e96a561f1f37c0fb6532416dcc37",
+      "baselineMainSha256": "971e7636ae124e77f7d72e4f4251b2f7a264e96a561f1f37c0fb6532416dcc37",
+      "bytes": 20624,
+      "overlay": false
+    },
+    {
+      "relative": "tests/test_hooks.py",
+      "source": "D:\\Fuentes\\AIDD\\tests\\test_hooks.py",
+      "sourceSha256": "4ce6f5c9463e0f68c5d45be2084adc51b0388f5c0edcf14bdcf26d99ebc40071",
+      "baselineMainSha256": "4ce6f5c9463e0f68c5d45be2084adc51b0388f5c0edcf14bdcf26d99ebc40071",
+      "bytes": 69132,
+      "overlay": false
+    },
+    {
+      "relative": "tests/test_host_doctor.py",
+      "source": "D:\\Fuentes\\AIDD\\tests\\test_host_doctor.py",
+      "sourceSha256": "27695f97de24d8de3b25c4effcf9d9ec057f4abbbf08df01044ae9211296e92c",
+      "baselineMainSha256": "27695f97de24d8de3b25c4effcf9d9ec057f4abbbf08df01044ae9211296e92c",
+      "bytes": 20313,
+      "overlay": false
+    },
+    {
+      "relative": "tests/test_host_gates.py",
+      "source": "D:\\Fuentes\\AIDD\\tests\\test_host_gates.py",
+      "sourceSha256": "482f28ae1744e8827d17f4507eb81d23f3962bd5e67e873aafb0378ebb35be7f",
+      "baselineMainSha256": "482f28ae1744e8827d17f4507eb81d23f3962bd5e67e873aafb0378ebb35be7f",
+      "bytes": 54210,
+      "overlay": false
+    },
+    {
+      "relative": "tests/test_host_install.py",
+      "source": "D:\\Fuentes\\AIDD\\tests\\test_host_install.py",
+      "sourceSha256": "3ec35f79bbb908b4ce4f24fdd8e2e0ad5ed3b883948a6a107ea206b8737589b0",
+      "baselineMainSha256": "3ec35f79bbb908b4ce4f24fdd8e2e0ad5ed3b883948a6a107ea206b8737589b0",
+      "bytes": 30685,
+      "overlay": false
+    },
+    {
+      "relative": "tests/test_install_ci.py",
+      "source": "D:\\Fuentes\\AIDD\\tests\\test_install_ci.py",
+      "sourceSha256": "a950c7be4829d7ba13b6364ae5e6739113976a24c79248bcd082bc35434b0762",
+      "baselineMainSha256": "a950c7be4829d7ba13b6364ae5e6739113976a24c79248bcd082bc35434b0762",
+      "bytes": 4000,
+      "overlay": false
+    },
+    {
+      "relative": "tests/test_install_hooks.py",
+      "source": "D:\\Fuentes\\AIDD\\tests\\test_install_hooks.py",
+      "sourceSha256": "62a6e1256429f17bc03940ab7a74108f6618a90614352b7a583740efedabe4ca",
+      "baselineMainSha256": "62a6e1256429f17bc03940ab7a74108f6618a90614352b7a583740efedabe4ca",
+      "bytes": 19119,
+      "overlay": false
+    },
+    {
+      "relative": "tests/test_link_pr_to_task.py",
+      "source": "D:\\Fuentes\\AIDD\\tests\\test_link_pr_to_task.py",
+      "sourceSha256": "6db9ea46bd36948193b9b4742bad221acea9d07e3cf6fef9b3bbf781a4a6971f",
+      "baselineMainSha256": "6db9ea46bd36948193b9b4742bad221acea9d07e3cf6fef9b3bbf781a4a6971f",
+      "bytes": 8685,
+      "overlay": false
+    },
+    {
+      "relative": "tests/test_marketplace.py",
+      "source": "D:\\Fuentes\\AIDD\\tests\\test_marketplace.py",
+      "sourceSha256": "85663620d63246cf93cb385d873b405d266fa3b284775faa08c6cd3e0b75f784",
+      "baselineMainSha256": "85663620d63246cf93cb385d873b405d266fa3b284775faa08c6cd3e0b75f784",
+      "bytes": 13598,
+      "overlay": false
+    },
+    {
+      "relative": "tests/test_memory_hooks.py",
+      "source": "D:\\Fuentes\\AIDD\\tests\\test_memory_hooks.py",
+      "sourceSha256": "4f13bafd789502f30efd16915a9ca2fc8cf83f06b668a59a13d33456e0ace4cd",
+      "baselineMainSha256": "4f13bafd789502f30efd16915a9ca2fc8cf83f06b668a59a13d33456e0ace4cd",
+      "bytes": 5985,
+      "overlay": false
+    },
+    {
+      "relative": "tests/test_perf_and_cache.py",
+      "source": "D:\\Fuentes\\AIDD\\tests\\test_perf_and_cache.py",
+      "sourceSha256": "ffd010b605530e4924b9cdfcc17bb4a688a4fb6452ba5f836e92a1751d01ed81",
+      "baselineMainSha256": "ffd010b605530e4924b9cdfcc17bb4a688a4fb6452ba5f836e92a1751d01ed81",
+      "bytes": 3730,
+      "overlay": false
+    },
+    {
+      "relative": "tests/test_perf_budget.py",
+      "source": "D:\\Fuentes\\AIDD\\tests\\test_perf_budget.py",
+      "sourceSha256": "1b7cae539ab82d49ca7412dcc8cc2860348de089f7af47cd47153a3ec865096b",
+      "baselineMainSha256": "1b7cae539ab82d49ca7412dcc8cc2860348de089f7af47cd47153a3ec865096b",
+      "bytes": 11609,
+      "overlay": false
+    },
+    {
+      "relative": "tests/test_progress_resolution.py",
+      "source": "D:\\Fuentes\\AIDD\\tests\\test_progress_resolution.py",
+      "sourceSha256": "39bc2437a1b1b71143ef9d2a68a8e530664cd4e3301ea64b8afec4950263d0f9",
+      "baselineMainSha256": "39bc2437a1b1b71143ef9d2a68a8e530664cd4e3301ea64b8afec4950263d0f9",
+      "bytes": 4492,
+      "overlay": false
+    },
+    {
+      "relative": "tests/test_prompt_trigger.py",
+      "source": "D:\\Fuentes\\AIDD\\tests\\test_prompt_trigger.py",
+      "sourceSha256": "614a2273c9c805ee16c57e1ae849a95e091b44f4d10b58debda843903398fc9d",
+      "baselineMainSha256": "614a2273c9c805ee16c57e1ae849a95e091b44f4d10b58debda843903398fc9d",
+      "bytes": 11046,
+      "overlay": false
+    },
+    {
+      "relative": "tests/test_r14.py",
+      "source": "D:\\Fuentes\\AIDD\\tests\\test_r14.py",
+      "sourceSha256": "018cfec18f16512d902a1f0d4f357a7ce8d745fc4bb93fee21eac1112397815a",
+      "baselineMainSha256": "018cfec18f16512d902a1f0d4f357a7ce8d745fc4bb93fee21eac1112397815a",
+      "bytes": 12742,
+      "overlay": false
+    },
+    {
+      "relative": "tests/test_r9_transcript.py",
+      "source": "D:\\Fuentes\\AIDD\\tests\\test_r9_transcript.py",
+      "sourceSha256": "f4101f4400c03395a549e4ee23ecbe41401815bd59d3cebb4c064fc7b4094625",
+      "baselineMainSha256": "f4101f4400c03395a549e4ee23ecbe41401815bd59d3cebb4c064fc7b4094625",
+      "bytes": 2914,
+      "overlay": false
+    },
+    {
+      "relative": "tests/test_read_hint.py",
+      "source": "D:\\Fuentes\\AIDD\\tests\\test_read_hint.py",
+      "sourceSha256": "5b8de9977f792a110f424fa6e273e196f9e400c8025b2253eb544b92c3584d67",
+      "baselineMainSha256": "5b8de9977f792a110f424fa6e273e196f9e400c8025b2253eb544b92c3584d67",
+      "bytes": 10964,
+      "overlay": false
+    },
+    {
+      "relative": "tests/test_research_project.py",
+      "source": "D:\\Fuentes\\AIDD\\tests\\test_research_project.py",
+      "sourceSha256": "e13a6bae17b4b56d4ac8e8dff0f788af34e53aec0688cce2b00c7c1a13ed6f2e",
+      "baselineMainSha256": "e13a6bae17b4b56d4ac8e8dff0f788af34e53aec0688cce2b00c7c1a13ed6f2e",
+      "bytes": 4363,
+      "overlay": false
+    },
+    {
+      "relative": "tests/test_reuse_planner.py",
+      "source": "D:\\Fuentes\\AIDD\\tests\\test_reuse_planner.py",
+      "sourceSha256": "d109c71dda8efb1c96688930093bf1d5f63b8181911bcf6746563a9aaf0f4a49",
+      "baselineMainSha256": "d109c71dda8efb1c96688930093bf1d5f63b8181911bcf6746563a9aaf0f4a49",
+      "bytes": 3735,
+      "overlay": false
+    },
+    {
+      "relative": "tests/test_review_template.py",
+      "source": "D:\\Fuentes\\AIDD\\tests\\test_review_template.py",
+      "sourceSha256": "9e8dc126d17d4d8d1fa1f49e1e9665f24c6c0fbfc6e627a94d5075acc4d321bb",
+      "baselineMainSha256": "9e8dc126d17d4d8d1fa1f49e1e9665f24c6c0fbfc6e627a94d5075acc4d321bb",
+      "bytes": 44208,
+      "overlay": false
+    },
+    {
+      "relative": "tests/test_rule_gate.py",
+      "source": "D:\\Fuentes\\AIDD\\tests\\test_rule_gate.py",
+      "sourceSha256": "7ed963aa16590f42af2f53835a4e0bb5e76271998346d8cd6f52f32c797a254e",
+      "baselineMainSha256": "7ed963aa16590f42af2f53835a4e0bb5e76271998346d8cd6f52f32c797a254e",
+      "bytes": 159663,
+      "overlay": false
+    },
+    {
+      "relative": "tests/test_rule_gate_shell_speed.py",
+      "source": "D:\\Fuentes\\AIDD\\tests\\test_rule_gate_shell_speed.py",
+      "sourceSha256": "1e3dde83d5cd7295501b427d865fc4debf53a8f41e9da280696982535e1f67dc",
+      "baselineMainSha256": "1e3dde83d5cd7295501b427d865fc4debf53a8f41e9da280696982535e1f67dc",
+      "bytes": 20036,
+      "overlay": false
+    },
+    {
+      "relative": "tests/test_run_parallel.py",
+      "source": "D:\\Fuentes\\AIDD\\tests\\test_run_parallel.py",
+      "sourceSha256": "9c9119350f0f96fc28b0fa9db6d38b86e255349b9f68ab79651b9025da7af863",
+      "baselineMainSha256": "9c9119350f0f96fc28b0fa9db6d38b86e255349b9f68ab79651b9025da7af863",
+      "bytes": 5823,
+      "overlay": false
+    },
+    {
+      "relative": "tests/test_selective_update.py",
+      "source": "D:\\Fuentes\\AIDD\\tests\\test_selective_update.py",
+      "sourceSha256": "04627eaab4668bdeecaf4d3fc51f46c4a3d0b9b496c32182fa02e62583293a42",
+      "baselineMainSha256": "04627eaab4668bdeecaf4d3fc51f46c4a3d0b9b496c32182fa02e62583293a42",
+      "bytes": 37454,
+      "overlay": false
+    },
+    {
+      "relative": "tests/test_session_lessons.py",
+      "source": "D:\\Fuentes\\AIDD\\tests\\test_session_lessons.py",
+      "sourceSha256": "ac8eec6c8d8f8b2b16454ce9b7420ee9c711cd58c3de92397298625a7ad572c3",
+      "baselineMainSha256": "ac8eec6c8d8f8b2b16454ce9b7420ee9c711cd58c3de92397298625a7ad572c3",
+      "bytes": 10854,
+      "overlay": false
+    },
+    {
+      "relative": "tests/test_sql_graph.py",
+      "source": "D:\\Fuentes\\AIDD\\tests\\test_sql_graph.py",
+      "sourceSha256": "5e4f9d6b29b2df6c43e640c1a9449773d1f220449adb1d97958f37f84f043839",
+      "baselineMainSha256": "5e4f9d6b29b2df6c43e640c1a9449773d1f220449adb1d97958f37f84f043839",
+      "bytes": 11401,
+      "overlay": false
+    },
+    {
+      "relative": "tests/test_sql_graph_incremental.py",
+      "source": "D:\\Fuentes\\AIDD\\tests\\test_sql_graph_incremental.py",
+      "sourceSha256": "22fb63ec79e7cb95175bfd2281906f22f49537e13bf128a7633d57b235b65712",
+      "baselineMainSha256": "22fb63ec79e7cb95175bfd2281906f22f49537e13bf128a7633d57b235b65712",
+      "bytes": 11590,
+      "overlay": false
+    },
+    {
+      "relative": "tests/test_stop_gate.py",
+      "source": "D:\\Fuentes\\AIDD\\tests\\test_stop_gate.py",
+      "sourceSha256": "9c8f2e3f01caf091e6642ded7d46bc3238fdc3e13676026c651767a12f5d1150",
+      "baselineMainSha256": "9c8f2e3f01caf091e6642ded7d46bc3238fdc3e13676026c651767a12f5d1150",
+      "bytes": 21423,
+      "overlay": false
+    },
+    {
+      "relative": "tests/test_sync_issues.py",
+      "source": "D:\\Fuentes\\AIDD\\tests\\test_sync_issues.py",
+      "sourceSha256": "f1fde1b2daf03bf69c5f016625ae85db6528c1cb6c78a1ecb1ab58c4ea6afc89",
+      "baselineMainSha256": "f1fde1b2daf03bf69c5f016625ae85db6528c1cb6c78a1ecb1ab58c4ea6afc89",
+      "bytes": 7606,
+      "overlay": false
+    },
+    {
+      "relative": "tests/test_tasks_batch_coverage.py",
+      "source": "D:\\Fuentes\\AIDD\\tests\\test_tasks_batch_coverage.py",
+      "sourceSha256": "dcbf33ca8614e63873c7186292e9d2304c78d56ff1571d7a53c6152e350ee880",
+      "baselineMainSha256": "dcbf33ca8614e63873c7186292e9d2304c78d56ff1571d7a53c6152e350ee880",
+      "bytes": 9827,
+      "overlay": false
+    },
+    {
+      "relative": "tests/test_tasks_to_issues.py",
+      "source": "D:\\Fuentes\\AIDD\\tests\\test_tasks_to_issues.py",
+      "sourceSha256": "3955e6caa0196eb1d0edb17e921bb4d59fc445b9bc8c2057ad93684790f48317",
+      "baselineMainSha256": "3955e6caa0196eb1d0edb17e921bb4d59fc445b9bc8c2057ad93684790f48317",
+      "bytes": 7512,
+      "overlay": false
+    },
+    {
+      "relative": "tests/test_tool_first_hint.py",
+      "source": "D:\\Fuentes\\AIDD\\tests\\test_tool_first_hint.py",
+      "sourceSha256": "aaf81ce25cccadd0d6d65f0fe5041a3f1de4d52d703205802356ce2c243346e5",
+      "baselineMainSha256": "aaf81ce25cccadd0d6d65f0fe5041a3f1de4d52d703205802356ce2c243346e5",
+      "bytes": 12495,
+      "overlay": false
+    },
+    {
+      "relative": "tests/test_transcript_sync.py",
+      "source": "D:\\Fuentes\\AIDD\\tests\\test_transcript_sync.py",
+      "sourceSha256": "9372efaca66f29c43b8a59f04301001b2bd630b45674a2ebb06852e6cf00e87c",
+      "baselineMainSha256": "9372efaca66f29c43b8a59f04301001b2bd630b45674a2ebb06852e6cf00e87c",
+      "bytes": 14797,
+      "overlay": false
+    },
+    {
+      "relative": "tests/test_typed_confirmations.py",
+      "source": "D:\\Fuentes\\AIDD\\tests\\test_typed_confirmations.py",
+      "sourceSha256": "3d65773abad0fc56c9eb22cb3fc1bdf2674a89fb331ca4ae18e0ed4d364d25c7",
+      "baselineMainSha256": "3d65773abad0fc56c9eb22cb3fc1bdf2674a89fb331ca4ae18e0ed4d364d25c7",
+      "bytes": 13040,
+      "overlay": false
+    },
+    {
+      "relative": "tests/test_unified_explorer.py",
+      "source": "D:\\Fuentes\\AIDD\\tests\\test_unified_explorer.py",
+      "sourceSha256": "e82e0febe64b180ab234d1ca5255b8f98a3147ee49094c357165de48c7a87211",
+      "baselineMainSha256": "e82e0febe64b180ab234d1ca5255b8f98a3147ee49094c357165de48c7a87211",
+      "bytes": 6125,
+      "overlay": false
+    },
+    {
+      "relative": "tests/test_unified_graph.py",
+      "source": "D:\\Fuentes\\AIDD\\tests\\test_unified_graph.py",
+      "sourceSha256": "5785b352eb1a4d01e3c84a729ca888de9695ad212b7d9919384b1b4b86de9368",
+      "baselineMainSha256": "5785b352eb1a4d01e3c84a729ca888de9695ad212b7d9919384b1b4b86de9368",
+      "bytes": 8421,
+      "overlay": false
+    },
+    {
+      "relative": "tests/test_validate_catalog_entry.py",
+      "source": "D:\\Fuentes\\AIDD\\tests\\test_validate_catalog_entry.py",
+      "sourceSha256": "8d41809e506f6a21882c00ca19ec90deeafd71e2390a71e1c9133feae442d576",
+      "baselineMainSha256": "8d41809e506f6a21882c00ca19ec90deeafd71e2390a71e1c9133feae442d576",
+      "bytes": 7558,
+      "overlay": false
+    },
+    {
+      "relative": "tests/test_verify_amendment.py",
+      "source": "D:\\Fuentes\\AIDD\\tests\\test_verify_amendment.py",
+      "sourceSha256": "0a6074d096085bd75858e5a95792a0aad77af8fb0820cd0a157798dfee6d79a4",
+      "baselineMainSha256": "0a6074d096085bd75858e5a95792a0aad77af8fb0820cd0a157798dfee6d79a4",
+      "bytes": 12707,
+      "overlay": false
+    },
+    {
+      "relative": "tests/test_verify_changed_policy.py",
+      "source": "D:\\Fuentes\\AIDD\\tests\\test_verify_changed_policy.py",
+      "sourceSha256": "0de712d0c2661f054396f7671bf0688cadfbfa057084296940c08e5f003704bb",
+      "baselineMainSha256": "0de712d0c2661f054396f7671bf0688cadfbfa057084296940c08e5f003704bb",
+      "bytes": 8842,
+      "overlay": false
+    },
+    {
+      "relative": "tests/test_verify_git_contract.py",
+      "source": "D:\\Fuentes\\AIDD\\tests\\test_verify_git_contract.py",
+      "sourceSha256": "8deabfafd00dbf046286587a1a25b73a40c670729977f18c345f6f6a33955756",
+      "baselineMainSha256": "8deabfafd00dbf046286587a1a25b73a40c670729977f18c345f6f6a33955756",
+      "bytes": 11213,
+      "overlay": false
+    },
+    {
+      "relative": "tests/test_verify_regressions.py",
+      "source": "D:\\Fuentes\\AIDD\\tests\\test_verify_regressions.py",
+      "sourceSha256": "9fd78387ff6fdc1847c767e759d93c4b1855a9843e4c562eb07947b48598b0e6",
+      "baselineMainSha256": "9fd78387ff6fdc1847c767e759d93c4b1855a9843e4c562eb07947b48598b0e6",
+      "bytes": 2931,
+      "overlay": false
+    },
+    {
+      "relative": "tests/test_verify_round.py",
+      "source": "D:\\Fuentes\\AIDD\\tests\\test_verify_round.py",
+      "sourceSha256": "bd024c8e7beb52b99f8c09f091c2e8baa37b462afc663b20f3ba612ead0ef609",
+      "baselineMainSha256": "bd024c8e7beb52b99f8c09f091c2e8baa37b462afc663b20f3ba612ead0ef609",
+      "bytes": 14955,
+      "overlay": false
+    },
+    {
+      "relative": "tests/test_verify_round_reuse.py",
+      "source": "D:\\Fuentes\\AIDD\\tests\\test_verify_round_reuse.py",
+      "sourceSha256": "87f97e5f668b5e4bd482dec1b2deded2fca825988378b6f2357c9487408a3ba6",
+      "baselineMainSha256": "87f97e5f668b5e4bd482dec1b2deded2fca825988378b6f2357c9487408a3ba6",
+      "bytes": 13148,
+      "overlay": false
+    },
+    {
+      "relative": "tests/test_verify_tiers.py",
+      "source": "D:\\Fuentes\\AIDD\\tests\\test_verify_tiers.py",
+      "sourceSha256": "5cdba30d9b6b8a7d698e57492b8548dc1d47e82d33044b002c901f30af37b491",
+      "baselineMainSha256": "5cdba30d9b6b8a7d698e57492b8548dc1d47e82d33044b002c901f30af37b491",
+      "bytes": 8136,
+      "overlay": false
+    },
+    {
+      "relative": "tests/test_visual_compare_explorer.py",
+      "source": "D:\\Fuentes\\AIDD\\tests\\test_visual_compare_explorer.py",
+      "sourceSha256": "a2abb3a354d864b93e5df5d8d5aeff51bb310d6774a78434f40d7764bdbd5415",
+      "baselineMainSha256": "a2abb3a354d864b93e5df5d8d5aeff51bb310d6774a78434f40d7764bdbd5415",
+      "bytes": 888,
+      "overlay": false
+    },
+    {
+      "relative": "tests/test_visual_review_binding.py",
+      "source": "D:\\Fuentes\\AIDD\\tests\\test_visual_review_binding.py",
+      "sourceSha256": "1a93940239065a7ae981de24d49aaf0381e3eb163c41b95c339516abd79eced7",
+      "baselineMainSha256": "1a93940239065a7ae981de24d49aaf0381e3eb163c41b95c339516abd79eced7",
+      "bytes": 5689,
+      "overlay": false
+    },
+    {
+      "relative": "tests/test_visual_unit_binding.py",
+      "source": "D:\\Fuentes\\AIDD\\tests\\test_visual_unit_binding.py",
+      "sourceSha256": "f215791c07ee018caecb28e1f01f1f9ad011ee8bb72054d20e9118c345920ab0",
+      "baselineMainSha256": "f215791c07ee018caecb28e1f01f1f9ad011ee8bb72054d20e9118c345920ab0",
+      "bytes": 2445,
+      "overlay": false
+    },
+    {
+      "relative": "tests/test_wave_verification.py",
+      "source": "D:\\Fuentes\\AIDD\\tests\\test_wave_verification.py",
+      "sourceSha256": "2a6feacfd49670371a5546c98b5a848d28ae60533f1e8d839ff56d76ddf66fad",
+      "baselineMainSha256": "2a6feacfd49670371a5546c98b5a848d28ae60533f1e8d839ff56d76ddf66fad",
+      "bytes": 27864,
+      "overlay": false
+    },
+    {
+      "relative": "tests/visual_compare_explorer.py",
+      "source": "D:\\Fuentes\\AIDD\\tests\\visual_compare_explorer.py",
+      "sourceSha256": "4c1fe645c6d4c395a7ed59ef0ff77ccb594af0b6c7954983d3d20182d5177868",
+      "baselineMainSha256": "4c1fe645c6d4c395a7ed59ef0ff77ccb594af0b6c7954983d3d20182d5177868",
+      "bytes": 11107,
+      "overlay": false
+    }
+  ],
+  "MainWrites": 0,
+  "installedWrites": 0,
+  "oldSecurityRuntimeWrites": 0,
+  "builderTestsExecuted": 0,
+  "frozen": true
+}

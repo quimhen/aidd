@@ -1,0 +1,18 @@
+test_01_truncated_direct_python_offline_hermetic_is_recovered (test_amendment_truncated_command.TruncatedCommandProof.test_01_truncated_direct_python_offline_hermetic_is_recovered) ... ok
+test_02_existing_full_command_path_is_unchanged (test_amendment_truncated_command.TruncatedCommandProof.test_02_existing_full_command_path_is_unchanged) ... ok
+test_03_same_prefix_different_tail_runs (test_amendment_truncated_command.TruncatedCommandProof.test_03_same_prefix_different_tail_runs) ... ok
+test_04_prefix_and_length_fail_closed (test_amendment_truncated_command.TruncatedCommandProof.test_04_prefix_and_length_fail_closed) ... ok
+test_05_artifact_binding_and_confinement_fail_closed (test_amendment_truncated_command.TruncatedCommandProof.test_05_artifact_binding_and_confinement_fail_closed) ... ok
+test_06_stable_pass_and_expected_are_mandatory (test_amendment_truncated_command.TruncatedCommandProof.test_06_stable_pass_and_expected_are_mandatory) ... ok
+test_07_inputs_proof_and_policy_are_mandatory (test_amendment_truncated_command.TruncatedCommandProof.test_07_inputs_proof_and_policy_are_mandatory) ... ok
+test_08_environment_contract_proof_is_mandatory (test_amendment_truncated_command.TruncatedCommandProof.test_08_environment_contract_proof_is_mandatory) ... ok
+test_09_strict_first_header_only_and_malformed_headers_run (test_amendment_truncated_command.TruncatedCommandProof.test_09_strict_first_header_only_and_malformed_headers_run) ... ok
+test_10_redacted_projection_and_quoted_argument_difference_run (test_amendment_truncated_command.TruncatedCommandProof.test_10_redacted_projection_and_quoted_argument_difference_run) ... ok
+test_11_forced_runs_remain_runs (test_amendment_truncated_command.TruncatedCommandProof.test_11_forced_runs_remain_runs) ... ok
+test_12_current_output_and_lint_checks_remain_mandatory (test_amendment_truncated_command.TruncatedCommandProof.test_12_current_output_and_lint_checks_remain_mandatory) ... ok
+test_13_database_docker_node_unknown_external_runners_never_recover (test_amendment_truncated_command.TruncatedCommandProof.test_13_database_docker_node_unknown_external_runners_never_recover) ... ok
+
+----------------------------------------------------------------------
+Ran 13 tests in 1.008s
+
+OK
