@@ -18,6 +18,7 @@ Usage:
 
 Exit code 0 = no gaps found. Exit code 1 = gaps found (usable as a gate). 2 = usage error.
 """
+import argparse
 import hashlib
 import re
 import sys
@@ -421,7 +422,7 @@ def check_g7_monolithic_screen(mockup_audit):
     return gaps
 
 
-def check_g8_shared_first_path(plan_text):
+def check_g8_shared_first_path(plan_text, indexes=(), root=None, screens=()):
     """G8: reusable components in Component -> Code map must reside in a shared component dir."""
     if not plan_text:
         return []
@@ -444,6 +445,9 @@ def check_g8_shared_first_path(plan_text):
         norm_p = p.replace('\\', '/')
         parts = [part.lower() for part in norm_p.split('/')[:-1]]
         is_shared = any(_is_shared_dir(part) for part in parts)
+        if not is_shared and root is not None:
+            from aidd_shared_components import registered_shared
+            is_shared = registered_shared(code, raw_path, indexes, root, set(screens))
         if not is_shared:
             gaps.append(
                 f"G8 plan.md {code}: path '{raw_path}' is not in a shared component directory — "
@@ -452,10 +456,13 @@ def check_g8_shared_first_path(plan_text):
     return gaps
 
 
-def _component_index_paths(spec_dir):
+def _component_index_paths(spec_dir, project_root=None):
     seen, out = set(), []
-    for base in (spec_dir, spec_dir / 'design-system', spec_dir.parent / 'design-system',
-                 spec_dir.parent.parent / 'design-system'):
+    bases = [spec_dir, spec_dir / 'design-system', spec_dir.parent / 'design-system',
+             spec_dir.parent.parent / 'design-system']
+    if project_root is not None:
+        bases.extend([Path(project_root), Path(project_root) / 'design-system'])
+    for base in bases:
         p = base / 'components-index.md'
         try:
             key = p.resolve()
@@ -468,16 +475,21 @@ def _component_index_paths(spec_dir):
 
 
 def main():
-    args = sys.argv[1:]
-    stamp = '--stamp-contract' in args
-    args = [a for a in args if a != '--stamp-contract']
-    if len(args) != 1:
-        print(__doc__)
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('spec')
+    parser.add_argument('--unit', help='select a schema-2 amendment of the base spec')
+    parser.add_argument('--stamp-contract', action='store_true')
+    args = parser.parse_args()
+    try:
+        from aidd_check_scope import resolve_check_scope
+        scope = resolve_check_scope(args.spec, args.unit)
+    except (OSError, ValueError, StopIteration) as exc:
+        print(f'ERROR: invalid check scope: {exc}', file=sys.stderr)
         sys.exit(2)
-
-    spec_dir = Path(args[0])
-    if not spec_dir.is_dir():
-        print(f"Not a directory: {spec_dir}")
+    spec_dir = scope.directory
+    stamp = args.stamp_contract
+    if stamp and scope.unit is not None:
+        print('ERROR: --stamp-contract cannot modify a sealed unit package', file=sys.stderr)
         sys.exit(2)
 
     if stamp:
@@ -640,10 +652,12 @@ def main():
         if contracts:
             gaps += check_g4_contract_hash(contracts, tasks)
         if plan:
-            gaps += check_g8_shared_first_path(plan)
+            from aidd_shared_components import declared_screens
+            gaps += check_g8_shared_first_path(plan, _component_index_paths(spec_dir, scope.root),
+                                             scope.root, declared_screens(scope.base, spec_dir))
         if tasks:
             gaps += check_g6_single_owner(tasks)
-        for ip in _component_index_paths(spec_dir):
+        for ip in _component_index_paths(spec_dir, scope.root):
             gaps += [g.replace('components-index.md', str(ip.name), 1) for g in check_g5_consumers(read(ip))]
     except Exception as e:
         gaps.append(f"(warning) G1-G8 checks skipped: {e}")
@@ -657,8 +671,9 @@ def main():
         import aidd_rules
         rule_violations = []
         tasks_structured = bool(re.search(r'^#{2,3}\s*(T-\d+|Waves)(?!\w)', tasks, re.M))
-        if (spec_dir / 'spec.md').exists() and (not tasks or tasks_structured):
-            rule_violations = aidd_rules.check_spec_dir(spec_dir, static_only=True)
+        if scope.unit is not None or ((spec_dir / 'spec.md').exists() and (not tasks or tasks_structured)):
+            from aidd_check_scope import structural_rules
+            rule_violations = structural_rules(scope)
         else:
             if (spec_dir / 'spec.md').exists():
                 rule_violations += aidd_rules.check_content('spec', spec_text)
@@ -677,7 +692,7 @@ def main():
     try:
         import aidd_rules as _vr
         _vs = _vr.verification_state(spec_dir)
-        if isinstance(_vs, dict) and _vs.get('status') == 'passed':
+        if scope.unit is None and isinstance(_vs, dict) and _vs.get('status') == 'passed':
             _banner = ("Execution evidence: the spec's Verification commands have a passed run "
                        "(see `aidd status`). This check itself is still structural.")
     except Exception:

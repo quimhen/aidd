@@ -8,6 +8,9 @@ Usage:
                                                 ledger from the evidence log + spec files (exit 0 always);
                                                 --refresh recomputes git/disk facts (key `derived` in --json)
     aidd_status.py rules check <spec_dir>       PASS|FAIL Rn message -> fix  (exit 1 on any violation)
+    aidd_status.py rules check <spec_dir> --unit ID --phase build [--target PATH ...]
+                                                scoped pre-edit gate; requires current base/unit consent,
+                                                never grants closing evidence or skips global close checks
     aidd_status.py rules approve <spec_dir>     write `Approved: <date> hash:<hash>` in tasks.md + record the
                                                 `approved` event and activate the spec (gate pointer); needs an
                                                 R1-valid tasks.md, a valid `## Verification` in spec.md and, when
@@ -1256,11 +1259,25 @@ def _resolve_spec(arg, root=None):
     return q if q.is_dir() else None
 
 
-def cmd_check(spec_arg):
+def cmd_check(spec_arg, unit_id=None, phase=None, targets=()):
     d = _resolve_spec(spec_arg)
     if d is None:
         print(f'Not a spec directory: {spec_arg}')
         return 1
+    if unit_id is not None:
+        if phase != 'build':
+            print('Unit check requires --phase build; global check/close remain unchanged.')
+            return 2
+        vs = rules.check_unit_build(d, unit_id, root=ev.find_root(d), targets=targets)
+        print(f'Build scope: {d.name}:{unit_id}; this is not a closing audit.')
+        for finding in vs:
+            print(f"FAIL {finding['rule']} {finding['message']} → {finding['fix']}")
+        if not vs:
+            print('PASS unit-build: current base and unit approvals; declared scope verified.')
+        return 1 if vs else 0
+    if phase is not None or targets:
+        print('--phase/--target require --unit; no global rules were skipped.')
+        return 2
     vs = rules.check_spec_dir(d)
     # Approval preflight: a tasks.md still awaiting approval must already carry the `## Verification` rows that
     # `aidd rules approve` demands (same check_verification), so the owner is never asked before it would fail.
@@ -3912,6 +3929,18 @@ def main(argv=None):
         if (len(argv) == 5 and argv[:2] == ['rules', 'approve']
                 and argv[3] == '--unit'):
             return cmd_approve_unit(argv[2], argv[4])
+        if len(argv) > 3 and argv[:2] == ['rules', 'check']:
+            import argparse
+            parser = argparse.ArgumentParser(prog='aidd rules check')
+            parser.add_argument('spec')
+            parser.add_argument('--unit', required=True)
+            parser.add_argument('--phase', choices=['build'], required=True)
+            parser.add_argument('--target', action='append', default=[])
+            try:
+                options = parser.parse_args(argv[2:])
+            except SystemExit:
+                return 2
+            return cmd_check(options.spec, options.unit, options.phase, options.target)
         if len(argv) == 4 and argv[:2] == ['rules', 'close'] and argv[3] == '--check':
             return cmd_close(argv[2], check=True)
         if len(argv) == 3 and argv[0] == 'rules' and argv[1] in ('check', 'approve', 'close', 'activate'):

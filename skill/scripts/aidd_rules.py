@@ -2018,6 +2018,116 @@ def _proj_root(d, root=None):
     return Path(root) if root else d
 
 
+def check_unit_build(spec_dir, unit_id, root=None, targets=()):
+    """Fail-closed build preflight for one approved v2 unit and its parents.
+
+    This is not a close gate: the base's historical alignment and closing audits
+    remain enforced by check_spec_dir/close. Both the recorded base seal and each
+    current unit seal are required. No approval or other evidence is written.
+    """
+    out = []
+    try:
+        from pathlib import PurePosixPath, PureWindowsPath
+        try:
+            from .aidd_units import (discover_unit_scope, list_spec_unit_keys, load_unit,
+                                     unit_for_target, unit_ownership_probe, units_declaring_target)
+        except ImportError:
+            from aidd_units import (discover_unit_scope, list_spec_unit_keys, load_unit,
+                                    unit_for_target, unit_ownership_probe, units_declaring_target)
+        d = Path(spec_dir).resolve(strict=True)
+        proj = _proj_root(d, root).resolve(strict=True)
+        if d.parent != proj / 'specs' or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_-]{0,127}', str(unit_id)):
+            raise ValueError('invalid spec or unit identity')
+        key = f'{d.name}:{unit_id}'
+        units = discover_unit_scope(proj, d.name, [key])
+        selected = next(unit for unit in units if unit.key == key)
+        evidence = _evidence()
+        if evidence is None:
+            raise ValueError('evidence module unavailable')
+        events = evidence.events(proj, kind='unit_approved')
+        checked_bases = set()
+        for unit in units:
+            if unit.schema_version != 2:
+                raise ValueError('build preflight requires manifest schema 2')
+            base = proj / 'specs' / unit.spec_id
+            if unit.spec_id not in checked_bases:
+                base_text = with_batches(base, _read(base / 'tasks.md'))
+                all_lines, seals = _approval_lines(base_text)
+                digest = approval_hash(base_text)
+                if (len(all_lines) != 1 or len(seals) != 1 or seals[0][1] != digest
+                        or not evidence.latest_approved(proj, unit.spec_id, digest)):
+                    out.append(_v('R6', f'Base {unit.spec_id} has no current recorded tasks seal.',
+                                  'Restore legitimate base approval; unit consent does not replace it.'))
+                out.extend(check_debt(proj, unit.spec_id))
+                if open_debt_blocking(proj).get(unit.spec_id):
+                    out.append(_v('R4', f'Open visual debt blocks {unit.spec_id}.',
+                                  'Resolve the declared visual debt before building this unit.'))
+                checked_bases.add(unit.spec_id)
+            directory = base / 'amendments' / unit.unit_id
+            required = [directory / name for name in ('spec.md', 'plan.md', 'tasks.md')]
+            required.extend(directory / name for name in tasks_batch_names(directory))
+            if any(path.relative_to(proj).as_posix() not in unit.paths or not path.is_file()
+                   for path in required):
+                raise ValueError(f'{unit.key} must seal its spec, plan and all task files')
+            # Unit consent replaces only the legacy Approved-line convention in
+            # the unit's own tasks. All other current static findings still block.
+            out.extend(v for v in check_spec_dir(directory, root=proj, static_only=True)
+                       if v['rule'] != 'R6')
+            digest = unit_approval_hash(unit, proj)
+            if not any((event.get('detail') or {}).get('spec') == unit.spec_id
+                       and (event.get('detail') or {}).get('unit_id') == unit.unit_id
+                       and (event.get('detail') or {}).get('digest') == digest
+                       and re.fullmatch(r'[0-9a-f]{64}', str((event.get('detail') or {}).get('review_sha256', '')))
+                       for event in events):
+                out.append(_v('R6', f'Unit {unit.key} has no current owner approval.',
+                              'Review and approve this exact unit version.'))
+        if isinstance(targets, (str, bytes)):
+            raise ValueError('targets must be a sequence of project-relative paths')
+        for target in targets:
+            if (not isinstance(target, str) or '\\' in target or PureWindowsPath(target).drive
+                    or PurePosixPath(target).is_absolute() or target not in selected.targets):
+                raise ValueError('requested target is outside the selected unit')
+            (proj / target).resolve(strict=False).relative_to(proj)
+        effective_targets = tuple(targets) or selected.targets
+        owners = {unit.key: unit for unit in units}
+        catalog, declarations = {}, []
+        for candidate_spec in (proj / 'specs').iterdir():
+            if not candidate_spec.is_dir():
+                continue
+            amendments = candidate_spec / 'amendments'
+            if not amendments.exists() and not amendments.is_symlink():
+                continue
+            for peer_key in list_spec_unit_keys(proj, candidate_spec.name):
+                peer_id = peer_key.split(':', 1)[1]
+                path = amendments / peer_id / 'manifest.json'
+                try:
+                    peer = load_unit(path, proj)
+                except ValueError:
+                    peer = None
+                # Invalid peers are ignored only if typed target declarations
+                # prove they do not own any file being checked. No fallback to
+                # an ancestor, incomplete singleton universe or another spec.
+                declarations.append(peer if peer is not None else unit_ownership_probe(path, proj))
+                catalog[peer_key] = peer
+        for target in effective_targets:
+            for declaration in units_declaring_target(declarations, proj, Path(target)):
+                peer = catalog[declaration.key]
+                if peer is None:
+                    raise ValueError('overlapping peer ownership is indeterminate: ' + declaration.key)
+                for related in discover_unit_scope(proj, peer.spec_id, [peer.key]):
+                    owners[related.key] = related
+            owner = unit_for_target(tuple(owners.values()), proj, Path(target))
+            if owner is None or owner.key != selected.key:
+                raise ValueError('requested target is not owned by the selected most-derived unit')
+    except (OSError, ValueError, TypeError, StopIteration) as exc:
+        out.append(_v('R6', f'Unit build scope cannot be verified: {exc}.',
+                      'Correct the manifest, declared inputs, dependencies and requested targets.'))
+    except Exception as exc:
+        out.append(_v('R6', f'Unit build preflight failed ({type(exc).__name__}).',
+                      'Report the failure; do not continue without a verified scope.'))
+    return _dedup(out)
+
+
 def check_spec_dir(spec_dir, root=None, session=None, static_only=False):
     """All static rules + evidence-based rules for a whole spec. `static_only=True` skips
     the evidence log (used by check_spec.py). Never raises."""

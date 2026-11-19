@@ -9,6 +9,13 @@ Self-contained: everything needed to run this is in this file. It doesn't requir
 
 ## Environment adaptation — one file, every host
 
+Approved schema-2 amendments have a scoped pre-edit gate:
+`aidd rules check <spec> --unit <unit-id> --phase build --target <project-relative-file>`
+(repeat `--target` for the lane). It requires the recorded base seal, current unit/parent seals,
+valid unit documents and declared file ownership. Historical base alignment and closing audits
+remain enforced by global check/close, not re-created before an approved amendment can be built.
+A scoped build PASS is neither consent nor executed verification nor permission to close.
+
 This file is host-agnostic on purpose: the same copy adapts to whichever tool loaded it. Read this block once and apply it to every instruction below.
 
 **0. If your load came back truncated** — you see something like `showing lines 1-318 of 732`, or the body stops mid-sentence — your host caps tool output (about 50 KB, this file is ~110 KB) and **most of this skill never reached you**: everything past that cut includes the whole Pipeline (Steps -2 through 7), Engineering standards, Memory and File structure. Read the remainder of `<AIDD_HOME>/SKILL.md` from the truncation point on, before planning or implementing anything. Do not work from the visible fragment — a half-loaded skill is worse than none, because the missing half is the part that says what to do.

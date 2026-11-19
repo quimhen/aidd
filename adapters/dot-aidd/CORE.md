@@ -25,13 +25,21 @@ rule you broke.
 | When | Run (exit 1 = FAIL, do not continue) |
 |---|---|
 | Session start | `aidd doctor` (gate installed?), `python .aidd/scripts/find_spec.py <keywords>`, then `aidd status` |
-| Before the first code edit of a spec | `aidd rules check specs/<id>` — needs an approved `tasks.md` (R6) |
+| Before the first code edit of a base spec | `aidd rules check specs/<id>` — needs an approved `tasks.md` (R6) |
+| Before editing an approved schema-2 amendment | `aidd rules check specs/<id> --unit <unit-id> --phase build --target <project-relative-file>` (repeat `--target` for the lane's files) |
 | After editing `spec.md`, `plan.md` or `tasks.md` | `python .aidd/scripts/check_spec.py specs/<id>` |
 | After editing any SQL | `aidd sqlcheck <paths>` (static compile with the project's engine: `--engine postgres`, or `--cmd "<checker {file}>"` for another database); proceed on green. The ONE exhaustive database pass runs per wave (rule E8), never per file |
 | Before saying a task is done | the task's verification (section 4), then mark its Status |
 | Before ending the session | `aidd status`; close with `aidd rules close <id>` only after the owner says "Yes, close" |
 
 Run `aidd next` before each step and follow its single next command.
+For a declared amendment, use the explicit unit build preflight above even when the summary still
+shows the historical base approval. It verifies the recorded base seal, the selected unit and its
+transitive parents, current unit documents and declared targets. It does not require the base's
+historical alignment quotes or closing auditors to be re-created before new code can be written.
+Global `rules check`, executed verification and `rules close` keep their complete checks; a unit
+build PASS never means that the base or amendment is closed. Never use the unit option for a base
+change or a file outside that unit's declared targets. Unknown scope or stale consent blocks build.
 OpenCode 2.x has no write hook: there enforcement is `aidd guard` via git hooks (`aidd install --githooks`);
 `git commit --no-verify` is a known bypass, listed by `aidd status`.
 

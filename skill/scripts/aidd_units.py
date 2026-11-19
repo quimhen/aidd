@@ -275,6 +275,32 @@ def list_spec_unit_keys(project_root: Path, spec_id: str) -> tuple[str, ...]:
         raise ValueError('related unit scope is inaccessible') from exc
 
 
+def unit_ownership_probe(path: Path, project_root: Path) -> UnitManifest:
+    """Read typed identity/targets only; this is never approval or a full manifest.
+
+    A malformed unrelated unit may be excluded only when this declaration proves
+    it disjoint. Missing/ambiguous target declarations remain indeterminate.
+    """
+    root = Path(project_root).resolve(strict=True)
+    if Path(path).is_symlink():
+        raise ValueError('ownership manifest is an alias')
+    manifest = _contained(Path(path), root)
+    parts = manifest.relative_to(root).parts
+    if len(parts) != 5 or parts[0] != 'specs' or parts[2] != 'amendments' or parts[4] != 'manifest.json':
+        raise ValueError('invalid ownership manifest location')
+    with manifest.open('rb') as stream:
+        raw = stream.read(_MAX_BYTES + 1)
+    if len(raw) > _MAX_BYTES:
+        raise ValueError('oversized ownership declaration')
+    obj = json.loads(raw.decode('utf-8'), object_pairs_hook=_pairs)
+    if (not isinstance(obj, dict) or obj.get('spec_id') != parts[1] or obj.get('unit_id') != parts[3]
+            or not _ID.fullmatch(parts[1]) or not _ID.fullmatch(parts[3])
+            or type(obj.get('sequence')) is not int or obj['sequence'] <= 0):
+        raise ValueError('invalid ownership identity')
+    targets = _paths(obj.get('targets'), root, 'peer targets')
+    return UnitManifest(1, parts[1], parts[3], obj['sequence'], (), (), targets)
+
+
 def discover_unit_scope(project_root: Path, spec_id: str,
                         unit_keys: Sequence[str] | None = None) -> tuple[UnitManifest, ...]:
     """Discover selected units and their parents; refuse unprovable peer ownership."""
@@ -315,20 +341,12 @@ def discover_unit_scope(project_root: Path, spec_id: str,
                     raise ValueError('duplicate sequence in spec: ' + parent_spec)
                 continue  # A valid sibling is handled by the global close/owner gate.
             try:
-                if manifest.is_symlink():
-                    raise ValueError('alias')
-                raw = manifest.read_bytes()
-                if len(raw) > _MAX_BYTES:
-                    raise ValueError('oversized')
-                obj = json.loads(raw.decode('utf-8'), object_pairs_hook=_pairs)
-                if not isinstance(obj, dict) or obj.get('spec_id') != parent_spec or obj.get('unit_id') != unit_id:
+                probe = unit_ownership_probe(manifest, root)
+                if probe.spec_id != parent_spec or probe.unit_id != unit_id:
                     raise ValueError('identity')
-                if type(obj.get('sequence')) is not int or obj['sequence'] <= 0:
-                    raise ValueError('unknown sequence')
-                if any(item.spec_id == parent_spec and item.sequence == obj['sequence'] for item in closure.values()):
+                if any(item.spec_id == parent_spec and item.sequence == probe.sequence for item in closure.values()):
                     raise ValueError('duplicate sequence')
-                peer_targets = _paths(obj.get('targets'), root, 'peer targets')
-                for peer in peer_targets:
+                for peer in probe.targets:
                     for target in targets:
                         if peer.casefold() == target.casefold():
                             raise ValueError('overlapping target')
@@ -728,13 +746,9 @@ if __name__ == '__main__':
     raise SystemExit(main())
 
 
-def unit_for_target(units: Sequence[UnitManifest], project_root: Path,
-                    target: Path) -> UnitManifest | None:
-    """Find the unique most-derived owner of a canonical target.
-
-    Includes drafts: an unapproved descendant must never fall back to its
-    approved ancestor. None means the path has no declared unit owner.
-    """
+def units_declaring_target(units: Sequence[UnitManifest], project_root: Path,
+                           target: Path) -> tuple[UnitManifest, ...]:
+    """Canonical path/case/hardlink matching, independent of dependency resolution."""
     root = Path(project_root).resolve(strict=True)
     try:
         resolved = _contained(Path(target) if Path(target).is_absolute()
@@ -742,11 +756,9 @@ def unit_for_target(units: Sequence[UnitManifest], project_root: Path,
         name = resolved.relative_to(root).as_posix()
     except (OSError, ValueError) as exc:
         raise ValueError('invalid unit target') from exc
-    ordered = resolve_units(units)
-    by_key = {unit.key: unit for unit in ordered}
     # Treat case aliases conservatively even on volumes whose sensitivity is
     # unknown, so a mixed-case spelling cannot silently fall back to legacy.
-    owners = [unit for unit in ordered if any(
+    owners = [unit for unit in units if any(
         name.casefold() == declared.casefold() for declared in unit.targets)]
     try:
         try:
@@ -754,7 +766,7 @@ def unit_for_target(units: Sequence[UnitManifest], project_root: Path,
         except FileNotFoundError:
             target_stat = None  # a new target has no physical identity yet
         if target_stat is not None and target_stat.st_nlink > 1:
-            for candidate in ordered:
+            for candidate in units:
                 for declared in candidate.targets:
                     path = root / declared
                     try:
@@ -767,6 +779,16 @@ def unit_for_target(units: Sequence[UnitManifest], project_root: Path,
                 raise ValueError('hardlinked target has unknown ownership: ' + name)
     except OSError as exc:
         raise ValueError('cannot determine target identity') from exc
+    return tuple(owners)
+
+
+def unit_for_target(units: Sequence[UnitManifest], project_root: Path,
+                    target: Path) -> UnitManifest | None:
+    """Find the unique most-derived owner, including unapproved descendants."""
+    root = Path(project_root).resolve(strict=True)
+    ordered = resolve_units(units)
+    by_key = {unit.key: unit for unit in ordered}
+    owners = units_declaring_target(ordered, root, target)
     if not owners:
         return None
     ancestors: dict[str, set[str]] = {}
@@ -778,5 +800,5 @@ def unit_for_target(units: Sequence[UnitManifest], project_root: Path,
     maximal = [unit for unit in owners if not any(
         unit.key in ancestors[other.key] for other in owners if other.key != unit.key)]
     if len(maximal) != 1:
-        raise ValueError('incomparable unit owners for target: ' + name)
+        raise ValueError('incomparable unit owners for target: ' + str(target))
     return by_key[maximal[0].key]

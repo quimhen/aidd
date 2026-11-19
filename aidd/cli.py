@@ -63,11 +63,16 @@ def cmd_reindex(args):
 
 
 def cmd_check(args):
-    return _run("check_spec.py", [args.spec_dir])
+    extra = [args.spec_dir]
+    if getattr(args, 'unit', None):
+        extra.extend(["--unit", args.unit])
+    return _run("check_spec.py", extra)
 
 
 def cmd_readiness(args):
     extra = [args.spec_dir]
+    if getattr(args, 'unit', None):
+        extra.extend(["--unit", args.unit])
     if args.output:
         extra.extend(["--output", args.output])
     return _run("aidd_readiness.py", extra)
@@ -388,10 +393,12 @@ def build_parser():
 
     p_check = sub.add_parser("check", help="Run the mechanical gap-checker on one spec folder")
     p_check.add_argument("spec_dir")
+    p_check.add_argument("--unit", help="select a schema-2 amendment of the base spec")
     p_check.set_defaults(func=cmd_check)
 
     p_readiness = sub.add_parser("readiness", help="Produce a structural preparation report for an independent auditor")
     p_readiness.add_argument("spec_dir")
+    p_readiness.add_argument("--unit", help="select a schema-2 amendment of the base spec")
     p_readiness.add_argument("--output", help="write JSON to a new file")
     p_readiness.set_defaults(func=cmd_readiness)
 
