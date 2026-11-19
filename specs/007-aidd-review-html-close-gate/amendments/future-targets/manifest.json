@@ -1,0 +1,26 @@
+{
+  "schema_version": 2,
+  "spec_id": "007-aidd-review-html-close-gate",
+  "unit_id": "future-targets",
+  "sequence": 3,
+  "parents": [],
+  "paths": [
+    "specs/007-aidd-review-html-close-gate/amendments/future-targets/spec.md",
+    "specs/007-aidd-review-html-close-gate/amendments/future-targets/plan.md",
+    "specs/007-aidd-review-html-close-gate/amendments/future-targets/tasks.md"
+  ],
+  "targets": [
+    "tests/test_aidd_unit_migration.py",
+    "tests/test_aidd_unit_impact.py",
+    "skill/scripts/aidd_units.py",
+    "adapters/dot-aidd/scripts/aidd_units.py",
+    "pyproject.toml",
+    "aidd/__init__.py"
+  ],
+  "version": "v1",
+  "inputs": [
+    "batch-staging/future-targets-independent-plan.md"
+  ],
+  "config": [],
+  "visual_refs": []
+}

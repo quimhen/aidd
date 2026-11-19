@@ -9,6 +9,7 @@ import hashlib
 import json
 import os
 import re
+import stat
 import tempfile
 import time
 from dataclasses import dataclass
@@ -80,6 +81,9 @@ def _paths(value: object, root: Path, label: str) -> tuple[str, ...]:
                 or any(part in (".", "..") for part in item.split("/"))
                 or "//" in item or item.endswith("/")):
             raise ValueError(f"invalid project-relative path: {item!r}")
+        if label in ('targets', 'peer targets'):
+            # Validate the declared spelling before resolve() can hide a link.
+            _scope_path_state(root, item, allow_absent=True)
         target = _contained(root / item, root)
         output.append(target.relative_to(root).as_posix())
     if len({name.casefold() for name in output}) != len(output):
@@ -358,7 +362,8 @@ def discover_unit_scope(project_root: Path, spec_id: str,
     return resolve_units(list(closure.values()))
 
 
-def _unit_impact_batch(root: Path, ordered: tuple[UnitManifest, ...], unit_keys: Sequence[str]) -> dict:
+def _unit_impact_batch(root: Path, ordered: tuple[UnitManifest, ...], unit_keys: Sequence[str], *,
+                       allow_missing_targets=False) -> dict:
     """Hash each declared file once per phase and propagate errors only to consumers."""
     by_key = {item.key: item for item in ordered}
     if len(set(unit_keys)) != len(unit_keys) or any(key not in by_key for key in unit_keys):
@@ -370,23 +375,20 @@ def _unit_impact_batch(root: Path, ordered: tuple[UnitManifest, ...], unit_keys:
             required.add(key)
             pending.extend(by_key[key].parents)
 
-    def file_hash(name: str) -> tuple[str, str | None]:
+    strict_names = set()
+    parent_keys = {parent for key in required for parent in by_key[key].parents}
+    for key in required:
+        item = by_key[key]
+        strict_names.update(item.paths + item.inputs + item.config)
+        strict_names.update(name for ref in item.visual_refs for name in (ref.source, *ref.assets))
+        if key in parent_keys:
+            strict_names.update(item.targets)
+
+    def file_hash(name: str) -> tuple[str | dict, str | None]:
         try:
-            path = (root / name).resolve(strict=True)
-            path.relative_to(root)
-            if not path.is_file():
-                raise ValueError('not a file')
-            before = path.stat()
-            data = path.read_bytes()
-            after = path.stat()
-            if (before.st_dev, before.st_ino, before.st_size, before.st_mtime_ns) != (
-                    after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns):
-                raise ValueError('file changed during snapshot')
-            if data != path.read_bytes():
-                raise ValueError('file changed during snapshot')
-            raw = hashlib.sha256(data).hexdigest()
+            raw, data = _scope_file_state(root, name, allow_absent=allow_missing_targets and name not in strict_names)
             semantic = None
-            if re.fullmatch(r'tasks(?:-[A-Za-z0-9_-]+)?\.md', path.name):
+            if data is not None and re.fullmatch(r'tasks(?:-[A-Za-z0-9_-]+)?\.md', Path(name).name):
                 try:
                     from . import aidd_rules as rules
                 except ImportError:
@@ -483,7 +485,8 @@ def unit_impact_snapshots(project_root: Path, unit_keys: Sequence[str]) -> dict:
     output = {'snapshots': {}, 'errors': {}}
     for spec_id, keys in groups.items():
         try:
-            batch = _unit_impact_batch(root, discover_unit_scope(root, spec_id, keys), keys)
+            batch = _unit_impact_batch(root, discover_unit_scope(root, spec_id, keys), keys,
+                                       allow_missing_targets=True)
             output['snapshots'].update(batch['snapshots'])
             output['errors'].update(batch['errors'])
         except (OSError, ValueError) as exc:
@@ -493,7 +496,8 @@ def unit_impact_snapshots(project_root: Path, unit_keys: Sequence[str]) -> dict:
             # Isolate the invalid branch; no unit receives another's failure.
             for key in keys:
                 try:
-                    batch = _unit_impact_batch(root, discover_unit_scope(root, spec_id, [key]), [key])
+                    batch = _unit_impact_batch(root, discover_unit_scope(root, spec_id, [key]), [key],
+                                               allow_missing_targets=True)
                     output['snapshots'].update(batch['snapshots'])
                     output['errors'].update(batch['errors'])
                 except (OSError, ValueError) as one_error:
@@ -525,14 +529,64 @@ def _migration_link(path: Path) -> bool:
 
 def _migration_file(root: Path, relative: str) -> Path:
     """Require an existing regular, non-linked in-project input."""
+    return _scope_path_state(root, relative)[0]
+
+
+def _scope_identity(info) -> list[int]:
+    """Identity/type, not directory contents or timestamps changed by siblings."""
+    return [info.st_dev, info.st_ino, stat.S_IFMT(info.st_mode),
+            getattr(info, 'st_file_attributes', 0) & stat.FILE_ATTRIBUTE_REPARSE_POINT]
+
+
+def _scope_path_state(root: Path, relative: str, *, allow_absent=False):
+    """Observe exact non-linked ancestry; only ENOENT may describe future output."""
     path = root
-    for part in relative.split('/'):
-        path = path / part
-        if _migration_link(path):
-            raise ValueError('migration input contains a symbolic link: ' + relative)
-    if not path.is_file() or path.resolve(strict=True).relative_to(root).as_posix() != relative:
-        raise ValueError('migration input missing or ambiguous: ' + relative)
-    return path
+    guards = [{'path': '.', 'identity': _scope_identity(root.lstat())}]
+    parts = relative.split('/')
+    try:
+        for offset, part in enumerate(parts):
+            matches = [entry.name for entry in path.iterdir() if entry.name.casefold() == part.casefold()]
+            if len(matches) > 1 or (matches and matches[0] != part):
+                raise ValueError('case-ambiguous scope path: ' + relative)
+            current = path / part
+            try:
+                info = current.lstat()
+            except FileNotFoundError:
+                if not allow_absent:
+                    raise ValueError('scope input missing: ' + relative)
+                return root / relative, {'state': 'ABSENT', 'ancestor': guards[-1]['path'],
+                                         'missing_suffix': '/'.join(parts[offset:]), 'ancestors': guards}, guards
+            if (stat.S_ISLNK(info.st_mode) or _migration_link(current)
+                    or getattr(info, 'st_file_attributes', 0) & stat.FILE_ATTRIBUTE_REPARSE_POINT):
+                raise ValueError('symbolic link or junction in scope path: ' + relative)
+            if offset == len(parts) - 1:
+                if not stat.S_ISREG(info.st_mode) or current.resolve(strict=True).relative_to(root).as_posix() != relative:
+                    raise ValueError('scope input is not an exact regular file: ' + relative)
+                return current, None, guards
+            if not stat.S_ISDIR(info.st_mode):
+                raise ValueError('scope ancestor is not a directory: ' + relative)
+            path = current
+            guards.append({'path': path.relative_to(root).as_posix(), 'identity': _scope_identity(info)})
+    except (OSError, RuntimeError) as exc:
+        raise ValueError('scope path unavailable: ' + relative) from exc
+    raise ValueError('invalid scope path: ' + relative)
+
+
+def _scope_file_state(root: Path, relative: str, *, allow_absent=False):
+    """Return existing content/hash or typed absence; recheck identity and bytes."""
+    path, absent, guards = _scope_path_state(root, relative, allow_absent=allow_absent)
+    if absent is not None:
+        if _scope_path_state(root, relative, allow_absent=True)[1] != absent:
+            raise ValueError('scope input changed during snapshot: ' + relative)
+        return absent, None
+    before = path.stat()
+    data = path.read_bytes()
+    after = path.stat()
+    if ((_scope_identity(before), before.st_size, before.st_mtime_ns) !=
+            (_scope_identity(after), after.st_size, after.st_mtime_ns) or data != path.read_bytes()
+            or _scope_path_state(root, relative)[2] != guards):
+        raise ValueError('scope input changed during snapshot: ' + relative)
+    return hashlib.sha256(data).hexdigest(), data
 
 
 def _migration_parents(root, current, keys):
@@ -606,11 +660,13 @@ def migration_plan(project_root, spec_id, manifest_path):
     _paths(list(candidate.targets), root, 'targets')
     _paths(list(candidate.inputs), root, 'inputs')
     _paths(list(candidate.config), root, 'config')
-    names = set(candidate.paths + candidate.targets + candidate.inputs + candidate.config)
+    strict_names = set(candidate.paths + candidate.inputs + candidate.config)
     for ref in candidate.visual_refs:
-        names.add(ref.source)
-        names.update(ref.assets)
-    hashes = {name: hashlib.sha256(_migration_file(root, name).read_bytes()).hexdigest() for name in sorted(names)}
+        strict_names.add(ref.source)
+        strict_names.update(ref.assets)
+    names = strict_names | set(candidate.targets)
+    hashes = {name: _scope_file_state(root, name, allow_absent=name not in strict_names)[0]
+              for name in sorted(names)}
     current = []
     for other_spec in (root / 'specs').iterdir():
         if not other_spec.is_dir() or not (other_spec / 'amendments').exists():
@@ -622,7 +678,11 @@ def migration_plan(project_root, spec_id, manifest_path):
             current.append(load_unit(other_spec / 'amendments' / other_id / 'manifest.json', root))
     resolve_units((*current, candidate))
     parents = _migration_parents(root, current, candidate.parents)
-    payload = {'format': 'aidd-unit-migration-plan-v1', 'spec': spec_id, 'unit': candidate.unit_id,
+    if any(_scope_file_state(root, name, allow_absent=name not in strict_names)[0] != value
+           for name, value in hashes.items()):
+        raise ValueError('migration inputs changed during plan')
+    version = 2 if any(isinstance(value, dict) for value in hashes.values()) else 1
+    payload = {'format': f'aidd-unit-migration-plan-v{version}', 'spec': spec_id, 'unit': candidate.unit_id,
                'manifest_sha256': hashlib.sha256(raw).hexdigest(), 'files': hashes, 'parents': parents,
                'destination': f'specs/{spec_id}/amendments/{candidate.unit_id}/manifest.json'}
     payload['digest'] = hashlib.sha256(json.dumps(payload, sort_keys=True, ensure_ascii=False,
@@ -649,13 +709,15 @@ def migration_apply(project_root, spec_id, manifest_path, digest):
         raise ValueError('migration receipt already exists')
     receipt_dir.mkdir(exist_ok=True)
     created = directory / 'manifest.json'
+    created_identity = None
     try:
         with created.open('xb') as stream:
             stream.write(raw)
+            created_identity = _scope_identity(os.fstat(stream.fileno()))
         load_unit(created, root)
         discover_unit_scope(root, spec_id, [spec_id + ':' + plan['unit']])
-        actual_hashes = {name: hashlib.sha256(_migration_file(root, name).read_bytes()).hexdigest()
-                         for name in plan['files']}
+        actual_hashes = {name: _scope_file_state(root, name, allow_absent=isinstance(value, dict))[0]
+                         for name, value in plan['files'].items()}
         actual_parents = _migration_parents(root, discover_units(root), plan['parents'])
         if actual_hashes != plan['files'] or actual_parents != plan['parents']:
             raise ValueError('migration inputs changed during apply')
@@ -669,8 +731,13 @@ def migration_apply(project_root, spec_id, manifest_path, digest):
                 receipt.unlink()
                 raise
     except Exception:
-        if created.is_file() and not created.is_symlink() and created.read_bytes() == raw:
-            created.unlink()
+        try:
+            if (created_identity is not None and _scope_identity(created.lstat()) == created_identity
+                    and not _migration_link(created) and created.read_bytes() == raw
+                    and _scope_identity(created.lstat()) == created_identity):
+                created.unlink()
+        except (OSError, ValueError):
+            pass  # A replacement belongs to its creator, not this failed apply.
         raise
     return record
 

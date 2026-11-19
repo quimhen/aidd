@@ -1,0 +1,68 @@
+# RED T-1191 | exit 1 | 2026-11-18T20:45:31
+command: C:/Users/jquimis/AppData/Local/Programs/Python/Python312/python.exe -m unittest tests.test_aidd_unit_migration
+exit: 1
+first_failure: ERROR: test_absent_directory_chain_appearing_after_manifest_creation_is_rejected (tests.test_aidd_unit_migration.UnitMigrationTests.test_absent_directory_chain_appearing_after_manifest_creation_is_rejected)
+timestamp: 2026-11-18T20:45:31
+test_file: (unknown)
+test_file_sha1: (none)
+--- output (first 60 lines) ---
+EEEE......E..FE.E...E....EE....s
+======================================================================
+ERROR: test_absent_directory_chain_appearing_after_manifest_creation_is_rejected (tests.test_aidd_unit_migration.UnitMigrationTests.test_absent_directory_chain_appearing_after_manifest_creation_is_rejected)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "D:\Fuentes\AIDD\tests\test_aidd_unit_migration.py", line 281, in test_absent_directory_chain_appearing_after_manifest_creation_is_rejected
+    plan = units.migration_plan(self.root, 's', self.source)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\Fuentes\AIDD\skill\scripts\aidd_units.py", line 613, in migration_plan
+    hashes = {name: hashlib.sha256(_migration_file(root, name).read_bytes()).hexdigest() for name in sorted(names)}
+                                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\Fuentes\AIDD\skill\scripts\aidd_units.py", line 534, in _migration_file
+    raise ValueError('migration input missing or ambiguous: ' + relative)
+ValueError: migration input missing or ambiguous: future/deep/output.py
+
+======================================================================
+ERROR: test_absent_empty_and_populated_file_plans_are_distinct (tests.test_aidd_unit_migration.UnitMigrationTests.test_absent_empty_and_populated_file_plans_are_distinct)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "D:\Fuentes\AIDD\tests\test_aidd_unit_migration.py", line 161, in test_absent_empty_and_populated_file_plans_are_distinct
+    absent = units.migration_plan(self.root, 's', self.source)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\Fuentes\AIDD\skill\scripts\aidd_units.py", line 613, in migration_plan
+    hashes = {name: hashlib.sha256(_migration_file(root, name).read_bytes()).hexdigest() for name in sorted(names)}
+                                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\Fuentes\AIDD\skill\scripts\aidd_units.py", line 534, in _migration_file
+    raise ValueError('migration input missing or ambiguous: ' + relative)
+ValueError: migration input missing or ambiguous: future.py
+
+======================================================================
+ERROR: test_absent_leaf_plan_apply_records_typed_absence_without_placeholder (tests.test_aidd_unit_migration.UnitMigrationTests.test_absent_leaf_plan_apply_records_typed_absence_without_placeholder)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "D:\Fuentes\AIDD\tests\test_aidd_unit_migration.py", line 141, in test_absent_leaf_plan_apply_records_typed_absence_without_placeholder
+    plan = units.migration_plan(self.root, 's', self.source)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\Fuentes\AIDD\skill\scripts\aidd_units.py", line 613, in migration_plan
+    hashes = {name: hashlib.sha256(_migration_file(root, name).read_bytes()).hexdigest() for name in sorted(names)}
+                                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\Fuentes\AIDD\skill\scripts\aidd_units.py", line 534, in _migration_file
+    raise ValueError('migration input missing or ambiguous: ' + relative)
+ValueError: migration input missing or ambiguous: future.py
+
+======================================================================
+ERROR: test_absent_nested_directory_output_does_not_create_parent_directories (tests.test_aidd_unit_migration.UnitMigrationTests.test_absent_nested_directory_output_does_not_create_parent_directories)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "D:\Fuentes\AIDD\tests\test_aidd_unit_migration.py", line 153, in test_absent_nested_directory_output_does_not_create_parent_directories
+    plan = units.migration_plan(self.root, 's', self.source)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\Fuentes\AIDD\skill\scripts\aidd_units.py", line 613, in migration_plan
+    hashes = {name: hashlib.sha256(_migration_file(root, name).read_bytes()).hexdigest() for name in sorted(names)}
+                                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\Fuentes\AIDD\skill\scripts\aidd_units.py", line 534, in _migration_file
+    raise ValueError('migration input missing or ambiguous: ' + relative)
+ValueError: migration input missing or ambiguous: new/deep/generated.py
+
+======================================================================
+ERROR: test_existing_ancestor_replaced_before_apply_invalidates_identity (tests.test_aidd_unit_migration.UnitMigrationTests.test_existing_ancestor_replaced_before_apply_invalidates_identity)
+----------------------------------------------------------------------

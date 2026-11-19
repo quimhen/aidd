@@ -1,0 +1,68 @@
+# RED T-1192 | exit 1 | 2026-11-18T20:45:33
+command: C:/Users/jquimis/AppData/Local/Programs/Python/Python312/python.exe -m unittest tests.test_aidd_unit_impact
+exit: 1
+first_failure: ERROR: test_absent_empty_and_populated_output_have_distinct_impact (tests.test_aidd_unit_impact.UnitImpact.test_absent_empty_and_populated_output_have_distinct_impact)
+timestamp: 2026-11-18T20:45:33
+test_file: (unknown)
+test_file_sha1: (none)
+--- output (first 60 lines) ---
+E..............FFFFFF....C:\Users\jquimis\AppData\Local\Programs\Python\Python312\Lib\tempfile.py:940: ResourceWarning: Implicitly cleaning up <TemporaryDirectory 'C:\\Users\\jquimis\\AppData\\Local\\Temp\\tmpldajm44y'>
+  _warnings.warn(warn_message, ResourceWarning)
+...
+======================================================================
+ERROR: test_absent_empty_and_populated_output_have_distinct_impact (tests.test_aidd_unit_impact.UnitImpact.test_absent_empty_and_populated_output_have_distinct_impact)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "D:\Fuentes\AIDD\tests\test_aidd_unit_impact.py", line 314, in test_absent_empty_and_populated_output_have_distinct_impact
+    absent = unit_impact_snapshots(self.root, ['s:a'])['snapshots']['s:a']
+             ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^
+KeyError: 's:a'
+
+======================================================================
+FAIL: test_missing_parent_output_is_strict_for_child_planning (tests.test_aidd_unit_impact.UnitImpact.test_missing_parent_output_is_strict_for_child_planning)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "D:\Fuentes\AIDD\tests\test_aidd_unit_impact.py", line 377, in test_missing_parent_output_is_strict_for_child_planning
+    self.assertFalse(unit_impact_snapshots(self.root, ['s:a'])['errors'])
+AssertionError: {'s:a': 'scope input unavailable or changed: future.py'} is not false
+
+======================================================================
+FAIL: test_native_fixture_build_preflight_allows_future_but_audit_is_strict (tests.test_aidd_unit_impact.UnitImpact.test_native_fixture_build_preflight_allows_future_but_audit_is_strict)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "D:\Fuentes\AIDD\tests\test_aidd_unit_impact.py", line 427, in test_native_fixture_build_preflight_allows_future_but_audit_is_strict
+    self.assertEqual(fixture.check(targets=['src/billing.py']), [])
+AssertionError: Lists differ: [{'rule': 'R3', 'message': 'Checklist row [2414 chars]d.'}] != []
+
+First list contains 7 additional elements.
+First extra element 0:
+{'rule': 'R3', 'message': 'Checklist row "Which module/area of the system?": Source repo — src/billing.py is not an existing file under the project root.', 'fix': 'Cite an existing file as repo — path:LINE (LINE within the file) or repo — path "exact 3+ word quote from it"; if the user told you, use user — "<their words>" instead.'}
+
+Diff is 2973 characters long. Set self.maxDiff to None to see it.
+
+======================================================================
+FAIL: test_output_appearance_or_ancestor_replacement_during_recheck_rejects (tests.test_aidd_unit_impact.UnitImpact.test_output_appearance_or_ancestor_replacement_during_recheck_rejects) (action='appearance')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "D:\Fuentes\AIDD\tests\test_aidd_unit_impact.py", line 403, in test_output_appearance_or_ancestor_replacement_during_recheck_rejects
+    self.assertTrue(changed)
+AssertionError: False is not true
+
+======================================================================
+FAIL: test_output_appearance_or_ancestor_replacement_during_recheck_rejects (tests.test_aidd_unit_impact.UnitImpact.test_output_appearance_or_ancestor_replacement_during_recheck_rejects) (action='ancestor')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "D:\Fuentes\AIDD\tests\test_aidd_unit_impact.py", line 403, in test_output_appearance_or_ancestor_replacement_during_recheck_rejects
+    self.assertTrue(changed)
+AssertionError: False is not true
+
+======================================================================
+FAIL: test_plural_missing_output_is_typed_deterministic_and_not_materialized (tests.test_aidd_unit_impact.UnitImpact.test_plural_missing_output_is_typed_deterministic_and_not_materialized) (relative='future.py')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "D:\Fuentes\AIDD\tests\test_aidd_unit_impact.py", line 305, in test_plural_missing_output_is_typed_deterministic_and_not_materialized
+    self.assertEqual(first['errors'], {})
+AssertionError: {'s:a': 'scope input unavailable or changed: future.py'} != {}
+- {'s:a': 'scope input unavailable or changed: future.py'}
++ {}
+

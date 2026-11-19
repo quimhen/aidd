@@ -289,3 +289,152 @@ class UnitImpact(unittest.TestCase):
         path.write_text(json.dumps(data), encoding='utf-8')
         with self.assertRaisesRegex(ValueError, 'execution scope'):
             self.snapshot('a')
+
+    def future_unit(self, relative='future/output.py'):
+        manifest = self.root / 'specs/s/amendments/a/manifest.json'
+        data = json.loads(manifest.read_text(encoding='utf-8'))
+        data['targets'] = [relative]
+        manifest.write_text(json.dumps(data), encoding='utf-8')
+        return next(u for u in discover_units(self.root) if u.unit_id == 'a')
+
+    def test_plural_missing_output_is_typed_deterministic_and_not_materialized(self):
+        for relative in ('future.py', 'future/nested/output.py'):
+            with self.subTest(relative=relative):
+                self.future_unit(relative)
+                first = unit_impact_snapshots(self.root, ['s:a'])
+                self.assertEqual(first['errors'], {})
+                state = first['snapshots']['s:a']['files']['targets'][relative]
+                self.assertIsInstance(state, dict)
+                self.assertEqual(state['state'], 'ABSENT')
+                self.assertEqual(first, unit_impact_snapshots(self.root, ['s:a']))
+                self.assertFalse((self.root / relative).exists())
+
+    def test_absent_empty_and_populated_output_have_distinct_impact(self):
+        unit = self.future_unit('future.py')
+        absent = unit_impact_snapshots(self.root, ['s:a'])['snapshots']['s:a']
+        with self.assertRaises(ValueError):
+            unit_impact_snapshot(unit, self.root)
+        output = self.root / 'future.py'
+        output.write_bytes(b'')
+        empty = unit_impact_snapshots(self.root, ['s:a'])['snapshots']['s:a']
+        self.assertNotEqual(absent['digest'], empty['digest'])
+        self.assertEqual(empty, unit_impact_snapshot(unit, self.root))
+        output.write_bytes(b'implemented')
+        populated = unit_impact_snapshots(self.root, ['s:a'])['snapshots']['s:a']
+        self.assertNotEqual(empty['digest'], populated['digest'])
+
+    def test_missing_output_does_not_change_review_or_approval_on_creation(self):
+        unit = self.future_unit('future.py')
+        approval = aidd_rules.unit_approval_hash(unit, self.root)
+        package = aidd_rules.unit_review_package(unit, self.root)
+        (self.root / 'future.py').write_bytes(b'legitimate output')
+        self.assertEqual(approval, aidd_rules.unit_approval_hash(unit, self.root))
+        self.assertEqual(package, aidd_rules.unit_review_package(unit, self.root))
+
+    def test_strict_roles_override_missing_target_in_same_unit(self):
+        self.future_unit('future.py')
+        manifest = self.root / 'specs/s/amendments/a/manifest.json'
+        baseline = json.loads(manifest.read_text(encoding='utf-8'))
+        for role in ('paths', 'inputs', 'config', 'visual-source', 'visual-asset'):
+            with self.subTest(role=role):
+                data = dict(baseline)
+                if role.startswith('visual-'):
+                    data['visual_refs'] = [{'screen_id': 'SCREEN-1', 'revision_id': 'v1',
+                        'source': 'future.py' if role == 'visual-source' else 'screen.html',
+                        'assets': ['future.py'] if role == 'visual-asset' else ['asset.png'],
+                        'states': ['content'], 'roles': ['admin'], 'viewports': ['1280x800']}]
+                else:
+                    data[role] = list(data[role]) + ['future.py']
+                manifest.write_text(json.dumps(data), encoding='utf-8')
+                result = unit_impact_snapshots(self.root, ['s:a'])
+                self.assertIn('s:a', result['errors'])
+                self.assertNotIn('s:a', result['snapshots'])
+
+    def test_cross_unit_strict_roles_win_independently_of_order(self):
+        (self.root / 'third.py').write_bytes(b'third')
+        self.write_unit('b', 10, ['s:a'], ['specs/s/amendments/b/tasks.md'], ['second.py'], [], [], [])
+        for first, strict in ((1, 3), (3, 1)):
+            for role in ('paths', 'inputs', 'config', 'visual-source', 'visual-asset'):
+                with self.subTest(target_sequence=first, role=role):
+                    self.write_unit('a', first, [], ['specs/s/amendments/a/tasks.md'], ['future.py'], [], [], [])
+                    paths, inputs, config, visual = ['specs/s/amendments/c/tasks.md'], [], [], []
+                    if role == 'paths': paths.append('future.py')
+                    elif role == 'inputs': inputs.append('future.py')
+                    elif role == 'config': config.append('future.py')
+                    else:
+                        visual = [{'screen_id': 'SCREEN-1', 'revision_id': 'v1',
+                            'source': 'future.py' if role == 'visual-source' else 'screen.html',
+                            'assets': ['future.py'] if role == 'visual-asset' else ['asset.png'],
+                            'states': ['content'], 'roles': ['admin'], 'viewports': ['1280x800']}]
+                    self.write_unit('c', strict, [], paths, ['third.py'], inputs, config, visual)
+                    for keys in (['s:a', 's:c'], ['s:c', 's:a']):
+                        result = unit_impact_snapshots(self.root, keys)
+                        self.assertEqual(set(result['errors']), {'s:a', 's:c'})
+                        self.assertFalse(result['snapshots'])
+
+    def test_missing_parent_output_is_strict_for_child_planning(self):
+        self.future_unit('future.py')
+        self.assertFalse(unit_impact_snapshots(self.root, ['s:a'])['errors'])
+        result = unit_impact_snapshots(self.root, ['s:b'])
+        self.assertIn('s:b', result['errors'])
+        self.assertFalse(result['snapshots'])
+
+    def test_output_appearance_or_ancestor_replacement_during_recheck_rejects(self):
+        original = Path.read_bytes
+        for action in ('appearance', 'ancestor'):
+            with self.subTest(action=action):
+                parent = self.root / ('future-' + action)
+                parent.mkdir()
+                output = parent / 'output.py'
+                self.future_unit(output.relative_to(self.root).as_posix())
+                changed = False
+                def mutate(path):
+                    nonlocal changed
+                    data = original(path)
+                    if path == self.root / 'runner.py' and not changed:
+                        changed = True
+                        if action == 'appearance': output.write_bytes(b'')
+                        else:
+                            parent.rename(parent.with_name(parent.name + '-old'))
+                            parent.mkdir()
+                    return data
+                with patch.object(Path, 'read_bytes', mutate):
+                    result = unit_impact_snapshots(self.root, ['s:a'])
+                self.assertTrue(changed)
+                self.assertIn('s:a', result['errors'])
+                self.assertFalse(result['snapshots'])
+
+    def test_existing_target_stat_change_even_with_same_bytes_rejects(self):
+        original = Path.read_bytes
+        def touch_after_read(path):
+            data = original(path)
+            if path == self.root / 'first.py':
+                stat = path.stat()
+                os.utime(path, ns=(stat.st_atime_ns, stat.st_mtime_ns + 1000000000))
+            return data
+        with patch.object(Path, 'read_bytes', touch_after_read):
+            result = unit_impact_snapshots(self.root, ['s:a'])
+        self.assertIn('s:a', result['errors'])
+
+    def test_native_fixture_build_preflight_allows_future_but_audit_is_strict(self):
+        from tests.test_aidd_unit_build_gate import UnitBuildGate
+        from skill.scripts.aidd_unit_audit import run_unit_review
+        fixture = UnitBuildGate(methodName='runTest')
+        self.addCleanup(fixture.doCleanups)
+        fixture.setUp()
+        source = fixture.unit / 'spec.md'
+        source.write_text(source.read_text(encoding='utf-8').replace(
+            'src/billing.py:1', 'src/check.py:1'), encoding='utf-8')
+        manifest = fixture.unit / 'manifest.json'
+        declared = json.loads(manifest.read_text(encoding='utf-8'))
+        declared['inputs'] = ['src/check.py']
+        manifest.write_text(json.dumps(declared), encoding='utf-8')
+        (fixture.root / 'src/billing.py').unlink()
+        fixture.approve_unit('change')
+        self.assertEqual(fixture.check(targets=['src/billing.py']), [])
+        unit = next(u for u in discover_units(fixture.root) if u.unit_id == 'change')
+        with patch('skill.scripts.aidd_unit_audit.subprocess.check_output') as spawn:
+            with self.assertRaises(ValueError):
+                run_unit_review(fixture.root, unit, ['functional'], aidd_units, None,
+                                executable='must-not-start', environment_id='fixture')
+            spawn.assert_not_called()
